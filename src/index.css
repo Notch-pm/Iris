@@ -1,0 +1,58 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+  Edilumen design tokens — même palette que le design system Notch/Ariane,
+  partagée avec Socle et Clara : primaire vert AA, secondaire beurre,
+  fond quasi blanc, rail latéral forêt sombre.
+*/
+:root {
+  --background: 0 0% 99%;
+  --foreground: 160 10% 12%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 160 10% 12%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 160 10% 12%;
+
+  --primary: 153 90% 32%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 42 100% 67%;
+  --secondary-foreground: 42 60% 16%;
+
+  --muted: 153 8% 95%;
+  --muted-foreground: 160 5% 38%;
+
+  --accent: 153 90% 32%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 72% 46%;
+  --destructive-foreground: 0 0% 100%;
+
+  --success: 153 90% 32%;
+  --warning: 42 92% 44%;
+
+  --border: 160 5% 90%;
+  --input: 160 5% 90%;
+  --ring: 153 90% 32%;
+
+  --radius: 0.875rem;
+
+  /* Rail latéral — toujours forêt sombre, indépendant du thème */
+  --sidebar-background: 160 15% 11%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-hover: 0 0% 100% / 0.08;
+  --sidebar-active: 0 0% 100% / 0.14;
+}
+
+* {
+  @apply border-border;
+}
+
+body {
+  @apply bg-background text-foreground antialiased;
+  font-feature-settings: "cv11", "ss01";
+  -webkit-font-smoothing: antialiased;
+}

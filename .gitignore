@@ -1,0 +1,24 @@
+# Dépendances et build
+node_modules/
+dist/
+
+# Environnement local — jamais versionné
+.env
+.env.local
+.env.*.local
+
+# Logs et divers
+npm-debug.log*
+*.log
+
+# Supabase CLI (état local)
+supabase/.temp/
+supabase/.branches/
+
+# Artefacts de tests navigateur (Playwright MCP)
+.playwright-mcp/
+parcours-agent-liste.png
+
+# Éditeurs / OS
+.DS_Store
+Thumbs.db

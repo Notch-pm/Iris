@@ -1,0 +1,11 @@
+# Configuration Supabase CLI — identifiant LOCAL du projet (nom du dossier),
+# pas l'identifiant du projet distant. Le lien vers le projet distant se fait
+# avec `supabase link --project-ref <ref>` une fois le projet Supabase Iris créé
+# (voir docs/demarrage.md).
+project_id = "iris"
+
+# Les edge functions à venir (demandes-api, socle-proxy, sync-socle-referentiel,
+# process-attachment-queue, process-webhook-outbox) seront déclarées ici avec
+# leur verify_jwt, selon docs/architecture-proposee.md §8.2 :
+#   demandes-api / jobs internes → verify_jwt = false (auth portée par le code)
+#   socle-proxy                  → verify_jwt = true  (JWT agent + revérification)
