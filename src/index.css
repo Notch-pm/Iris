@@ -3,56 +3,118 @@
 @tailwind utilities;
 
 /*
-  Edilumen design tokens — même palette que le design system Notch/Ariane,
-  partagée avec Socle et Clara : primaire vert AA, secondaire beurre,
-  fond quasi blanc, rail latéral forêt sombre.
+  Notch / Ariane Design System — tokens canoniques importés du projet Claude
+  Design « Ariane Design System » (colors_and_type.css, copié tel quel comme le
+  recommande MUTUALISATION.md §2.1). Partagé à 100 % avec Ariane et Clara.
 */
+@import url('https://fonts.googleapis.com/css2?family=Nunito+Sans:wght@400;500;600;700;800;900&display=swap');
+
 :root {
-  --background: 0 0% 99%;
-  --foreground: 160 10% 12%;
+  /* ─── BRAND (marketing / logo / illustrations) ─────────────── */
+  --brand-green:        #02D185;
+  --brand-green-deep:   #00A36A;
+  --brand-yellow:       #FFCD57;
+  --brand-yellow-deep:  #E8AE2E;
+  --brand-ink:          #0F1F18;
+  --brand-cream:        #FAFAF8;
 
-  --card: 0 0% 100%;
-  --card-foreground: 160 10% 12%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 160 10% 12%;
+  /* ─── UI TOKENS (light) ────────────────────────────────────── */
+  --background:           0 0% 99%;
+  --foreground:           160 10% 12%;
 
-  --primary: 153 90% 32%;
-  --primary-foreground: 0 0% 100%;
+  --card:                 0 0% 100%;
+  --card-foreground:      160 10% 12%;
+  --popover:              0 0% 100%;
+  --popover-foreground:   160 10% 12%;
 
-  --secondary: 42 100% 67%;
+  /* AA-tuned primary (le vert brand assombri pour le contraste) */
+  --primary:              153 90% 32%;
+  --primary-foreground:   0 0% 100%;
+  --primary-bright:       153 98% 41%;   /* = #02D185, hero/marketing */
+
+  --secondary:            42 100% 67%;   /* = #FFCD57 */
   --secondary-foreground: 42 60% 16%;
 
-  --muted: 153 8% 95%;
-  --muted-foreground: 160 5% 38%;
+  --muted:                153 8% 95%;
+  --muted-foreground:     160 5% 38%;
 
-  --accent: 153 90% 32%;
-  --accent-foreground: 0 0% 100%;
+  --accent:               153 90% 32%;
+  --accent-foreground:    0 0% 100%;
 
-  --destructive: 0 72% 46%;
+  --destructive:          0 72% 46%;
   --destructive-foreground: 0 0% 100%;
 
-  --success: 153 90% 32%;
-  --warning: 42 92% 44%;
+  --success:              153 90% 32%;
+  --success-foreground:   0 0% 100%;
+  --warning:              42 92% 44%;
+  --warning-foreground:   0 0% 100%;
 
-  --border: 160 5% 90%;
-  --input: 160 5% 90%;
-  --ring: 153 90% 32%;
+  --border:               160 5% 90%;
+  --input:                160 5% 90%;
+  --ring:                 153 90% 32%;
 
-  --radius: 0.875rem;
-
-  /* Rail latéral — toujours forêt sombre, indépendant du thème */
-  --sidebar-background: 160 15% 11%;
-  --sidebar-foreground: 0 0% 95%;
-  --sidebar-hover: 0 0% 100% / 0.08;
+  /* Sidebar — palette DS complète (le rail de l'app agent est bg-primary,
+     comme Clara en production ; la zone superadmin garde son rail forêt). */
+  --sidebar-background:           160 15% 11%;
+  --sidebar-foreground:           153 10% 82%;
+  --sidebar-primary:              153 82% 43%;
+  --sidebar-primary-foreground:   0 0% 100%;
+  --sidebar-accent:               160 10% 18%;
+  --sidebar-accent-foreground:    0 0% 95%;
+  --sidebar-border:               160 8% 20%;
+  --sidebar-ring:                 153 82% 43%;
+  /* Compat zone superadmin (états hover/active du rail forêt) */
+  --sidebar-hover:  0 0% 100% / 0.08;
   --sidebar-active: 0 0% 100% / 0.14;
+
+  /* ─── RADII ────────────────────────────────────────────────── */
+  --radius:      0.875rem;   /* 14px — cartes */
+  --radius-sm:   0.5rem;
+  --radius-md:   0.75rem;
+  --radius-lg:   0.875rem;
+  --radius-pill: 9999px;
+
+  /* ─── ELEVATION (« Airbnb-style ») ─────────────────────────── */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.06);
+  --shadow-md: 0 2px 8px -1px rgb(0 0 0 / 0.08), 0 1px 3px -1px rgb(0 0 0 / 0.06);
+  --shadow-lg: 0 6px 20px -4px rgb(0 0 0 / 0.1),  0 2px 6px -2px rgb(0 0 0 / 0.06);
+  --shadow-xl: 0 12px 40px -8px rgb(0 0 0 / 0.12), 0 4px 12px -4px rgb(0 0 0 / 0.08);
+
+  /* ─── MOTION ───────────────────────────────────────────────── */
+  --ease-out:      cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out:   cubic-bezier(0.45, 0, 0.55, 1);
+  --duration-fast: 120ms;
+  --duration-base: 150ms;
+  --duration-slow: 300ms;
+
+  /* ─── TYPOGRAPHIE — Nunito Sans, seule famille ─────────────── */
+  --font-sans:    "Nunito Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Nunito Sans", system-ui, sans-serif;
+  --font-mono:    ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
 }
 
 * {
   @apply border-border;
 }
 
+html { color-scheme: light; }
+
 body {
   @apply bg-background text-foreground antialiased;
-  font-feature-settings: "cv11", "ss01";
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: "cv11", "ss01";
+}
+
+/* Titres — échelle DS (letter-spacing resserré sur le display) */
+h1 { letter-spacing: -0.02em; }
+h2 { letter-spacing: -0.015em; }
+
+/* Transitions interactives globales (DS : 150ms ease-out) */
+button, a, input, select, textarea {
+  transition: background-color var(--duration-base) var(--ease-out),
+              border-color   var(--duration-base) var(--ease-out),
+              color          var(--duration-base) var(--ease-out),
+              box-shadow     var(--duration-base) var(--ease-out);
 }

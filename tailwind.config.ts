@@ -15,6 +15,7 @@ export default {
         primary: {
           DEFAULT: "hsl(var(--primary))",
           foreground: "hsl(var(--primary-foreground))",
+          bright: "hsl(var(--primary-bright))",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -50,12 +51,18 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        sans: ['"Nunito Sans"', "system-ui", "-apple-system", '"Segoe UI"', "sans-serif"],
       },
       boxShadow: {
-        "iris-sm": "0 1px 2px 0 hsl(220 20% 10% / 0.05)",
-        "iris-md": "0 2px 8px -2px hsl(220 20% 10% / 0.08)",
-        "iris-lg": "0 8px 24px -4px hsl(220 20% 10% / 0.12)",
+        // Échelle « Airbnb-style » du DS (variables de colors_and_type.css).
+        "airbnb-sm": "var(--shadow-sm)",
+        "airbnb-md": "var(--shadow-md)",
+        "airbnb-lg": "var(--shadow-lg)",
+        "airbnb-xl": "var(--shadow-xl)",
+        // Alias historiques Iris → mêmes valeurs DS.
+        "iris-sm": "var(--shadow-sm)",
+        "iris-md": "var(--shadow-md)",
+        "iris-lg": "var(--shadow-lg)",
       },
     },
   },

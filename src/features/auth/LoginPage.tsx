@@ -39,11 +39,16 @@ export function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4">
-      <div className="w-full max-w-[420px] rounded-lg border border-border bg-card p-8 shadow-iris-lg">
-        <div className="mb-6 flex flex-col items-center gap-1 text-center">
-          <span className="text-2xl font-semibold tracking-tight text-primary">Iris</span>
-          <p className="text-sm text-muted-foreground">
+    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+      <div className="w-full max-w-[420px] rounded-[14px] border border-border bg-card px-8 pb-7 pt-8 shadow-airbnb-lg">
+        {/* Motif login Clara : pastille de marque + wordmark produit. */}
+        <div className="mb-6 flex flex-col items-center gap-2 text-center">
+          <img src="/favicon.svg" alt="" className="h-14 w-14 rounded-[14px]" aria-hidden="true" />
+          <h1 className="mt-1 text-[32px] font-extrabold leading-none tracking-tight">Iris</h1>
+          <p className="text-[13px] font-medium text-muted-foreground">
+            Gestion des demandes d'usagers
+          </p>
+          <p className="text-[13px] text-muted-foreground">
             Connectez-vous pour accéder à votre espace.
           </p>
         </div>

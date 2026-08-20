@@ -180,9 +180,19 @@ Vérifiée au navigateur le 2026-08-20 (arbre, création/rattachement/suppressio
 - **Logique métier en modules purs testés** (sans DOM ni réseau), y compris la logique des edge
   functions co-localisée dans `_shared/` sans dépendance Deno (le `include` vitest couvre
   `supabase/functions/**`).
-- **Design system Notch/Ariane** : tokens dans `src/index.css` + `tailwind.config.ts`
-  (primaire vert `hsl(153 90% 32%)`, secondaire beurre, sidebar forêt, radius 14px, ombres
-  `iris-sm/md/lg`). Police : Inter (comme Socle).
+- **Design system Notch/Ariane** — source de vérité : le projet Claude Design
+  « Ariane Design System » (`019e2566-e3ff-75e7-80a9-af82c9b99671`, accessible via DesignSync).
+  Les tokens de `colors_and_type.css` y sont **copiés tels quels** dans `src/index.css`
+  (recommandation MUTUALISATION.md §2.1) : primaire vert AA `hsl(153 90% 32%)`
+  (+ `--primary-bright` marketing), secondaire beurre, radius 14px, ombres « airbnb »
+  (`shadow-airbnb-sm…xl`, alias `iris-*`). **Police : Nunito Sans, seule famille**
+  (Google Fonts). Le shell agent calque le **shell de production Clara** : header sticky
+  `h-14` (wordmark `src/assets/logo-notch.svg` en `h-6` + séparateur + tenant), **rail vert
+  `bg-primary` 52px** (tuiles 36px, icônes Lucide 20px, premier item épinglé, groupe centré) ;
+  la zone superadmin garde son rail forêt. Boutons : hover `brightness-105` (pleins) /
+  bascule **beurre** (`bg-secondary`) sur outline et ghost, press `scale-[0.98]`, radius 10px
+  (idem inputs). `_adherence.oxlintrc.json` (racine) = garde-fou DS (hex bruts, px bruts,
+  polices hors DS) — exécutable via `npx oxlint -c _adherence.oxlintrc.json src`.
 - Textes et libellés **en français**. Formulaires en `Dialog`, confirmations destructives en
   `AlertDialog`, classes fusionnées avec `cn()`.
 - Documentation : un document = un public + une question ; toute évolution de surface de
