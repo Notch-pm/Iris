@@ -53,15 +53,17 @@ export interface ProcedureSnapshot {
 }
 
 /**
- * Snapshot de la démarche au moment T, via socle-proxy (best-effort : un échec
- * ne bloque jamais la création — la demande reste rattachable plus tard).
+ * Snapshot de la démarche au moment T, construit côté serveur via socle-proxy.
+ * Un échec (null) bloque la création : aucune demande sans démarche — le
+ * builder affiche alors un message explicite d'indisponibilité du Socle.
  */
 export async function fetchProcedureSnapshot(
+  organizationId: string,
   socleProcedureId: string,
 ): Promise<ProcedureSnapshot | null> {
   try {
-    const { data, error } = await supabase.functions.invoke("socle-proxy/v1/procedure-snapshot", {
-      body: { socle_procedure_id: socleProcedureId },
+    const { data, error } = await supabase.functions.invoke("socle-proxy/v1/procedures/get", {
+      body: { organization_id: organizationId, socle_procedure_id: socleProcedureId },
     });
     if (error || !data?.procedure) return null;
     return data.procedure as ProcedureSnapshot;

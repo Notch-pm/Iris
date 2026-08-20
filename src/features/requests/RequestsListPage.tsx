@@ -157,7 +157,6 @@ export function RequestsListPage() {
 
       <NewRequestDialog
         organizationId={current.organizationId}
-        facets={facets.data}
         orgCatalog={orgCatalog.data ?? []}
         procCatalog={procCatalog.data ?? []}
         open={createOpen}

@@ -159,9 +159,11 @@ note interne → résolution avec texte de clôture → journal.
 - **`newRequest.ts`** (pur, testé) : payload de création manuelle (source `iris` verrouillée
   par la policy, identité déclarée → `requester_snapshot.declared`, anonymat assumé).
   **Démarche obligatoire** : refus explicite sans `procedureId` ou sans snapshot cohérent.
-  ⚠️ État transitoire assumé : `NewRequestDialog` propose encore une « demande libre » — le
-  builder (et la garde SQL) la refusent désormais ; la refonte du parcours de création
-  (sélection de démarche + formulaire dynamique + rapprochement usager) est la vague suivante.
+  `NewRequestDialog` ne propose **plus aucune demande libre** (vérifié au navigateur,
+  2026-08-20) : sélecteur requis alimenté par le cache `socle_procedure_cache` du tenant,
+  snapshot construit côté serveur via `socle-proxy /v1/procedures/get` au moment de la
+  création (la route legacy `/v1/procedure-snapshot` a été retirée). Le formulaire dynamique
+  (`form_schema`) et le rapprochement usager restent la vague suivante.
 - **`useRequests.ts`** : hooks TanStack Query (liste paginée `range`+`count`, facettes, fiche,
   satellites, membres du tenant) + mutations (création, transition via
   `buildTransitionUpdate`, affectation, notes). Pas d'appel `supabase` direct dans les pages.

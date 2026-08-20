@@ -8,19 +8,15 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { FacetOption, RequestFacets } from "./facets";
+import type { FacetOption } from "./facets";
 import { buildNewRequestInsert, EMPTY_NEW_REQUEST, type NewRequestForm } from "./newRequest";
 import { PRIORITY_LABELS } from "./statuts";
 import { useCreateRequest } from "./useRequests";
 import { fetchProcedureSnapshot } from "@/features/socle/useSocleCatalog";
 
-const FREE_PROCEDURE = "__libre__";
-const OTHER_PROCEDURE = "__autre__";
-
 interface Props {
   organizationId: string;
-  facets: RequestFacets | undefined;
-  /** Catalogues Socle synchronisés — vides tant que la sync n'a pas tourné. */
+  /** Catalogues Socle synchronisés (cache du tenant). */
   orgCatalog: FacetOption[];
   procCatalog: FacetOption[];
   open: boolean;
@@ -28,12 +24,12 @@ interface Props {
 }
 
 export function NewRequestDialog({
-  organizationId, facets, orgCatalog, procCatalog, open, onOpenChange,
+  organizationId, orgCatalog, procCatalog, open, onOpenChange,
 }: Props) {
   const navigate = useNavigate();
   const createRequest = useCreateRequest();
   const [form, setForm] = React.useState<NewRequestForm>(EMPTY_NEW_REQUEST);
-  const [procedureChoice, setProcedureChoice] = React.useState(FREE_PROCEDURE);
+  const [submitting, setSubmitting] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const set = <K extends keyof NewRequestForm>(key: K, value: NewRequestForm[K]) =>
@@ -41,24 +37,13 @@ export function NewRequestDialog({
 
   function reset() {
     setForm(EMPTY_NEW_REQUEST);
-    setProcedureChoice(FREE_PROCEDURE);
     setError(null);
   }
 
-  const procedureOptions = procCatalog.length > 0 ? procCatalog : (facets?.procedures ?? []);
-
   function onProcedureChange(value: string) {
-    setProcedureChoice(value);
-    if (value === FREE_PROCEDURE) {
-      set("procedureId", null);
-      set("procedureLabel", "");
-    } else if (value === OTHER_PROCEDURE) {
-      set("procedureId", null);
-    } else {
-      const option = procedureOptions.find((p) => p.value === value);
-      set("procedureId", value);
-      set("procedureLabel", option?.label ?? "");
-    }
+    const option = procCatalog.find((p) => p.value === value);
+    set("procedureId", value === "" ? null : value);
+    set("procedureLabel", option?.label ?? "");
   }
 
   function onDestinationChange(value: string) {
@@ -70,30 +55,30 @@ export function NewRequestDialog({
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    // Snapshot de la démarche figé à la création (best-effort via socle-proxy :
-    // un échec n'empêche jamais l'enregistrement).
-    const snapshot =
-      form.procedureId && procCatalog.some((p) => p.value === form.procedureId)
-        ? await fetchProcedureSnapshot(form.procedureId)
-        : null;
-    const built = buildNewRequestInsert(
-      form,
-      organizationId,
-      snapshot ? { ...snapshot } : null,
-    );
-    if (!built.ok) {
-      setError(built.message);
-      return;
-    }
+    setSubmitting(true);
     try {
+      // Snapshot de la démarche figé à la création, construit côté serveur via
+      // socle-proxy — sans lui, la garde SQL refuserait de toute façon.
+      const snapshot = form.procedureId
+        ? await fetchProcedureSnapshot(organizationId, form.procedureId)
+        : null;
+      const built = buildNewRequestInsert(form, organizationId, snapshot ? { ...snapshot } : null);
+      if (!built.ok) {
+        setError(built.message);
+        return;
+      }
       const created = await createRequest.mutateAsync(built.insert);
       onOpenChange(false);
       reset();
       navigate(`/demandes/${created.id}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur lors de la création.");
+    } finally {
+      setSubmitting(false);
     }
   }
+
+  const noCatalog = procCatalog.length === 0;
 
   return (
     <Dialog open={open} onOpenChange={(o) => { onOpenChange(o); if (!o) reset(); }}>
@@ -101,11 +86,25 @@ export function NewRequestDialog({
         <DialogHeader>
           <DialogTitle>Nouvelle demande</DialogTitle>
           <DialogDescription>
-            La demande naît « À traiter ». Le catalogue complet des démarches Socle arrivera
-            avec la synchronisation du référentiel.
+            Toute demande est fondée sur une démarche Socle active du tenant. Elle naît
+            « À traiter ».
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Field label="Démarche Socle" htmlFor="nr-procedure" required
+            hint={noCatalog
+              ? "Aucune démarche active pour ce tenant — le référentiel Socle doit être synchronisé."
+              : undefined}>
+            <Select id="nr-procedure" required value={form.procedureId ?? ""}
+              disabled={noCatalog}
+              onChange={(e) => onProcedureChange(e.target.value)}>
+              <option value="">— Sélectionner une démarche —</option>
+              {procCatalog.map((p) => (
+                <option key={p.value} value={p.value}>{p.label}</option>
+              ))}
+            </Select>
+          </Field>
+
           <Field label="Objet" htmlFor="nr-subject" required>
             <Input id="nr-subject" required value={form.subject}
               onChange={(e) => set("subject", e.target.value)} />
@@ -115,16 +114,6 @@ export function NewRequestDialog({
           </Field>
 
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Démarche Socle" htmlFor="nr-procedure">
-              <Select id="nr-procedure" value={procedureChoice}
-                onChange={(e) => onProcedureChange(e.target.value)}>
-                <option value={FREE_PROCEDURE}>Demande libre (sans démarche)</option>
-                {procedureOptions.map((p) => (
-                  <option key={p.value} value={p.value}>{p.label}</option>
-                ))}
-                <option value={OTHER_PROCEDURE}>Autre démarche…</option>
-              </Select>
-            </Field>
             <Field label="Priorité" htmlFor="nr-priority">
               <Select id="nr-priority" value={form.priority}
                 onChange={(e) => set("priority", e.target.value as NewRequestForm["priority"])}>
@@ -133,18 +122,8 @@ export function NewRequestDialog({
                 ))}
               </Select>
             </Field>
-          </div>
-          {procedureChoice === OTHER_PROCEDURE ? (
-            <Field label="Libellé de la démarche" htmlFor="nr-procedure-label"
-              hint="Sera rapprochée du référentiel Socle à la qualification.">
-              <Input id="nr-procedure-label" value={form.procedureLabel}
-                onChange={(e) => set("procedureLabel", e.target.value)} />
-            </Field>
-          ) : null}
-
-          {orgCatalog.length > 0 ? (
-            <Field label="Organisation destinataire" htmlFor="nr-destination-select">
-              <Select id="nr-destination-select" value={form.destinationId ?? ""}
+            <Field label="Organisation destinataire" htmlFor="nr-destination">
+              <Select id="nr-destination" value={form.destinationId ?? ""}
                 onChange={(e) => onDestinationChange(e.target.value)}>
                 <option value="">— À affecter —</option>
                 {orgCatalog.map((o) => (
@@ -152,13 +131,7 @@ export function NewRequestDialog({
                 ))}
               </Select>
             </Field>
-          ) : (
-            <Field label="Organisation destinataire" htmlFor="nr-destination"
-              hint="Libellé libre tant que le miroir des organisations Socle n'est pas synchronisé.">
-              <Input id="nr-destination" value={form.destinationLabel}
-                onChange={(e) => set("destinationLabel", e.target.value)} />
-            </Field>
-          )}
+          </div>
 
           <fieldset className="flex flex-col gap-3 rounded-lg border border-border p-3">
             <legend className="px-1 text-sm font-semibold">Demandeur</legend>
@@ -196,8 +169,8 @@ export function NewRequestDialog({
             <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Annuler
             </Button>
-            <Button type="submit" disabled={createRequest.isPending}>
-              {createRequest.isPending ? "Création…" : "Créer la demande"}
+            <Button type="submit" disabled={submitting || createRequest.isPending || noCatalog}>
+              {submitting || createRequest.isPending ? "Création…" : "Créer la demande"}
             </Button>
           </DialogFooter>
         </form>

@@ -169,32 +169,7 @@ Deno.serve(async (req) => {
     return fail(req, 400, "bad_request", "Corps JSON attendu.");
   }
 
-  // ── Legacy : snapshot de démarche (périmètre = racines des tenants de l'appelant)
-  if (path === "/v1/procedure-snapshot") {
-    const procedureId = typeof body.socle_procedure_id === "string" ? body.socle_procedure_id : "";
-    if (!UUID_RE.test(procedureId)) {
-      return fail(req, 400, "bad_request", "socle_procedure_id : UUID requis.");
-    }
-    const { data: memberships } = await supabase
-      .from("organization_members")
-      .select("organization:organizations(socle_org_id)")
-      .eq("user_id", userId);
-    const callerRoots = new Set(
-      // deno-lint-ignore no-explicit-any
-      (memberships ?? []).map((m: any) => m.organization?.socle_org_id).filter(Boolean) as string[],
-    );
-    if (callerRoots.size === 0) return fail(req, 404, "not_found", "Ressource introuvable.");
-    const res = await socleFetch(`${publicApiBase()}/v1/procedures/${procedureId}`);
-    if (!res?.ok) return relaySocleError(req, res);
-    // deno-lint-ignore no-explicit-any
-    const proc = await res.json().catch(() => null) as any;
-    if (!proc || !callerRoots.has(proc.organization_id)) {
-      return fail(req, 404, "not_found", "Ressource introuvable.");
-    }
-    return json(req, 200, { procedure: sanitizeProcedureFull(proc) });
-  }
-
-  // ── Toutes les autres routes : tenant explicite + périmètre vérifié.
+  // ── Toutes les routes : tenant explicite + périmètre vérifié.
   const tenant = await resolveTenant(req, userId, body.organization_id);
   if (tenant instanceof Response) return tenant;
 
