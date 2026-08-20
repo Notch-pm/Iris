@@ -1,5 +1,5 @@
-import { NavLink, Outlet } from "react-router-dom";
-import { Inbox, LayoutDashboard, LogOut } from "lucide-react";
+import { Link, NavLink, Outlet } from "react-router-dom";
+import { Inbox, LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { Button } from "@/components/ui/button";
@@ -12,14 +12,12 @@ const navItems = [
 ];
 
 const ROLE_LABELS: Record<string, string> = {
-  admin: "Admin",
-  superviseur: "Superviseur",
+  administrateur: "Administrateur",
   agent: "Agent",
-  lecteur: "Lecteur",
 };
 
 export function AppShell() {
-  const { session, signOut } = useAuth();
+  const { session, profile, signOut } = useAuth();
   const { memberships, current, setCurrentOrgId, loading } = useTenant();
 
   return (
@@ -47,6 +45,17 @@ export function AppShell() {
             </NavLink>
           ))}
         </nav>
+        {profile?.is_platform_admin ? (
+          <div className="px-3 pb-4">
+            <Link
+              to="/superadmin"
+              className="flex items-center gap-3 rounded-lg px-3 py-2 text-sm opacity-80 transition-colors hover:bg-sidebar-hover hover:opacity-100"
+            >
+              <ShieldCheck className="size-4" />
+              Superadmin
+            </Link>
+          </div>
+        ) : null}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">

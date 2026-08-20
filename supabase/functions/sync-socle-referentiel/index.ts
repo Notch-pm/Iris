@@ -44,12 +44,14 @@ Deno.serve(async (req) => {
   const cronSecret = Deno.env.get("CRON_SECRET");
   const socleUrl = Deno.env.get("SOCLE_API_URL");
   const socleKey = Deno.env.get("SOCLE_API_KEY");
-  if (!cronSecret || !socleUrl || !socleKey) {
+  const missing = [
+    !cronSecret ? "CRON_SECRET" : null,
+    !socleUrl ? "SOCLE_API_URL" : null,
+    !socleKey ? "SOCLE_API_KEY" : null,
+  ].filter((n): n is string => n !== null);
+  if (missing.length > 0) {
     return json(503, {
-      error: {
-        code: "not_configured",
-        message: "Secrets manquants : CRON_SECRET, SOCLE_API_URL et SOCLE_API_KEY sont requis.",
-      },
+      error: { code: "not_configured", message: `Secrets manquants : ${missing.join(", ")}.` },
     });
   }
   if (req.headers.get("x-cron-secret") !== cronSecret) {
@@ -101,27 +103,43 @@ Deno.serve(async (req) => {
       if (error) throw error;
     }
 
-    // Soft-delete de ce qui a disparu du périmètre (jamais de DELETE).
-    const syncedOrgIds = new Set(plan.orgRows.map((r) => r.socle_id));
-    const { data: existingOrgs } = await supabase
-      .from("socle_organizations")
-      .select("id, socle_id")
-      .is("obsoleted_at", null);
-    const staleOrgIds = (existingOrgs ?? []).filter((r) => !syncedOrgIds.has(r.socle_id)).map((r) => r.id);
-    if (staleOrgIds.length > 0) {
-      await supabase.from("socle_organizations").update({ obsoleted_at: now }).in("id", staleOrgIds);
-    }
+    // ⚠️ Avec une clé Socle LIÉE (non plateforme), seul le sous-arbre de sa
+    // racine est visible : les miroirs des autres tenants passeraient en
+    // obsolete. On ne marque obsolète que les lignes des tenants dont la racine
+    // EST visible dans la réponse Socle (périmètre réellement observé).
+    const visibleRoots = new Set(orgs.filter((o) => !o.parent_id).map((o) => o.id));
+    const observedTenantIds = tenants
+      .filter((t) => visibleRoots.has(t.socleOrgId))
+      .map((t) => t.organizationId);
 
-    const syncedProcIds = new Set(plan.procRows.map((r) => r.socle_id));
-    const { data: existingProcs } = await supabase
-      .from("socle_procedure_cache")
-      .select("socle_id")
-      .is("obsoleted_at", null);
-    const staleProcIds = (existingProcs ?? [])
-      .filter((r) => !syncedProcIds.has(r.socle_id))
-      .map((r) => r.socle_id);
-    if (staleProcIds.length > 0) {
-      await supabase.from("socle_procedure_cache").update({ obsoleted_at: now }).in("socle_id", staleProcIds);
+    let staleOrgCount = 0;
+    let staleProcCount = 0;
+    if (observedTenantIds.length > 0) {
+      const syncedOrgIds = new Set(plan.orgRows.map((r) => r.socle_id));
+      const { data: existingOrgs } = await supabase
+        .from("socle_organizations")
+        .select("id, socle_id")
+        .in("organization_id", observedTenantIds)
+        .is("obsoleted_at", null);
+      const staleOrgIds = (existingOrgs ?? []).filter((r) => !syncedOrgIds.has(r.socle_id)).map((r) => r.id);
+      staleOrgCount = staleOrgIds.length;
+      if (staleOrgIds.length > 0) {
+        await supabase.from("socle_organizations").update({ obsoleted_at: now }).in("id", staleOrgIds);
+      }
+
+      const syncedProcIds = new Set(plan.procRows.map((r) => r.socle_id));
+      const { data: existingProcs } = await supabase
+        .from("socle_procedure_cache")
+        .select("socle_id")
+        .in("organization_id", observedTenantIds)
+        .is("obsoleted_at", null);
+      const staleProcIds = (existingProcs ?? [])
+        .filter((r) => !syncedProcIds.has(r.socle_id))
+        .map((r) => r.socle_id);
+      staleProcCount = staleProcIds.length;
+      if (staleProcIds.length > 0) {
+        await supabase.from("socle_procedure_cache").update({ obsoleted_at: now }).in("socle_id", staleProcIds);
+      }
     }
 
     // Rafraîchissement du nom d'affichage des tenants.
@@ -131,8 +149,9 @@ Deno.serve(async (req) => {
 
     const counters = {
       ...plan.counters,
-      organizations_obsoleted: staleOrgIds.length,
-      procedures_obsoleted: staleProcIds.length,
+      tenants_observes: observedTenantIds.length,
+      organizations_obsoleted: staleOrgCount,
+      procedures_obsoleted: staleProcCount,
     };
     if (run) {
       await supabase

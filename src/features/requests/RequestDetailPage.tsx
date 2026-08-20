@@ -342,7 +342,7 @@ export function RequestDetailPage() {
                     <span className="text-xs text-muted-foreground">
                       {memberName(memberList, m.author_id)} · {formatDateTime(m.created_at)}
                     </span>
-                    {writer && (m.author_id === session?.user.id || role === "admin") ? (
+                    {writer && (m.author_id === session?.user.id || role === "administrateur") ? (
                       <Button variant="ghost" size="icon" aria-label="Supprimer la note"
                         onClick={() => void deleteMessage.mutateAsync({ messageId: m.id, requestId: r.id })}>
                         <Trash2 />

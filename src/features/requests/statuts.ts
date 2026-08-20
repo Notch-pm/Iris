@@ -12,7 +12,9 @@ export type RequestStatus =
   | "resolue_negative"
   | "archivee";
 
-export type MemberRole = "admin" | "superviseur" | "agent" | "lecteur";
+// Deux rôles seulement (décision PO 2026-08-20) : l'administrateur voit tout
+// (paramètres, réouverture, archivage), l'agent instruit sans les paramètres.
+export type MemberRole = "administrateur" | "agent";
 
 export type ClosureMotif =
   | "irrecevable"
@@ -72,7 +74,7 @@ export interface TransitionSpec {
   motifRequired?: boolean;
 }
 
-const WRITER_ROLES: MemberRole[] = ["admin", "superviseur", "agent"];
+const WRITER_ROLES: MemberRole[] = ["administrateur", "agent"];
 
 /**
  * Transitions que la garde SQL acceptera pour ce statut et ce rôle.
@@ -81,8 +83,7 @@ const WRITER_ROLES: MemberRole[] = ["admin", "superviseur", "agent"];
  */
 export function allowedTransitions(status: RequestStatus, role: MemberRole): TransitionSpec[] {
   if (!WRITER_ROLES.includes(role)) return [];
-  const isSupervisor = role === "superviseur" || role === "admin";
-  const isAdmin = role === "admin";
+  const isAdmin = role === "administrateur";
 
   switch (status) {
     case "a_traiter":
@@ -141,7 +142,7 @@ export function allowedTransitions(status: RequestStatus, role: MemberRole): Tra
     case "resolue_positive":
     case "resolue_negative": {
       const out: TransitionSpec[] = [];
-      if (isSupervisor) out.push({ to: "en_instruction", label: "Rouvrir" });
+      if (isAdmin) out.push({ to: "en_instruction", label: "Rouvrir" });
       if (isAdmin) out.push({ to: "archivee", label: "Archiver" });
       return out;
     }
@@ -156,7 +157,7 @@ export function allowedTransitions(status: RequestStatus, role: MemberRole): Tra
   }
 }
 
-/** Un utilisateur peut-il écrire (créer, affecter, annoter) ? Le lecteur, jamais. */
+/** Un utilisateur peut-il écrire (créer, affecter, annoter) ? Les deux rôles actuels le peuvent. */
 export function canWrite(role: MemberRole): boolean {
   return WRITER_ROLES.includes(role);
 }

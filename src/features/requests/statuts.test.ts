@@ -12,12 +12,10 @@ import {
 const targets = (status: RequestStatus, role: MemberRole) =>
   allowedTransitions(status, role).map((t) => t.to).sort();
 
-describe("allowedTransitions — miroir de la garde SQL", () => {
-  it("le lecteur n'a aucune action", () => {
-    for (const status of Object.keys(STATUS_LABELS) as RequestStatus[]) {
-      expect(allowedTransitions(status, "lecteur")).toEqual([]);
-    }
-    expect(canWrite("lecteur")).toBe(false);
+describe("allowedTransitions — miroir de la garde SQL (rôles agent / administrateur)", () => {
+  it("les deux rôles écrivent (agent : instruction, administrateur : tout)", () => {
+    expect(canWrite("agent")).toBe(true);
+    expect(canWrite("administrateur")).toBe(true);
   });
 
   it("a_traiter : prise en charge, clôture négative, annulation — jamais resolue_positive ni archivee", () => {
@@ -34,17 +32,16 @@ describe("allowedTransitions — miroir de la garde SQL", () => {
     expect(targets("en_attente", "agent")).toEqual(["annulee", "en_instruction"]);
   });
 
-  it("réouverture : refusée à l'agent, permise au superviseur et à l'admin", () => {
+  it("réouverture et archivage : refusés à l'agent, réservés à l'administrateur", () => {
     expect(targets("resolue_positive", "agent")).toEqual([]);
-    expect(targets("resolue_positive", "superviseur")).toEqual(["en_instruction"]);
-    expect(targets("resolue_positive", "admin")).toEqual(["archivee", "en_instruction"]);
+    expect(targets("resolue_positive", "administrateur")).toEqual(["archivee", "en_instruction"]);
+    expect(targets("annulee", "agent")).toEqual([]);
+    expect(targets("annulee", "administrateur")).toContain("archivee");
   });
 
-  it("archivage et désarchivage : admin uniquement", () => {
-    expect(targets("annulee", "superviseur")).not.toContain("archivee");
-    expect(targets("annulee", "admin")).toContain("archivee");
-    expect(targets("archivee", "superviseur")).toEqual([]);
-    expect(targets("archivee", "admin")).toEqual(["annulee", "resolue_negative", "resolue_positive"]);
+  it("désarchivage : administrateur uniquement, vers un statut terminal", () => {
+    expect(targets("archivee", "agent")).toEqual([]);
+    expect(targets("archivee", "administrateur")).toEqual(["annulee", "resolue_negative", "resolue_positive"]);
   });
 
   it("exigences : agent assigné pour l'instruction, texte pour les résolutions, motif pour l'annulation", () => {
@@ -59,7 +56,7 @@ describe("allowedTransitions — miroir de la garde SQL", () => {
 
   it("le motif doublon n'est jamais proposé (exige une demande maître)", () => {
     for (const status of Object.keys(STATUS_LABELS) as RequestStatus[]) {
-      for (const t of allowedTransitions(status, "admin")) {
+      for (const t of allowedTransitions(status, "administrateur")) {
         expect(t.motifChoices ?? []).not.toContain("doublon");
       }
     }

@@ -49,8 +49,12 @@ Deno.serve(async (req) => {
 
   const socleUrl = Deno.env.get("SOCLE_API_URL");
   const socleKey = Deno.env.get("SOCLE_API_KEY");
-  if (!socleUrl || !socleKey) {
-    return fail(req, 503, "not_configured", "SOCLE_API_URL et SOCLE_API_KEY sont requis.");
+  const missing = [
+    !socleUrl ? "SOCLE_API_URL" : null,
+    !socleKey ? "SOCLE_API_KEY" : null,
+  ].filter((n): n is string => n !== null);
+  if (missing.length > 0) {
+    return fail(req, 503, "not_configured", `Secrets manquants : ${missing.join(", ")}.`);
   }
 
   // Authentification de l'agent (JWT de session).

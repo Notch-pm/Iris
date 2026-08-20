@@ -54,7 +54,9 @@ re-révoquer à chaque `CREATE OR REPLACE`.
   jamais par le client) : `email`, `first_name`, `last_name`, `is_platform_admin` (trigger
   anti-escalade `users_prevent_admin_escalation`).
 - **`organization_members`** — PK composite `(organization_id, user_id)`, `role` CHECK
-  `admin|superviseur|agent|lecteur`. Géré par les admins du tenant.
+  `agent|administrateur` (décision PO 2026-08-20 : l'administrateur voit tout — paramètres,
+  réouverture, archivage, membres — l'agent instruit sans les paramètres ; migration
+  `roles_agent_administrateur`). Visible des membres du tenant, géré par les administrateurs.
 
 ### Cœur métier
 
@@ -110,9 +112,9 @@ sans contournement bloquerait la péremption automatique et l'ingestion, leçon 
 | `a_traiter` | `annulee` | motif ∈ abandon/retrait_usager |
 | `en_instruction` | `en_attente` · `resolue_positive` · `resolue_negative` · `annulee` · `a_traiter` | résolutions : `closure_text` obligatoire ; annulation : motif |
 | `en_attente` | `en_instruction` · `annulee` | annulation : motif |
-| terminal (`annulee`/`resolue_*`) | `en_instruction` (**réouverture**) | rôle superviseur/admin ; purge closed_at + clôture |
-| terminal | `archivee` | rôle **admin** |
-| `archivee` | statut terminal (**désarchivage**) | rôle **admin** ; aucune autre colonne ne change |
+| terminal (`annulee`/`resolue_*`) | `en_instruction` (**réouverture**) | rôle **administrateur** ; purge closed_at + clôture |
+| terminal | `archivee` | rôle **administrateur** |
+| `archivee` | statut terminal (**désarchivage**) | rôle **administrateur** ; aucune autre colonne ne change |
 
 Toute autre transition est refusée. `resolue_positive` est inatteignable sans passage par
 `en_instruction` (règle métier conservée).

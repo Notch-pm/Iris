@@ -19,3 +19,14 @@ export function ProtectedRoute() {
 
   return <Outlet />;
 }
+
+/** Zone superadmin — réservée aux administrateurs plateforme (public.users.is_platform_admin). */
+export function SuperAdminRoute() {
+  const { session, profile, loading } = useAuth();
+
+  if (loading) return <LoadingScreen />;
+  if (!session) return <Navigate to="/login" replace />;
+  if (!profile?.is_platform_admin) return <Navigate to="/" replace />;
+
+  return <Outlet />;
+}

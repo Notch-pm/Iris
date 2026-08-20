@@ -147,6 +147,28 @@ note interne → résolution avec texte de clôture → journal.
 - RLS = source de vérité : l'UI ne masque les actions que par confort ; toute erreur de garde
   SQL est affichée telle quelle.
 
+## Feature : zone superadmin (`src/features/superadmin`)
+
+Zone à shell séparé (motif Socle/Clara), réservée aux **admins plateforme**
+(`users.is_platform_admin`, garde `SuperAdminRoute` ; lien « Superadmin » dans le rail de
+l'app pour les seuls admins plateforme — pas de redirection forcée, contrairement à Socle).
+Vérifiée au navigateur le 2026-08-20 (arbre, création/rattachement/suppression d'utilisateur).
+
+- **Organisations** (`/superadmin`) : une carte par tenant, arbre du miroir Socle
+  (ergonomie Clara `SocleOrganizationTree` : tout déplié, chevrons, badge Obsolète) —
+  **consultation uniquement, la hiérarchie se gère dans le Socle** ; dernière sync affichée.
+  Logique d'arbre pure `socleOrgTree.ts` (testée).
+- **Utilisateurs** (`/superadmin/utilisateurs`) : recherche, table (nom, email, badge Admin
+  plateforme, rattachements par tenant), création (mot de passe généré **affiché une seule
+  fois**), édition (noms, statut plateforme — verrouillé sur soi-même —, accès par tenant
+  appliqués immédiatement), réinitialisation de mot de passe, suppression (confirmée,
+  interdite sur soi-même).
+- **Deux rôles** (décision PO) : `agent` (instruit, pas de paramètres) et `administrateur`
+  (tout : réouverture, archivage, membres). Portés par la garde SQL ET par `statuts.ts`.
+- **`admin-users`** (edge, JWT + is_platform_admin vérifiés en code, CORS allowlist) : seules
+  les opérations service_role y passent — `create_user`, `set_password`, `delete_user`.
+  Tout le reste (lecture, profils, appartenances) passe par le RLS.
+
 ## Conventions
 
 - **Alias d'import** `@/` → `src/` (voir `vite.config.ts`).
