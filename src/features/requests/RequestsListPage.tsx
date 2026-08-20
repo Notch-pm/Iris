@@ -5,6 +5,10 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
 import { useTenant } from "@/features/tenant/TenantProvider";
+import {
+  useSocleOrganizationsCatalog,
+  useSocleProceduresCatalog,
+} from "@/features/socle/useSocleCatalog";
 import { StatusBadge } from "./StatusBadge";
 import { NewRequestDialog } from "./NewRequestDialog";
 import { canWrite, PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
@@ -25,6 +29,13 @@ export function RequestsListPage() {
   const orgId = current?.organizationId ?? "";
   const list = useRequestsList(orgId, filters, page);
   const facets = useRequestFacets(orgId);
+  const orgCatalog = useSocleOrganizationsCatalog(orgId);
+  const procCatalog = useSocleProceduresCatalog(orgId);
+  // Catalogues Socle synchronisés quand disponibles, facettes observées sinon.
+  const destinataireOptions =
+    (orgCatalog.data?.length ?? 0) > 0 ? orgCatalog.data! : (facets.data?.destinataires ?? []);
+  const procedureOptions =
+    (procCatalog.data?.length ?? 0) > 0 ? procCatalog.data! : (facets.data?.procedures ?? []);
 
   if (!current) {
     return (
@@ -67,13 +78,13 @@ export function RequestsListPage() {
         </Select>
         <Select aria-label="Filtrer par destinataire" value={filters.destinataire} onChange={setFilter("destinataire")}>
           <option value="">Tous les destinataires</option>
-          {(facets.data?.destinataires ?? []).map((o) => (
+          {destinataireOptions.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </Select>
         <Select aria-label="Filtrer par démarche" value={filters.procedure} onChange={setFilter("procedure")}>
           <option value="">Toutes les démarches</option>
-          {(facets.data?.procedures ?? []).map((o) => (
+          {procedureOptions.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}
         </Select>
@@ -147,6 +158,8 @@ export function RequestsListPage() {
       <NewRequestDialog
         organizationId={current.organizationId}
         facets={facets.data}
+        orgCatalog={orgCatalog.data ?? []}
+        procCatalog={procCatalog.data ?? []}
         open={createOpen}
         onOpenChange={setCreateOpen}
       />

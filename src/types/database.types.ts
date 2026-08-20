@@ -708,6 +708,121 @@ export type Database = {
           },
         ]
       }
+      socle_organizations: {
+        Row: {
+          id: string
+          name: string
+          obsoleted_at: string | null
+          organization_id: string
+          socle_id: string
+          socle_parent_id: string | null
+          status: string
+          synced_at: string
+        }
+        Insert: {
+          id?: string
+          name: string
+          obsoleted_at?: string | null
+          organization_id: string
+          socle_id: string
+          socle_parent_id?: string | null
+          status?: string
+          synced_at?: string
+        }
+        Update: {
+          id?: string
+          name?: string
+          obsoleted_at?: string | null
+          organization_id?: string
+          socle_id?: string
+          socle_parent_id?: string | null
+          status?: string
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_organizations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_procedure_cache: {
+        Row: {
+          category_name: string | null
+          category_socle_id: string | null
+          name: string
+          obsoleted_at: string | null
+          organization_id: string
+          socle_id: string
+          socle_root_org_id: string
+          synced_at: string
+          type: string | null
+        }
+        Insert: {
+          category_name?: string | null
+          category_socle_id?: string | null
+          name: string
+          obsoleted_at?: string | null
+          organization_id: string
+          socle_id: string
+          socle_root_org_id: string
+          synced_at?: string
+          type?: string | null
+        }
+        Update: {
+          category_name?: string | null
+          category_socle_id?: string | null
+          name?: string
+          obsoleted_at?: string | null
+          organization_id?: string
+          socle_id?: string
+          socle_root_org_id?: string
+          synced_at?: string
+          type?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_procedure_cache_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sync_runs: {
+        Row: {
+          counters: Json
+          error: string | null
+          finished_at: string | null
+          id: string
+          kind: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          counters?: Json
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          counters?: Json
+          error?: string | null
+          finished_at?: string | null
+          id?: string
+          kind?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       users: {
         Row: {
           created_at: string

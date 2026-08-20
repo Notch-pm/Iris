@@ -44,13 +44,35 @@ variable `VITE_*`.** Ils se posent dans les **secrets d'Edge Functions** du proj
 Iris (`supabase secrets set …` ou dashboard), au moment où la phase qui les utilise est
 implémentée (plan de livraison : `architecture-proposee.md` §9).
 
-| Secret | Contenu | Obtention | Phase |
+| Secret | Contenu | État | Phase |
 |---|---|---|---|
-| `SOCLE_API_URL` | URL du projet Supabase **Socle** | Équipe Socle | 1 |
-| `SOCLE_API_KEY` | Clé **plateforme Socle dédiée à Iris** (scopes `read` + `contacts`) | Générée par un **super admin Socle** (section « API publique ») — le secret ne s'affiche qu'une fois. ⚠️ Ne jamais réutiliser la clé de Clara. | 1 |
-| `CRON_SECRET` | Secret des jobs internes (sync, files, purge) | Généré (256 bits aléatoires) | 1 |
+| `SOCLE_API_URL` | `https://qhrokbkyxgcvkbpmbmna.supabase.co/functions/v1/public-api` | Connu | 1 |
+| `SOCLE_API_KEY` | Clé **plateforme Socle dédiée à Iris** (scopes `read`+`contacts`, expire 2027-08-20, préfixe `sk_live_e755...`) | **Générée le 2026-08-20**, clair dans `.secrets/SOCLE_API_KEY.txt` (local, gitignoré — à détruire après pose). ⚠️ Jamais celle de Clara. | 1 |
+| `CRON_SECRET` | Secret des jobs internes (sync, files, purge) | **Généré**, dans `.secrets/CRON_SECRET.txt` | 1 |
+| `IRIS_APP_URL` | Origine de l'app Iris (CORS de `socle-proxy`) | `http://localhost:5174` en dev ; l'URL de prod quand elle existera | 1 |
 | `CLARA_WEBHOOK_URL` | URL de l'edge function `iris-webhook` de Clara | Équipe Clara | 4 |
 | `IRIS_WEBHOOK_SECRET` | Secret HMAC du webhook Iris→Clara (partagé avec Clara) | Généré, échangé hors bande | 4 |
+
+**Pose des secrets** (dashboard Iris → Edge Functions → Secrets, ou CLI) :
+
+```bash
+supabase secrets set --project-ref tqcoqlneybtbrrcvpkpk \
+  SOCLE_API_URL="https://qhrokbkyxgcvkbpmbmna.supabase.co/functions/v1/public-api" \
+  SOCLE_API_KEY="$(cat .secrets/SOCLE_API_KEY.txt)" \
+  CRON_SECRET="$(cat .secrets/CRON_SECRET.txt)" \
+  IRIS_APP_URL="http://localhost:5174"
+```
+
+Puis premier lancement de la sync (et à planifier en cron quotidien, dashboard → Integrations
+→ Cron, ou pg_cron) :
+
+```bash
+curl -X POST "https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/sync-socle-referentiel" \
+  -H "x-cron-secret: $(cat .secrets/CRON_SECRET.txt)"
+```
+
+Tant que les secrets ne sont pas posés, `sync-socle-referentiel` et `socle-proxy` répondent
+**503 `not_configured`** (vérifié) — l'app fonctionne avec ses replis (facettes observées).
 
 Côté **Clara** (à faire par l'équipe Clara, phases 3–4) : `IRIS_API_URL`, `IRIS_API_KEY`
 (clé plateforme générée **par Iris** une fois sa table `api_keys` implémentée),
@@ -69,8 +91,9 @@ Dans l'ordre du plan de livraison (`architecture-proposee.md` §9) :
 2. **Phase 2** — `demandes-api` (ingestion idempotente) + OpenAPI/Redoc + `api-changelog.md`.
 3. **Phases 3–5** — intégration Clara aller/retour, partenaires, rétention RGPD.
 
-À prévoir aussi (non bloquant pour démarrer) : initialisation git + hook pre-commit
-(`lint` + `test`, motif husky de la gamme) + CI GitHub Actions sous Node 24.
+Fait le 2026-08-20 : dépôt git initialisé (remote `https://github.com/Notch-pm/Iris.git`),
+hook pre-commit husky (`lint` + `test`) et CI GitHub Actions sous Node 24
+(`.github/workflows/ci.yml`).
 
 ## Vérifications
 

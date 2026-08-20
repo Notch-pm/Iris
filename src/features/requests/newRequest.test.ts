@@ -40,6 +40,20 @@ describe("buildNewRequestInsert", () => {
     }
   });
 
+  it("fige le snapshot de démarche quand il est fourni", () => {
+    const snap = { id: "p-1", name: "Signalement", form_schema: { fields: [] } };
+    const r = buildNewRequestInsert({ ...base, procedureId: "p-1" }, "org", snap);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.insert.snapshot).toEqual({
+        requester_declared: { last_name: "Dupont" },
+        procedure: snap,
+      });
+    }
+    const sans = buildNewRequestInsert(base, "org", null);
+    if (sans.ok) expect(sans.insert.snapshot).toEqual({ requester_declared: { last_name: "Dupont" } });
+  });
+
   it("porte la démarche et le destinataire Socle éventuels", () => {
     const r = buildNewRequestInsert(
       { ...base, procedureId: "p-1", procedureLabel: "Signalement voirie", destinationLabel: "Voirie" },

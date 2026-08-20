@@ -22,3 +22,6 @@ parcours-agent-liste.png
 # Éditeurs / OS
 .DS_Store
 Thumbs.db
+
+# Secrets locaux (jamais versionnes)
+.secrets/

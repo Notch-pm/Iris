@@ -8,10 +8,11 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { RequestFacets } from "./facets";
+import type { FacetOption, RequestFacets } from "./facets";
 import { buildNewRequestInsert, EMPTY_NEW_REQUEST, type NewRequestForm } from "./newRequest";
 import { PRIORITY_LABELS } from "./statuts";
 import { useCreateRequest } from "./useRequests";
+import { fetchProcedureSnapshot } from "@/features/socle/useSocleCatalog";
 
 const FREE_PROCEDURE = "__libre__";
 const OTHER_PROCEDURE = "__autre__";
@@ -19,11 +20,16 @@ const OTHER_PROCEDURE = "__autre__";
 interface Props {
   organizationId: string;
   facets: RequestFacets | undefined;
+  /** Catalogues Socle synchronisés — vides tant que la sync n'a pas tourné. */
+  orgCatalog: FacetOption[];
+  procCatalog: FacetOption[];
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-export function NewRequestDialog({ organizationId, facets, open, onOpenChange }: Props) {
+export function NewRequestDialog({
+  organizationId, facets, orgCatalog, procCatalog, open, onOpenChange,
+}: Props) {
   const navigate = useNavigate();
   const createRequest = useCreateRequest();
   const [form, setForm] = React.useState<NewRequestForm>(EMPTY_NEW_REQUEST);
@@ -39,6 +45,8 @@ export function NewRequestDialog({ organizationId, facets, open, onOpenChange }:
     setError(null);
   }
 
+  const procedureOptions = procCatalog.length > 0 ? procCatalog : (facets?.procedures ?? []);
+
   function onProcedureChange(value: string) {
     setProcedureChoice(value);
     if (value === FREE_PROCEDURE) {
@@ -47,16 +55,32 @@ export function NewRequestDialog({ organizationId, facets, open, onOpenChange }:
     } else if (value === OTHER_PROCEDURE) {
       set("procedureId", null);
     } else {
-      const option = facets?.procedures.find((p) => p.value === value);
+      const option = procedureOptions.find((p) => p.value === value);
       set("procedureId", value);
       set("procedureLabel", option?.label ?? "");
     }
   }
 
+  function onDestinationChange(value: string) {
+    const option = orgCatalog.find((o) => o.value === value);
+    set("destinationId", value === "" ? null : value);
+    set("destinationLabel", option?.label ?? "");
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    const built = buildNewRequestInsert(form, organizationId);
+    // Snapshot de la démarche figé à la création (best-effort via socle-proxy :
+    // un échec n'empêche jamais l'enregistrement).
+    const snapshot =
+      form.procedureId && procCatalog.some((p) => p.value === form.procedureId)
+        ? await fetchProcedureSnapshot(form.procedureId)
+        : null;
+    const built = buildNewRequestInsert(
+      form,
+      organizationId,
+      snapshot ? { ...snapshot } : null,
+    );
     if (!built.ok) {
       setError(built.message);
       return;
@@ -95,7 +119,7 @@ export function NewRequestDialog({ organizationId, facets, open, onOpenChange }:
               <Select id="nr-procedure" value={procedureChoice}
                 onChange={(e) => onProcedureChange(e.target.value)}>
                 <option value={FREE_PROCEDURE}>Demande libre (sans démarche)</option>
-                {(facets?.procedures ?? []).map((p) => (
+                {procedureOptions.map((p) => (
                   <option key={p.value} value={p.value}>{p.label}</option>
                 ))}
                 <option value={OTHER_PROCEDURE}>Autre démarche…</option>
@@ -118,11 +142,23 @@ export function NewRequestDialog({ organizationId, facets, open, onOpenChange }:
             </Field>
           ) : null}
 
-          <Field label="Organisation destinataire" htmlFor="nr-destination"
-            hint="Libellé libre tant que le miroir des organisations Socle n'est pas synchronisé.">
-            <Input id="nr-destination" value={form.destinationLabel}
-              onChange={(e) => set("destinationLabel", e.target.value)} />
-          </Field>
+          {orgCatalog.length > 0 ? (
+            <Field label="Organisation destinataire" htmlFor="nr-destination-select">
+              <Select id="nr-destination-select" value={form.destinationId ?? ""}
+                onChange={(e) => onDestinationChange(e.target.value)}>
+                <option value="">— À affecter —</option>
+                {orgCatalog.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+          ) : (
+            <Field label="Organisation destinataire" htmlFor="nr-destination"
+              hint="Libellé libre tant que le miroir des organisations Socle n'est pas synchronisé.">
+              <Input id="nr-destination" value={form.destinationLabel}
+                onChange={(e) => set("destinationLabel", e.target.value)} />
+            </Field>
+          )}
 
           <fieldset className="flex flex-col gap-3 rounded-lg border border-border p-3">
             <legend className="px-1 text-sm font-semibold">Demandeur</legend>

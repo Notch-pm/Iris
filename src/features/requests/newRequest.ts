@@ -41,7 +41,12 @@ export type NewRequestResult =
   | { ok: true; insert: Record<string, unknown> }
   | { ok: false; message: string };
 
-export function buildNewRequestInsert(form: NewRequestForm, organizationId: string): NewRequestResult {
+export function buildNewRequestInsert(
+  form: NewRequestForm,
+  organizationId: string,
+  /** Snapshot de la démarche (form_schema…) figé à la création, si disponible. */
+  procedureSnapshot?: Record<string, unknown> | null,
+): NewRequestResult {
   if (form.subject.trim() === "") {
     return { ok: false, message: "L'objet de la demande est obligatoire." };
   }
@@ -80,7 +85,10 @@ export function buildNewRequestInsert(form: NewRequestForm, organizationId: stri
       socle_organization_id: form.destinationId,
       socle_organization_label:
         form.destinationLabel.trim() === "" ? null : form.destinationLabel.trim(),
-      snapshot: { requester_declared: declared },
+      snapshot: {
+        requester_declared: declared,
+        ...(procedureSnapshot ? { procedure: procedureSnapshot } : {}),
+      },
       identity_status: form.anonymous ? "anonyme" : "non_rapprochee",
     },
   };

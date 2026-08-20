@@ -210,11 +210,13 @@ empêche l'enregistrement d'une migration).
 
 ## Écarts et suites (assumés)
 
-1. **Visibilité par sous-arbre Socle différée** : les fondations isolent au **tenant** ;
-   « l'administrateur ne voit que son arbre » exige le miroir `socle_organizations` +
-   `socle_organization_members` (sync Socle, vague suivante de la phase 1). Les policies
-   seront alors resserrées (additivement) via un helper `has_socle_org_access` ;
-   `requests.socle_organization_id` est déjà en place pour porter ce filtre.
+1. **Visibilité par sous-arbre Socle différée** : le **miroir existe désormais**
+   (`socle_organizations` + `socle_procedure_cache` + `sync_runs`, migration
+   `socle_referentiel_miroir`, sync par l'edge `sync-socle-referentiel`, RLS SELECT membre /
+   écriture service_role) — mais les policies des demandes isolent toujours au **tenant** :
+   « l'administrateur ne voit que son arbre » exige encore `socle_organization_members`
+   (affectations) + son UI + le helper `has_socle_org_access`, à livrer ensemble pour ne pas
+   aveugler les utilisateurs sans affectation. `requests.socle_organization_id` est prêt.
 2. **Outbox non branchée** : `integration_deliveries` existe, l'émission d'événements et les
    workers arrivent en phase 4 (webhook signé + réconciliation).
 3. **Purge RGPD** : colonnes prêtes (`retention_until`, `purged_at`), la procédure
