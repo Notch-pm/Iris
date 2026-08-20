@@ -1,69 +1,60 @@
 import { describe, expect, it } from "vitest";
 import { buildNewRequestInsert, EMPTY_NEW_REQUEST } from "./newRequest";
 
+const SNAP = { id: "p-1", name: "Signalement voirie", form_schema: { version: 1, content: [] } };
 const base = {
   ...EMPTY_NEW_REQUEST,
   subject: "Nid de poule",
+  procedureId: "p-1",
+  procedureLabel: "Signalement voirie",
   requesterLastName: "Dupont",
 };
 
-describe("buildNewRequestInsert", () => {
+describe("buildNewRequestInsert — aucune demande libre", () => {
   it("refuse un objet vide et une identité absente non anonyme", () => {
-    expect(buildNewRequestInsert({ ...base, subject: "  " }, "org")).toMatchObject({ ok: false });
-    expect(
-      buildNewRequestInsert({ ...base, requesterLastName: "" }, "org"),
-    ).toMatchObject({ ok: false });
+    expect(buildNewRequestInsert({ ...base, subject: "  " }, "org", SNAP)).toMatchObject({ ok: false });
+    expect(buildNewRequestInsert({ ...base, requesterLastName: "" }, "org", SNAP)).toMatchObject({ ok: false });
   });
 
-  it("accepte l'anonymat assumé", () => {
-    const r = buildNewRequestInsert({ ...base, requesterLastName: "", anonymous: true }, "org");
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.insert.identity_status).toBe("anonyme");
-      expect(r.insert.snapshot).toEqual({ requester_declared: { anonymous: true } });
-    }
+  it("refuse une demande sans démarche Socle", () => {
+    const r = buildNewRequestInsert({ ...base, procedureId: null }, "org", SNAP);
+    expect(r).toMatchObject({ ok: false });
+    if (!r.ok) expect(r.message).toContain("démarche Socle");
   });
 
-  it("fige l'identité déclarée dans le snapshot, sans champs vides", () => {
+  it("refuse un snapshot absent ou incohérent avec la démarche", () => {
+    expect(buildNewRequestInsert(base, "org", null)).toMatchObject({ ok: false });
+    expect(buildNewRequestInsert(base, "org", { id: "autre" })).toMatchObject({ ok: false });
+  });
+
+  it("écrit procedure_snapshot et requester_snapshot (identité figée)", () => {
     const r = buildNewRequestInsert(
       { ...base, requesterEmail: " marie@exemple.fr ", requesterFirstName: "" },
       "org-1",
+      SNAP,
     );
     expect(r.ok).toBe(true);
     if (r.ok) {
-      expect(r.insert.snapshot).toEqual({
-        requester_declared: { last_name: "Dupont", email: "marie@exemple.fr" },
+      expect(r.insert.procedure_snapshot).toEqual(SNAP);
+      expect(r.insert.requester_snapshot).toEqual({
+        declared: { last_name: "Dupont", email: "marie@exemple.fr" },
+        socle_contact_id: null,
       });
-      expect(r.insert.identity_status).toBe("non_rapprochee");
-      expect(r.insert.organization_id).toBe("org-1");
-      expect(r.insert.subject).toBe("Nid de poule");
-    }
-  });
-
-  it("fige le snapshot de démarche quand il est fourni", () => {
-    const snap = { id: "p-1", name: "Signalement", form_schema: { fields: [] } };
-    const r = buildNewRequestInsert({ ...base, procedureId: "p-1" }, "org", snap);
-    expect(r.ok).toBe(true);
-    if (r.ok) {
-      expect(r.insert.snapshot).toEqual({
-        requester_declared: { last_name: "Dupont" },
-        procedure: snap,
-      });
-    }
-    const sans = buildNewRequestInsert(base, "org", null);
-    if (sans.ok) expect(sans.insert.snapshot).toEqual({ requester_declared: { last_name: "Dupont" } });
-  });
-
-  it("porte la démarche et le destinataire Socle éventuels", () => {
-    const r = buildNewRequestInsert(
-      { ...base, procedureId: "p-1", procedureLabel: "Signalement voirie", destinationLabel: "Voirie" },
-      "org",
-    );
-    if (r.ok) {
       expect(r.insert.socle_procedure_id).toBe("p-1");
-      expect(r.insert.socle_procedure_label).toBe("Signalement voirie");
-      expect(r.insert.socle_organization_id).toBeNull();
-      expect(r.insert.socle_organization_label).toBe("Voirie");
+      expect(r.insert).not.toHaveProperty("snapshot");
+      expect(r.insert).not.toHaveProperty("socle_procedure_label");
+    }
+  });
+
+  it("accepte l'anonymat assumé", () => {
+    const r = buildNewRequestInsert({ ...base, requesterLastName: "", anonymous: true }, "org", SNAP);
+    expect(r.ok).toBe(true);
+    if (r.ok) {
+      expect(r.insert.identity_status).toBe("anonyme");
+      expect(r.insert.requester_snapshot).toEqual({
+        declared: { anonymous: true },
+        socle_contact_id: null,
+      });
     }
   });
 });

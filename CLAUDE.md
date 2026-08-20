@@ -35,6 +35,15 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   l'instruction.
 - **Vocabulaire** : « catégorie » désigne exclusivement les catégories de **démarches** du
   Socle. La position d'une demande dans son cycle de vie est un **statut**.
+- **Iris ne gère aucune demande libre** (règle impérative PO, 2026-08-20) : toute nouvelle
+  demande est **fondée sur une démarche Socle active du tenant** (`socle_procedure_id` +
+  `procedure_snapshot`), gardé par le trigger `t16_requests_require_procedure` — service_role
+  compris. Le **snapshot de démarche est construit côté serveur** depuis Socle (edge
+  functions) : jamais accepté comme vérité d'un navigateur ou d'un partenaire. Les demandes
+  historiques sans démarche restent lisibles et transitionnables.
+- **Aucun miroir local d'usagers** : les contacts vivent dans le Socle (contacts-api), Iris
+  les lit/rapproche/crée via `socle-proxy` et ne conserve par demande que le
+  `requester_snapshot` (identité retenue au dépôt, immuable).
 - **Aucune suppression de demande** (pièce administrative) : pas de policy DELETE, FK
   `ON DELETE RESTRICT` depuis le tenant, purge RGPD par procédure `service_role` dédiée.
 - Les **notes internes ne quittent jamais Iris** (miroir de la règle `internal_notes` du
@@ -85,14 +94,27 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   membres/rôles, `requests` + satellites, storage privé, **modèle multi-source d'ingestion**
   (`integration_sources`/`integration_credentials`/`integration_api_logs`, registre de sources
   dynamique — aucune logique spécifique à un émetteur).
-- **L'API d'ingestion `requests-api` est déployée et vérifiée** (18 scénarios HTTP bout en
-  bout) : contrat OpenAPI v1 sur `/v1/openapi.json`, guide consommateurs dans
+- **L'API d'ingestion `requests-api` est déployée et vérifiée** (18 + 7 scénarios HTTP bout
+  en bout) : contrat OpenAPI **1.1.0** sur `/v1/openapi.json`, guide consommateurs dans
   [`docs/api-ingestion.md`](docs/api-ingestion.md). Périmètre dérivé de la clé (jamais d'un
-  header/payload), rejeu identique → 200, divergent → 409, pièces par URL signée uniquement.
+  header/payload), **démarche obligatoire** (vérifiée dans le cache du tenant, snapshot
+  construit côté serveur — dégradé + anomalie si Socle injoignable, jamais un refus), rejeu
+  identique → 200, divergent → 409, pièces par URL signée uniquement (`form_field_key` pour
+  rattacher une pièce à un champ du formulaire).
   Détail des tables, gardes et policies : [`docs/data-model.md`](docs/data-model.md).
   Tests d'étanchéité : `supabase/tests/fondations.test.sql` (transactionnel annulé,
-  14 scénarios). ⚠️ Visibilité par **sous-arbre** Socle différée au miroir
+  15 scénarios). ⚠️ Visibilité par **sous-arbre** Socle différée au miroir
   `socle_organizations` (vague suivante) — les fondations isolent au tenant.
+- **`socle-proxy`** (edge, JWT vérifié en code + périmètre : membre du tenant demandé ET
+  racine Socle du tenant dans le périmètre **réel** de la clé Socle — introspection
+  `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches actives du
+  tenant), `/v1/procedures/get` (fiche complète : `form_schema`, `requester_config` — jamais
+  `knowledge_base`), `/v1/contacts/search`, `/v1/contacts/match` (rapprochement/homonymes),
+  `/v1/contacts/get`, `/v1/contacts/create` (via contacts-api Socle uniquement, whitelist
+  d'entrée). Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
+  `internal_notes`, consentements, relations, `external_references` ne sont **jamais**
+  transmis au navigateur ; champs Socle inconnus tolérés (ignorés). `X-Organization-Id`
+  toujours dérivé côté serveur.
 - `src/types/database.types.ts` est **généré depuis le schéma live** (Supabase MCP
   `generate_typescript_types`) — ne jamais l'éditer à la main, régénérer après chaque migration.
 - `supabase/` : `config.toml` (CLI), `migrations/` (fichiers miroirs des migrations
@@ -135,7 +157,11 @@ note interne → résolution avec texte de clôture → journal.
 - **`facets.ts`** (pur, testé) : facettes destinataire/démarche/source déduites des demandes
   existantes du tenant — catalogue provisoire jusqu'à la sync du référentiel Socle.
 - **`newRequest.ts`** (pur, testé) : payload de création manuelle (source `iris` verrouillée
-  par la policy, identité déclarée → `snapshot.requester_declared`, anonymat assumé).
+  par la policy, identité déclarée → `requester_snapshot.declared`, anonymat assumé).
+  **Démarche obligatoire** : refus explicite sans `procedureId` ou sans snapshot cohérent.
+  ⚠️ État transitoire assumé : `NewRequestDialog` propose encore une « demande libre » — le
+  builder (et la garde SQL) la refusent désormais ; la refonte du parcours de création
+  (sélection de démarche + formulaire dynamique + rapprochement usager) est la vague suivante.
 - **`useRequests.ts`** : hooks TanStack Query (liste paginée `range`+`count`, facettes, fiche,
   satellites, membres du tenant) + mutations (création, transition via
   `buildTransitionUpdate`, affectation, notes). Pas d'appel `supabase` direct dans les pages.

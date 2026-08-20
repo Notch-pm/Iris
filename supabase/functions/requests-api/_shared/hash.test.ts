@@ -31,6 +31,7 @@ describe("empreinte d'ingestion", () => {
     source_system: "portail",
     external_id: "d-1",
     socle_root_organization_id: "11111111-1111-1111-1111-111111111111",
+    socle_procedure_id: "22222222-2222-4222-8222-222222222222",
     subject: "Sujet",
     requester: { last_name: "Dupont" },
     attachments: [{ file_name: "a.pdf", fetch_url: "https://exemple.test/signee-1" }],

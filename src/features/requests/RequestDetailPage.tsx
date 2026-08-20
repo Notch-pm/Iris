@@ -112,8 +112,8 @@ export function RequestDetailPage() {
   const role = current.role;
   const writer = canWrite(role);
   const memberList = members.data ?? [];
-  const snapshot = (r.snapshot ?? {}) as Record<string, unknown>;
-  const declared = (snapshot.requester_declared ?? null) as Record<string, unknown> | null;
+  const requesterSnapshot = (r.requester_snapshot ?? {}) as Record<string, unknown>;
+  const declared = (requesterSnapshot.declared ?? null) as Record<string, unknown> | null;
   const formData = (r.form_data ?? {}) as Record<string, unknown>;
   const archived = r.status === "archivee";
 

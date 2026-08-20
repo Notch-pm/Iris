@@ -44,11 +44,25 @@ export type NewRequestResult =
 export function buildNewRequestInsert(
   form: NewRequestForm,
   organizationId: string,
-  /** Snapshot de la démarche (form_schema…) figé à la création, si disponible. */
+  /** Snapshot de la démarche figé à la création — OBLIGATOIRE (via socle-proxy). */
   procedureSnapshot?: Record<string, unknown> | null,
 ): NewRequestResult {
   if (form.subject.trim() === "") {
     return { ok: false, message: "L'objet de la demande est obligatoire." };
+  }
+  // Règle impérative : aucune demande libre.
+  if (!form.procedureId) {
+    return {
+      ok: false,
+      message: "Toute demande doit être fondée sur une démarche Socle active — sélectionnez une démarche.",
+    };
+  }
+  if (!procedureSnapshot || procedureSnapshot.id !== form.procedureId) {
+    return {
+      ok: false,
+      message:
+        "La démarche n'a pas pu être chargée depuis le Socle — réessayez dans un instant.",
+    };
   }
   const declared = form.anonymous
     ? { anonymous: true }
@@ -81,14 +95,12 @@ export function buildNewRequestInsert(
       priority: form.priority,
       channel: form.channel.trim() === "" ? null : form.channel.trim(),
       socle_procedure_id: form.procedureId,
-      socle_procedure_label: form.procedureLabel.trim() === "" ? null : form.procedureLabel.trim(),
+      // Libellés démarche/catégorie réécrits par le trigger depuis le cache (vérité serveur).
       socle_organization_id: form.destinationId,
       socle_organization_label:
         form.destinationLabel.trim() === "" ? null : form.destinationLabel.trim(),
-      snapshot: {
-        requester_declared: declared,
-        ...(procedureSnapshot ? { procedure: procedureSnapshot } : {}),
-      },
+      procedure_snapshot: procedureSnapshot,
+      requester_snapshot: { declared, socle_contact_id: null },
       identity_status: form.anonymous ? "anonyme" : "non_rapprochee",
     },
   };

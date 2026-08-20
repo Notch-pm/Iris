@@ -30,4 +30,9 @@ describe("contrat OpenAPI v1", () => {
     expect(spec.components.schemas.AttachmentRef.additionalProperties).toBe(false);
     expect(spec.components.schemas.AttachmentRef.required).toContain("fetch_url");
   });
+
+  it("v1.1 : démarche obligatoire, form_field_key sur les pièces", () => {
+    expect(spec.components.schemas.IngestEnvelope.required).toContain("socle_procedure_id");
+    expect(Object.keys(spec.components.schemas.AttachmentRef.properties)).toContain("form_field_key");
+  });
 });

@@ -1,6 +1,7 @@
 -- ============================================================================
 -- Tests des fondations Iris — isolation entre tenants, rôles (agent /
--- administrateur), transitions refusées, immuabilité, idempotence, numérotation.
+-- administrateur), transitions refusées, immuabilité, idempotence, numérotation,
+-- règle impérative « toute demande est fondée sur une démarche Socle active ».
 --
 -- Exécution : lancer ce script tel quel dans un contexte postgres en
 -- lecture-écriture (SQL editor du dashboard ; le MCP execute_sql est en
@@ -21,8 +22,14 @@ declare
   u_admin1 uuid := gen_random_uuid();  -- administrateur du tenant 1
   u_agent1 uuid := gen_random_uuid();  -- agent du tenant 1
   u_agent2 uuid := gen_random_uuid();  -- agent du tenant 2
+  proc1    uuid := gen_random_uuid();  -- démarche active du tenant 1
+  proc2    uuid := gen_random_uuid();  -- démarche active du tenant 2
+  proc_obs uuid := gen_random_uuid();  -- démarche OBSOLÈTE du tenant 1
+  snap1    jsonb;
+  snap2    jsonb;
   r1       uuid;
   r2       uuid;
+  r3       uuid;
   v_ref    text;
   v_status text;
   v_root   uuid;
@@ -53,14 +60,27 @@ begin
     (org1, u_agent1, 'agent'),
     (org2, u_agent2, 'agent');
 
+  -- Démarches du cache Socle (règle impérative : socle_procedure_id obligatoire).
+  insert into public.socle_procedure_cache
+    (socle_id, organization_id, socle_root_org_id, name, category_name, type) values
+    (proc1,    org1, s_a, 'Signalement voirie', 'Cadre de vie', 'signalement'),
+    (proc_obs, org1, s_a, 'Ancienne démarche',  null,           null),
+    (proc2,    org2, s_b, 'Demande tenant 2',   null,           null);
+  update public.socle_procedure_cache set obsoleted_at = now() where socle_id = proc_obs;
+  snap1 := jsonb_build_object('id', proc1::text, 'name', 'Signalement voirie', 'form_schema', null);
+  snap2 := jsonb_build_object('id', proc2::text, 'name', 'Demande tenant 2');
+
   -- ----------------------------------------------------------------------
-  -- T1 — création par un agent, numérotation, racine Socle, journal
+  -- T1 — création par un agent, numérotation, racine Socle, journal,
+  --      libellés démarche/catégorie réécrits depuis le cache (vérité serveur)
   -- ----------------------------------------------------------------------
   perform set_config('request.jwt.claims', jsonb_build_object('sub', u_agent1, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
 
-  insert into public.requests (organization_id, subject, body)
-  values (org1, 'Nid de poule rue des Lilas', 'Signalement de voirie.')
+  insert into public.requests
+    (organization_id, subject, body, socle_procedure_id, procedure_snapshot, socle_procedure_label)
+  values
+    (org1, 'Nid de poule rue des Lilas', 'Signalement de voirie.', proc1, snap1, 'LIBELLÉ FALSIFIÉ')
   returning id into r1;
 
   select reference, status, socle_root_org_id into v_ref, v_status, v_root
@@ -69,6 +89,11 @@ begin
   if v_status <> 'a_traiter' then v_fail := v_fail || 'T1: statut de naissance différent de a_traiter'; end if;
   if v_root is distinct from s_a then v_fail := v_fail || 'T1: socle_root_org_id non dérivée du tenant'; end if;
 
+  select socle_procedure_label into v_ref from public.requests where id = r1;
+  if v_ref is distinct from 'Signalement voirie' then v_fail := v_fail || 'T1: libellé démarche non réécrit depuis le cache'; end if;
+  select socle_category_label into v_ref from public.requests where id = r1;
+  if v_ref is distinct from 'Cadre de vie' then v_fail := v_fail || 'T1: libellé catégorie non réécrit depuis le cache'; end if;
+
   select count(*) into v_int from public.request_events where request_id = r1 and event_type = 'created';
   if v_int <> 1 then v_fail := v_fail || 'T1: événement created absent du journal'; end if;
 
@@ -76,7 +101,8 @@ begin
   -- T2 — numérotation indépendante par tenant
   -- ----------------------------------------------------------------------
   perform set_config('request.jwt.claims', jsonb_build_object('sub', u_agent2, 'role', 'authenticated')::text, true);
-  insert into public.requests (organization_id, subject) values (org2, 'Demande tenant 2')
+  insert into public.requests (organization_id, subject, socle_procedure_id, procedure_snapshot)
+  values (org2, 'Demande tenant 2', proc2, snap2)
   returning id into r2;
   select reference into v_ref from public.requests where id = r2;
   if v_ref is distinct from format('DEM-%s-000001', v_year) then v_fail := v_fail || 'T2: la séquence du tenant 2 n''est pas indépendante'; end if;
@@ -90,12 +116,16 @@ begin
   if v_int <> 0 then v_fail := v_fail || 'T3: agent2 voit la demande du tenant 1'; end if;
   select count(*) into v_int from public.request_events where request_id = r1;
   if v_int <> 0 then v_fail := v_fail || 'T3: agent2 voit le journal du tenant 1'; end if;
+  select count(*) into v_int from public.socle_procedure_cache;
+  if v_int <> 1 then v_fail := v_fail || format('T3: agent2 voit %s démarches en cache au lieu de 1 (fuite cross-tenant)', v_int); end if;
 
   -- ----------------------------------------------------------------------
   -- T4 — isolation en écriture : agent2 ne crée pas dans le tenant 1
+  --      (démarche et snapshot VALIDES pour que le refus vienne bien de la RLS)
   -- ----------------------------------------------------------------------
   begin
-    insert into public.requests (organization_id, subject) values (org1, 'Intrusion');
+    insert into public.requests (organization_id, subject, socle_procedure_id, procedure_snapshot)
+    values (org1, 'Intrusion', proc1, snap1);
     v_fail := v_fail || 'T4: insertion cross-tenant acceptée';
   exception when others then null;  -- refus attendu (RLS)
   end;
@@ -157,6 +187,7 @@ begin
 
   -- ----------------------------------------------------------------------
   -- T8 — archivage : refusé à l'agent, permis à l'administrateur ; gel archivé
+  --      (procedure_snapshot compris) ; désarchivage = statut seul
   -- ----------------------------------------------------------------------
   update public.requests set status = 'resolue_positive',
          closure_text = 'Clôture après réexamen.' where id = r1;
@@ -173,15 +204,30 @@ begin
     v_fail := v_fail || 'T8: modification d''une demande archivée acceptée';
   exception when others then null;
   end;
+  begin
+    update public.requests
+       set status = 'resolue_positive',
+           procedure_snapshot = snap1 || jsonb_build_object('name', 'altéré')
+     where id = r1;
+    v_fail := v_fail || 'T8: désarchivage avec altération du snapshot de démarche accepté';
+  exception when others then null;
+  end;
   update public.requests set status = 'resolue_positive' where id = r1;  -- désarchivage admin
 
   -- ----------------------------------------------------------------------
-  -- T9 — colonnes immuables et interdiction de suppression
+  -- T9 — colonnes immuables (requester_snapshot compris), pas de suppression
   -- ----------------------------------------------------------------------
   perform set_config('request.jwt.claims', jsonb_build_object('sub', u_agent1, 'role', 'authenticated')::text, true);
   begin
     update public.requests set received_at = now() - interval '1 day' where id = r1;
     v_fail := v_fail || 'T9: modification de received_at acceptée';
+  exception when others then null;
+  end;
+  begin
+    update public.requests
+       set requester_snapshot = jsonb_build_object('declared', jsonb_build_object('last_name', 'Falsifié'))
+     where id = r1;
+    v_fail := v_fail || 'T9: modification de requester_snapshot acceptée (identité retenue au dépôt)';
   exception when others then null;
   end;
   delete from public.requests where id = r1;
@@ -216,11 +262,11 @@ begin
   -- ----------------------------------------------------------------------
   -- T12 — idempotence d'ingestion (contexte de service, source externe)
   -- ----------------------------------------------------------------------
-  insert into public.requests (organization_id, subject, source, external_ref)
-  values (org1, 'Depuis une source externe', 'source-test', 'action-ticket-1');
+  insert into public.requests (organization_id, subject, source, external_ref, socle_procedure_id, procedure_snapshot)
+  values (org1, 'Depuis une source externe', 'source-test', 'action-ticket-1', proc1, snap1);
   begin
-    insert into public.requests (organization_id, subject, source, external_ref)
-    values (org1, 'Depuis une source externe (rejeu)', 'source-test', 'action-ticket-1');
+    insert into public.requests (organization_id, subject, source, external_ref, socle_procedure_id, procedure_snapshot)
+    values (org1, 'Depuis une source externe (rejeu)', 'source-test', 'action-ticket-1', proc1, snap1);
     v_fail := v_fail || 'T12: doublon (source, external_ref) accepté';
   exception when unique_violation then null;
   end;
@@ -231,18 +277,79 @@ begin
   perform set_config('request.jwt.claims', jsonb_build_object('sub', u_agent1, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   begin
-    insert into public.requests (organization_id, subject, source, external_ref)
-    values (org1, 'Fausse ingestion', 'source-test', 'forge-1');
+    insert into public.requests (organization_id, subject, source, external_ref, socle_procedure_id, procedure_snapshot)
+    values (org1, 'Fausse ingestion', 'source-test', 'forge-1', proc1, snap1);
     v_fail := v_fail || 'T13: un agent a créé une demande de source externe';
   exception when others then null;
   end;
   execute 'reset role';
 
   -- ----------------------------------------------------------------------
+  -- T14 — règle impérative : aucune demande libre. Testée en contexte de
+  --       service (postgres, hors RLS) : la garde s'applique à TOUT LE MONDE.
+  -- ----------------------------------------------------------------------
+  begin
+    insert into public.requests (organization_id, subject) values (org1, 'Demande libre');
+    v_fail := v_fail || 'T14: demande SANS démarche acceptée';
+  exception when others then null;
+  end;
+  begin
+    insert into public.requests (organization_id, subject, socle_procedure_id, procedure_snapshot)
+    values (org1, 'Démarche d''un autre tenant', proc2, snap2);
+    v_fail := v_fail || 'T14: démarche d''un AUTRE TENANT acceptée';
+  exception when others then null;
+  end;
+  begin
+    insert into public.requests (organization_id, subject, socle_procedure_id, procedure_snapshot)
+    values (org1, 'Démarche obsolète', proc_obs,
+            jsonb_build_object('id', proc_obs::text, 'name', 'Ancienne démarche'));
+    v_fail := v_fail || 'T14: démarche OBSOLÈTE acceptée';
+  exception when others then null;
+  end;
+  begin
+    insert into public.requests (organization_id, subject, socle_procedure_id)
+    values (org1, 'Sans snapshot', proc1);
+    v_fail := v_fail || 'T14: demande sans procedure_snapshot acceptée';
+  exception when others then null;
+  end;
+  begin
+    insert into public.requests (organization_id, subject, socle_procedure_id, procedure_snapshot)
+    values (org1, 'Snapshot incohérent', proc1, snap2);
+    v_fail := v_fail || 'T14: snapshot d''une AUTRE démarche accepté';
+  exception when others then null;
+  end;
+
+  -- ----------------------------------------------------------------------
+  -- T15 — les demandes HISTORIQUES sans démarche restent transitionnables
+  --       (simulation : garde désactivée le temps d'un insert « legacy »)
+  -- ----------------------------------------------------------------------
+  execute 'alter table public.requests disable trigger t16_requests_require_procedure';
+  insert into public.requests (organization_id, subject)
+  values (org1, 'Demande historique sans démarche') returning id into r3;
+  execute 'alter table public.requests enable trigger t16_requests_require_procedure';
+
+  select socle_procedure_id::text into v_ref from public.requests where id = r3;
+  if v_ref is not null then v_fail := v_fail || 'T15: la demande historique porte une démarche inattendue'; end if;
+
+  perform set_config('request.jwt.claims', jsonb_build_object('sub', u_agent1, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  update public.requests set status = 'en_instruction', assigned_to = u_agent1 where id = r3;
+  select status into v_status from public.requests where id = r3;
+  if v_status <> 'en_instruction' then v_fail := v_fail || 'T15: transition refusée sur une demande historique sans démarche'; end if;
+  execute 'reset role';
+
+  -- La garde réactivée refuse bien une nouvelle demande libre.
+  begin
+    insert into public.requests (organization_id, subject) values (org1, 'Nouvelle demande libre');
+    v_fail := v_fail || 'T15: la garde n''a pas été réactivée (demande libre acceptée)';
+  exception when others then null;
+  end;
+
+  -- ----------------------------------------------------------------------
   -- Verdict — l'exception finale annule TOUTE la transaction.
   -- ----------------------------------------------------------------------
   if array_length(v_fail, 1) is null then
-    raise exception 'TOUS LES TESTS SONT PASSÉS (13 scénarios) — transaction annulée, aucune donnée conservée.';
+    raise exception 'TOUS LES TESTS SONT PASSÉS (15 scénarios) — transaction annulée, aucune donnée conservée.';
   else
     raise exception 'ÉCHECS (%s) : %', array_length(v_fail, 1), array_to_string(v_fail, ' · ');
   end if;

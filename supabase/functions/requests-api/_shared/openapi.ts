@@ -2,7 +2,7 @@
 // référence des endpoints (règle de gamme). Politique v1 : évolutions
 // additives uniquement ; toute rupture passera par une v2.
 
-export const CONTRACT_VERSION = "1.0.0";
+export const CONTRACT_VERSION = "1.1.0";
 export const API_BASE_PATH = "/v1";
 
 const errorSchema = {
@@ -39,6 +39,12 @@ const attachmentRefSchema = {
     mime_type: { type: "string" },
     size_bytes: { type: "integer", minimum: 0 },
     checksum: { type: "string", description: "Empreinte du fichier (déduplication de copie)." },
+    form_field_key: {
+      type: "string", maxLength: 120,
+      description:
+        "Clé machine (`key`) du champ « pièce justificative » du form_schema Socle auquel " +
+        "la pièce répond. Omise = pièce hors formulaire.",
+    },
   },
 } as const;
 
@@ -56,7 +62,8 @@ const linkRefSchema = {
 
 const envelopeSchema = {
   type: "object",
-  required: ["source_system", "external_id", "socle_root_organization_id", "subject"],
+  required: ["source_system", "external_id", "socle_root_organization_id",
+             "socle_procedure_id", "subject"],
   additionalProperties: false,
   properties: {
     source_system: {
@@ -78,7 +85,13 @@ const envelopeSchema = {
       description: "UUID Socle de l'organisation RACINE. Vérifié égal au périmètre de l'intégration — jamais pris pour argent comptant.",
     },
     socle_organization_id: { type: "string", format: "uuid", description: "Organisation destinataire éventuelle (UUID Socle du sous-arbre)." },
-    socle_procedure_id: { type: "string", format: "uuid", description: "Démarche Socle éventuelle." },
+    socle_procedure_id: {
+      type: "string", format: "uuid",
+      description:
+        "OBLIGATOIRE — toute demande est fondée sur une démarche Socle ACTIVE du tenant " +
+        "(introuvable, obsolète ou hors périmètre → 400). Le snapshot de la démarche est " +
+        "construit CÔTÉ SERVEUR depuis Socle : un émetteur ne peut jamais l'imposer.",
+    },
     socle_contact_id: { type: "string", format: "uuid", description: "Contact Socle éventuel (usager rapproché)." },
     subject: { type: "string", maxLength: 500 },
     body: { type: "string" },

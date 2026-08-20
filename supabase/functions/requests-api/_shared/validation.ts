@@ -11,6 +11,8 @@ export interface AttachmentRef {
   mime_type?: string;
   size_bytes?: number;
   checksum?: string;
+  /** Clé machine (`key`) du champ pièce justificative du form_schema Socle. */
+  form_field_key?: string;
 }
 
 export interface LinkRef {
@@ -33,7 +35,8 @@ export interface IngestEnvelope {
   idempotency_key?: string;
   socle_root_organization_id: string;
   socle_organization_id?: string;
-  socle_procedure_id?: string;
+  /** OBLIGATOIRE : toute demande est fondée sur une démarche Socle active. */
+  socle_procedure_id: string;
   socle_contact_id?: string;
   subject: string;
   body?: string;
@@ -61,7 +64,9 @@ const ENVELOPE_KEYS = new Set([
   "subject", "body", "requester", "form_data",
   "attachments", "context", "links",
 ]);
-const ATTACHMENT_KEYS = new Set(["file_name", "fetch_url", "mime_type", "size_bytes", "checksum"]);
+const ATTACHMENT_KEYS = new Set([
+  "file_name", "fetch_url", "mime_type", "size_bytes", "checksum", "form_field_key",
+]);
 const LINK_KEYS = new Set(["type", "id", "url", "label"]);
 const CONTEXT_KEYS = new Set(["channel", "received_at", "external_url", "metadata"]);
 
@@ -98,12 +103,18 @@ export function validateAttachmentList(value: unknown): Validation<AttachmentRef
     if (raw.size_bytes !== undefined && (typeof raw.size_bytes !== "number" || raw.size_bytes < 0)) {
       return fail(`attachments[${i}].size_bytes : entier positif attendu.`);
     }
+    if (raw.form_field_key !== undefined
+        && (typeof raw.form_field_key !== "string" || raw.form_field_key.trim() === ""
+            || raw.form_field_key.length > 120)) {
+      return fail(`attachments[${i}].form_field_key : clé de champ invalide.`);
+    }
     out.push({
       file_name: fileName,
       fetch_url: raw.fetch_url,
       mime_type: typeof raw.mime_type === "string" ? raw.mime_type : undefined,
       size_bytes: typeof raw.size_bytes === "number" ? raw.size_bytes : undefined,
       checksum: typeof raw.checksum === "string" ? raw.checksum : undefined,
+      form_field_key: typeof raw.form_field_key === "string" ? raw.form_field_key : undefined,
     });
   }
   return { ok: true, value: out };
@@ -128,14 +139,23 @@ export function validateEnvelope(body: unknown): Validation<IngestEnvelope> {
   const rootOrg = checkUuid(body.socle_root_organization_id, "socle_root_organization_id");
   if (typeof rootOrg !== "string") return fail(rootOrg.error);
 
+  // Règle impérative : aucune demande libre — la démarche Socle est obligatoire.
+  const procedureId = checkUuid(body.socle_procedure_id, "socle_procedure_id");
+  if (typeof procedureId !== "string") {
+    return fail(
+      "socle_procedure_id : obligatoire — toute demande doit être fondée sur une démarche Socle active.",
+    );
+  }
+
   const env: IngestEnvelope = {
     source_system: sourceSystem,
     external_id: externalId,
     socle_root_organization_id: rootOrg,
+    socle_procedure_id: procedureId,
     subject,
   };
 
-  for (const key of ["socle_organization_id", "socle_procedure_id", "socle_contact_id"] as const) {
+  for (const key of ["socle_organization_id", "socle_contact_id"] as const) {
     if (body[key] !== undefined && body[key] !== null) {
       const v = checkUuid(body[key], key);
       if (typeof v !== "string") return fail(v.error);
@@ -255,6 +275,7 @@ export function fingerprintPayload(env: IngestEnvelope): unknown {
       mime_type: a.mime_type ?? null,
       size_bytes: a.size_bytes ?? null,
       checksum: a.checksum ?? null,
+      form_field_key: a.form_field_key ?? null,
     })),
     context: {
       channel: env.context?.channel ?? null,

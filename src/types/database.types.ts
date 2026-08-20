@@ -327,6 +327,7 @@ export type Database = {
           fetch_url: string | null
           file_name: string
           file_size: number | null
+          form_field_key: string | null
           id: string
           mime_type: string | null
           organization_id: string
@@ -343,6 +344,7 @@ export type Database = {
           fetch_url?: string | null
           file_name: string
           file_size?: number | null
+          form_field_key?: string | null
           id?: string
           mime_type?: string | null
           organization_id: string
@@ -359,6 +361,7 @@ export type Database = {
           fetch_url?: string | null
           file_name?: string
           file_size?: number | null
+          form_field_key?: string | null
           id?: string
           mime_type?: string | null
           organization_id?: string
@@ -590,7 +593,8 @@ export type Database = {
           reference_seq: number
           reference_year: number
           retention_until: string | null
-          snapshot: Json
+          procedure_snapshot: Json | null
+          requester_snapshot: Json | null
           socle_category_label: string | null
           socle_contact_id: string | null
           socle_organization_id: string | null
@@ -630,7 +634,8 @@ export type Database = {
           reference_seq: number
           reference_year: number
           retention_until?: string | null
-          snapshot?: Json
+          procedure_snapshot?: Json | null
+          requester_snapshot?: Json | null
           socle_category_label?: string | null
           socle_contact_id?: string | null
           socle_organization_id?: string | null
@@ -670,7 +675,8 @@ export type Database = {
           reference_seq?: number
           reference_year?: number
           retention_until?: string | null
-          snapshot?: Json
+          procedure_snapshot?: Json | null
+          requester_snapshot?: Json | null
           socle_category_label?: string | null
           socle_contact_id?: string | null
           socle_organization_id?: string | null

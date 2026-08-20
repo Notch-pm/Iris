@@ -13,7 +13,7 @@ simples *sources enregistrées*.
 |---|---|
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
-| Version | `1.0.0` — politique v1 : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus |
+| Version | `1.1.0` — politique v1 : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -50,14 +50,15 @@ simples *sources enregistrées*.
   "idempotency_key": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
   "socle_root_organization_id": "<uuid racine Socle>",
   "socle_organization_id": "<uuid organisation destinataire, optionnel>",
-  "socle_procedure_id": "<uuid démarche Socle, optionnel>",
+  "socle_procedure_id": "<uuid démarche Socle — OBLIGATOIRE>",
   "socle_contact_id": "<uuid contact Socle, optionnel>",
   "subject": "Nid de poule rue des Lilas",
   "body": "Description libre.",
   "requester": { "last_name": "Dupont", "first_name": "Marie", "email": "marie@exemple.fr" },
   "form_data": { "urgence": "haute" },
   "attachments": [
-    { "file_name": "photo.jpg", "fetch_url": "https://…url-signée-temporaire…", "checksum": "…" }
+    { "file_name": "photo.jpg", "fetch_url": "https://…url-signée-temporaire…", "checksum": "…",
+      "form_field_key": "photo_du_probleme" }
   ],
   "context": {
     "channel": "portail",
@@ -70,6 +71,13 @@ simples *sources enregistrées*.
 
 Points de contrat :
 
+- **`socle_procedure_id` est OBLIGATOIRE** (contrat 1.1.0 — règle métier : *Iris ne gère
+  aucune demande libre, toute demande est fondée sur une démarche Socle active*). La démarche
+  doit être **active et appartenir au tenant de votre clé** — introuvable, obsolète ou hors
+  périmètre → **400** explicite. Le **snapshot de la démarche est construit CÔTÉ SERVEUR**
+  depuis Socle : vous ne pouvez pas l'imposer (une clé `procedure_snapshot` dans l'enveloppe
+  → 400 whitelist). Si Socle est injoignable au dépôt, la demande n'est **pas** refusée :
+  snapshot minimal + anomalie `referentiel_indisponible` à lever à la qualification.
 - **Identité du demandeur** : `socle_contact_id`, **ou** `requester` (identité déclarée,
   conservée intégralement comme pièce du dossier), **ou** `requester: { "anonymous": true }`
   (anonymat assumé). Au moins l'un des trois.
@@ -78,6 +86,9 @@ Points de contrat :
   courrier — un courrier peut engendrer plusieurs demandes).
 - **`form_data`** n'est jamais validé à l'ingestion (la complétude est un problème
   d'instruction, pas un motif de rejet). Clé machine des champs = `key` (règle Socle).
+- **`attachments[].form_field_key`** (optionnel, ≤ 120 caractères) rattache une pièce au champ
+  « pièce justificative » correspondant du `form_schema` de la démarche ; omis = pièce hors
+  formulaire.
 - **Whitelist stricte** : toute clé inconnue → 400.
 
 ### Réponse
@@ -156,12 +167,20 @@ contenu). Chaque demande porte son journal d'événements immuable (`request_eve
 
 ## Vérifications (2026-08-20)
 
-Contrat prouvé de bout en bout contre la fonction déployée — **18/18 scénarios HTTP** :
+Contrat 1.0.0 prouvé de bout en bout contre la fonction déployée — **18/18 scénarios HTTP** :
 authentification (401 absente/révoquée, 403 scope), isolation (usurpation de racine → 403,
 usurpation de source → 403, lecture cross-tenant → 404, numérotation indépendante par tenant),
 idempotence (rejeu identique → 200 même id), conflit (contenu divergent → 409), pièces (référence
-signée → 201 pending, inline → 400), version du contrat (OpenAPI public, version 1.0.0), 405/404.
+signée → 201 pending, inline → 400), version du contrat (OpenAPI public), 405/404.
 Effets vérifiés en base : journal d'audit (dont appels refusés), événements `created`, pièces
 `pending`, liens externes, identité déclarée conservée. Données de test intégralement purgées.
+
+Contrat **1.1.0** (règle démarche) prouvé le même jour — **7/7 scénarios HTTP** : enveloppe sans
+`socle_procedure_id` → 400 explicite · démarche inconnue du tenant → 400 · `procedure_snapshot`
+dans l'enveloppe → 400 whitelist · dépôt valide avec démarche hors Socle (cache en avance) →
+201 avec snapshot **dégradé** + anomalie `referentiel_indisponible` + `form_field_key`
+persisté · rejeu identique → 200 · rejeu divergent → 409 · dépôt sur démarche Socle **réelle**
+→ 201 avec snapshot serveur complet (`form_schema` présent, jamais de `knowledge_base`),
+libellés démarche/catégorie issus du cache. Données de test intégralement purgées.
 Logique pure couverte par vitest (`_shared/*.test.ts` : validation, empreinte, sérialisation
-whitelist, version du contrat).
+whitelist, snapshot de démarche, version du contrat).

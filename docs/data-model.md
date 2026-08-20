@@ -18,6 +18,10 @@ d'écart, ce document décrit **l'état réel** du schéma.
   contourne le RLS par attribut — **aucune policy « service » n'est écrite** (une policy au
   `TO` manquant s'ouvrirait à `authenticated`).
 - **Workflow fixe à 7 statuts** (décision PO), gardé par trigger SQL — jamais par l'UI seule.
+- **Aucune demande libre** (règle impérative PO, 2026-08-20) : toute **nouvelle** demande est
+  fondée sur une **démarche Socle active du tenant** (`socle_procedure_id` + snapshot serveur),
+  gardé par le trigger `t16_requests_require_procedure` — **service_role compris**. Les
+  demandes historiques sans démarche restent lisibles et transitionnables.
 - **Journal immuable** : `request_events` et `request_assignments` refusent UPDATE et DELETE
   par trigger, même en `service_role`.
 - **Aucune suppression de demande** : pas de policy DELETE, FK tenant en `ON DELETE RESTRICT`.
@@ -68,9 +72,15 @@ re-révoquer à chaque `CREATE OR REPLACE`.
     trigger**, jamais du payload), `socle_organization_id` (destinataire éventuelle) +
     `socle_organization_label`, `socle_procedure_id` + `socle_procedure_label` +
     `socle_category_label` (catégorie de démarche Socle), `socle_contact_id` ;
-  - `snapshot` JSONB (objet) — pièce du dossier figée : sous-clés attendues `procedure`
-    (form_schema, requester_config), `requester_declared` (identité déclarée intégrale),
-    `contact` (minimal : display_name + canal retenu). **Jamais d'internal_notes** ;
+  - `procedure_snapshot` JSONB (objet) — démarche figée au dépôt (`id`, `name`, `type`,
+    `category_id`, `form_schema`, `requester_config` ; `degraded: true` si Socle était
+    injoignable → snapshot minimal du cache + anomalie `referentiel_indisponible`).
+    **Construit CÔTÉ SERVEUR depuis Socle** (edge function ou socle-proxy) — jamais accepté
+    comme vérité d'un navigateur ou d'un partenaire ;
+  - `requester_snapshot` JSONB (objet, **immuable**) — identité retenue au dépôt :
+    `{ declared: {...} | null, socle_contact_id: uuid | null }`. **Jamais d'internal_notes** ;
+  - `form_data` JSONB — réponses au formulaire, indexées par la **clé machine `key`** des
+    champs du `form_schema` Socle (jamais `id`) ; jamais validé à l'ingestion ;
   - `identity_status` `rapprochee|non_rapprochee|anonyme` ;
   - origine : `source` (**registre dynamique** — CHECK de format + garde
     `t15_requests_check_source` : toute source non-`iris` doit être une
@@ -80,7 +90,7 @@ re-révoquer à chaque `CREATE OR REPLACE`.
     canonique — rejeu identique → 200, divergent → 409 ; UNIQUE partiel
     `(org, source, idempotency_key)`), `external_url`, `channel`,
     `received_at` (date d'origine, immuable) ;
-  - contenu : `subject` (NOT NULL), `body`, `form_data` JSONB ;
+  - contenu : `subject` (NOT NULL), `body` ;
   - cycle de vie : `status` (7 valeurs), `closure_motif`
     (`irrecevable|abandon|retrait_usager|doublon|reorientation` ; `doublon` ⇒
     `master_request_id` NOT NULL, CHECK), `closure_text` (destiné à l'usager),
@@ -96,8 +106,10 @@ re-révoquer à chaque `CREATE OR REPLACE`.
 | Trigger | Moment | Rôle |
 |---|---|---|
 | `t10_requests_before_insert_guard` (INVOKER) | BEFORE INSERT | Naissance en `a_traiter` obligatoire (sauf contexte de service : reprise/ingestion) ; `version := 1` |
+| `t15_requests_check_source` (DEFINER) | BEFORE INSERT | Toute source non-`iris` doit être une `integration_sources` **active du tenant**, service_role compris |
+| `t16_requests_require_procedure` (DEFINER) | BEFORE INSERT | **Règle impérative** : `socle_procedure_id` obligatoire, présent dans `socle_procedure_cache` du tenant et non obsolète ; `procedure_snapshot` objet non vide dont l'`id` correspond ; libellés démarche/catégorie **réécrits depuis le cache** (vérité serveur). S'applique à tout le monde, service_role compris |
 | `t20_requests_set_reference` (DEFINER) | BEFORE INSERT | Numérotation atomique + `socle_root_org_id` dérivée du tenant |
-| `t10_requests_protect_immutable` (INVOKER) | BEFORE UPDATE | `reference`, `organization_id`, `socle_root_org_id`, `source`, `external_ref`, `received_at`, `created_at` immuables ; demande **archivée gelée** (seul le statut peut changer, pour désarchiver) |
+| `t10_requests_protect_immutable` (INVOKER) | BEFORE UPDATE | `reference`, `organization_id`, `socle_root_org_id`, `source`, `external_ref`, `received_at`, `created_at`, **`requester_snapshot`** immuables ; demande **archivée gelée** (seul le statut peut changer, pour désarchiver — `procedure_snapshot` compris) |
 | `t11_requests_guard_transition` (INVOKER) | BEFORE UPDATE | Matrice fixe + exigences + portes par rôle (ci-dessous) ; pose/purge `closed_at` ; purge la clôture à la réouverture |
 | `t19_requests_touch` (INVOKER) | BEFORE UPDATE | `version := version + 1`, `updated_at := now()` |
 | `t30_requests_log_insert` / `t30_requests_log_update` (DEFINER) | AFTER | Journal `request_events` (`created`, `status_changed`, `assigned`) + historique `request_assignments` |
@@ -130,7 +142,9 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
 - **`request_attachments`** — pièces : `storage_path`
   (`{organization_id}/{request_id}/{uuid}-{slug}`), `checksum` (dédup),
   `copy_status` `copied|pending|error` (copie asynchrone à venir), type de PJ Socle en
-  UUID nu + libellé figé. Même trigger de cohérence.
+  UUID nu + libellé figé, `form_field_key` (nullable — clé machine `key` du champ « pièce
+  justificative » du `form_schema` auquel la pièce répond ; NULL = pièce hors formulaire).
+  Même trigger de cohérence.
 - **`request_links`** — relations : `doublon_de` / `issue_de_scission` / `liee_a`
   (demande↔demande, même tenant imposé par trigger — une cible invisible par RLS est
   « introuvable ») et `externe` (`external_type` + `external_id` + `external_url`).
@@ -160,8 +174,11 @@ L'edge function **`requests-api`** (`verify_jwt=false`, auth par clé dans le co
 en-tête CORS) opère en service_role : le périmètre est reconstruit à chaque appel **depuis la
 clé** (tenant + code source), le `source_system` et le `socle_root_organization_id` déclarés
 sont vérifiés contre elle (403 sinon), et une source ne lit que ses propres demandes (404
-au-delà). Logique pure dans `_shared/` (validation whitelist, empreinte canonique,
-sérialisation whitelist, OpenAPI), testée par vitest.
+au-delà). La **démarche est obligatoire** (contrat v1.1.0) : vérifiée dans le cache du tenant
+(400 explicite sinon), puis le `procedure_snapshot` est **construit côté serveur** depuis
+Socle (whitelist ; dégradé + anomalie si injoignable) — un émetteur ne peut jamais l'imposer
+(clé `procedure_snapshot` dans l'enveloppe → 400). Logique pure dans `_shared/` (validation
+whitelist, empreinte canonique, sérialisation whitelist, snapshot, OpenAPI), testée par vitest.
 
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 
@@ -197,14 +214,19 @@ transactionnel **toujours annulé** (l'exception finale porte le verdict, aucune
 subsiste). Simule les identités par `request.jwt.claims` + `SET LOCAL ROLE authenticated` ; enregistre
 une `integration_sources` de test (`source-test`) — le registre dynamique refuse toute source
 non enregistrée, même en service_role.
-**14 scénarios, tous passés le 2026-08-20 (rejoués après la migration du registre)** : création par un agent (référence, statut de
-naissance, racine dérivée, journal) · numérotation indépendante par tenant · isolation
-lecture et écriture entre deux tenants · lecteur sans écriture · transitions refusées
-(matrice, agent non assigné, texte de clôture manquant) · réouverture refusée à l'agent,
-permise au superviseur · archivage refusé au superviseur, permis à l'admin · gel des
-archivées · colonnes immuables · DELETE impossible · lien cross-tenant refusé · journal
+**15 scénarios, tous passés le 2026-08-20 (rejoués après la migration
+`demande_fondee_sur_demarche`)** : création par un agent (référence, statut de naissance,
+racine dérivée, journal, **libellés démarche/catégorie réécrits depuis le cache même si
+falsifiés**) · numérotation indépendante par tenant · isolation lecture et écriture entre
+deux tenants (cache des démarches compris) · transitions refusées (matrice, agent non
+assigné, texte de clôture manquant) · réouverture refusée à l'agent, permise à
+l'administrateur · archivage refusé à l'agent, permis à l'administrateur · gel des archivées
+(désarchivage avec altération du `procedure_snapshot` refusé) · colonnes immuables
+(`requester_snapshot` compris) · DELETE impossible · lien cross-tenant refusé · journal
 immuable même en service · idempotence `(source, external_ref)` · source externe interdite
-aux clients.
+aux clients · **règle impérative en contexte de service** (sans démarche, démarche d'un autre
+tenant, obsolète, sans snapshot, snapshot incohérent : 5 refus) · **demande historique sans
+démarche** toujours transitionnable, garde réactivée derrière.
 
 Exécution : contexte postgres en lecture-écriture (SQL editor du dashboard). Le MCP
 `execute_sql` est en lecture seule → passer par `apply_migration` (l'échec final volontaire
