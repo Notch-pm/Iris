@@ -180,6 +180,40 @@ Socle (whitelist ; dégradé + anomalie si injoignable) — un émetteur ne peut
 (clé `procedure_snapshot` dans l'enveloppe → 400). Logique pure dans `_shared/` (validation
 whitelist, empreinte canonique, sérialisation whitelist, snapshot, OpenAPI), testée par vitest.
 
+### Création guidée (`create-request-from-procedure` + RPC)
+
+La création manuelle par un agent passe EXCLUSIVEMENT par l'edge function
+**`create-request-from-procedure`** (JWT + appartenance + rôle agent/administrateur vérifiés
+en code, CORS allowlist) — plus aucun INSERT direct de demande depuis le navigateur :
+
+- **payload whitelisted strictement** (toute clé inconnue → 400) : identifiants, objet,
+  priorité, destinataire, demandeur (`contact | sans_rapprochement | anonyme`), valeurs de
+  formulaire par **id de champ**, références de pièces déjà déposées sur
+  `{org}/{draft_request_id}/…` (préfixe vérifié). **Jamais de snapshot fourni par le client** ;
+- la démarche doit être **active dans le cache du tenant** ET est **rechargée depuis Socle**
+  (schéma d'autorité ; Socle injoignable → 502, l'agent réessaie — l'ingestion, elle, n'est
+  jamais refusée) ;
+- validation serveur via le **moteur pur partagé** `_shared/procedureForm.ts` (aussi importé
+  par le front sous l'alias `@fn`) : `requester_config` (publics, champs
+  masqué/visible/obligatoire, anonymat permis seulement sans identité obligatoire),
+  `form_schema` v1 (sections, types, options, conditions visibleIf/requiredIf, `form_data`
+  normalisé par clé machine — repli id si clé vide, collision → repli id), pièces
+  (cardinalité ≤ maxFiles ≤ 5, formats, obligation conditionnelle, pièce orpheline refusée) ;
+- contact rapproché : **relu depuis contacts-api** (introuvable → 400), identité whitelistée
+  → `requester_snapshot.declared` + `socle_contact_id`, `identity_status = rapprochee` ;
+- écriture via la RPC **`create_request_from_procedure(p jsonb)`** (SECURITY DEFINER,
+  EXECUTE révoqué des clients — service uniquement) : **une transaction** = demande + pièces
+  (`copy_status='copied'`, `uploaded_by` agent) + événement
+  **`request_created_from_procedure`** (+ `created` par trigger), attribution à l'agent via
+  `set_config('request.jwt.claims', …)` — aucune insertion partielle possible ; le brouillon
+  rejoué → 409. Les triggers (t15 source, **t16 démarche**, numérotation, journal) restent le
+  filet final.
+
+Vérifié le 2026-08-20 : matrice HTTP 10/10 (auth, périmètre, snapshot imposé refusé,
+anonymat gouverné par la démarche, champs demandeur obligatoires, options de formulaire,
+destinataire hors sous-arbre, création atomique avec conditions, 409) + parcours navigateur
+complet. Données de test purgées.
+
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 
 | Table | SELECT | INSERT | UPDATE | DELETE |

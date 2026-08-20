@@ -20,7 +20,8 @@
 
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@fn/*": ["./supabase/functions/*"]
     }
   },
   "include": ["src"]

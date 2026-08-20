@@ -12,6 +12,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { RequestsListPage } from "@/features/requests/RequestsListPage";
 import { RequestDetailPage } from "@/features/requests/RequestDetailPage";
+import { NewRequestPage } from "@/features/requests/creation/NewRequestPage";
 
 export function App() {
   return (
@@ -41,6 +42,7 @@ export function App() {
             >
               <Route index element={<DashboardPage />} />
               <Route path="demandes" element={<RequestsListPage />} />
+              <Route path="demandes/nouvelle" element={<NewRequestPage />} />
               <Route path="demandes/:id" element={<RequestDetailPage />} />
             </Route>
           </Route>

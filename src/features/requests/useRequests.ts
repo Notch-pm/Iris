@@ -181,21 +181,9 @@ function useInvalidateRequest() {
   };
 }
 
-export function useCreateRequest() {
-  const invalidate = useInvalidateRequest();
-  return useMutation({
-    mutationFn: async (insert: Record<string, unknown>) => {
-      const { data, error } = await supabase
-        .from("requests")
-        .insert(insert as never)
-        .select("id, reference")
-        .single();
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: () => invalidate(),
-  });
-}
+// La création passe désormais EXCLUSIVEMENT par le parcours guidé
+// (creation/useCreateFromProcedure → edge function create-request-from-procedure) :
+// plus aucun INSERT direct de demande depuis le navigateur.
 
 export function useApplyTransition() {
   const invalidate = useInvalidateRequest();

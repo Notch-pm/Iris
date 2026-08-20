@@ -46,6 +46,7 @@ export function useSocleProceduresCatalog(orgId: string) {
 export interface ProcedureSnapshot {
   id: string;
   name: string;
+  organization_id?: string | null;
   type: string | null;
   category_id: string | null;
   form_schema: unknown;

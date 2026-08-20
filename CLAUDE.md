@@ -156,14 +156,27 @@ note interne → résolution avec texte de clôture → journal.
   répercute ICI et dans `statuts.test.ts`.
 - **`facets.ts`** (pur, testé) : facettes destinataire/démarche/source déduites des demandes
   existantes du tenant — catalogue provisoire jusqu'à la sync du référentiel Socle.
-- **`newRequest.ts`** (pur, testé) : payload de création manuelle (source `iris` verrouillée
-  par la policy, identité déclarée → `requester_snapshot.declared`, anonymat assumé).
-  **Démarche obligatoire** : refus explicite sans `procedureId` ou sans snapshot cohérent.
-  `NewRequestDialog` ne propose **plus aucune demande libre** (vérifié au navigateur,
-  2026-08-20) : sélecteur requis alimenté par le cache `socle_procedure_cache` du tenant,
-  snapshot construit côté serveur via `socle-proxy /v1/procedures/get` au moment de la
-  création (la route legacy `/v1/procedure-snapshot` a été retirée). Le formulaire dynamique
-  (`form_schema`) et le rapprochement usager restent la vague suivante.
+- **Parcours de création guidé** (`features/requests/creation/`, page `/demandes/nouvelle`,
+  vérifié en navigateur le 2026-08-20) : l'ancien dialogue générique est SUPPRIMÉ — plus
+  aucun INSERT direct de demande depuis le navigateur. Cinq étapes : démarche Socle active
+  (obligatoire, cache du tenant) → organisation destinataire (miroir, pré-remplie par la
+  démarche) → demandeur (feature `contacts`) → formulaire (`form_schema` : sections, choix,
+  conditions visibleIf/requiredIf, pièces avec formats/cardinalités ; `requester_config`
+  respecté) → récapitulatif → **edge function `create-request-from-procedure`**.
+  - **Moteur partagé** `@fn/create-request-from-procedure/_shared/procedureForm.ts` (pur,
+    testé, miroir EXACT du contrat Socle formSchema v1/conditions/requesterFields) : rendu et
+    validation de confort côté client, validation d'AUTORITÉ côté serveur sur la démarche
+    **rechargée depuis Socle**. Clé de `form_data` = clé machine `key` (repli sur l'id si
+    vide). Alias `@fn` → `supabase/functions/` (vite + tsconfig).
+  - **`create-request-from-procedure`** (edge, JWT + rôle agent/administrateur en code, CORS
+    allowlist) : cache du tenant = périmètre, démarche rechargée depuis Socle (503/502 si
+    injoignable — contrairement à l'ingestion, jamais refusée), snapshots construits côté
+    serveur (toute clé `procedure_snapshot`/inconnue dans le payload → 400), contact
+    rapproché **relu depuis contacts-api** (identité de vérité), écriture ATOMIQUE via la
+    RPC `create_request_from_procedure` (demande + pièces + événement
+    `request_created_from_procedure`, attribution à l'agent — tout ou rien). Pièces :
+    uploadées par le navigateur sur `{org}/{draftId}/…` AVANT l'appel (policy storage sur le
+    1er segment), déclarées ensuite (chemin vérifié préfixé au brouillon).
 - **`useRequests.ts`** : hooks TanStack Query (liste paginée `range`+`count`, facettes, fiche,
   satellites, membres du tenant) + mutations (création, transition via
   `buildTransitionUpdate`, affectation, notes). Pas d'appel `supabase` direct dans les pages.
@@ -174,6 +187,29 @@ note interne → résolution avec texte de clôture → journal.
   motif/texte/assigné).
 - RLS = source de vérité : l'UI ne masque les actions que par confort ; toute erreur de garde
   SQL est affichée telle quelle.
+
+## Feature : contacts (`src/features/contacts`)
+
+Identification du demandeur auprès du référentiel d'usagers Socle — **aucun miroir local**,
+tout passe par `socle-proxy` (mutations TanStack sans cache). Vérifiée en navigateur le
+2026-08-20 dans le parcours de création.
+
+- **`rapprochement.ts`** (pur, testé) : critères de recherche (nom, prénom, date de
+  naissance, e-mail, téléphone — refus sans discriminant), résumé des candidats (seules
+  informations distinctives), libellés FR des raisons de rapprochement (raison inconnue
+  affichée telle quelle), `isNameOnlyMatch` (**jamais de rapprochement sur le seul nom** —
+  signalé « à vérifier », aucune sélection automatique), payload de création whitelisted,
+  `duplicateCheckIdentity` (rejeu anti-doublon JUSTE avant création), résolutions
+  `contact | sans_rapprochement | anonyme`.
+- **`RequesterIdentification`** : publics selon `requester_config` (champs
+  masqué/visible/obligatoire respectés), recherche → candidats (score + raisons, choix
+  explicite forcé), création d'usager via contacts-api (doublon potentiel affiché : utiliser
+  le candidat ou « créer quand même »), « poursuivre sans rapprochement » derrière une case
+  d'assomption explicite, **dépôt anonyme uniquement si la démarche ne rend aucune identité
+  obligatoire** (`allowsAnonymous` du moteur partagé).
+- Le `requester_snapshot` est construit CÔTÉ SERVEUR au dépôt (contact rapproché relu depuis
+  Socle) — la résolution ne transporte que le choix de l'agent. `internal_notes` n'existe
+  nulle part côté Iris (sanitisation proxy + whitelists).
 
 ## Feature : zone superadmin (`src/features/superadmin`)
 

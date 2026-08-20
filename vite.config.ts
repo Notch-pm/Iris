@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      // Logique pure partagée avec les edge functions (contrat de rendu/validation).
+      "@fn": path.resolve(import.meta.dirname, "./supabase/functions"),
     },
   },
   server: {

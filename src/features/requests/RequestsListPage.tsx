@@ -10,7 +10,6 @@ import {
   useSocleProceduresCatalog,
 } from "@/features/socle/useSocleCatalog";
 import { StatusBadge } from "./StatusBadge";
-import { NewRequestDialog } from "./NewRequestDialog";
 import { canWrite, PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
 import {
   EMPTY_FILTERS, PAGE_SIZE, useRequestFacets, useRequestsList, type RequestFilters,
@@ -24,7 +23,6 @@ export function RequestsListPage() {
   const { current } = useTenant();
   const [filters, setFilters] = React.useState<RequestFilters>(EMPTY_FILTERS);
   const [page, setPage] = React.useState(1);
-  const [createOpen, setCreateOpen] = React.useState(false);
 
   const orgId = current?.organizationId ?? "";
   const list = useRequestsList(orgId, filters, page);
@@ -62,9 +60,11 @@ export function RequestsListPage() {
           <Badge variant="muted">{total}</Badge>
         </div>
         {canWrite(current.role) ? (
-          <Button onClick={() => setCreateOpen(true)}>
-            <Plus />
-            Nouvelle demande
+          <Button asChild>
+            <Link to="/demandes/nouvelle">
+              <Plus />
+              Nouvelle demande
+            </Link>
           </Button>
         ) : null}
       </div>
@@ -155,13 +155,6 @@ export function RequestsListPage() {
         </div>
       </div>
 
-      <NewRequestDialog
-        organizationId={current.organizationId}
-        orgCatalog={orgCatalog.data ?? []}
-        procCatalog={procCatalog.data ?? []}
-        open={createOpen}
-        onOpenChange={setCreateOpen}
-      />
     </div>
   );
 }
