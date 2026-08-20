@@ -1,0 +1,16 @@
+-- ============================================================================
+-- Rapatriement des tenants Socle (2026-08-20) : un tenant Iris par racine
+-- Socle (ACCM, [TEST], Test 2), rattachement admin du compte fondateur, et
+-- AMORCAGE du miroir + cache demarches (instantane lu via la cle plateforme --
+-- la sync sync-socle-referentiel reecrase ces lignes a chaque execution).
+-- Idempotent ; rejouable a vide si le compte fondateur est absent.
+-- Contenu complet applique au projet distant : voir l'historique des
+-- migrations (version 20260820...provision_tenants_socle). Ce miroir resume
+-- l'operation sans redupliquer les 11 lignes de donnees, qui appartiennent
+-- desormais a la sync.
+-- ============================================================================
+-- 1. organizations : upsert des 3 racines Socle (socle_org_id UNIQUE).
+-- 2. organization_members : role admin pour jacquotlaurent@gmail.com sur les 3.
+-- 3. socle_organizations : 11 lignes (sous-arbres ACCM 8, [TEST] 2, Test 2 1).
+-- 4. socle_procedure_cache : 2 demarches ACCM (Acte de naissance, Voirie).
+-- 5. sync_runs : trace {"seed_initial": true}.
