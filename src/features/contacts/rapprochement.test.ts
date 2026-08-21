@@ -7,11 +7,36 @@ import {
   duplicateCheckIdentity,
   EMPTY_NEW_CONTACT,
   isNameOnlyMatch,
+  liveSearchIdentity,
   newContactFromDeclared,
   reasonLabel,
   resolutionSummary,
   type SocleContact,
 } from "./rapprochement";
+
+describe("liveSearchIdentity", () => {
+  it("n'interroge pas le Socle sur une lettre isolée", () => {
+    expect(liveSearchIdentity("citoyen", { nom_naissance: "D" })).toBeNull();
+    expect(liveSearchIdentity("entreprise", { raison_sociale: "A" })).toBeNull();
+  });
+
+  it("déclenche dès deux caractères de nom", () => {
+    expect(liveSearchIdentity("citoyen", { nom_naissance: "Du" }))
+      .toEqual({ contact_type: "personne", last_name: "Du" });
+  });
+
+  it("un identifiant fort suffit seul", () => {
+    expect(liveSearchIdentity("citoyen", { courriel: "k@exemple.fr" }))
+      .toEqual({ contact_type: "personne", email: "k@exemple.fr" });
+    expect(liveSearchIdentity("association", { siret: "12345678900011" }))
+      .toEqual({ contact_type: "association", siret: "12345678900011" });
+  });
+
+  it("rien sans discriminant ou avec une date invalide", () => {
+    expect(liveSearchIdentity("citoyen", { prenoms: "Karim" })).toBeNull();
+    expect(liveSearchIdentity("citoyen", { nom_naissance: "Dupont", date_naissance: "1980" })).toBeNull();
+  });
+});
 
 const CONTACT: SocleContact = {
   id: "c-1", contact_type: "personne", status: "active",

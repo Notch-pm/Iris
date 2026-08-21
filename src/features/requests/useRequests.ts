@@ -242,6 +242,47 @@ export function useAddMessage() {
   });
 }
 
+/**
+ * Liaison libre (`liee_a`) entre une demande et des demandes proches, posée
+ * dans les deux sens en UNE insertion (visible depuis chaque fiche). Le RLS
+ * (writer du tenant) et le trigger de périmètre revalident tout.
+ */
+export function useLinkRequests() {
+  const invalidate = useInvalidateRequest();
+  return useMutation({
+    mutationFn: async (input: {
+      organizationId: string;
+      requestId: string;
+      targetIds: string[];
+      userId: string;
+    }) => {
+      if (input.targetIds.length === 0) return;
+      const rows = input.targetIds.flatMap((targetId) => [
+        {
+          organization_id: input.organizationId,
+          request_id: input.requestId,
+          link_type: "liee_a",
+          target_request_id: targetId,
+          created_by: input.userId,
+        },
+        {
+          organization_id: input.organizationId,
+          request_id: targetId,
+          link_type: "liee_a",
+          target_request_id: input.requestId,
+          created_by: input.userId,
+        },
+      ]);
+      const { error } = await supabase.from("request_links").insert(rows as never);
+      if (error) throw error;
+    },
+    onSuccess: (_data, vars) => {
+      invalidate(vars.requestId);
+      for (const id of vars.targetIds) invalidate(id);
+    },
+  });
+}
+
 export function useDeleteMessage() {
   const invalidate = useInvalidateRequest();
   return useMutation({

@@ -6,6 +6,7 @@ import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { ShellLayoutContext } from "./shellLayout";
 
 // Shell agent — réplique du shell de production Clara (AppHeader h-14 +
 // AppSidebar : rail vert 52px, premier item épinglé en haut, groupe restant
@@ -131,8 +132,11 @@ function UserMenu() {
 export function AppShell() {
   const { profile } = useAuth();
   const { memberships, current, setCurrentOrgId, loading } = useTenant();
+  const [fullBleed, setFullBleed] = React.useState(false);
+  const layoutValue = React.useMemo(() => ({ setFullBleed }), []);
 
   return (
+    <ShellLayoutContext.Provider value={layoutValue}>
     <div className="flex h-screen flex-col">
       <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
         {/* Gauche : wordmark Notch + séparateur + tenant */}
@@ -186,16 +190,27 @@ export function AppShell() {
 
       <div className="flex min-h-0 flex-1">
         <AppSidebar />
-        <main className="flex-1 overflow-auto px-6 py-5 pb-10">
-          <div className="mx-auto max-w-[1240px]">
+        {fullBleed ? (
+          <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {loading ? (
-              <p className="text-sm text-muted-foreground">Chargement…</p>
+              <p className="p-6 text-sm text-muted-foreground">Chargement…</p>
             ) : (
               <Outlet />
             )}
-          </div>
-        </main>
+          </main>
+        ) : (
+          <main className="flex-1 overflow-auto px-6 py-5 pb-10">
+            <div className="mx-auto max-w-[1240px]">
+              {loading ? (
+                <p className="text-sm text-muted-foreground">Chargement…</p>
+              ) : (
+                <Outlet />
+              )}
+            </div>
+          </main>
+        )}
       </div>
     </div>
+    </ShellLayoutContext.Provider>
   );
 }

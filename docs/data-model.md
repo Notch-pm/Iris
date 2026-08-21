@@ -149,7 +149,12 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   (demande↔demande, même tenant imposé par trigger — une cible invisible par RLS est
   « introuvable ») et `externe` (`external_type` + `external_id` + `external_url`).
   CHECKs d'exclusivité + unicités partielles. NB : la référence externe **primaire**
-  (idempotence) reste `requests.external_ref`.
+  (idempotence) reste `requests.external_ref`. Premier usage client (2026-08-21) : le parcours
+  de création propose les **demandes proches** de l'usager désigné (détection best-effort
+  côté client, même `socle_contact_id` ou nom déclaré) et, sur geste explicite de l'agent,
+  insère APRÈS création deux liens `liee_a` symétriques (demande ↔ cible) en une seule
+  insertion — RLS writer + trigger de périmètre revalident ; échec affiché, jamais bloquant.
+  Aucune clôture `doublon` automatique : la décision reste humaine.
 - **`integration_deliveries`** — outbox du retour d'état (contrat §6) : `event_id` UNIQUE,
   `target` (`clara`), `status` `pending|delivered|failed`, `attempts`, `next_attempt_at`,
   `last_error`. **Aucune émission n'est encore branchée** (phase 4) ; aucune écriture cliente.
@@ -212,7 +217,16 @@ en code, CORS allowlist) — plus aucun INSERT direct de demande depuis le navig
 Vérifié le 2026-08-20 : matrice HTTP 10/10 (auth, périmètre, snapshot imposé refusé,
 anonymat gouverné par la démarche, champs demandeur obligatoires, options de formulaire,
 destinataire hors sous-arbre, création atomique avec conditions, 409) + parcours navigateur
-complet. Données de test purgées.
+complet. Données de test purgées. Re-vérifié le 2026-08-21 avec le parcours redessiné
+(4 étapes, brouillon local, demandes proches, liaison `liee_a`) : deux demandes de test
+ACCM (DEM-2026-000001 / 000002, contact de démo, liées entre elles) **restent à purger**
+lors de la prochaine campagne de nettoyage.
+
+Le **brouillon de saisie** n'existe pas côté serveur : il vit dans le localStorage du poste
+(un par tenant et utilisateur), ne transporte que des identifiants et des saisies (usager
+rapproché = `socle_contact_id` seul, relu via `socle-proxy /v1/contacts/get` à la reprise ;
+démarche rechargée ; pièces à redéposer) et le `request_id` du brouillon sert d'idempotence
+à la création (rejeu → 409).
 
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 

@@ -9,10 +9,17 @@ Interface en **français**.
 
 ## État du projet
 
-**Fondations en place, interface à venir** — le schéma Supabase (tenants, demandes,
-journal, RLS, storage) est appliqué et testé (voir [`docs/data-model.md`](docs/data-model.md)),
-mais aucune interface métier ni intégration n'est encore construite. L'architecture validée
-est décrite dans [`docs/architecture-proposee.md`](docs/architecture-proposee.md).
+**Fondations et premier parcours agent livrés** — le schéma Supabase (tenants, demandes,
+journal, RLS, storage, miroir léger du référentiel Socle) est appliqué et testé (voir
+[`docs/data-model.md`](docs/data-model.md)) ; l'API d'ingestion multi-source `requests-api`
+est déployée ([`docs/api-ingestion.md`](docs/api-ingestion.md)) ; l'interface agent couvre la
+liste et la fiche des demandes, leur cycle de vie, et le **parcours de création guidé**
+(démarche Socle obligatoire → usager rapproché au Socle → formulaire paramétré →
+récapitulatif, avec brouillon local, détection des demandes proches et récépissé) ; une zone
+superadmin gère organisations et utilisateurs. Restent à venir : visibilité par sous-arbre
+d'organisation, copie asynchrone des pièces ingérées, webhooks sortants, purge RGPD et la base
+de connaissances des procédures. L'architecture validée est décrite dans
+[`docs/architecture-proposee.md`](docs/architecture-proposee.md).
 
 ## Démarrer
 
@@ -38,8 +45,11 @@ npm test         # vitest run ; npm run test:watch en veille
 
 ## Documentation
 
-- [`CLAUDE.md`](CLAUDE.md) — règles de développement, invariants, pièges (lecture obligatoire).
+- [`CLAUDE.md`](CLAUDE.md) — règles de développement, invariants, pièges (lecture obligatoire) ;
+  le détail de chaque feature vit dans `src/features/<feature>/CLAUDE.md`.
 - [`AGENTS.md`](AGENTS.md) — pointeur pour les agents IA.
+- [`supabase/functions/README.md`](supabase/functions/README.md) — plan et état des edge
+  functions (ingestion, proxy Socle, création guidée, superadmin, sync).
 - [`docs/architecture-proposee.md`](docs/architecture-proposee.md) — architecture validée :
   modèle de données, frontières Socle/Iris/Clara, cycle de vie, RLS, contrats d'intégration.
 - [`docs/data-model.md`](docs/data-model.md) — schéma appliqué : tables, gardes SQL,

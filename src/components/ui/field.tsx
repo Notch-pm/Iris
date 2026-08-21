@@ -3,7 +3,7 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 
 interface FieldProps {
-  label?: string;
+  label?: React.ReactNode;
   hint?: string;
   error?: string;
   htmlFor?: string;

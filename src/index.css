@@ -118,3 +118,19 @@ button, a, input, select, textarea {
               color          var(--duration-base) var(--ease-out),
               box-shadow     var(--duration-base) var(--ease-out);
 }
+
+/* Récépissé de dépôt : seule la zone .print-receipt est imprimée (le shell,
+   le parcours et le rail sont masqués). */
+.print-receipt { display: none; }
+@media print {
+  body * { visibility: hidden; }
+  .print-receipt, .print-receipt * { visibility: visible; }
+  .print-receipt {
+    display: block;
+    position: absolute;
+    inset: 0;
+    padding: 24mm 20mm;
+    background: white;
+    color: black;
+  }
+}

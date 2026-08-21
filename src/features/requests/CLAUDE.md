@@ -1,0 +1,77 @@
+# Feature : parcours agent (`src/features/requests`, `src/features/tenant`)
+
+Chargé automatiquement quand on travaille dans ce dossier. Les invariants globaux du
+`CLAUDE.md` racine (Socle source de vérité, snapshots construits côté serveur, RLS = vérité,
+aucun miroir d'usagers, aucune demande libre) priment sur tout ce qui suit.
+
+Premier parcours applicatif, livré et **vérifié en navigateur réel** (2026-08-20) : connexion →
+sélection du tenant → liste filtrée/paginée → création manuelle → fiche → prise en charge →
+note interne → résolution avec texte de clôture → journal.
+
+- **`TenantProvider`** (`features/tenant/`) : appartenances de l'utilisateur
+  (`organization_members` + `organizations`), tenant courant persisté en localStorage,
+  sélecteur dans le header d'`AppShell` (masqué si un seul tenant), rôle affiché en badge.
+- **`statuts.ts`** (pur, testé) : libellés FR des 7 statuts/motifs/priorités et
+  **`allowedTransitions(status, role)`** — miroir EXACT de la garde SQL
+  `requests_guard_transition` (exigences : assigné, texte de clôture, motifs ; portes :
+  réouverture superviseur+, archivage/désarchivage admin ; lecteur = rien). ⚠️ Ce module ne
+  protège rien : il reflète ce que le trigger acceptera. Toute évolution de la matrice SQL se
+  répercute ICI et dans `statuts.test.ts`.
+- **`facets.ts`** (pur, testé) : facettes destinataire/démarche/source déduites des demandes
+  existantes du tenant — catalogue provisoire jusqu'à la sync du référentiel Socle.
+- **Parcours de création guidé** (`features/requests/creation/`, page `/demandes/nouvelle`,
+  design Claude Design « Écran création demande citoyens » implémenté et vérifié en
+  navigateur le 2026-08-21) : l'ancien dialogue générique est SUPPRIMÉ — plus aucun INSERT
+  direct de demande depuis le navigateur. Page **pleine hauteur** (`useFullBleedLayout`,
+  contexte `ShellLayoutContext` d'`AppShell`) : en-tête + stepper 4 étapes, zone de saisie,
+  **rail latéral** (fiche de la demande : progression/complétude ; demandes proches), pied
+  d'actions. Étapes : **démarche** Socle active (`ProcedurePicker` : recherche, chips de
+  catégories de démarches, cartes avec volume du mois ; obligatoire, cache du tenant) →
+  **usager** (feature `contacts`) → **formulaire** (objet/priorité/description +
+  `form_schema` : sections, choix, conditions visibleIf/requiredIf avec pastille
+  « conditionnel », pièces en zone de dépôt avec formats/cardinalités ; `requester_config`
+  respecté) → **récapitulatif** (groupes relisibles avec « Modifier », **organisation
+  destinataire** en sélecteur inline pré-rempli par la démarche, bannière de doublon
+  probable) → **edge function `create-request-from-procedure`** → écran « Demande créée »
+  (ouvrir la fiche, **récépissé imprimable** `.print-receipt`, nouvelle saisie).
+  - **Brouillon local** (`draft.ts` pur/testé, `useCreationDraft`) : localStorage, un par
+    tenant et utilisateur, enregistré en différé à chaque saisie ; ne transporte que des
+    identifiants et saisies (usager rapproché = id seul, **relu via `socle-proxy
+    /v1/contacts/get` à la reprise** ; démarche rechargée ; pièces à redéposer). Proposé à
+    la reprise au retour sur la page ; effacé à la création.
+  - **Demandes proches** (`proches.ts` pur/testé, `useNearbyRequests`) : détection
+    best-effort dès que l'usager est désigné (même `socle_contact_id`, ou nom déclaré à
+    titre indicatif — **jamais un doublon probable sur le seul nom**), score 0-100 (même
+    démarche, encore ouverte, récence), seuil 85 = bannière au récapitulatif. **Liaison
+    explicite** par l'agent : `useLinkRequests` insère des `request_links` `liee_a` dans
+    les deux sens APRÈS création (RLS writer + trigger de périmètre ; échec affiché, jamais
+    bloquant). Décision humaine, aucune clôture automatique.
+  - Score de rapprochement Socle = **classement relatif** à la réponse (contrat
+    contacts-api) : affiché en barre relative au meilleur candidat, jamais en « % ».
+  - Onglet « Procédure » du rail (base de connaissances / assistant) : **différé** (second
+    temps, décision PO 2026-08-21).
+  - **Moteur partagé** `@fn/create-request-from-procedure/_shared/procedureForm.ts` (pur,
+    testé, miroir EXACT du contrat Socle formSchema v1/conditions/requesterFields) : rendu et
+    validation de confort côté client, validation d'AUTORITÉ côté serveur sur la démarche
+    **rechargée depuis Socle**. Clé de `form_data` = clé machine `key` (repli sur l'id si
+    vide). Alias `@fn` → `supabase/functions/` (vite + tsconfig).
+  - **`create-request-from-procedure`** (edge, JWT + rôle agent/administrateur en code, CORS
+    allowlist) : cache du tenant = périmètre, démarche rechargée depuis Socle (503/502 si
+    injoignable — contrairement à l'ingestion, jamais refusée), snapshots construits côté
+    serveur (toute clé `procedure_snapshot`/inconnue dans le payload → 400), contact
+    rapproché **relu depuis contacts-api** (identité de vérité), écriture ATOMIQUE via la
+    RPC `create_request_from_procedure` (demande + pièces + événement
+    `request_created_from_procedure`, attribution à l'agent — tout ou rien). Pièces :
+    uploadées par le navigateur sur `{org}/{draftId}/…` AVANT l'appel (policy storage sur le
+    1er segment), déclarées ensuite (chemin vérifié préfixé au brouillon).
+- **`useRequests.ts`** : hooks TanStack Query (liste paginée `range`+`count`, facettes, fiche,
+  satellites, membres du tenant) + mutations (transition via `buildTransitionUpdate`,
+  affectation, notes, liaison `useLinkRequests`). Pas d'appel `supabase` direct dans les
+  pages.
+- **Pages** : `RequestsListPage` (filtres statut/destinataire/démarche/priorité/source,
+  pagination 20, bouton « Nouvelle demande » → `/demandes/nouvelle`), `RequestDetailPage` (snapshot, pièces avec URL
+  signée, liens externes, affectation + historique, messages internes — « ne quittent jamais
+  Iris » —, journal `request_events` en lecture seule), `TransitionActions` (boutons + dialogue
+  motif/texte/assigné).
+- RLS = source de vérité : l'UI ne masque les actions que par confort ; toute erreur de garde
+  SQL est affichée telle quelle.

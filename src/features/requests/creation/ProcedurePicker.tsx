@@ -1,0 +1,149 @@
+// Étape 1 — choix de la démarche Socle : recherche, filtre par catégorie de
+// démarche, cartes. La démarche est obligatoire (aucune demande libre) et vient
+// exclusivement du cache du tenant.
+
+import * as React from "react";
+import { Loader2, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+import type { SocleProcedureRow } from "@/features/socle/useSocleCatalog";
+import {
+  ALL_CATEGORIES,
+  filterProcedures,
+  procedureCategories,
+  procedureTypeLabel,
+  volumeLabel,
+} from "./procedureSearch";
+
+interface Props {
+  rows: SocleProcedureRow[];
+  loading: boolean;
+  /** Volume de demandes du mois par démarche (absent tant que non chargé). */
+  counts?: Record<string, number>;
+  selectedId: string;
+  /** Démarche dont le snapshot est en cours de chargement depuis le Socle. */
+  loadingId: string | null;
+  onSelect: (socleProcedureId: string) => void;
+}
+
+export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, onSelect }: Props) {
+  const [query, setQuery] = React.useState("");
+  const [category, setCategory] = React.useState(ALL_CATEGORIES);
+
+  const chips = React.useMemo(() => procedureCategories(rows), [rows]);
+  const visible = React.useMemo(
+    () => filterProcedures(rows, { query, category }),
+    [rows, query, category],
+  );
+
+  return (
+    <div className="flex max-w-[820px] flex-col gap-4">
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          aria-label="Rechercher une démarche"
+          placeholder="Rechercher une démarche — nom, catégorie, mot-clé"
+          className="pl-9"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          autoFocus
+        />
+      </div>
+
+      {chips.length > 2 ? (
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Catégorie de démarche">
+          {chips.map((c) => {
+            const active = category === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                onClick={() => setCategory(c.key)}
+                className={cn(
+                  "h-[30px] rounded-full border px-3 text-xs font-semibold transition-colors",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-secondary hover:bg-secondary",
+                )}
+              >
+                {c.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div className="mt-0.5 flex items-baseline gap-2">
+        <h3 className="text-base font-semibold">Démarches disponibles</h3>
+        <small className="text-xs text-muted-foreground">
+          {loading ? "chargement…" : `${visible.length} sur ${rows.length}`}
+        </small>
+      </div>
+
+      {!loading && rows.length === 0 ? (
+        <div className="rounded-[14px] border border-dashed border-border p-5 text-sm text-muted-foreground">
+          Aucune démarche active pour ce tenant — le référentiel Socle doit être synchronisé
+          avant de pouvoir consigner une demande.
+        </div>
+      ) : null}
+
+      {!loading && rows.length > 0 && visible.length === 0 ? (
+        <div className="rounded-[14px] border border-dashed border-border p-5 text-sm text-muted-foreground">
+          Aucune démarche ne correspond à cette recherche.
+        </div>
+      ) : null}
+
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2" role="listbox" aria-label="Démarches">
+        {visible.map((row) => {
+          const selected = row.socle_id === selectedId;
+          const isLoading = row.socle_id === loadingId;
+          const meta = [row.category_name, procedureTypeLabel(row.type)].filter(Boolean);
+          const volume = volumeLabel(counts ? (counts[row.socle_id] ?? 0) : undefined);
+          return (
+            <button
+              key={row.socle_id}
+              type="button"
+              role="option"
+              aria-selected={selected}
+              disabled={loadingId !== null}
+              onClick={() => onSelect(row.socle_id)}
+              className={cn(
+                "flex flex-col gap-1.5 rounded-[14px] border bg-card p-3.5 text-left transition-shadow",
+                selected
+                  ? "border-primary bg-primary/[0.04] shadow-airbnb-md"
+                  : "border-border shadow-airbnb-sm hover:shadow-airbnb-md",
+                "disabled:cursor-wait",
+              )}
+            >
+              <span className="flex items-center justify-between gap-2.5">
+                <span className="text-[15px] font-bold leading-tight">{row.name}</span>
+                <span
+                  className={cn(
+                    "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold",
+                    selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
+                  )}
+                >
+                  {isLoading ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : null}
+                  {isLoading ? "Chargement" : selected ? "Choisie" : "Choisir"}
+                </span>
+              </span>
+              {meta.length > 0 ? (
+                <span className="text-xs text-muted-foreground">{meta.join(" · ")}</span>
+              ) : (
+                <span className="text-xs text-muted-foreground">Sans catégorie</span>
+              )}
+              {volume ? (
+                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                  <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
+                  {volume}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

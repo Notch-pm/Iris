@@ -1,15 +1,19 @@
-// Étape « Demandeur » : identification de l'usager auprès du référentiel
-// Socle. Aucun rapprochement automatique — chaque issue (contact choisi, usager
-// créé, poursuite sans rapprochement, dépôt anonyme) est un geste explicite.
+// Étape « Usager » : identification du demandeur auprès du référentiel
+// Socle. L'agent renseigne l'identité ; les homonymes du Socle sont recherchés
+// AUTOMATIQUEMENT au fil de la saisie (débounce) et proposés — le choix d'un
+// candidat reste un geste explicite (clic sur la fiche), jamais une sélection
+// automatique. Sans correspondance : création de l'usager dans le Socle (avec
+// rejeu anti-doublon juste avant), ou poursuite sans rapprochement.
 // Les champs proposés et l'anonymat sont gouvernés par le requester_config de
 // la démarche (masqué / visible / obligatoire).
 
 import * as React from "react";
-import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Loader2, UserRoundPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import {
   allowsAnonymous,
   parseRequesterConfig,
@@ -21,15 +25,15 @@ import {
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
 import {
   buildContactCreatePayload,
-  buildMatchIdentity,
   candidateSummary,
   duplicateCheckIdentity,
   EMPTY_NEW_CONTACT,
   isNameOnlyMatch,
+  liveSearchIdentity,
   newContactFromDeclared,
   reasonLabel,
-  resolutionSummary,
   type MatchCandidate,
+  type MatchIdentity,
   type NewContactForm,
   type RequesterResolution,
   type SocleContact,
@@ -40,6 +44,12 @@ const AUDIENCE_LABELS: Record<Audience, string> = {
   citoyen: "Citoyen", entreprise: "Entreprise", association: "Association",
 };
 
+/** Raisons qui reposent sur un identifiant fort (jamais le seul nom). */
+const STRONG_REASONS = new Set(["email_exact", "phone_exact", "siret_exact", "birth_date_match"]);
+
+/** Délai après la dernière frappe avant d'interroger le Socle. */
+const LIVE_SEARCH_DELAY_MS = 450;
+
 interface Props {
   organizationId: string;
   /** requester_config brut de la démarche (snapshot socle-proxy). */
@@ -48,43 +58,96 @@ interface Props {
   onResolve: (resolution: RequesterResolution | null) => void;
 }
 
-function CandidateList({ candidates, selectedId, onSelect, name }: {
-  candidates: MatchCandidate[];
-  selectedId: string | null;
-  onSelect: (id: string) => void;
-  name: string;
+function initialsOf(title: string): string {
+  return title
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]!.toUpperCase())
+    .join("") || "?";
+}
+
+function CandidateRow({ candidate, maxScore, onPick }: {
+  candidate: MatchCandidate;
+  maxScore: number;
+  onPick: () => void;
 }) {
+  const { contact, score, reasons } = candidate;
+  const summary = candidateSummary(contact);
+  const nameOnly = isNameOnlyMatch(reasons);
+  const strong = !nameOnly && reasons.some((r) => STRONG_REASONS.has(r));
+  // Le score Socle est un classement relatif à la réponse : la barre compare
+  // les candidats entre eux, jamais à un seuil absolu.
+  const ratio = maxScore > 0 ? Math.max(0.08, Math.min(1, score / maxScore)) : 0;
+  const tone = strong ? "text-primary" : nameOnly ? "text-secondary-foreground" : "text-foreground";
+  const bar = strong ? "bg-primary" : nameOnly ? "bg-secondary" : "bg-muted-foreground/60";
+
   return (
-    <ul className="flex flex-col gap-2">
-      {candidates.map(({ contact, score, reasons }) => {
-        const summary = candidateSummary(contact);
-        return (
-          <li key={contact.id}>
-            <label className={`flex cursor-pointer items-start gap-3 rounded-lg border p-3 ${
-              selectedId === contact.id ? "border-primary bg-secondary/40" : "border-border"
-            }`}>
-              <input type="radio" name={name} className="mt-1" checked={selectedId === contact.id}
-                onChange={() => onSelect(contact.id)} />
-              <span className="flex flex-1 flex-col gap-1">
-                <span className="flex flex-wrap items-center gap-2">
-                  <span className="font-semibold">{summary.title}</span>
-                  <Badge variant="secondary">Score {score}</Badge>
-                  {reasons.map((r) => <Badge key={r} variant="muted">{reasonLabel(r)}</Badge>)}
-                </span>
-                {summary.details.length > 0 ? (
-                  <span className="text-sm text-muted-foreground">{summary.details.join(" · ")}</span>
-                ) : null}
-                {isNameOnlyMatch(reasons) ? (
-                  <span className="text-xs text-muted-foreground">
-                    Similitude de nom uniquement — vérifiez avant de choisir.
-                  </span>
-                ) : null}
+    <button
+      type="button"
+      onClick={onPick}
+      className="group flex w-full items-center justify-between gap-3.5 rounded-[14px] border border-border bg-card px-4 py-3 text-left shadow-airbnb-sm transition-all hover:border-primary hover:shadow-airbnb-md"
+    >
+      <span className="flex min-w-0 items-center gap-3">
+        <span
+          className={cn(
+            "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full text-[13px] font-bold",
+            strong ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+          )}
+          aria-hidden="true"
+        >
+          {initialsOf(summary.title)}
+        </span>
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-[15px] font-bold leading-tight">{summary.title}</span>
+            {nameOnly ? (
+              <span className="rounded-full bg-secondary/60 px-1.5 py-0.5 text-[10px] font-bold leading-none text-secondary-foreground">
+                Nom seul — à vérifier
               </span>
-            </label>
-          </li>
-        );
-      })}
-    </ul>
+            ) : strong ? (
+              <span className="rounded-full bg-success/15 px-1.5 py-0.5 text-[10px] font-bold leading-none text-primary">
+                Correspondance forte
+              </span>
+            ) : null}
+          </span>
+          {summary.details.length > 0 ? (
+            <span className="text-xs text-muted-foreground">{summary.details.join(" · ")}</span>
+          ) : null}
+          {reasons.length > 0 ? (
+            <span className="text-[11px] text-muted-foreground">{reasons.map(reasonLabel).join(" · ")}</span>
+          ) : null}
+        </span>
+      </span>
+      <span className="flex shrink-0 items-center gap-4">
+        <span className="flex flex-col items-end gap-1.5">
+          <span className={cn("text-[15px] font-extrabold leading-none tabular-nums", tone)}>{score}</span>
+          <span className="block h-[5px] w-[88px] overflow-hidden rounded-full bg-muted">
+            <span className={cn("block h-full rounded-full", bar)} style={{ width: `${Math.round(ratio * 100)}%` }} />
+          </span>
+          <span className="text-[10px] text-muted-foreground">classement Socle</span>
+        </span>
+        <span className="rounded-full bg-muted px-2.5 py-1 text-[10.5px] font-bold text-muted-foreground transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+          Choisir
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function CandidateList({ candidates, onPick }: {
+  candidates: MatchCandidate[];
+  onPick: (contact: SocleContact) => void;
+}) {
+  const maxScore = Math.max(0, ...candidates.map((c) => c.score));
+  return (
+    <div role="list" aria-label="Usagers correspondants" className="flex flex-col gap-2.5">
+      {candidates.map((c) => (
+        <div role="listitem" key={c.contact.id}>
+          <CandidateRow candidate={c} maxScore={maxScore} onPick={() => onPick(c.contact)} />
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -96,15 +159,15 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
   const [audience, setAudience] = React.useState<Audience>(audiences[0]);
   const [declared, setDeclared] = React.useState<Record<string, string>>({});
   const [matches, setMatches] = React.useState<MatchCandidate[] | null>(null);
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
-  const [assumeNoMatch, setAssumeNoMatch] = React.useState(false);
+  const [searching, setSearching] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
   const [mode, setMode] = React.useState<"recherche" | "creation">("recherche");
   const [createForm, setCreateForm] = React.useState<NewContactForm>(EMPTY_NEW_CONTACT);
   const [duplicates, setDuplicates] = React.useState<MatchCandidate[] | null>(null);
-  const [dupSelectedId, setDupSelectedId] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const searchSeq = React.useRef(0);
 
-  const match = useMatchContacts();
+  const { mutateAsync: runMatch } = useMatchContacts();
   const create = useCreateContact();
 
   const fields = visibleRequesterFields(config, audience);
@@ -112,32 +175,46 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
   const setC = <K extends keyof NewContactForm>(key: K, value: string) =>
     setCreateForm((f) => ({ ...f, [key]: value }));
 
+  // Recherche d'homonymes au fil de la saisie : débounce, réponses périmées
+  // ignorées (compteur), silence tant qu'aucun discriminant n'est saisi.
+  const liveIdentity = liveSearchIdentity(audience, declared);
+  const liveSignature = liveIdentity ? JSON.stringify(liveIdentity) : "";
+  React.useEffect(() => {
+    if (mode !== "recherche" || liveSignature === "") {
+      searchSeq.current += 1;
+      setMatches(null);
+      setSearching(false);
+      return;
+    }
+    const identity = JSON.parse(liveSignature) as MatchIdentity;
+    const id = ++searchSeq.current;
+    setSearching(true);
+    const timer = window.setTimeout(() => {
+      runMatch({ organizationId, identity })
+        .then((found) => {
+          if (searchSeq.current !== id) return;
+          setMatches(found);
+          setSearchError(null);
+        })
+        .catch((err) => {
+          if (searchSeq.current !== id) return;
+          setMatches(null);
+          setSearchError(err instanceof Error ? err.message : "Recherche impossible.");
+        })
+        .finally(() => {
+          if (searchSeq.current === id) setSearching(false);
+        });
+    }, LIVE_SEARCH_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [liveSignature, mode, organizationId, runMatch]);
+
   function switchAudience(next: Audience) {
     setAudience(next);
-    setMatches(null);
-    setSelectedId(null);
     setError(null);
-  }
-
-  async function runSearch() {
-    setError(null);
-    setSelectedId(null);
-    const built = buildMatchIdentity(audience, declared, declared.date_naissance);
-    if (!built.ok) { setError(built.message); return; }
-    try {
-      setMatches(await match.mutateAsync({ organizationId, identity: built.identity }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Recherche impossible.");
-    }
   }
 
   function resolveContact(contact: SocleContact) {
     onResolve({ kind: "contact", audience, contact });
-  }
-
-  function useSelected(from: MatchCandidate[], id: string | null) {
-    const candidate = from.find((c) => c.contact.id === id);
-    if (candidate) resolveContact(candidate.contact);
   }
 
   function proceedWithoutMatch() {
@@ -155,7 +232,6 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
   function openCreate() {
     setError(null);
     setDuplicates(null);
-    setDupSelectedId(null);
     setCreateForm(newContactFromDeclared(declared, declared.date_naissance));
     setMode("creation");
   }
@@ -170,10 +246,9 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
         // potentiel tant que l'agent ne l'a pas explicitement écarté.
         const check = duplicateCheckIdentity(audience, createForm);
         if (check.ok) {
-          const found = await match.mutateAsync({ organizationId, identity: check.identity });
+          const found = await runMatch({ organizationId, identity: check.identity });
           if (found.length > 0) {
             setDuplicates(found);
-            setDupSelectedId(null);
             return;
           }
         }
@@ -186,9 +261,28 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
   }
 
   if (resolution) {
+    const title = resolution.kind === "anonyme"
+      ? "Dépôt anonyme (assumé)"
+      : resolution.kind === "contact"
+        ? candidateSummary(resolution.contact).title
+        : [resolution.declared.nom_naissance || resolution.declared.nom_usuel, resolution.declared.prenoms]
+            .filter(Boolean).join(" ") || resolution.declared.raison_sociale || "Identité déclarée";
+    const sub = resolution.kind === "contact"
+      ? candidateSummary(resolution.contact).details.join(" · ") || "Usager Socle rapproché"
+      : resolution.kind === "sans_rapprochement"
+        ? "Sans rapprochement — identité déclarée (assumé)"
+        : "Aucune identité conservée";
     return (
-      <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-secondary/30 p-3">
-        <p className="text-sm font-medium">{resolutionSummary(resolution)}</p>
+      <div className="flex w-full max-w-[1180px] items-center justify-between gap-3 rounded-[14px] border border-primary/30 bg-primary/[0.04] px-4 py-3">
+        <span className="flex min-w-0 items-center gap-3">
+          <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-primary text-[13px] font-bold text-primary-foreground" aria-hidden="true">
+            {initialsOf(title)}
+          </span>
+          <span className="flex min-w-0 flex-col">
+            <span className="text-[15px] font-bold leading-tight">{title}</span>
+            <span className="truncate text-xs text-muted-foreground">{sub}</span>
+          </span>
+        </span>
         <Button type="button" variant="outline" size="sm" onClick={() => onResolve(null)}>
           Modifier
         </Button>
@@ -196,118 +290,166 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
     );
   }
 
-  const pending = match.isPending || create.isPending;
+  const pending = create.isPending;
+  const hasMatches = matches !== null && matches.length > 0;
+  const noMatch = matches !== null && matches.length === 0 && !searching;
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex w-full max-w-[1180px] flex-col gap-4">
       {audiences.length > 1 ? (
-        <div className="flex gap-2" role="radiogroup" aria-label="Public demandeur">
-          {audiences.map((a) => (
-            <Button key={a} type="button" size="sm"
-              variant={a === audience ? "primary" : "outline"}
-              onClick={() => switchAudience(a)}>
-              {AUDIENCE_LABELS[a]}
-            </Button>
-          ))}
+        <div className="flex gap-1.5" role="radiogroup" aria-label="Public demandeur">
+          {audiences.map((a) => {
+            const active = a === audience;
+            return (
+              <button key={a} type="button" role="radio" aria-checked={active}
+                onClick={() => switchAudience(a)}
+                className={cn(
+                  "h-[30px] rounded-full border px-3 text-xs font-semibold transition-colors",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border bg-card text-muted-foreground hover:border-secondary hover:bg-secondary",
+                )}>
+                {AUDIENCE_LABELS[a]}
+              </button>
+            );
+          })}
         </div>
       ) : null}
 
       {mode === "recherche" ? (
         <>
-          <div className="grid grid-cols-2 gap-3">
-            {fields.map(({ def, visibility }) => (
-              <Field key={def.key} label={def.label} htmlFor={`req-${def.key}`}
-                required={visibility === "obligatoire"}>
-                {def.key === "civilite" ? (
-                  <Select id={`req-${def.key}`} value={declared[def.key] ?? ""}
-                    onChange={(e) => setD(def.key, e.target.value)}>
-                    <option value="">—</option>
-                    <option value="madame">Madame</option>
-                    <option value="monsieur">Monsieur</option>
-                  </Select>
-                ) : (
-                  <Input id={`req-${def.key}`} value={declared[def.key] ?? ""}
-                    type={def.key === "courriel" ? "email" : "text"}
-                    onChange={(e) => setD(def.key, e.target.value)} />
-                )}
-              </Field>
-            ))}
-            {audience === "citoyen" ? (
-              <Field label="Date de naissance" htmlFor="req-date_naissance"
-                hint="Sert au rapprochement — conservée dans l'identité déclarée.">
-                <Input id="req-date_naissance" type="date" value={declared.date_naissance ?? ""}
-                  onChange={(e) => setD("date_naissance", e.target.value)} />
-              </Field>
-            ) : null}
-          </div>
+          <section className="flex flex-col gap-3.5 rounded-[14px] border border-border bg-card p-4 shadow-airbnb-sm">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h3 className="text-base font-semibold">Identité de l'usager</h3>
+              <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                {searching ? <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden="true" /> : null}
+                {searching
+                  ? "Recherche d'homonymes dans le Socle…"
+                  : "Les homonymes du Socle s'affichent automatiquement au fil de la saisie."}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
+              {fields.map(({ def, visibility }) => (
+                <Field key={def.key} label={def.label} htmlFor={`req-${def.key}`}
+                  required={visibility === "obligatoire"}>
+                  {def.key === "civilite" ? (
+                    <Select id={`req-${def.key}`} className="h-11 px-4" value={declared[def.key] ?? ""}
+                      onChange={(e) => setD(def.key, e.target.value)}>
+                      <option value="">—</option>
+                      <option value="madame">Madame</option>
+                      <option value="monsieur">Monsieur</option>
+                    </Select>
+                  ) : (
+                    <Input id={`req-${def.key}`} value={declared[def.key] ?? ""}
+                      type={def.key === "courriel" ? "email" : "text"}
+                      autoComplete="off"
+                      autoFocus={def.key === "nom_naissance" || def.key === "raison_sociale"}
+                      onChange={(e) => setD(def.key, e.target.value)} />
+                  )}
+                </Field>
+              ))}
+              {audience === "citoyen" ? (
+                <Field label="Date de naissance" htmlFor="req-date_naissance"
+                  hint="Sert au rapprochement — conservée dans l'identité déclarée.">
+                  <Input id="req-date_naissance" type="date" value={declared.date_naissance ?? ""}
+                    onChange={(e) => setD("date_naissance", e.target.value)} />
+                </Field>
+              ) : null}
+            </div>
+          </section>
 
-          <div>
-            <Button type="button" onClick={runSearch} disabled={pending}>
-              {match.isPending ? "Recherche…" : "Rechercher dans le Socle"}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <h3 className="text-base font-semibold">Correspondances dans le Socle</h3>
+              <small className="text-xs text-muted-foreground">
+                {matches === null
+                  ? (searching ? "recherche…" : "en attente de saisie")
+                  : `${matches.length} usager${matches.length > 1 ? "s" : ""} semblable${matches.length > 1 ? "s" : ""}`}
+              </small>
+            </div>
+            <Button type="button" variant={noMatch ? "primary" : "outline"} size="sm"
+              disabled={pending} onClick={openCreate}>
+              <UserRoundPlus />
+              Créer un nouvel usager
             </Button>
           </div>
 
-          {matches !== null ? (
-            matches.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                Aucun usager correspondant dans le Socle.
-              </p>
-            ) : (
-              <div className="flex flex-col gap-2">
-                <p className="text-sm font-medium">
-                  {matches.length} candidat{matches.length > 1 ? "s" : ""} — sélectionnez
-                  explicitement le bon usager, ou créez-en un nouveau.
-                </p>
-                <CandidateList candidates={matches} selectedId={selectedId}
-                  onSelect={setSelectedId} name="req-candidate" />
-                <div>
-                  <Button type="button" disabled={!selectedId || pending}
-                    onClick={() => useSelected(matches, selectedId)}>
-                    Utiliser ce contact
-                  </Button>
-                </div>
-              </div>
-            )
+          {searchError ? <p role="alert" className="text-sm text-destructive">{searchError}</p> : null}
+
+          {matches === null && !searching ? (
+            <p className="rounded-[14px] border border-dashed border-border p-4 text-sm text-muted-foreground">
+              Renseignez au moins un nom, une raison sociale, un SIRET, un courriel ou un téléphone :
+              les usagers déjà connus du Socle vous seront proposés ici.
+            </p>
           ) : null}
 
-          <div className="flex flex-col gap-3 rounded-lg border border-border p-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" variant="outline" disabled={pending} onClick={openCreate}>
-                Créer un nouvel usager dans le Socle
-              </Button>
-              {anonymousAllowed ? (
-                <Button type="button" variant="outline" disabled={pending}
-                  onClick={() => onResolve({ kind: "anonyme" })}>
-                  Dépôt anonyme (assumé)
+          {matches === null && searching ? (
+            <p className="flex items-center gap-2 rounded-[14px] border border-dashed border-border p-4 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Recherche dans le Socle…
+            </p>
+          ) : null}
+
+          {noMatch ? (
+            <div className="flex flex-col items-start gap-3 rounded-[14px] border border-border bg-card p-5 shadow-airbnb-sm">
+              <div className="flex flex-col gap-1">
+                <span className="font-bold">Aucun usager du Socle ne correspond à cette identité</span>
+                <small className="text-sm text-muted-foreground">
+                  Créez sa fiche dans le Socle (recommandé — elle sera réutilisable), ou poursuivez
+                  avec la seule identité déclarée.
+                </small>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" disabled={pending} onClick={openCreate}>
+                  <UserRoundPlus />
+                  Créer un nouvel usager
                 </Button>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Dépôt anonyme non permis : cette démarche rend une identité obligatoire.
-                </p>
-              )}
+                <Button type="button" variant="outline" disabled={pending} onClick={proceedWithoutMatch}>
+                  Poursuivre sans rapprochement
+                </Button>
+              </div>
             </div>
-            <label className="flex items-start gap-2 text-sm">
-              <input type="checkbox" className="mt-0.5" checked={assumeNoMatch}
-                onChange={(e) => setAssumeNoMatch(e.target.checked)} />
-              J'assume de poursuivre sans rapprochement : la demande portera la seule
-              identité déclarée, sans usager Socle rattaché.
-            </label>
+          ) : null}
+
+          {hasMatches ? (
+            <div className="flex flex-col gap-2.5">
+              <p className="text-sm text-muted-foreground">
+                Cliquez sur l'usager correspondant — une similitude de nom seule ne suffit jamais, vérifiez
+                les informations distinctives.
+              </p>
+              <CandidateList candidates={matches!} onPick={resolveContact} />
+              <p className="text-sm text-muted-foreground">
+                Aucun de ces usagers ?{" "}
+                <button type="button" className="font-semibold text-primary hover:underline" onClick={openCreate}>
+                  Créer un nouvel usager
+                </button>
+                {" · "}
+                <button type="button" className="font-semibold text-foreground hover:underline" onClick={proceedWithoutMatch}>
+                  Poursuivre sans rapprochement
+                </button>
+              </p>
+            </div>
+          ) : null}
+
+          {anonymousAllowed ? (
             <div>
-              <Button type="button" variant="outline" disabled={!assumeNoMatch || pending}
-                onClick={proceedWithoutMatch}>
-                Poursuivre sans rapprochement
+              <Button type="button" variant="ghost" size="sm" disabled={pending}
+                onClick={() => onResolve({ kind: "anonyme" })}>
+                Dépôt anonyme (assumé)
               </Button>
             </div>
-          </div>
+          ) : null}
         </>
       ) : (
-        <div className="flex flex-col gap-3">
-          <p className="text-sm font-medium">Créer un usager dans le référentiel Socle</p>
-          <div className="grid grid-cols-2 gap-3">
+        <div className="flex flex-col gap-3.5 rounded-[14px] border border-border bg-card p-4 shadow-airbnb-sm">
+          <div className="flex items-center gap-2">
+            <UserRoundPlus className="size-4 text-primary" aria-hidden="true" />
+            <h3 className="text-base font-semibold">Créer un usager dans le référentiel Socle</h3>
+          </div>
+          <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
             {audience === "citoyen" ? (
               <>
                 <Field label="Civilité" htmlFor="nc-civilite">
-                  <Select id="nc-civilite" value={createForm.civilite}
+                  <Select id="nc-civilite" className="h-11 px-4" value={createForm.civilite}
                     onChange={(e) => setC("civilite", e.target.value)}>
                     <option value="">—</option>
                     <option value="madame">Madame</option>
@@ -370,18 +512,14 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
           </div>
 
           {duplicates !== null && duplicates.length > 0 ? (
-            <div className="flex flex-col gap-2 rounded-lg border border-destructive/40 bg-destructive/5 p-3">
-              <p className="text-sm font-semibold">
+            <div className="flex flex-col gap-2.5 rounded-[14px] border border-secondary bg-secondary/30 p-3.5">
+              <p className="text-sm font-bold text-secondary-foreground">
                 Doublon potentiel : {duplicates.length} usager{duplicates.length > 1 ? "s" : ""} Socle
-                ressemble{duplicates.length > 1 ? "nt" : ""} à cette identité.
+                ressemble{duplicates.length > 1 ? "nt" : ""} à cette identité — cliquez sur la bonne
+                fiche, ou créez quand même.
               </p>
-              <CandidateList candidates={duplicates} selectedId={dupSelectedId}
-                onSelect={setDupSelectedId} name="dup-candidate" />
-              <div className="flex flex-wrap gap-2">
-                <Button type="button" disabled={!dupSelectedId || pending}
-                  onClick={() => useSelected(duplicates, dupSelectedId)}>
-                  Utiliser ce contact
-                </Button>
+              <CandidateList candidates={duplicates} onPick={resolveContact} />
+              <div>
                 <Button type="button" variant="outline" disabled={pending}
                   onClick={() => submitCreate(true)}>
                   {create.isPending ? "Création…" : "Créer quand même"}
@@ -398,6 +536,7 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
             ) : null}
             <Button type="button" variant="ghost" disabled={pending}
               onClick={() => { setMode("recherche"); setDuplicates(null); setError(null); }}>
+              <ArrowLeft />
               Retour à la recherche
             </Button>
           </div>

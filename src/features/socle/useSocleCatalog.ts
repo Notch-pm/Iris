@@ -23,6 +23,31 @@ export function useSocleOrganizationsCatalog(orgId: string) {
   });
 }
 
+export interface SocleProcedureRow {
+  socle_id: string;
+  name: string;
+  category_name: string | null;
+  type: string | null;
+}
+
+/** Démarches actives du cache (lignes brutes : nom, catégorie Socle, type) — sélecteur de démarche. */
+export function useSocleProcedureRows(orgId: string) {
+  return useQuery({
+    queryKey: ["socle-procedure-rows", orgId],
+    enabled: Boolean(orgId),
+    queryFn: async (): Promise<SocleProcedureRow[]> => {
+      const { data, error } = await supabase
+        .from("socle_procedure_cache")
+        .select("socle_id, name, category_name, type")
+        .eq("organization_id", orgId)
+        .is("obsoleted_at", null)
+        .order("name");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 export function useSocleProceduresCatalog(orgId: string) {
   return useQuery({
     queryKey: ["socle-procedures", orgId],

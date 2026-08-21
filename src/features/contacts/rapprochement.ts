@@ -110,6 +110,29 @@ export function buildMatchIdentity(
   return { ok: true, identity };
 }
 
+/**
+ * Critères de la recherche AUTOMATIQUE d'homonymes au fil de la saisie : mêmes
+ * règles que la recherche explicite, mais on attend un identifiant fort
+ * (courriel, téléphone, SIRET) ou un nom d'au moins deux caractères avant
+ * d'interroger le Socle — jamais sur une lettre isolée.
+ */
+export function liveSearchIdentity(
+  audience: Audience,
+  declared: Record<string, string>,
+): MatchIdentity | null {
+  const built = buildMatchIdentity(audience, declared, declared.date_naissance);
+  if (!built.ok) return null;
+  const id = built.identity;
+  const strong = Boolean(id.email || id.phones || id.siret);
+  const nameLength = Math.max(
+    (id.last_name ?? "").length,
+    (id.usage_name ?? "").length,
+    (id.legal_name ?? "").length,
+  );
+  if (!strong && nameLength < 2) return null;
+  return id;
+}
+
 // ---- Présentation des candidats --------------------------------------------
 
 /** Libellés FR des raisons de rapprochement Socle (raison inconnue = affichée telle quelle). */

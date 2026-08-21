@@ -19,6 +19,22 @@ export function useMatchContacts() {
   });
 }
 
+/**
+ * Relecture d'une fiche usager par identifiant (reprise d'un brouillon : le
+ * brouillon ne conserve que l'id, la fiche est toujours relue depuis le Socle).
+ */
+export function useGetContact() {
+  return useMutation({
+    mutationFn: async (vars: { organizationId: string; socleContactId: string }) => {
+      const data = await invokeEdge<{ contact: SocleContact }>(
+        "socle-proxy/v1/contacts/get",
+        { organization_id: vars.organizationId, socle_contact_id: vars.socleContactId },
+      );
+      return data.contact;
+    },
+  });
+}
+
 /** Création d'un usager — via contacts-api Socle uniquement (whitelist proxy). */
 export function useCreateContact() {
   return useMutation({
