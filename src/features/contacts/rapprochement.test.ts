@@ -32,9 +32,10 @@ describe("liveSearchIdentity", () => {
       .toEqual({ contact_type: "association", siret: "12345678900011" });
   });
 
-  it("rien sans discriminant ou avec une date invalide", () => {
+  it("rien sans discriminant ; une clé hors contrat est ignorée", () => {
     expect(liveSearchIdentity("citoyen", { prenoms: "Karim" })).toBeNull();
-    expect(liveSearchIdentity("citoyen", { nom_naissance: "Dupont", date_naissance: "1980" })).toBeNull();
+    expect(liveSearchIdentity("citoyen", { nom_naissance: "Dupont", date_naissance: "1980" }))
+      .toEqual({ contact_type: "personne", last_name: "Dupont" });
   });
 });
 
@@ -54,12 +55,12 @@ describe("buildMatchIdentity", () => {
     const r = buildMatchIdentity("citoyen", {
       nom_naissance: " Dupont ", prenoms: "Jeanne", courriel: "j@e.fr",
       tel_portable: "0612345678", tel_fixe: "",
-    }, "1985-03-12");
+    });
     expect(r).toEqual({
       ok: true,
       identity: {
         contact_type: "personne", last_name: "Dupont", first_name: "Jeanne",
-        email: "j@e.fr", phones: ["0612345678"], birth_date: "1985-03-12",
+        email: "j@e.fr", phones: ["0612345678"],
       },
     });
   });
@@ -72,10 +73,8 @@ describe("buildMatchIdentity", () => {
     });
   });
 
-  it("refuse une recherche sans discriminant ou avec date invalide", () => {
+  it("refuse une recherche sans discriminant", () => {
     expect(buildMatchIdentity("citoyen", { civilite: "Madame" })).toMatchObject({ ok: false });
-    expect(buildMatchIdentity("citoyen", { nom_naissance: "Dupont" }, "12/03/1985"))
-      .toMatchObject({ ok: false });
   });
 });
 
@@ -119,13 +118,13 @@ describe("création d'un usager", () => {
   it("ne produit que des clés whitelisted non vides — jamais d'internal_notes", () => {
     const r = buildContactCreatePayload("citoyen", {
       ...EMPTY_NEW_CONTACT, civilite: "Madame", lastName: " Dupont ", firstName: "Jeanne",
-      birthDate: "1985-03-12", email: "j@e.fr",
+      email: "j@e.fr",
     });
     expect(r).toEqual({
       ok: true,
       payload: {
         contact_type: "personne", civility: "madame", last_name: "Dupont",
-        first_name: "Jeanne", birth_date: "1985-03-12", email: "j@e.fr",
+        first_name: "Jeanne", email: "j@e.fr",
       },
     });
   });
@@ -141,19 +140,18 @@ describe("création d'un usager", () => {
   });
 
   it("newContactFromDeclared pré-remplit depuis l'identité déclarée", () => {
-    const form = newContactFromDeclared({ nom_naissance: "Dupont", courriel: "j@e.fr" }, "1985-03-12");
+    const form = newContactFromDeclared({ nom_naissance: "Dupont", courriel: "j@e.fr" });
     expect(form.lastName).toBe("Dupont");
     expect(form.email).toBe("j@e.fr");
-    expect(form.birthDate).toBe("1985-03-12");
   });
 
   it("duplicateCheckIdentity rejoue les mêmes critères que la recherche", () => {
     const r = duplicateCheckIdentity("citoyen", {
-      ...EMPTY_NEW_CONTACT, lastName: "Dupont", email: "j@e.fr", birthDate: "1985-03-12",
+      ...EMPTY_NEW_CONTACT, lastName: "Dupont", email: "j@e.fr",
     });
     expect(r).toEqual({
       ok: true,
-      identity: { contact_type: "personne", last_name: "Dupont", email: "j@e.fr", birth_date: "1985-03-12" },
+      identity: { contact_type: "personne", last_name: "Dupont", email: "j@e.fr" },
     });
   });
 });

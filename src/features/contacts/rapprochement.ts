@@ -56,23 +56,19 @@ export interface MatchIdentity {
   first_name?: string;
   legal_name?: string;
   siret?: string;
-  birth_date?: string;
   email?: string;
   phones?: string[];
   limit?: number;
 }
 
-const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-
 /**
- * Identité déclarée (clés du contrat requester_config) + date de naissance →
- * critères de rapprochement Socle. Refuse une recherche sans discriminant
- * (nom, raison sociale, SIRET, e-mail ou téléphone).
+ * Identité déclarée (clés du contrat requester_config) → critères de
+ * rapprochement Socle. Refuse une recherche sans discriminant (nom, raison
+ * sociale, SIRET, e-mail ou téléphone).
  */
 export function buildMatchIdentity(
   audience: Audience,
   declared: Record<string, string>,
-  birthDate?: string,
 ): { ok: true; identity: MatchIdentity } | { ok: false; message: string } {
   const t = (v: string | undefined) => (v ?? "").trim();
   const identity: MatchIdentity = { contact_type: audienceContactType(audience) };
@@ -88,14 +84,6 @@ export function buildMatchIdentity(
   if (t(declared.courriel) !== "") identity.email = t(declared.courriel);
   const phones = [t(declared.tel_portable), t(declared.tel_fixe)].filter((p) => p !== "");
   if (phones.length > 0) identity.phones = phones;
-
-  const bd = t(birthDate ?? declared.date_naissance);
-  if (bd !== "") {
-    if (!DATE_RE.test(bd)) {
-      return { ok: false, message: "Date de naissance invalide (format AAAA-MM-JJ)." };
-    }
-    identity.birth_date = bd;
-  }
 
   const hasDiscriminant = Boolean(
     identity.last_name || identity.usage_name || identity.legal_name
@@ -120,7 +108,7 @@ export function liveSearchIdentity(
   audience: Audience,
   declared: Record<string, string>,
 ): MatchIdentity | null {
-  const built = buildMatchIdentity(audience, declared, declared.date_naissance);
+  const built = buildMatchIdentity(audience, declared);
   if (!built.ok) return null;
   const id = built.identity;
   const strong = Boolean(id.email || id.phones || id.siret);
@@ -199,7 +187,6 @@ export interface NewContactForm {
   firstName: string;
   legalName: string;
   siret: string;
-  birthDate: string;
   email: string;
   mobilePhone: string;
   landlinePhone: string;
@@ -210,15 +197,12 @@ export interface NewContactForm {
 
 export const EMPTY_NEW_CONTACT: NewContactForm = {
   civilite: "", lastName: "", usageName: "", firstName: "", legalName: "", siret: "",
-  birthDate: "", email: "", mobilePhone: "", landlinePhone: "",
+  email: "", mobilePhone: "", landlinePhone: "",
   addressLine1: "", postalCode: "", city: "",
 };
 
 /** Pré-remplit le formulaire de création depuis l'identité déclarée. */
-export function newContactFromDeclared(
-  declared: Record<string, string>,
-  birthDate?: string,
-): NewContactForm {
+export function newContactFromDeclared(declared: Record<string, string>): NewContactForm {
   return {
     ...EMPTY_NEW_CONTACT,
     civilite: declared.civilite ?? "",
@@ -227,7 +211,6 @@ export function newContactFromDeclared(
     firstName: declared.prenoms ?? "",
     legalName: declared.raison_sociale ?? "",
     siret: declared.siret ?? "",
-    birthDate: birthDate ?? declared.date_naissance ?? "",
     email: declared.courriel ?? "",
     mobilePhone: declared.tel_portable ?? "",
     landlinePhone: declared.tel_fixe ?? "",
@@ -250,9 +233,6 @@ export function buildContactCreatePayload(
   if (audience !== "citoyen" && t(form.legalName) === "") {
     return { ok: false, message: "La raison sociale est obligatoire pour créer cet usager." };
   }
-  if (t(form.birthDate) !== "" && !DATE_RE.test(t(form.birthDate))) {
-    return { ok: false, message: "Date de naissance invalide (format AAAA-MM-JJ)." };
-  }
   const entries: [string, string][] = [["contact_type", audienceContactType(audience)]];
   const push = (key: string, value: string) => {
     if (t(value) !== "") entries.push([key, t(value)]);
@@ -262,7 +242,6 @@ export function buildContactCreatePayload(
     push("last_name", form.lastName);
     push("usage_name", form.usageName);
     push("first_name", form.firstName);
-    push("birth_date", form.birthDate);
   } else {
     push("legal_name", form.legalName);
     push("siret", form.siret);
@@ -290,7 +269,7 @@ export function duplicateCheckIdentity(
     courriel: form.email,
     tel_portable: form.mobilePhone,
     tel_fixe: form.landlinePhone,
-  }, form.birthDate);
+  });
 }
 
 // ---- Résolution du demandeur ------------------------------------------------

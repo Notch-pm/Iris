@@ -232,7 +232,7 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
   function openCreate() {
     setError(null);
     setDuplicates(null);
-    setCreateForm(newContactFromDeclared(declared, declared.date_naissance));
+    setCreateForm(newContactFromDeclared(declared));
     setMode("creation");
   }
 
@@ -348,13 +348,6 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
                   )}
                 </Field>
               ))}
-              {audience === "citoyen" ? (
-                <Field label="Date de naissance" htmlFor="req-date_naissance"
-                  hint="Sert au rapprochement — conservée dans l'identité déclarée.">
-                  <Input id="req-date_naissance" type="date" value={declared.date_naissance ?? ""}
-                    onChange={(e) => setD("date_naissance", e.target.value)} />
-                </Field>
-              ) : null}
             </div>
           </section>
 
@@ -467,10 +460,6 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
                 <Field label="Prénom(s)" htmlFor="nc-firstname">
                   <Input id="nc-firstname" value={createForm.firstName}
                     onChange={(e) => setC("firstName", e.target.value)} />
-                </Field>
-                <Field label="Date de naissance" htmlFor="nc-birthdate">
-                  <Input id="nc-birthdate" type="date" value={createForm.birthDate}
-                    onChange={(e) => setC("birthDate", e.target.value)} />
                 </Field>
               </>
             ) : (

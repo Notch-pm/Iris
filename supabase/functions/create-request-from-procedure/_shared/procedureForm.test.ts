@@ -161,7 +161,7 @@ describe("requester_config — publics, anonymat, obligatoires", () => {
     expect(sanitizeDeclared("citoyen", {
       nom_naissance: " Dupont ", prenoms: "", internal_notes: "fuite", raison_sociale: "hors public",
       date_naissance: "1990-01-01", inconnu: "x",
-    })).toEqual({ nom_naissance: "Dupont", date_naissance: "1990-01-01" });
+    })).toEqual({ nom_naissance: "Dupont" });  // date_naissance : hors contrat Socle, ignorée
   });
 
   it("validateRequesterSubmission : anonymat gouverné par la démarche", () => {

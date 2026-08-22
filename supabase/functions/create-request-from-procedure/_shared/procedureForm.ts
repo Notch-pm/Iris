@@ -622,8 +622,12 @@ export function allowsAnonymous(rawConfig: unknown): boolean {
 
 // ---- Soumission demandeur ---------------------------------------------------
 
-/** Clés d'identité déclarée admises (celles du contrat + date de naissance). */
-const DECLARED_EXTRA_KEYS = ["date_naissance"] as const;
+/**
+ * Aucune clé d'identité déclarée hors contrat requester_config : les champs
+ * « informations demandeur » sont EXACTEMENT ceux configurés dans le Socle
+ * (la « date de naissance », ajout propre à Iris, est abandonnée — PO 2026-08-22).
+ */
+const DECLARED_EXTRA_KEYS: readonly string[] = [];
 
 export type RequesterSubmission =
   | { kind: "contact"; audience: Audience; socle_contact_id: string }
