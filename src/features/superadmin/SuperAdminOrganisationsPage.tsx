@@ -1,10 +1,30 @@
 import * as React from "react";
-import { Building2, ChevronRight, Landmark } from "lucide-react";
+import { Building2, ChevronRight, Landmark, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { buildSocleOrgTree, collectIds, type SocleOrgNode } from "./socleOrgTree";
-import { useAllTenants, useLastSyncRun, useTenantTreeRows, type TenantRow } from "./useSuperAdmin";
+import {
+  useAllTenants, useLastSyncRun, useTenantTreeRows, useTriggerSocleSync, type TenantRow,
+} from "./useSuperAdmin";
+
+const SYNC_COUNTER_LABELS: [string, string][] = [
+  ["tenants", "tenants"],
+  ["organizations", "organisations"],
+  ["procedures", "démarches"],
+  ["organizations_obsoleted", "organisations obsolètes"],
+  ["procedures_obsoleted", "démarches obsolètes"],
+  ["requests_scope_recalculees", "demandes recalculées"],
+];
+
+/** Résumé lisible des compteurs renvoyés par la sync (clés inconnues ignorées). */
+function syncSummary(counters: Record<string, unknown>): string {
+  const parts = SYNC_COUNTER_LABELS
+    .filter(([key]) => typeof counters[key] === "number")
+    .map(([key, label]) => `${counters[key] as number} ${label}`);
+  return parts.length > 0 ? parts.join(" · ") : "terminée";
+}
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("fr-FR", {
@@ -121,24 +141,52 @@ function TenantCard({ tenant }: { tenant: TenantRow }) {
 export function SuperAdminOrganisationsPage() {
   const tenants = useAllTenants();
   const lastSync = useLastSyncRun();
+  const sync = useTriggerSocleSync();
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Organisations</h1>
           <p className="text-sm text-muted-foreground">
             Un tenant Iris par organisation racine Socle.
           </p>
         </div>
-        {lastSync.data ? (
-          <p className="text-xs text-muted-foreground">
-            Dernière synchronisation :{" "}
-            {lastSync.data.finished_at ? formatDateTime(lastSync.data.finished_at) : "en cours"} —{" "}
-            {lastSync.data.status === "success" ? "réussie" : lastSync.data.status === "error" ? "en échec" : "en cours"}
-          </p>
-        ) : null}
+        <div className="flex flex-col items-end gap-1.5">
+          <Button
+            variant="outline"
+            onClick={() => sync.mutate()}
+            disabled={sync.isPending}
+            aria-busy={sync.isPending}
+          >
+            <RefreshCw className={cn("size-4", sync.isPending && "animate-spin")} aria-hidden="true" />
+            {sync.isPending ? "Synchronisation…" : "Synchroniser maintenant"}
+          </Button>
+          {lastSync.data ? (
+            <p className="text-xs text-muted-foreground">
+              Dernière synchronisation :{" "}
+              {lastSync.data.finished_at ? formatDateTime(lastSync.data.finished_at) : "en cours"} —{" "}
+              {lastSync.data.status === "success" ? (
+                "réussie"
+              ) : lastSync.data.status === "error" ? (
+                <span className="text-destructive">en échec</span>
+              ) : (
+                "en cours"
+              )}
+            </p>
+          ) : null}
+        </div>
       </div>
+
+      {sync.isError ? (
+        <p role="alert" className="text-sm text-destructive">
+          {sync.error instanceof Error ? sync.error.message : "Synchronisation en échec."}
+        </p>
+      ) : sync.isSuccess ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          Synchronisation réussie — {syncSummary(sync.data.counters)}.
+        </p>
+      ) : null}
 
       {tenants.isLoading ? (
         <div className="h-32 animate-pulse rounded-lg bg-muted" />

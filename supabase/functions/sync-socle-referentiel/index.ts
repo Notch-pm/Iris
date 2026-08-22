@@ -1,8 +1,12 @@
 // sync-socle-referentiel — synchronisation du miroir d'organisations Socle et
 // du cache léger des démarches, pour tous les tenants Iris.
-// Auth : UN SEUL mode — en-tête x-cron-secret === env CRON_SECRET (503 si non
-// configuré). La clé plateforme Socle vit en secret d'edge function, jamais
-// ailleurs. Aucun CORS : jamais appelée depuis un navigateur.
+// Auth — DEUX modes, motif Clara (sync-socle-referentiel) :
+//   - en-tête x-cron-secret === env CRON_SECRET (pg_cron quotidien) ;
+//   - JWT d'un ADMIN PLATEFORME (public.users.is_platform_admin), vérifié en
+//     code (verify_jwt=false : préflights OPTIONS) — bouton « Synchroniser
+//     maintenant » de la zone superadmin.
+// La clé plateforme Socle vit en secret d'edge function, jamais ailleurs.
+// CORS : allowlist stricte (IRIS_APP_URL + localhost de dev), comme admin-users.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
@@ -19,11 +23,48 @@ const supabase = createClient(
   { auth: { persistSession: false } },
 );
 
-function json(status: number, body: unknown): Response {
+const ALLOWED_ORIGINS = new Set(
+  [Deno.env.get("IRIS_APP_URL"), "http://localhost:5174"].filter(Boolean) as string[],
+);
+
+function corsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin") ?? "";
+  if (!ALLOWED_ORIGINS.has(origin)) return {};
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Headers": "authorization, content-type, apikey, x-client-info",
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+  };
+}
+
+function json(req: Request, status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "Content-Type": "application/json; charset=utf-8" },
+    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders(req) },
   });
+}
+
+/**
+ * Qui déclenche ? `cron` (secret) ou l'id d'un admin plateforme (JWT). Toute
+ * autre situation → null (401). Le secret est comparé AVANT toute lecture de
+ * base ; le JWT est vérifié via auth.getUser puis public.users (service role).
+ */
+async function resolveTrigger(req: Request): Promise<string | null> {
+  const providedSecret = req.headers.get("x-cron-secret");
+  if (providedSecret) {
+    const cronSecret = Deno.env.get("CRON_SECRET");
+    return cronSecret && providedSecret === cronSecret ? "cron" : null;
+  }
+  const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  const { data: userData, error } = await supabase.auth.getUser(token);
+  if (error || !userData.user) return null;
+  const { data: caller } = await supabase
+    .from("users")
+    .select("is_platform_admin")
+    .eq("id", userData.user.id)
+    .maybeSingle();
+  return caller?.is_platform_admin ? userData.user.id : null;
 }
 
 async function fetchSocle<T>(base: string, key: string, path: string): Promise<T> {
@@ -38,29 +79,34 @@ async function fetchSocle<T>(base: string, key: string, path: string): Promise<T
 }
 
 Deno.serve(async (req) => {
-  if (req.method !== "POST") {
-    return json(405, { error: { code: "method_not_allowed", message: "POST attendu." } });
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: corsHeaders(req) });
   }
-  const cronSecret = Deno.env.get("CRON_SECRET");
+  if (req.method !== "POST") {
+    return json(req, 405, { error: { code: "method_not_allowed", message: "POST attendu." } });
+  }
   const socleUrl = Deno.env.get("SOCLE_API_URL");
   const socleKey = Deno.env.get("SOCLE_API_KEY");
   const missing = [
-    !cronSecret ? "CRON_SECRET" : null,
     !socleUrl ? "SOCLE_API_URL" : null,
     !socleKey ? "SOCLE_API_KEY" : null,
+    req.headers.has("x-cron-secret") && !Deno.env.get("CRON_SECRET") ? "CRON_SECRET" : null,
   ].filter((n): n is string => n !== null);
   if (missing.length > 0) {
-    return json(503, {
+    return json(req, 503, {
       error: { code: "not_configured", message: `Secrets manquants : ${missing.join(", ")}.` },
     });
   }
-  if (req.headers.get("x-cron-secret") !== cronSecret) {
-    return json(401, { error: { code: "unauthorized", message: "Secret invalide." } });
+  const triggeredBy = await resolveTrigger(req);
+  if (!triggeredBy) {
+    return json(req, 401, {
+      error: { code: "unauthorized", message: "Réservé au cron ou aux administrateurs plateforme." },
+    });
   }
 
   const { data: run } = await supabase
     .from("sync_runs")
-    .insert({ kind: "socle-referentiel" })
+    .insert({ kind: "socle-referentiel", counters: { triggered_by: triggeredBy } })
     .select("id")
     .single();
 
@@ -164,6 +210,7 @@ Deno.serve(async (req) => {
     }
 
     const counters = {
+      triggered_by: triggeredBy,
       ...plan.counters,
       tenants_observes: observedTenantIds.length,
       organizations_obsoleted: staleOrgCount,
@@ -177,7 +224,7 @@ Deno.serve(async (req) => {
         .update({ finished_at: new Date().toISOString(), status: "success", counters })
         .eq("id", run.id);
     }
-    return json(200, { status: "success", counters });
+    return json(req, 200, { status: "success", counters });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     if (run) {
@@ -187,6 +234,6 @@ Deno.serve(async (req) => {
         .eq("id", run.id);
     }
     console.error("sync-socle-referentiel:", message);
-    return json(500, { error: { code: "internal_error", message: "Synchronisation en échec — voir sync_runs." } });
+    return json(req, 500, { error: { code: "internal_error", message: "Synchronisation en échec — voir sync_runs." } });
   }
 });
