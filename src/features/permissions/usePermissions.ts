@@ -272,6 +272,45 @@ export function useAllProcedureRows(orgId: string) {
   });
 }
 
+export interface ReferentielStatus {
+  activeOrganizations: number;
+  obsoleteOrganizations: number;
+  activeProcedures: number;
+  obsoleteProcedures: number;
+  /** Dernière synchronisation observée sur le miroir du tenant (ISO) — null si jamais synchronisé. */
+  lastSyncedAt: string | null;
+}
+
+/**
+ * État du référentiel Socle du tenant (onglet Référentiel) : lu sur le miroir
+ * et le cache (lisibles par tout membre) — `sync_runs` reste réservé à la
+ * plateforme, la date de dernière sync se déduit de `synced_at`.
+ */
+export function useReferentielStatus(orgId: string) {
+  return useQuery({
+    queryKey: ["permission-referentiel", orgId],
+    enabled: Boolean(orgId),
+    queryFn: async (): Promise<ReferentielStatus> => {
+      const [orgs, procs] = await Promise.all([
+        supabase.from("socle_organizations").select("synced_at, obsoleted_at").eq("organization_id", orgId),
+        supabase.from("socle_procedure_cache").select("synced_at, obsoleted_at").eq("organization_id", orgId),
+      ]);
+      if (orgs.error) throw orgs.error;
+      if (procs.error) throw procs.error;
+      const o = orgs.data ?? [];
+      const p = procs.data ?? [];
+      const dates = [...o, ...p].map((r) => r.synced_at).filter((d): d is string => Boolean(d)).sort();
+      return {
+        activeOrganizations: o.filter((r) => !r.obsoleted_at).length,
+        obsoleteOrganizations: o.filter((r) => Boolean(r.obsoleted_at)).length,
+        activeProcedures: p.filter((r) => !r.obsoleted_at).length,
+        obsoleteProcedures: p.filter((r) => Boolean(r.obsoleted_at)).length,
+        lastSyncedAt: dates.length > 0 ? dates[dates.length - 1] : null,
+      };
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Mutations
 // ---------------------------------------------------------------------------

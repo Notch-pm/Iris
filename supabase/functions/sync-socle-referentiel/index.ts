@@ -2,9 +2,13 @@
 // du cache léger des démarches, pour tous les tenants Iris.
 // Auth — DEUX modes, motif Clara (sync-socle-referentiel) :
 //   - en-tête x-cron-secret === env CRON_SECRET (pg_cron quotidien) ;
-//   - JWT d'un ADMIN PLATEFORME (public.users.is_platform_admin), vérifié en
-//     code (verify_jwt=false : préflights OPTIONS) — bouton « Synchroniser
-//     maintenant » de la zone superadmin.
+//   - JWT vérifié en code (verify_jwt=false : préflights OPTIONS) :
+//       · ADMIN PLATEFORME (public.users.is_platform_admin) → tous les tenants,
+//         ou un seul si `organization_id` est fourni (zone superadmin) ;
+//       · ADMINISTRATEUR DE TENANT (organization_members.role dérivé des profils
+//         de droits) → UNIQUEMENT son tenant, `organization_id` obligatoire
+//         (Paramètres › Référentiel). Le périmètre est dérivé de l'appelant :
+//         un tenant demandé hors de ses droits → 403, jamais un repli global.
 // La clé plateforme Socle vit en secret d'edge function, jamais ailleurs.
 // CORS : allowlist stricte (IRIS_APP_URL + localhost de dev), comme admin-users.
 
@@ -44,27 +48,72 @@ function json(req: Request, status: number, body: unknown): Response {
   });
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+interface SyncScope {
+  /** `cron` ou l'id de l'utilisateur déclencheur. */
+  triggeredBy: string;
+  /** null = tous les tenants ; sinon l'id (Iris) du seul tenant synchronisé. */
+  organizationId: string | null;
+}
+
 /**
- * Qui déclenche ? `cron` (secret) ou l'id d'un admin plateforme (JWT). Toute
- * autre situation → null (401). Le secret est comparé AVANT toute lecture de
- * base ; le JWT est vérifié via auth.getUser puis public.users (service role).
+ * Qui déclenche, et sur quel périmètre ? Le périmètre est DÉRIVÉ de
+ * l'appelant, jamais accepté tel quel du payload :
+ *   - secret cron → tous les tenants (ou un seul si demandé) ;
+ *   - admin plateforme → idem ;
+ *   - administrateur d'un tenant (organization_members.role = administrateur,
+ *     colonne dérivée des profils de droits) → ce tenant seulement, qui DOIT
+ *     être demandé explicitement.
+ * Retourne une Response d'erreur sinon (401/403/404, messages français).
  */
-async function resolveTrigger(req: Request): Promise<string | null> {
+async function resolveScope(req: Request, requestedOrgId: string | null): Promise<SyncScope | Response> {
   const providedSecret = req.headers.get("x-cron-secret");
   if (providedSecret) {
     const cronSecret = Deno.env.get("CRON_SECRET");
-    return cronSecret && providedSecret === cronSecret ? "cron" : null;
+    if (!cronSecret || providedSecret !== cronSecret) {
+      return json(req, 401, { error: { code: "unauthorized", message: "Secret invalide." } });
+    }
+    return { triggeredBy: "cron", organizationId: requestedOrgId };
   }
   const token = (req.headers.get("authorization") ?? "").replace(/^Bearer\s+/i, "");
-  if (!token) return null;
+  if (!token) {
+    return json(req, 401, { error: { code: "unauthorized", message: "Session invalide." } });
+  }
   const { data: userData, error } = await supabase.auth.getUser(token);
-  if (error || !userData.user) return null;
+  if (error || !userData.user) {
+    return json(req, 401, { error: { code: "unauthorized", message: "Session invalide." } });
+  }
+  const userId = userData.user.id;
   const { data: caller } = await supabase
     .from("users")
     .select("is_platform_admin")
-    .eq("id", userData.user.id)
+    .eq("id", userId)
     .maybeSingle();
-  return caller?.is_platform_admin ? userData.user.id : null;
+  if (caller?.is_platform_admin) {
+    return { triggeredBy: userId, organizationId: requestedOrgId };
+  }
+  if (!requestedOrgId) {
+    return json(req, 403, {
+      error: { code: "forbidden", message: "La synchronisation globale est réservée aux administrateurs plateforme." },
+    });
+  }
+  // Administrateur du tenant demandé ? Hors périmètre = 404 (jamais révélé).
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("role")
+    .eq("organization_id", requestedOrgId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (!membership) {
+    return json(req, 404, { error: { code: "not_found", message: "Ressource introuvable." } });
+  }
+  if (membership.role !== "administrateur") {
+    return json(req, 403, {
+      error: { code: "forbidden", message: "La synchronisation du référentiel est réservée aux administrateurs du tenant." },
+    });
+  }
+  return { triggeredBy: userId, organizationId: requestedOrgId };
 }
 
 async function fetchSocle<T>(base: string, key: string, path: string): Promise<T> {
@@ -97,24 +146,36 @@ Deno.serve(async (req) => {
       error: { code: "not_configured", message: `Secrets manquants : ${missing.join(", ")}.` },
     });
   }
-  const triggeredBy = await resolveTrigger(req);
-  if (!triggeredBy) {
-    return json(req, 401, {
-      error: { code: "unauthorized", message: "Réservé au cron ou aux administrateurs plateforme." },
-    });
+  // Corps optionnel : { organization_id?: uuid } (tenant Iris ciblé).
+  const body = await req.json().catch(() => null) as { organization_id?: unknown } | null;
+  const requestedRaw = body?.organization_id;
+  if (requestedRaw !== undefined && requestedRaw !== null
+      && (typeof requestedRaw !== "string" || !UUID_RE.test(requestedRaw))) {
+    return json(req, 400, { error: { code: "bad_request", message: "organization_id : UUID du tenant attendu." } });
   }
+  const requestedOrgId = typeof requestedRaw === "string" ? requestedRaw : null;
+
+  const scope = await resolveScope(req, requestedOrgId);
+  if (scope instanceof Response) return scope;
+  const { triggeredBy, organizationId: scopeOrgId } = scope;
 
   const { data: run } = await supabase
     .from("sync_runs")
-    .insert({ kind: "socle-referentiel", counters: { triggered_by: triggeredBy } })
+    .insert({
+      kind: "socle-referentiel",
+      counters: { triggered_by: triggeredBy, scope: scopeOrgId ?? "all" },
+    })
     .select("id")
     .single();
 
   try {
-    const { data: tenantRows, error: tenantsError } = await supabase
-      .from("organizations")
-      .select("id, socle_org_id");
+    let tenantQuery = supabase.from("organizations").select("id, socle_org_id");
+    if (scopeOrgId) tenantQuery = tenantQuery.eq("id", scopeOrgId);
+    const { data: tenantRows, error: tenantsError } = await tenantQuery;
     if (tenantsError) throw tenantsError;
+    if (scopeOrgId && (tenantRows ?? []).length === 0) {
+      throw new Error(`Tenant ${scopeOrgId} introuvable.`);
+    }
     const tenants: TenantRef[] = (tenantRows ?? []).map((t) => ({
       organizationId: t.id,
       socleOrgId: t.socle_org_id,
@@ -201,7 +262,7 @@ Deno.serve(async (req) => {
     let requestsScopeRecalculees = 0;
     const warnings: string[] = [];
     const { data: scopeRecalc, error: scopeError } = await supabase
-      .rpc("refresh_request_scope_org", { p_org_id: null });
+      .rpc("refresh_request_scope_org", { p_org_id: scopeOrgId });
     if (scopeError) {
       console.error("sync-socle-referentiel refresh_request_scope_org:", scopeError);
       warnings.push(`refresh_request_scope_org : ${scopeError.message}`);
@@ -211,6 +272,7 @@ Deno.serve(async (req) => {
 
     const counters = {
       triggered_by: triggeredBy,
+      scope: scopeOrgId ?? "all",
       ...plan.counters,
       tenants_observes: observedTenantIds.length,
       organizations_obsoleted: staleOrgCount,

@@ -12,8 +12,10 @@ Vérifiée au navigateur le 2026-08-20 (arbre, création/rattachement/suppressio
 - **Organisations** (`/superadmin`) : une carte par tenant, arbre du miroir Socle
   (ergonomie Clara `SocleOrganizationTree` : tout déplié, chevrons, badge Obsolète) —
   **consultation uniquement, la hiérarchie se gère dans le Socle** ; dernière sync affichée ; **bouton « Synchroniser maintenant »** (motif Clara :
-  `useTriggerSocleSync` → edge `sync-socle-referentiel` avec le JWT de l'admin plateforme,
-  appel synchrone, compteurs affichés, miroirs/caches invalidés).
+  `useTriggerSocleSync()` de la feature `socle` → edge `sync-socle-referentiel` avec le JWT de
+  l'admin plateforme, appel synchrone, compteurs affichés, miroirs/caches invalidés) — ici
+  la synchro est **globale** (tous les tenants) ; l'administrateur d'un tenant dispose de la
+  sienne, limitée à son tenant, dans Paramètres › Référentiel.
   Logique d'arbre pure `socleOrgTree.ts` (testée).
 - **Utilisateurs** (`/superadmin/utilisateurs`) : recherche, table (nom, email, badge Admin
   plateforme, rattachements par tenant), création (mot de passe généré **affiché une seule

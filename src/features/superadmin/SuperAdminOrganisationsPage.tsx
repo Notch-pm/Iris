@@ -5,26 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { buildSocleOrgTree, collectIds, type SocleOrgNode } from "./socleOrgTree";
-import {
-  useAllTenants, useLastSyncRun, useTenantTreeRows, useTriggerSocleSync, type TenantRow,
-} from "./useSuperAdmin";
-
-const SYNC_COUNTER_LABELS: [string, string][] = [
-  ["tenants", "tenants"],
-  ["organizations", "organisations"],
-  ["procedures", "démarches"],
-  ["organizations_obsoleted", "organisations obsolètes"],
-  ["procedures_obsoleted", "démarches obsolètes"],
-  ["requests_scope_recalculees", "demandes recalculées"],
-];
-
-/** Résumé lisible des compteurs renvoyés par la sync (clés inconnues ignorées). */
-function syncSummary(counters: Record<string, unknown>): string {
-  const parts = SYNC_COUNTER_LABELS
-    .filter(([key]) => typeof counters[key] === "number")
-    .map(([key, label]) => `${counters[key] as number} ${label}`);
-  return parts.length > 0 ? parts.join(" · ") : "terminée";
-}
+import { useAllTenants, useLastSyncRun, useTenantTreeRows, type TenantRow } from "./useSuperAdmin";
+import { syncSummary, useTriggerSocleSync } from "@/features/socle/useSocleSync";
 
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("fr-FR", {

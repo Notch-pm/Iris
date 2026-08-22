@@ -62,3 +62,9 @@ par défaut pour toute démarche non listée y compris futures (RM-33).
 - `src/components/ui/alert-dialog.tsx` : confirmations destructives — construit sur
   `@radix-ui/react-dialog` (pas de dépendance `@radix-ui/react-alert-dialog` dans le projet),
   sans bouton de fermeture flottant, l'appelant garde `open` et ferme après succès.
+
+- **Onglet Référentiel** (`ReferentielPanel`, 2026-08-22) : état du miroir Socle du tenant
+  (organisations/démarches actives et obsolètes, dernière `synced_at` — `sync_runs` reste
+  réservé à la plateforme) et bouton « Synchroniser maintenant » (`useTriggerSocleSync(orgId)`,
+  feature `socle`) : la synchro lancée par un administrateur de tenant ne porte **que sur son
+  tenant** — périmètre dérivé de l'appelant par l'edge `sync-socle-referentiel` (403/404 sinon).

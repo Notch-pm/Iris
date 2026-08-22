@@ -6,7 +6,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FunctionsHttpError } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
-import { invokeEdge } from "@/lib/edge";
 import type { Tables } from "@/types/database.types";
 import type { SocleOrgRow } from "./socleOrgTree";
 
@@ -68,33 +67,6 @@ export function useLastSyncRun() {
         .maybeSingle();
       if (error) throw error;
       return data;
-    },
-  });
-}
-
-export interface SocleSyncResult {
-  status: "success";
-  counters: Record<string, unknown>;
-}
-
-/**
- * Synchronisation manuelle du référentiel Socle (motif Clara « Synchroniser
- * maintenant ») : appel SYNCHRONE de l'edge function sync-socle-referentiel
- * avec le JWT de l'admin plateforme — la réponse contient les compteurs ; les
- * miroirs, caches et la dernière sync sont invalidés dans la foulée.
- */
-export function useTriggerSocleSync() {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: async (): Promise<SocleSyncResult> =>
-      invokeEdge<SocleSyncResult>("sync-socle-referentiel", {}),
-    onSettled: () => {
-      for (const key of [
-        "sa-last-sync", "sa-tenants", "sa-tenant-tree",
-        "socle-organizations", "socle-procedure-rows", "socle-procedures",
-      ]) {
-        void queryClient.invalidateQueries({ queryKey: [key] });
-      }
     },
   });
 }

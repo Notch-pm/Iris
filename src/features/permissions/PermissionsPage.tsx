@@ -5,7 +5,7 @@
 
 import * as React from "react";
 import {
-  AlertTriangle, ClipboardList, Copy, Layers, Pencil, Plus, Power, Settings, Trash2, UserPlus, Users, X,
+  AlertTriangle, ClipboardList, Copy, DatabaseZap, Layers, Pencil, Plus, Power, Settings, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -26,18 +26,20 @@ import {
 } from "./profileRows";
 import type { ProfileDraft } from "./profileValidation";
 import { ProfileDialog } from "./ProfileDialog";
+import { ReferentielPanel } from "./ReferentielPanel";
 import {
   useAllProcedureRows, useAssignProfile, useAuditLog, useCoverageReport, useDeleteProfile,
   useMembersWithoutProfile, useRevokeProfile, useSetProfileStatus, useSocleOrgRows, useTenantMemberRows,
   useTenantProfiles, type AuditLogRow, type MemberProfileChip, type MemberRow,
 } from "./usePermissions";
 
-type Section = "profils" | "utilisateurs" | "couverture" | "journal";
+type Section = "profils" | "utilisateurs" | "couverture" | "referentiel" | "journal";
 
 const SECTIONS: { id: Section; label: string; icon: typeof Layers }[] = [
   { id: "profils", label: "Profils", icon: Layers },
   { id: "utilisateurs", label: "Utilisateurs", icon: Users },
   { id: "couverture", label: "Couverture", icon: AlertTriangle },
+  { id: "referentiel", label: "Référentiel", icon: DatabaseZap },
   { id: "journal", label: "Journal", icon: ClipboardList },
 ];
 
@@ -498,6 +500,10 @@ export function PermissionsPage() {
             </div>
           </CardContent>
         </Card>
+      ) : null}
+
+      {section === "referentiel" ? (
+        <ReferentielPanel orgId={orgId} onOpenCoverage={() => setSection("couverture")} />
       ) : null}
 
       {section === "journal" ? (
