@@ -111,8 +111,9 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches actives du
   tenant), `/v1/procedures/get` (fiche complète : `form_schema`, `requester_config` — jamais
   `knowledge_base`), `/v1/contacts/search`, `/v1/contacts/match` (rapprochement/homonymes),
-  `/v1/contacts/get`, `/v1/contacts/create` (via contacts-api Socle uniquement, whitelist
-  d'entrée). Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
+  `/v1/contacts/get`, `/v1/contacts/create`, `/v1/contacts/update` (via contacts-api Socle
+  uniquement, whitelist d'entrée ; l'update est un **PATCH partiel** — `contact_type` et
+  `status` refusés, pays jamais vidé — et les refus du Socle sont relayés tels quels). Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
   `internal_notes`, consentements, relations, `external_references` ne sont **jamais**
   transmis au navigateur ; champs Socle inconnus tolérés (ignorés). `X-Organization-Id`
   toujours dérivé côté serveur.
@@ -167,7 +168,10 @@ les invariants ci-dessus restent la référence.
   `@fn/create-request-from-procedure/_shared/procedureForm.ts` →
   [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
 - **Contacts** (`src/features/contacts`) : identification du demandeur via `socle-proxy`
-  (homonymes cherchés automatiquement, création, sans rapprochement, anonymat) →
+  (homonymes cherchés automatiquement, création, sans rapprochement, anonymat) et **fiche
+  usager** `/usagers/:contactId` (motif de la fiche contact Clara : identité Socle relue
+  sans rétention + demandes de l'usager bornées par le RLS, création de demande avec usager
+  imposé) →
   [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
 - **Droits / Paramètres** (`src/features/permissions`, `src/features/rights`) : profils de
   droits (création, matrice, périmètre, attribution), reflet pur des droits effectifs

@@ -327,6 +327,29 @@ export function useRequesterRequests(orgId: string, socleContactId: string | nul
   });
 }
 
+/**
+ * Toutes les demandes d'un usager Socle dans le tenant (fiche usager) — le RLS
+ * borne la visibilité au périmètre du lecteur : la fiche peut donc n'en
+ * montrer qu'une partie, et c'est la règle.
+ */
+export function useContactRequests(orgId: string, socleContactId: string | null) {
+  return useQuery({
+    queryKey: ["contact-requests", orgId, socleContactId],
+    enabled: Boolean(orgId && socleContactId),
+    queryFn: async (): Promise<RequestListItem[]> => {
+      const { data, error } = await supabase
+        .from("requests")
+        .select(LIST_SELECT)
+        .eq("organization_id", orgId)
+        .eq("socle_contact_id", socleContactId!)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return (data ?? []) as RequestListItem[];
+    },
+  });
+}
+
 export function useAssignRequest() {
   const invalidate = useInvalidateRequest();
   return useMutation({

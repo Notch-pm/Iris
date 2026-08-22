@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   audienceContactType,
+  contactAudience,
   buildContactCreatePayload,
   buildMatchIdentity,
   candidateSummary,
@@ -170,5 +171,13 @@ describe("résolution", () => {
   it("audienceContactType mappe citoyen → personne", () => {
     expect(audienceContactType("citoyen")).toBe("personne");
     expect(audienceContactType("entreprise")).toBe("entreprise");
+  });
+
+  it("contactAudience refait le chemin inverse, sauf pour administration", () => {
+    expect(contactAudience("personne")).toBe("citoyen");
+    expect(contactAudience("entreprise")).toBe("entreprise");
+    expect(contactAudience("association")).toBe("association");
+    expect(contactAudience("administration")).toBeNull();
+    expect(contactAudience(null)).toBeNull();
   });
 });

@@ -698,8 +698,10 @@ purge) est modélisée **dès la première migration**, pas après.
 
 ### C. Lecture à la demande via `socle-proxy` — tout ce qui doit être frais ou écrit
 
-Fiche usager complète et à jour · `POST /v1/contacts/match` (rapprochement) · création/màj d'un
-usager (`contacts-api`) · `form_schema` au moment de créer une demande dans Iris (puis figé) ·
+Fiche usager complète et à jour · `POST /v1/contacts/match` (rapprochement) · création
+(`/v1/contacts/create`) et **mise à jour** (`/v1/contacts/update` → `PATCH contacts-api
+/v1/contacts/{id}`, partiel : seuls les champs modifiés, `null` efface ; `contact_type` et
+`status` refusés) d'un usager · `form_schema` au moment de créer une demande dans Iris (puis figé) ·
 `documents/signed-url` · géométries de quartiers. La clé plateforme Socle vit uniquement en
 secret d'edge function ; le **`X-Organization-Id` est toujours dérivé côté serveur** (mapping
 tenant de l'utilisateur authentifié), **jamais accepté du navigateur** — c'est le risque n°1

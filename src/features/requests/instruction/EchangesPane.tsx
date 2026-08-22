@@ -5,7 +5,7 @@
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Pill, SOON, Surface, SurfaceHead } from "./bits";
+import { Pill, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
 import type { RequesterIdentity } from "./instruction";
 
 interface Props {

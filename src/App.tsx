@@ -14,6 +14,7 @@ import { RequestsListPage } from "@/features/requests/RequestsListPage";
 import { RequestDetailPage } from "@/features/requests/RequestDetailPage";
 import { NewRequestPage } from "@/features/requests/creation/NewRequestPage";
 import { PermissionsPage } from "@/features/permissions/PermissionsPage";
+import { UsagerPage } from "@/features/contacts/UsagerPage";
 
 export function App() {
   return (
@@ -45,6 +46,7 @@ export function App() {
               <Route path="demandes" element={<RequestsListPage />} />
               <Route path="demandes/nouvelle" element={<NewRequestPage />} />
               <Route path="demandes/:id" element={<RequestDetailPage />} />
+              <Route path="usagers/:contactId" element={<UsagerPage />} />
               <Route element={<AdminRoute />}>
                 <Route path="parametres">
                   <Route index element={<Navigate to="droits" replace />} />

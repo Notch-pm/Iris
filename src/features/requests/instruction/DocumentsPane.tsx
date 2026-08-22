@@ -6,7 +6,7 @@ import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RequestAttachment } from "../useRequests";
-import { Pill, SOON, Surface, SurfaceHead } from "./bits";
+import { Pill, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
 import { attachmentExt, COPY_STATUS, formatBytes, formatDayMonth } from "./instruction";
 
 interface Props {

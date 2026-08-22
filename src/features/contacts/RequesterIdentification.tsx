@@ -56,6 +56,16 @@ interface Props {
   requesterConfig: unknown;
   resolution: RequesterResolution | null;
   onResolve: (resolution: RequesterResolution | null) => void;
+  /**
+   * Usager IMPOSÉ par le point d'entrée (création depuis la fiche usager) :
+   * l'identité est affichée telle quelle, sans recherche ni « Modifier ».
+   * `lockedMessage` explique pourquoi rien n'est proposé quand la démarche
+   * n'accepte pas ce public (ou que la fiche n'a pas pu être relue).
+   */
+  locked?: boolean;
+  lockedMessage?: string | null;
+  /** Sortie de secours proposée quand l'usager imposé est inutilisable. */
+  lockedAction?: React.ReactNode;
 }
 
 function initialsOf(title: string): string {
@@ -151,7 +161,10 @@ function CandidateList({ candidates, onPick }: {
   );
 }
 
-export function RequesterIdentification({ organizationId, requesterConfig, resolution, onResolve }: Props) {
+export function RequesterIdentification({
+  organizationId, requesterConfig, resolution, onResolve,
+  locked = false, lockedMessage = null, lockedAction = null,
+}: Props) {
   const config = React.useMemo(() => parseRequesterConfig(requesterConfig), [requesterConfig]);
   const audiences = selectableAudiences(config);
   const anonymousAllowed = allowsAnonymous(requesterConfig);
@@ -283,9 +296,29 @@ export function RequesterIdentification({ organizationId, requesterConfig, resol
             <span className="truncate text-xs text-muted-foreground">{sub}</span>
           </span>
         </span>
-        <Button type="button" variant="outline" size="sm" onClick={() => onResolve(null)}>
-          Modifier
-        </Button>
+        {locked ? (
+          <span className="shrink-0 rounded-full bg-primary/10 px-2.5 py-1 text-[11px] font-bold text-primary">
+            Usager imposé
+          </span>
+        ) : (
+          <Button type="button" variant="outline" size="sm" onClick={() => onResolve(null)}>
+            Modifier
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // Usager imposé mais inutilisable ici (public non proposé par la démarche,
+  // fiche Socle illisible) : on l'explique, on ne rouvre pas la recherche.
+  if (locked) {
+    return (
+      <div className="flex w-full max-w-[1180px] flex-col gap-2 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-airbnb-sm">
+        <span className="text-sm font-bold">Usager imposé</span>
+        <p className="text-[13px] text-muted-foreground">
+          {lockedMessage ?? "Usager en cours de lecture dans le référentiel Socle…"}
+        </p>
+        {lockedAction ? <div className="flex pt-1">{lockedAction}</div> : null}
       </div>
     );
   }

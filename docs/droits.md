@@ -325,6 +325,16 @@ selon le besoin :
   par tout membre du tenant, indépendamment de ses droits (seule `/v1/contacts/*`
   exige un droit de création). L'UI ne sollicite les démarches que pour celles
   autorisées, mais rien ne l'empêche techniquement côté serveur.
+- **Écriture dans le référentiel Socle** (`/v1/contacts/create` et, depuis le
+  2026-08-23, `/v1/contacts/update`) : gardée par le **même** droit que le reste
+  de `/v1/contacts/*`, c'est-à-dire « au moins un droit de création de demande
+  dans le tenant ». Corriger une fiche usager du Socle est donc à la portée de
+  tout agent qui peut déposer une demande, et la correction vaut pour toute la
+  gamme (Clara comprise). Hypothèse retenue faute de droit dédié dans le modèle ;
+  **à durcir** (administration du tenant, ou nouveau droit « référentiel ») si le
+  PO le décide — la garde tient en une condition dans l'edge function. Même
+  question ouverte pour l'archivage d'un usager, non livré (voir
+  [`data-model.md`](data-model.md) § Écarts, point 7).
 - Audit (`permission_audit_log`) et annuaire (profils, `members_without_profile`)
   sont gardés par `is_org_admin_anywhere` : un administrateur d'un simple
   sous-arbre voit l'intégralité du journal et de l'annuaire du tenant, pas

@@ -47,6 +47,17 @@ export function audienceContactType(audience: Audience): "personne" | "entrepris
   return audience === "citoyen" ? "personne" : audience;
 }
 
+/**
+ * contact_type Socle → public Iris. Réciproque partielle : le Socle connaît
+ * aussi `administration`, qu'aucun public Iris ne porte — null alors (l'usager
+ * ne peut pas être imposé à une demande, à désigner autrement).
+ */
+export function contactAudience(contactType: string | null): Audience | null {
+  if (contactType === "personne") return "citoyen";
+  if (contactType === "entreprise" || contactType === "association") return contactType;
+  return null;
+}
+
 // ---- Critères de recherche --------------------------------------------------
 
 export interface MatchIdentity {

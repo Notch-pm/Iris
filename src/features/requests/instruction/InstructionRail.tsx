@@ -14,7 +14,7 @@ import type { FacetOption } from "../facets";
 import { StatusBadge } from "../StatusBadge";
 import type { TransitionSpec } from "../statuts";
 import type { RequestSummary, TenantMember } from "../useRequests";
-import { Avatar, SOON, Surface } from "./bits";
+import { Avatar, SOON, Surface } from "@/components/ui/surface";
 import {
   initials,
   memberName,
@@ -254,9 +254,23 @@ export function UsagerCard({ identity, socleContactId, otherRequests, otherLoadi
     <Surface className="gap-3 px-4 py-[15px]">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12.5px] font-bold">Usager</span>
-        <Button type="button" variant="ghost" size="sm" className="h-[26px] px-2 text-[11.5px]" {...SOON}>
-          Voir la fiche
-        </Button>
+        {socleContactId ? (
+          <Button asChild variant="ghost" size="sm" className="h-[26px] px-2 text-[11.5px]">
+            <Link to={`/usagers/${socleContactId}`}>Voir la fiche</Link>
+          </Button>
+        ) : (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-[26px] px-2 text-[11.5px]"
+            disabled
+            aria-disabled="true"
+            title="Aucun usager rapproché — identité déclarée au dépôt"
+          >
+            Voir la fiche
+          </Button>
+        )}
       </div>
       <div className="flex items-center gap-[11px]">
         <Avatar initials={identity.initials} size="lg" muted={identity.anonymous || !identity.known} />

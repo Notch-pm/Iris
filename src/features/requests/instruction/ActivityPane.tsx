@@ -3,7 +3,7 @@
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { SOON, Surface, SurfaceHead } from "./bits";
+import { SOON, Surface, SurfaceHead } from "@/components/ui/surface";
 import { formatTimeline, type ActivityItem } from "./instruction";
 
 interface Props {

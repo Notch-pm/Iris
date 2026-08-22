@@ -111,6 +111,58 @@ export function filterContactCreate(
   return { ok: true, payload };
 }
 
+/**
+ * Clés acceptées à la MISE À JOUR d'un usager (ContactUpdate Socle, minimisé) :
+ * les mêmes qu'à la création, sans `contact_type` (immuable côté Socle). Le
+ * PATCH est partiel — seules les clés transmises sont écrites, `null` efface.
+ * Restent volontairement hors d'Iris (jamais lus, donc jamais écrits) :
+ * internal_notes, consentements, rôles, références externes, relations,
+ * coordonnées géographiques et quartier (recalculés par le Socle).
+ */
+const CONTACT_UPDATE_KEYS = [
+  "civility", "first_name", "last_name", "usage_name", "birth_date",
+  "legal_name", "siret",
+  "email", "mobile_phone", "landline_phone", "preferred_channel",
+  "address_line1", "address_line2", "postal_code", "city", "country",
+] as const;
+
+/** Filtre le patch : clé inconnue, immuable ou valeur non textuelle → refus explicite. */
+export function filterContactUpdate(
+  raw: any,
+): { ok: true; payload: Record<string, string | null> } | { ok: false; message: string } {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ok: false, message: "contact : objet attendu." };
+  }
+  if ("contact_type" in raw) {
+    return { ok: false, message: "contact_type : immuable après la création (Socle)." };
+  }
+  if ("status" in raw) {
+    return { ok: false, message: "status : l'archivage d'un usager ne se fait pas depuis Iris." };
+  }
+  const allowed = new Set<string>(CONTACT_UPDATE_KEYS);
+  const unknown = Object.keys(raw).filter((k) => !allowed.has(k));
+  if (unknown.length > 0) {
+    return { ok: false, message: `contact : clés non autorisées (${unknown.join(", ")}).` };
+  }
+  const payload: Record<string, string | null> = {};
+  for (const key of CONTACT_UPDATE_KEYS) {
+    if (!(key in raw)) continue;
+    const value = raw[key];
+    if (value !== null && typeof value !== "string") {
+      return { ok: false, message: `contact.${key} : texte ou null attendu.` };
+    }
+    // Le Socle refuse un pays vide : on le dit ici, en français, sans aller-retour.
+    if (key === "country" && (value === null || value.trim() === "")) {
+      return { ok: false, message: "contact.country : le pays ne peut pas être vidé." };
+    }
+    payload[key] = value;
+  }
+  if (Object.keys(payload).length === 0) {
+    return { ok: false, message: "contact : aucune modification transmise." };
+  }
+  return { ok: true, payload };
+}
+
 /** Clés acceptées pour le rapprochement (ContactMatchRequest Socle). */
 const MATCH_KEYS = [
   "contact_type", "first_name", "last_name", "usage_name", "legal_name",

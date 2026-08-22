@@ -34,6 +34,16 @@ note interne → résolution avec texte de clôture → journal.
   destinataire** en sélecteur inline pré-rempli par la démarche, bannière de doublon
   probable) → **edge function `create-request-from-procedure`** → écran « Demande créée »
   (ouvrir la fiche, **récépissé imprimable** `.print-receipt`, nouvelle saisie).
+  - **Usager imposé** (`/demandes/nouvelle?usager=<id Socle>`, entrée « Nouvelle demande »
+    de la fiche usager, 2026-08-23) : l'usager est relu depuis le Socle (`useSocleContact`),
+    appliqué DÈS que la démarche est choisie, et l'étape 2 est **verrouillée**
+    (`RequesterIdentification locked` : la fiche retenue, une pastille « Usager imposé », ni
+    recherche ni « Modifier »). Le `requester_config` reste l'arbitre : public non proposé
+    par la démarche, `contact_type` `administration` (aucun public Iris) ou fiche illisible →
+    l'étape explique le refus, « Continuer » reste fermé, et un bouton « Désigner l'usager
+    moi-même » retire le paramètre (parcours normal, saisie conservée) plutôt que de laisser
+    une impasse. Pas de reprise de brouillon proposée dans ce mode (il porterait un autre
+    usager) ; le verrou tient au point d'entrée, pas au brouillon.
   - **Brouillon local** (`draft.ts` pur/testé, `useCreationDraft`) : localStorage, un par
     tenant et utilisateur, enregistré en différé à chaque saisie ; ne transporte que des
     identifiants et saisies (usager rapproché = id seul, **relu via `socle-proxy
@@ -88,11 +98,14 @@ note interne → résolution avec texte de clôture → journal.
   avec motif ; bouton d'action principale), usager (`requesterIdentity` : snapshot normalisé
   quelle que soit l'origine — contacts-api, publics Iris, clés partenaires conservées en
   clair —, autres demandes du même usager Socle via `useRequesterRequests`).
-  - **Fonctionnalités à venir, visibles mais grisées** (`SOON` dans `instruction/bits.tsx`,
-    décision PO 2026-08-22) : écrire à l'usager / contacter / onglet Échanges (composeur
-    entier), lieu d'intervention (carte, itinéraire), demander une pièce, pièces
-    d'instruction, courriers, exporter le journal, voir la fiche usager, changer le service
-    instructeur. Ne rien cacher : on les travaillera ensuite.
+  - **Fonctionnalités à venir, visibles mais grisées** (`SOON` dans
+    `src/components/ui/surface.tsx`, décision PO 2026-08-22) : écrire à l'usager /
+    contacter / onglet Échanges (composeur entier), lieu d'intervention (carte,
+    itinéraire), demander une pièce, pièces d'instruction, courriers, exporter le journal,
+    changer le service instructeur. Ne rien cacher : on les travaillera ensuite.
+  - **« Voir la fiche »** du bloc Usager ouvre la **fiche usager** `/usagers/:contactId`
+    (feature `contacts`) dès qu'un usager Socle est rapproché ; grisée sinon (identité
+    déclarée sans rapprochement, ou dépôt anonyme).
   - **`instruction/instruction.ts`** (pur, testé) porte TOUTE la déduction (échéance,
     sous-titre, identité, réponses, étapes, activité, vignettes) ; les composants affichent.
   - **`TransitionActions.tsx`** = `useTransitionRunner` (transition active, application

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterContactCreate,
+  filterContactUpdate,
   filterMatchRequest,
   sanitizeContact,
   sanitizeMatches,
@@ -108,6 +109,34 @@ describe("filterContactCreate", () => {
     if (ok.ok) expect(ok.payload).toEqual({
       contact_type: "personne", civility: "madame", last_name: "Dupont", email: "m@x.fr",
     });
+  });
+});
+
+describe("filterContactUpdate", () => {
+  it("refuse les clés immuables et hors whitelist", () => {
+    expect(filterContactUpdate({ contact_type: "personne" }))
+      .toMatchObject({ ok: false, message: "contact_type : immuable après la création (Socle)." });
+    expect(filterContactUpdate({ status: "archived" })).toMatchObject({ ok: false });
+    expect(filterContactUpdate({ internal_notes: "x" })).toMatchObject({ ok: false });
+    expect(filterContactUpdate({ consent_email: true })).toMatchObject({ ok: false });
+    expect(filterContactUpdate({ role_ids: [] })).toMatchObject({ ok: false });
+  });
+
+  it("transmet un patch partiel, null compris (effacement)", () => {
+    const ok = filterContactUpdate({ email: "m@x.fr", landline_phone: null });
+    expect(ok).toMatchObject({ ok: true });
+    if (ok.ok) expect(ok.payload).toEqual({ email: "m@x.fr", landline_phone: null });
+  });
+
+  it("exige une valeur textuelle ou null", () => {
+    expect(filterContactUpdate({ postal_code: 44000 })).toMatchObject({ ok: false });
+  });
+
+  it("refuse de vider le pays (le Socle l'exige) et un patch vide", () => {
+    expect(filterContactUpdate({ country: "" })).toMatchObject({ ok: false });
+    expect(filterContactUpdate({ country: null })).toMatchObject({ ok: false });
+    expect(filterContactUpdate({})).toMatchObject({ ok: false, message: "contact : aucune modification transmise." });
+    expect(filterContactUpdate("Dupont")).toMatchObject({ ok: false });
   });
 });
 

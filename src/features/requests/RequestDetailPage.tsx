@@ -35,7 +35,7 @@ import { EchangesPane } from "./instruction/EchangesPane";
 import { NotesPane } from "./instruction/NotesPane";
 import { ResumePane } from "./instruction/ResumePane";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
-import { SOON } from "./instruction/bits";
+import { SOON } from "@/components/ui/surface";
 import {
   activityItems, attachmentFieldLabels, buildStages, dueView, formAnswers, formSchemaVersion,
   headerSubtitle, memberName, priorityOption, requesterIdentity, splitTransitions,

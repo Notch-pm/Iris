@@ -6,7 +6,7 @@ import { Lock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { RequestMessage, TenantMember } from "../useRequests";
-import { Avatar, Pill, Surface, SurfaceHead } from "./bits";
+import { Avatar, Pill, Surface, SurfaceHead } from "@/components/ui/surface";
 import { formatTimeline, initials, memberName } from "./instruction";
 
 interface Props {

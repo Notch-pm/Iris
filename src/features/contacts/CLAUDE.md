@@ -4,10 +4,15 @@ Chargé automatiquement quand on travaille dans ce dossier. Les invariants globa
 `CLAUDE.md` racine (Socle source de vérité, snapshots construits côté serveur, RLS = vérité,
 aucun miroir d'usagers, aucune demande libre) priment sur tout ce qui suit.
 
-Identification du demandeur auprès du référentiel d'usagers Socle — **aucun miroir local**,
-tout passe par `socle-proxy` (mutations TanStack sans cache). Vérifiée en navigateur le
-2026-08-20 dans le parcours de création.
+Identification du demandeur et fiche usager, auprès du référentiel d'usagers Socle —
+**aucun miroir local** : tout passe par `socle-proxy`, sans rétention (mutations pour le
+parcours de création, requête `gcTime: 0` pour la fiche). Identification vérifiée en
+navigateur le 2026-08-20 dans le parcours de création.
 
+- **`usager.ts`** (pur, testé) : tout ce qui se déduit d'une fiche Socle sanitisée pour la
+  fiche usager (nom d'affichage, public, sous-titre, blocs identité / coordonnées /
+  adresse — seuls les champs renseignés —, contraste du quartier) et les compteurs de ses
+  demandes (`usagerStats`).
 - **`rapprochement.ts`** (pur, testé) : critères de recherche (nom, prénom, e-mail,
   téléphone — refus sans discriminant), résumé des candidats (seules
   informations distinctives), libellés FR des raisons de rapprochement (raison inconnue
@@ -15,7 +20,10 @@ tout passe par `socle-proxy` (mutations TanStack sans cache). Vérifiée en navi
   signalé « à vérifier », aucune sélection automatique), payload de création whitelisted,
   `duplicateCheckIdentity` (rejeu anti-doublon JUSTE avant création), résolutions
   `contact | sans_rapprochement | anonyme`.
-- **`RequesterIdentification`** (décision PO 2026-08-21) : publics selon `requester_config`
+- **`RequesterIdentification`** — mode `locked` (usager imposé par le point d'entrée) : la
+  fiche retenue est affichée avec une pastille « Usager imposé » au lieu de « Modifier », et
+  aucune recherche n'est proposée ; `lockedMessage`/`lockedAction` portent le refus et la
+  sortie de secours. En mode normal (décision PO 2026-08-21) : publics selon `requester_config`
   (champs masqué/visible/obligatoire respectés — **exactement ceux du contrat Socle**, la
   « date de naissance » propre à Iris est abandonnée, PO 2026-08-22 — grille large 3 colonnes) ; **recherche
   d'homonymes AUTOMATIQUE au fil de la saisie** (débounce 450 ms, `liveSearchIdentity` :
@@ -26,6 +34,43 @@ tout passe par `socle-proxy` (mutations TanStack sans cache). Vérifiée en navi
   utiliser le candidat ou « créer quand même ») ou « Poursuivre sans rapprochement »
   (bouton explicite, plus de case d'assomption) ; **dépôt anonyme uniquement si la démarche
   ne rend aucune identité obligatoire** (`allowsAnonymous` du moteur partagé).
+- **Fiche usager** (`/usagers/:contactId`, `UsagerPage.tsx`, 2026-08-22 — reprise de la
+  représentation de la fiche contact de Clara) : pile verticale de cartes pleine largeur,
+  sans onglets ni rail. **Carte d'identité** (icône du public, nom, badges public / statut
+  non actif / « Référentiel Socle », grille libellé-valeur identité + coordonnées, puis
+  adresse et quartier — pastille à la couleur libre du référentiel, texte adapté par
+  `isDarkColor`) puis **carte « Demandes de cet usager »** (tableau référence / objet /
+  démarche / statut / date, résumé « N visibles · N en cours · dernier dépôt le … »).
+  - `:contactId` est l'**id Socle** (Iris n'a pas d'usagers à lui). La fiche est relue à
+    chaque visite via `useSocleContact` (`socle-proxy /v1/contacts/get`, requête TanStack
+    `gcTime: 0`/`staleTime: 0` : **aucune rétention**), les demandes viennent d'Iris
+    (`useContactRequests`, bornées par le RLS — la fiche ne montre que le périmètre du
+    lecteur, et c'est la règle).
+  - **Modification (2026-08-23, `UsagerEditDialog` + `usagerEdit.ts` pur/testé)** : dialogue
+    calqué sur `ContactFormDialog` de Clara (identité / coordonnées / adresse), restreint aux
+    champs qu'Iris lit. L'écriture va **au Socle** (`socle-proxy /v1/contacts/update` →
+    `PATCH /v1/contacts/{id}`, function v8) : **patch partiel** — seuls les champs réellement
+    changés partent, un champ vidé part à `null` —, puis la fiche est **relue** depuis le
+    Socle (jamais remplacée par la réponse). Le formulaire rejoue les règles du Socle pour
+    fauter au bon champ (civilité obligatoire pour un citoyen, raison sociale pour une
+    structure, SIRET à 14 chiffres, date ISO, pays jamais vidé, au moins un nom) ; l'autorité
+    reste le Socle, dont les refus (SIRET déjà pris, invariants) s'affichent tels quels.
+    Le **type d'usager** n'est pas modifiable (immuable côté Socle) et le **statut** non plus :
+    l'**archivage/restauration d'un usager n'est pas livré** (backlog —
+    [`docs/data-model.md`](../../../docs/data-model.md) § Écarts, point 7). Le quartier n'est
+    pas saisi : le Socle le recalcule depuis l'adresse.
+  - **Droit requis** : le même que « Nouvelle demande » (au moins une démarche créable) —
+    c'est exactement la garde que `socle-proxy` applique déjà à toutes les routes
+    `/v1/contacts/*`. L'UI ne fait que la refléter.
+  - Les blocs Clara qui n'existent pas ici (consentements, rôles, références externes, notes
+    internes, relations) sont ceux que la sanitisation du proxy ne transmet jamais — ils ne
+    sont donc ni lus ni écrits. « Contacter » reste grisé (`SOON`).
+  - **« Nouvelle demande »** ouvre le parcours de création avec l'usager IMPOSÉ
+    (`/demandes/nouvelle?usager=<id Socle>` — l'identifiant seul transite, jamais l'identité) ;
+    le bouton n'apparaît qu'avec un droit de création sur au moins une démarche du cache
+    (reflet de confort, le serveur revalide). Verrouillage et cas de refus : voir
+    [`src/features/requests/CLAUDE.md`](../requests/CLAUDE.md).
+  - Entrée : bouton « Voir la fiche » du bloc Usager de la fiche d'instruction.
 - Le `requester_snapshot` est construit CÔTÉ SERVEUR au dépôt (contact rapproché relu depuis
   Socle) — la résolution ne transporte que le choix de l'agent. `internal_notes` n'existe
   nulle part côté Iris (sanitisation proxy + whitelists).

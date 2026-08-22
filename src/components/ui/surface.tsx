@@ -1,10 +1,11 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 
-// Briques visuelles de la fiche d'instruction (design Claude Design
-// « Suivi demande ») : surface, en-tête de section, avatar, pastille, et le
-// marqueur commun des fonctionnalités non encore livrées (grisées, jamais
-// cachées — décision PO 2026-08-22 : on les travaillera ensuite).
+// Briques visuelles des fiches (design Claude Design « Suivi demande »,
+// reprises par la fiche usager) : surface, en-tête de section, avatar,
+// pastille, cellule libellé/valeur, et le marqueur commun des fonctionnalités
+// non encore livrées (grisées, jamais cachées — décision PO 2026-08-22 : on
+// les travaillera ensuite).
 
 /** Attributs à poser sur tout bouton d'une fonctionnalité à venir. */
 export const SOON = {

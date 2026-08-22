@@ -17,6 +17,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   filterContactCreate,
+  filterContactUpdate,
   filterMatchRequest,
   sanitizeContact,
   sanitizeContactList,
@@ -291,6 +292,36 @@ Deno.serve(async (req) => {
     const contact = sanitizeContact(await res.json().catch(() => null));
     if (!contact) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
     return json(req, 201, { contact });
+  }
+
+  // Mise à jour d'une fiche usager du Socle (PATCH partiel : seules les clés
+  // transmises sont écrites). Le Socle reste l'arbitre — invariants par type
+  // (civilité d'une personne, raison sociale d'une structure), SIRET unique,
+  // format de date : ses refus sont relayés tels quels, en français.
+  if (path === "/v1/contacts/update") {
+    const contactId = typeof body.socle_contact_id === "string" ? body.socle_contact_id : "";
+    if (!UUID_RE.test(contactId)) {
+      return fail(req, 400, "bad_request", "socle_contact_id : UUID requis.");
+    }
+    const filtered = filterContactUpdate(body.contact);
+    if (!filtered.ok) return fail(req, 400, "bad_request", filtered.message);
+    const res = await socleFetch(`${contactsApiBase()}/v1/contacts/${contactId}`, {
+      method: "PATCH",
+      body: JSON.stringify(filtered.payload),
+      socleOrgId: tenant.socleOrgId,
+    });
+    if (!res || (!res.ok && res.status !== 400 && res.status !== 409)) {
+      return relaySocleError(req, res);
+    }
+    if (res.status === 400 || res.status === 409) {
+      // deno-lint-ignore no-explicit-any
+      const err = await res.json().catch(() => null) as any;
+      return fail(req, res.status, res.status === 409 ? "conflict" : "bad_request",
+        err?.error?.message ?? "Modification refusée par le Socle.");
+    }
+    const contact = sanitizeContact(await res.json().catch(() => null));
+    if (!contact) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+    return json(req, 200, { contact });
   }
 
   return fail(req, 404, "not_found", "Ressource introuvable.");

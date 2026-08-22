@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "../StatusBadge";
 import { MOTIF_LABELS, type ClosureMotif } from "../statuts";
 import type { RequestLink, RequestRow, RequestSummary } from "../useRequests";
-import { InfoCell, SOON, Surface, SurfaceHead } from "./bits";
+import { InfoCell, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
 import { channelLabel, linkReason, type AnswerRow } from "./instruction";
 
 interface Props {

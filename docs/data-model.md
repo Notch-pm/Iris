@@ -484,7 +484,19 @@ empêche l'enregistrement d'une migration).
    `socle_scope_org_id`/`anomalies` change — sans conséquence tant que l'outbox webhook n'est
    pas branchée (écart n°2), à revoir en phase 4 (le contrat de retour promet `version`
    **monotone côté transitions de statut**, pas côté recalcul de périmètre).
-7. **Retrait futur de `organization_members.role`** : colonne dérivée transitoire depuis le
+7. **Archivage d'un usager non repris (2026-08-23)** : la fiche usager Iris sait désormais
+   **modifier** un usager du Socle (`socle-proxy /v1/contacts/update`), mais pas l'archiver ni
+   le restaurer. Le Socle expose pourtant `POST /v1/contacts/{id}/archive` et `/restore`
+   (idempotents, sans corps, réponse = fiche complète), et Clara les propose depuis sa fiche
+   contact. Le champ `status` est explicitement **refusé** par `filterContactUpdate` — un
+   archivage ne doit pas passer pour une modification de champ. Ce qu'il faudrait pour le
+   livrer : deux routes proxy (relais des deux endpoints), un bouton « Archiver » /
+   « Restaurer » en `AlertDialog` de confirmation sur la fiche, et **une décision PO sur le
+   droit requis** (voir le risque résiduel correspondant dans [`droits.md`](droits.md)).
+   Aujourd'hui la fiche se contente de **refléter** un usager non actif (badge de statut) et
+   reste consultable ; les demandes déjà déposées ne sont pas affectées (leur
+   `requester_snapshot` est figé au dépôt).
+8. **Retrait futur de `organization_members.role`** : colonne dérivée transitoire depuis le
    2026-08-22 (filet de compatibilité front/edge functions pendant la bascule) — planifiée pour
    suppression dans une vague ultérieure, une fois toute la surface applicative migrée vers les
    droits effectifs (`my_rights`), pour éviter une seconde source de vérité.

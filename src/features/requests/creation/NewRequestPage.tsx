@@ -6,9 +6,15 @@
 // Autour : brouillon local continu, détection best-effort des demandes proches
 // avec liaison explicite, récépissé imprimable. La base de connaissances
 // (onglet « Procédure » du rail) viendra dans un second temps.
+//
+// Entrée « depuis la fiche usager » (`?usager=<id Socle>`) : l'usager est
+// IMPOSÉ — relu depuis le Socle, appliqué dès que la démarche est choisie,
+// affiché verrouillé à l'étape 2 (ni recherche, ni « Modifier »). Il reste
+// soumis au requester_config de la démarche : un public qu'elle ne propose pas
+// est refusé ici comme il le serait côté serveur.
 
 import * as React from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ArrowLeft, Check, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,7 +36,8 @@ import {
   type ProcedureSnapshot,
 } from "@/features/socle/useSocleCatalog";
 import { RequesterIdentification } from "@/features/contacts/RequesterIdentification";
-import { useGetContact } from "@/features/contacts/useContacts";
+import { useGetContact, useSocleContact } from "@/features/contacts/useContacts";
+import { candidateSummary, contactAudience } from "@/features/contacts/rapprochement";
 import type { RequesterResolution } from "@/features/contacts/rapprochement";
 import type { EdgeError } from "@/lib/edge";
 import { cn } from "@/lib/utils";
@@ -110,6 +117,12 @@ export function NewRequestPage() {
   const linkRequests = useLinkRequests();
   const getContact = useGetContact();
   const draft = useCreationDraft(orgId, userId);
+
+  // Usager imposé (création depuis sa fiche) : relu depuis le Socle, jamais
+  // transporté par l'URL autrement que par son identifiant.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const imposedContactId = searchParams.get("usager");
+  const imposedContact = useSocleContact(orgId, imposedContactId);
 
   const [step, setStep] = React.useState<PageStep>(1);
   const [maxReached, setMaxReached] = React.useState(1);
@@ -193,6 +206,52 @@ export function NewRequestPage() {
     : nearby.isError ? "error"
     : "ready";
   const duplicates = nearbyScored.filter((i) => i.likelyDuplicate);
+
+  // ---- Usager imposé (entrée depuis la fiche usager) --------------------------
+  type ContactResolution = Extract<RequesterResolution, { kind: "contact" }>;
+  const imposedResolution = React.useMemo<ContactResolution | null>(() => {
+    const contact = imposedContact.data;
+    if (!contact) return null;
+    const audience = contactAudience(contact.contact_type);
+    return audience === null ? null : { kind: "contact", audience, contact };
+  }, [imposedContact.data]);
+
+  /** Nom de l'usager imposé, connu avant même le choix de la démarche. */
+  const imposedName = imposedContact.data ? candidateSummary(imposedContact.data).title : null;
+
+  const imposedRefused = Boolean(
+    procedure && imposedResolution
+      && !validateRequesterSubmission(procedure.snapshot.requester_config, toSubmission(imposedResolution)).ok,
+  );
+
+  /** Pourquoi l'étape 2 ne propose rien (usager imposé inutilisable), ou null. */
+  const imposedMessage: string | null = !imposedContactId ? null
+    : imposedContact.isLoading ? "Lecture de la fiche usager dans le référentiel Socle…"
+    : imposedContact.isError || !imposedContact.data
+      ? `La fiche usager n'a pas pu être relue depuis le Socle${
+          imposedContact.error instanceof Error ? ` — ${imposedContact.error.message}` : "."
+        } Reprenez depuis la fiche de l'usager, ou créez la demande sans point d'entrée imposé.`
+    : imposedResolution === null
+      ? "Cet usager est enregistré comme administration dans le Socle : aucun public de démarche Iris ne lui correspond."
+    : imposedRefused
+      ? `La démarche « ${procedure!.snapshot.name} » ne propose pas le public « ${
+          imposedResolution.audience === "citoyen" ? "Citoyen"
+            : imposedResolution.audience === "entreprise" ? "Entreprise" : "Association"
+        } » — choisissez une autre démarche.`
+    : null;
+
+  // L'usager imposé est appliqué dès que la démarche est chargée (et rejoué si
+  // la fiche Socle arrive après). Le requester_config reste l'arbitre.
+  React.useEffect(() => {
+    if (!imposedContactId || !procedure) return;
+    const config = procedure.snapshot.requester_config;
+    setResolution((current) => {
+      if (!imposedResolution) return null;
+      if (!validateRequesterSubmission(config, toSubmission(imposedResolution)).ok) return null;
+      const same = current?.kind === "contact" && current.contact.id === imposedResolution.contact.id;
+      return same ? current : imposedResolution;
+    });
+  }, [imposedContactId, imposedResolution, procedure]);
 
   // ---- Brouillon local (différé à chaque saisie) -----------------------------
   const draftBody: DraftBody | null = procedureId !== "" && step !== 5
@@ -507,7 +566,7 @@ export function NewRequestPage() {
   const requesterName = requesterShortName(resolution);
   const steps: StepDef[] = [
     { num: 1, label: "Démarche", hint: procedure ? procedure.snapshot.name : "à choisir" },
-    { num: 2, label: "Usager", hint: requesterName ?? "recherche & homonymes" },
+    { num: 2, label: "Usager", hint: requesterName ?? imposedName ?? "recherche & homonymes" },
     {
       num: 3, label: "Formulaire",
       hint: procedure ? `${activeCount} champ${activeCount > 1 ? "s" : ""} actif${activeCount > 1 ? "s" : ""}` : "paramétré par le service",
@@ -540,11 +599,15 @@ export function NewRequestPage() {
     : step === 2 ? "Continuer vers le formulaire"
     : "Voir le récapitulatif";
   const footHint = step === 1 ? "Choisissez la démarche Socle qui fonde la demande"
-    : step === 2 ? "Renseignez l'usager : ses homonymes du Socle sont proposés automatiquement"
+    : step === 2 ? (imposedContactId
+        ? "Usager imposé par sa fiche — il n'est pas modifiable dans ce parcours"
+        : "Renseignez l'usager : ses homonymes du Socle sont proposés automatiquement")
     : step === 3 ? (missing === 0 ? "Tous les champs obligatoires sont renseignés" : `${missing} champ${missing > 1 ? "s" : ""} obligatoire${missing > 1 ? "s" : ""} restant${missing > 1 ? "s" : ""}`)
     : "Vérifiez le récapitulatif avant création";
 
-  const existingDraft = draft.existing;
+  // Entrée « depuis la fiche usager » : pas de reprise de brouillon (il
+  // porterait un autre usager, que le parcours imposé ne peut pas remplacer).
+  const existingDraft = imposedContactId ? null : draft.existing;
   const existingDraftName = existingDraft
     ? (procRows.data ?? []).find((r) => r.socle_id === existingDraft.procedureId)?.name ?? null
     : null;
@@ -578,7 +641,9 @@ export function NewRequestPage() {
           <div>
             <h1 className="text-[22px] font-bold tracking-tight">Nouvelle demande</h1>
             <p className="mt-1 text-[13px] text-muted-foreground">
-              Consignée pour le compte d'un usager — brouillon enregistré en continu sur ce poste
+              {imposedContactId
+                ? `Consignée pour ${requesterName ?? imposedName ?? "l'usager de la fiche"} — usager imposé, brouillon enregistré sur ce poste`
+                : "Consignée pour le compte d'un usager — brouillon enregistré en continu sur ce poste"}
             </p>
           </div>
           <div className="flex items-center gap-2.5">
@@ -652,6 +717,19 @@ export function NewRequestPage() {
               requesterConfig={procedure.snapshot.requester_config}
               resolution={resolution}
               onResolve={onResolve}
+              locked={Boolean(imposedContactId)}
+              lockedMessage={imposedMessage}
+              lockedAction={
+                // Impasse (fiche illisible, public non proposé) : on ne laisse
+                // pas le parcours sans issue — l'agent peut désigner l'usager
+                // lui-même, en connaissance de cause.
+                imposedMessage !== null && !imposedContact.isLoading ? (
+                  <Button type="button" variant="outline" size="sm"
+                    onClick={() => setSearchParams({}, { replace: true })}>
+                    Désigner l'usager moi-même
+                  </Button>
+                ) : null
+              }
             />
           ) : null}
 
