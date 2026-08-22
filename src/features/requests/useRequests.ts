@@ -161,6 +161,25 @@ export function useTenantMembers(orgId: string) {
   });
 }
 
+export interface EligibleAssigneeRow {
+  user_id: string;
+  display_name: string;
+  email: string;
+}
+
+/** Membres éligibles à l'affectation sur cette demande (RM-16 : instruction sur le couple). */
+export function useEligibleAssignees(requestId: string | undefined) {
+  return useQuery({
+    queryKey: ["eligible-assignees", requestId],
+    enabled: Boolean(requestId),
+    queryFn: async (): Promise<EligibleAssigneeRow[]> => {
+      const { data, error } = await supabase.rpc("eligible_assignees", { p_request_id: requestId! });
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+}
+
 function useInvalidateRequest() {
   const queryClient = useQueryClient();
   return (requestId?: string) => {
@@ -174,6 +193,7 @@ function useInvalidateRequest() {
         "request_messages",
         "request_attachments",
         "request_links",
+        "eligible-assignees",
       ]) {
         void queryClient.invalidateQueries({ queryKey: [table, requestId] });
       }
@@ -204,6 +224,66 @@ export function useApplyTransition() {
       if (error) throw error;
     },
     onSuccess: (_data, vars) => invalidate(vars.requestId),
+  });
+}
+
+/** Priorité (« urgence » de la fiche) — writer du tenant ; gelée sur une demande archivée (garde t10). */
+export function useUpdatePriority() {
+  const invalidate = useInvalidateRequest();
+  return useMutation({
+    mutationFn: async (input: { requestId: string; priority: string }) => {
+      const { error } = await supabase
+        .from("requests")
+        .update({ priority: input.priority } as never)
+        .eq("id", input.requestId);
+      if (error) throw error;
+    },
+    onSuccess: (_data, vars) => invalidate(vars.requestId),
+  });
+}
+
+export interface RequestSummary {
+  id: string;
+  reference: string;
+  subject: string;
+  status: string;
+  created_at: string;
+  socle_procedure_label: string | null;
+}
+
+const SUMMARY_SELECT = "id, reference, subject, status, created_at, socle_procedure_label";
+
+/** Résumés des demandes liées (cibles des `request_links`), dans le périmètre RLS du lecteur. */
+export function useRequestSummaries(ids: string[]) {
+  const key = [...ids].sort();
+  return useQuery({
+    queryKey: ["request-summaries", key],
+    enabled: key.length > 0,
+    queryFn: async (): Promise<RequestSummary[]> => {
+      const { data, error } = await supabase.from("requests").select(SUMMARY_SELECT).in("id", key);
+      if (error) throw error;
+      return (data ?? []) as RequestSummary[];
+    },
+  });
+}
+
+/** Autres demandes du même usager Socle rapproché (même tenant), la courante exclue. */
+export function useRequesterRequests(orgId: string, socleContactId: string | null, excludeId: string) {
+  return useQuery({
+    queryKey: ["requester-requests", orgId, socleContactId],
+    enabled: Boolean(orgId && socleContactId),
+    queryFn: async (): Promise<RequestSummary[]> => {
+      const { data, error } = await supabase
+        .from("requests")
+        .select(SUMMARY_SELECT)
+        .eq("organization_id", orgId)
+        .eq("socle_contact_id", socleContactId!)
+        .order("created_at", { ascending: false })
+        .limit(20);
+      if (error) throw error;
+      return (data ?? []) as RequestSummary[];
+    },
+    select: (rows) => rows.filter((r) => r.id !== excludeId),
   });
 }
 
@@ -294,11 +374,17 @@ export function useDeleteMessage() {
   });
 }
 
-/** URL signée temporaire d'une pièce copiée (bucket privé). */
-export async function createAttachmentUrl(storagePath: string): Promise<string | null> {
+/**
+ * URL signée temporaire d'une pièce copiée (bucket privé). `download` force
+ * l'enregistrement sous le nom d'origine au lieu de l'affichage en ligne.
+ */
+export async function createAttachmentUrl(
+  storagePath: string,
+  download?: string,
+): Promise<string | null> {
   const { data, error } = await supabase.storage
     .from("request-attachments")
-    .createSignedUrl(storagePath, 300);
+    .createSignedUrl(storagePath, 300, download ? { download } : undefined);
   if (error) return null;
   return data.signedUrl;
 }

@@ -69,9 +69,44 @@ note interne → résolution avec texte de clôture → journal.
   affectation, notes, liaison `useLinkRequests`). Pas d'appel `supabase` direct dans les
   pages.
 - **Pages** : `RequestsListPage` (filtres statut/destinataire/démarche/priorité/source,
-  pagination 20, bouton « Nouvelle demande » → `/demandes/nouvelle`), `RequestDetailPage` (snapshot, pièces avec URL
-  signée, liens externes, affectation + historique, messages internes — « ne quittent jamais
-  Iris » —, journal `request_events` en lecture seule), `TransitionActions` (boutons + dialogue
-  motif/texte/assigné).
+  pagination 20, filtre initial depuis `?status=`, bouton « Nouvelle demande » →
+  `/demandes/nouvelle`) et la **fiche d'instruction** ci-dessous.
+- **Fiche d'instruction de la demande** (`RequestDetailPage` + `instruction/`, design Claude
+  Design « Suivi demande » implémenté le 2026-08-22) : page pleine hauteur. **En-tête** : fil
+  d'Ariane (Demandes / statut / référence mono), objet, statut (pastille à point), échéance
+  (`due_at` : « dans N jours » / « en retard »), sous-titre usager · canal · date · échéance,
+  **action principale** (transition « vers l'avant » : `splitTransitions`) + menu « ⋯ » (autres
+  transitions, copier la référence). **Onglets** : Résumé (clôture, informations saisies
+  étiquetées par `procedure_snapshot.form_schema` avec conditions rejouées — `formAnswers` —,
+  description, lieu d'intervention, demandes liées via `useRequestSummaries`), Documents
+  (pièces de la demande : vignette, taille, état de copie, « Voir » / « Télécharger » par URL
+  signée ; pièces d'instruction ; courriers), Échanges, Notes internes (`request_messages`,
+  bulles beurre, suppression auteur/admin), Activité (`activityItems` : journal `request_events`
+  fusionné aux notes, plus récent en tête). **Rail** : prise en charge (urgence = `priority`
+  via `useUpdatePriority`, agent instructeur via `useAssignRequest`, service instructeur),
+  avancement (`buildStages` : étapes datées d'après le journal, attente « sautée », clôture
+  avec motif ; bouton d'action principale), usager (`requesterIdentity` : snapshot normalisé
+  quelle que soit l'origine — contacts-api, publics Iris, clés partenaires conservées en
+  clair —, autres demandes du même usager Socle via `useRequesterRequests`).
+  - **Fonctionnalités à venir, visibles mais grisées** (`SOON` dans `instruction/bits.tsx`,
+    décision PO 2026-08-22) : écrire à l'usager / contacter / onglet Échanges (composeur
+    entier), lieu d'intervention (carte, itinéraire), demander une pièce, pièces
+    d'instruction, courriers, exporter le journal, voir la fiche usager, changer le service
+    instructeur. Ne rien cacher : on les travaillera ensuite.
+  - **`instruction/instruction.ts`** (pur, testé) porte TOUTE la déduction (échéance,
+    sous-titre, identité, réponses, étapes, activité, vignettes) ; les composants affichent.
+  - **`TransitionActions.tsx`** = `useTransitionRunner` (transition active, application
+    directe ou dialogue, erreur) + `TransitionDialog` (motif / texte de clôture / assigné),
+    monté une fois par fiche. Les refus de la garde SQL sont affichés tels quels (bandeau
+    d'en-tête ou dialogue). `src/components/ui/dropdown.tsx` = menu flottant minimal (`ar-pop`).
 - RLS = source de vérité : l'UI ne masque les actions que par confort ; toute erreur de garde
   SQL est affichée telle quelle.
+- **Droits effectifs (profils de droits, 2026-08-22)** : `useTenant()` expose `rights`
+  (`MyRights`, RPC `my_rights`), `isAdmin`, `hasAnyProfile`. Dans la fiche, les droits se
+  calculent sur le **couple** de la demande — `rightsFor(rights, r.socle_scope_org_id,
+  r.socle_procedure_id)` + `isAdminOn(rights, r.socle_scope_org_id)` → `RequestRights` — et
+  alimentent `allowedTransitionsFor`, `canWriteWith` (notes), `canAdminWith` (réouverture,
+  archivage, suppression de note d'autrui). La liste conditionne « Nouvelle demande » à
+  `canCreateProcedure` sur au moins une démarche du cache et restreint la facette Démarche
+  aux démarches consultables. `allowedTransitions(status, role)`/`canWrite(role)` sont
+  **dépréciés** (vestiges du rôle binaire). Référence : [`docs/droits.md`](../../../docs/droits.md).

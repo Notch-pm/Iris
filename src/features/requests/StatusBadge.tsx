@@ -11,15 +11,23 @@ const STYLES: Record<RequestStatus, string> = {
   archivee: "bg-muted text-muted-foreground border-border",
 };
 
-export function StatusBadge({ status }: { status: string }) {
+interface Props {
+  status: string;
+  /** Pastille d'en-tête : plus grande, avec un point de couleur. */
+  size?: "sm" | "md";
+}
+
+export function StatusBadge({ status, size = "sm" }: Props) {
   const code = status as RequestStatus;
   return (
     <span
       className={cn(
-        "inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+        "inline-flex items-center gap-[7px] whitespace-nowrap rounded-full border font-semibold",
+        size === "md" ? "px-[11px] py-[5px] text-[11.5px] font-bold" : "px-2.5 py-0.5 text-xs",
         STYLES[code] ?? "border-input",
       )}
     >
+      {size === "md" ? <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" /> : null}
       {STATUS_LABELS[code] ?? status}
     </span>
   );

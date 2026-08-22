@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,8 +9,9 @@ import {
   useSocleOrganizationsCatalog,
   useSocleProceduresCatalog,
 } from "@/features/socle/useSocleCatalog";
+import { canCreateProcedure, canViewProcedure } from "@/features/rights/rights";
 import { StatusBadge } from "./StatusBadge";
-import { canWrite, PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
+import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
 import {
   EMPTY_FILTERS, PAGE_SIZE, useRequestFacets, useRequestsList, type RequestFilters,
 } from "./useRequests";
@@ -20,8 +21,13 @@ function formatDate(iso: string): string {
 }
 
 export function RequestsListPage() {
-  const { current } = useTenant();
-  const [filters, setFilters] = React.useState<RequestFilters>(EMPTY_FILTERS);
+  const { current, rights } = useTenant();
+  // Filtre initial depuis l'URL (fil d'Ariane de la fiche : `/demandes?status=…`).
+  const [searchParams] = useSearchParams();
+  const [filters, setFilters] = React.useState<RequestFilters>(() => {
+    const status = searchParams.get("status") ?? "";
+    return { ...EMPTY_FILTERS, status: status in STATUS_LABELS ? status : "" };
+  });
   const [page, setPage] = React.useState(1);
 
   const orgId = current?.organizationId ?? "";
@@ -30,10 +36,29 @@ export function RequestsListPage() {
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
   const procCatalog = useSocleProceduresCatalog(orgId);
   // Catalogues Socle synchronisés quand disponibles, facettes observées sinon.
+  // Restreint au périmètre (union des scope_organization_ids des profils actifs) —
+  // admin plateforme : aucune restriction.
+  const scopeOrgIds = rights.is_platform_admin
+    ? null
+    : new Set(
+        rights.profiles
+          .filter((p) => p.status === "active")
+          .flatMap((p) => p.scope_organization_ids),
+      );
   const destinataireOptions =
-    (orgCatalog.data?.length ?? 0) > 0 ? orgCatalog.data! : (facets.data?.destinataires ?? []);
+    ((orgCatalog.data?.length ?? 0) > 0 ? orgCatalog.data! : (facets.data?.destinataires ?? []))
+      .filter((o) => scopeOrgIds === null || scopeOrgIds.has(o.value));
+  // Facette « Démarche » restreinte aux démarches consultables (RM-61, CA-02) ; les
+  // facettes observées sont déjà filtrées par le RLS.
   const procedureOptions =
-    (procCatalog.data?.length ?? 0) > 0 ? procCatalog.data! : (facets.data?.procedures ?? []);
+    (procCatalog.data?.length ?? 0) > 0
+      ? procCatalog.data!.filter((o) => rights.is_platform_admin || canViewProcedure(rights, o.value))
+      : (facets.data?.procedures ?? []);
+  // « Nouvelle demande » : au moins une démarche du cache créable (RM-58) — reflet
+  // de confort, le serveur (create-request-from-procedure) revalide le couple.
+  const canCreate =
+    rights.is_platform_admin ||
+    (procCatalog.data ?? []).some((o) => canCreateProcedure(rights, o.value));
 
   if (!current) {
     return (
@@ -59,7 +84,7 @@ export function RequestsListPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Demandes</h1>
           <Badge variant="muted">{total}</Badge>
         </div>
-        {canWrite(current.role) ? (
+        {canCreate ? (
           <Button asChild>
             <Link to="/demandes/nouvelle">
               <Plus />
