@@ -110,3 +110,12 @@ note interne → résolution avec texte de clôture → journal.
   `canCreateProcedure` sur au moins une démarche du cache et restreint la facette Démarche
   aux démarches consultables. `allowedTransitions(status, role)`/`canWrite(role)` sont
   **dépréciés** (vestiges du rôle binaire). Référence : [`docs/droits.md`](../../../docs/droits.md).
+- **Liste : tri, regroupement, export** (2026-08-22, motif des listes Clara) — logique pure
+  `listing.ts` (testée) : **tri serveur** par colonne (référence = année puis numéro ; dates du
+  plus récent d'abord ; jamais de retour à « non trié » ; la priorité n'est pas triable —
+  ordre alphabétique trompeur), **« Grouper par »** statut / destinataire / démarche /
+  priorité / source (regroupement client de la page courante, avec pré-tri serveur sur la
+  clé de groupe pour des groupes contigus entre pages ; groupes repliables), **export CSV**
+  de TOUTE la sélection filtrée dans l'ordre affiché (`fetchRequestsForExport`, lots de 1000,
+  borné à 5000 lignes — tronçon signalé ; `src/lib/csv.ts` : `;`, BOM UTF-8 Excel FR).
+  En-tête triable `src/components/ui/sortable-header.tsx` (+ `aria-sort`).

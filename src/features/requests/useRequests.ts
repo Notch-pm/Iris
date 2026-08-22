@@ -4,6 +4,7 @@ import type { Tables } from "@/types/database.types";
 import { buildRequestFacets, type RequestFacets } from "./facets";
 import type { ClosureMotif, TransitionSpec } from "./statuts";
 import { buildTransitionUpdate } from "./statuts";
+import { EXPORT_MAX_ROWS, orderClauses, type GroupKey, type SortState } from "./listing";
 
 export type RequestRow = Tables<"requests">;
 export type RequestEvent = Tables<"request_events">;
@@ -31,7 +32,7 @@ export const EMPTY_FILTERS: RequestFilters = {
 };
 
 const LIST_SELECT =
-  "id, reference, subject, status, priority, source, identity_status, socle_organization_id, socle_organization_label, socle_procedure_id, socle_procedure_label, assigned_to, received_at, created_at, updated_at";
+  "id, reference, subject, status, priority, source, identity_status, socle_organization_id, socle_organization_label, socle_procedure_id, socle_procedure_label, assigned_to, received_at, due_at, created_at, updated_at";
 
 export interface RequestListItem {
   id: string;
@@ -47,31 +48,70 @@ export interface RequestListItem {
   socle_procedure_label: string | null;
   assigned_to: string | null;
   received_at: string;
+  due_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export function useRequestsList(orgId: string, filters: RequestFilters, page: number) {
+/** Requête de liste commune (filtres + tri serveur + pré-tri par clé de groupe). */
+function listQuery(orgId: string, filters: RequestFilters, sort: SortState, groupKey: GroupKey | null) {
+  let query = supabase
+    .from("requests")
+    .select(LIST_SELECT, { count: "exact" })
+    .eq("organization_id", orgId);
+  if (filters.status) query = query.eq("status", filters.status);
+  if (filters.destinataire) query = query.eq("socle_organization_id", filters.destinataire);
+  if (filters.procedure) query = query.eq("socle_procedure_id", filters.procedure);
+  if (filters.priority) query = query.eq("priority", filters.priority);
+  if (filters.source) query = query.eq("source", filters.source);
+  for (const clause of orderClauses(sort, groupKey)) {
+    query = query.order(clause.column, { ascending: clause.ascending, nullsFirst: false });
+  }
+  return query;
+}
+
+export function useRequestsList(
+  orgId: string,
+  filters: RequestFilters,
+  page: number,
+  sort: SortState,
+  groupKey: GroupKey | null,
+) {
   return useQuery({
-    queryKey: ["requests", orgId, filters, page],
+    queryKey: ["requests", orgId, filters, page, sort, groupKey],
     placeholderData: keepPreviousData,
     queryFn: async () => {
-      let query = supabase
-        .from("requests")
-        .select(LIST_SELECT, { count: "exact" })
-        .eq("organization_id", orgId)
-        .order("created_at", { ascending: false })
+      const { data, error, count } = await listQuery(orgId, filters, sort, groupKey)
         .range((page - 1) * PAGE_SIZE, page * PAGE_SIZE - 1);
-      if (filters.status) query = query.eq("status", filters.status);
-      if (filters.destinataire) query = query.eq("socle_organization_id", filters.destinataire);
-      if (filters.procedure) query = query.eq("socle_procedure_id", filters.procedure);
-      if (filters.priority) query = query.eq("priority", filters.priority);
-      if (filters.source) query = query.eq("source", filters.source);
-      const { data, error, count } = await query;
       if (error) throw error;
       return { items: (data ?? []) as RequestListItem[], total: count ?? 0 };
     },
   });
+}
+
+const EXPORT_PAGE_SIZE = 1000;
+
+/**
+ * Toutes les demandes de la sélection filtrée, dans l'ordre affiché, pour
+ * l'export CSV (motif Clara `fetchAllCouriersForExport`) — par lots, bornées à
+ * EXPORT_MAX_ROWS (`truncated` le signale). Le RLS borne la visibilité.
+ */
+export async function fetchRequestsForExport(
+  orgId: string,
+  filters: RequestFilters,
+  sort: SortState,
+  groupKey: GroupKey | null,
+): Promise<{ rows: RequestListItem[]; truncated: boolean }> {
+  const all: RequestListItem[] = [];
+  for (let offset = 0; offset < EXPORT_MAX_ROWS; offset += EXPORT_PAGE_SIZE) {
+    const { data, error } = await listQuery(orgId, filters, sort, groupKey)
+      .range(offset, offset + EXPORT_PAGE_SIZE - 1);
+    if (error) throw error;
+    const batch = (data ?? []) as RequestListItem[];
+    all.push(...batch);
+    if (batch.length < EXPORT_PAGE_SIZE) return { rows: all, truncated: false };
+  }
+  return { rows: all, truncated: true };
 }
 
 export function useRequestFacets(orgId: string) {

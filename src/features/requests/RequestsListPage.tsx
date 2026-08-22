@@ -1,23 +1,66 @@
+// Liste des demandes du tenant — filtres, tri serveur par colonne, « Grouper
+// par » (page courante, pré-triée par la clé de groupe côté serveur), export
+// CSV de toute la sélection filtrée (motif des listes Clara). Le RLS borne ce
+// que l'utilisateur voit ; l'UI ne fait que présenter.
+
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
+import { ariaSort, SortableHeader } from "@/components/ui/sortable-header";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import {
   useSocleOrganizationsCatalog,
   useSocleProceduresCatalog,
 } from "@/features/socle/useSocleCatalog";
 import { canCreateProcedure, canViewProcedure } from "@/features/rights/rights";
+import { buildCsv, downloadCsv } from "@/lib/csv";
+import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
 import {
-  EMPTY_FILTERS, PAGE_SIZE, useRequestFacets, useRequestsList, type RequestFilters,
+  DEFAULT_SORT, EXPORT_MAX_ROWS, exportFilename, GROUP_KEYS, GROUP_LABELS, groupRows, isGroupKey,
+  requestCsvColumns, toggleSort, type GroupKey, type SortKey, type SortState,
+} from "./listing";
+import {
+  EMPTY_FILTERS, fetchRequestsForExport, PAGE_SIZE, useRequestFacets, useRequestsList,
+  useTenantMembers, type RequestFilters, type RequestListItem,
 } from "./useRequests";
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+}
+
+const COLUMNS: { key: SortKey | null; title: string; align?: "right" }[] = [
+  { key: "reference", title: "Référence" },
+  { key: "subject", title: "Objet" },
+  { key: "status", title: "Statut" },
+  { key: "destinataire", title: "Destinataire" },
+  { key: "procedure", title: "Démarche" },
+  { key: null, title: "Priorité" },
+  { key: "source", title: "Source" },
+  { key: "received_at", title: "Reçue le" },
+];
+
+function RequestRow({ r }: { r: RequestListItem }) {
+  return (
+    <tr className="border-b border-border/60 last:border-0 hover:bg-muted/50">
+      <td className="px-4 py-3 font-medium">
+        <Link to={`/demandes/${r.id}`} className="text-primary hover:underline">
+          {r.reference}
+        </Link>
+      </td>
+      <td className="max-w-[280px] truncate px-4 py-3">{r.subject}</td>
+      <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+      <td className="px-4 py-3">{r.socle_organization_label ?? "—"}</td>
+      <td className="px-4 py-3">{r.socle_procedure_label ?? "Demande libre"}</td>
+      <td className="px-4 py-3">{PRIORITY_LABELS[r.priority] ?? r.priority}</td>
+      <td className="px-4 py-3"><Badge variant="outline">{r.source}</Badge></td>
+      <td className="px-4 py-3 text-muted-foreground">{formatDate(r.received_at)}</td>
+    </tr>
+  );
 }
 
 export function RequestsListPage() {
@@ -29,10 +72,16 @@ export function RequestsListPage() {
     return { ...EMPTY_FILTERS, status: status in STATUS_LABELS ? status : "" };
   });
   const [page, setPage] = React.useState(1);
+  const [sort, setSort] = React.useState<SortState>(DEFAULT_SORT);
+  const [groupKey, setGroupKey] = React.useState<GroupKey | null>(null);
+  const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+  const [exporting, setExporting] = React.useState(false);
+  const [exportNote, setExportNote] = React.useState<{ text: string; error: boolean } | null>(null);
 
   const orgId = current?.organizationId ?? "";
-  const list = useRequestsList(orgId, filters, page);
+  const list = useRequestsList(orgId, filters, page, sort, groupKey);
   const facets = useRequestFacets(orgId);
+  const members = useTenantMembers(orgId);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
   const procCatalog = useSocleProceduresCatalog(orgId);
   // Catalogues Socle synchronisés quand disponibles, facettes observées sinon.
@@ -72,10 +121,48 @@ export function RequestsListPage() {
     setFilters((f) => ({ ...f, [key]: e.target.value }));
     setPage(1);
   };
+  // Trier ou regrouper depuis la page 7 laisserait une page vide : retour en page 1.
+  const onSort = (key: SortKey) => { setSort((s) => toggleSort(s, key)); setPage(1); };
+  const onGroup = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const v = e.target.value;
+    setGroupKey(isGroupKey(v) ? v : null);
+    setCollapsed(new Set());
+    setPage(1);
+  };
+  const toggleGroup = (id: string) =>
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+
+  const memberList = members.data ?? [];
+  const nameOf = (userId: string | null) =>
+    memberList.find((m) => m.userId === userId)?.displayName ?? "";
+
+  async function exportCsv() {
+    setExporting(true);
+    setExportNote(null);
+    try {
+      const { rows, truncated } = await fetchRequestsForExport(orgId, filters, sort, groupKey);
+      downloadCsv(buildCsv(rows, requestCsvColumns(nameOf)), exportFilename(current!.organizationName, new Date()));
+      setExportNote({
+        text: truncated
+          ? `Export limité aux ${EXPORT_MAX_ROWS} premières demandes — affinez les filtres pour le reste.`
+          : `${rows.length} demande${rows.length > 1 ? "s" : ""} exportée${rows.length > 1 ? "s" : ""}.`,
+        error: false,
+      });
+    } catch (err) {
+      setExportNote({ text: err instanceof Error ? err.message : "Export impossible.", error: true });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const total = list.data?.total ?? 0;
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const items = list.data?.items ?? [];
+  const groups = groupRows(items, groupKey);
 
   return (
     <div className="flex flex-col gap-4">
@@ -127,49 +214,86 @@ export function RequestsListPage() {
         </Select>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span className="whitespace-nowrap">Grouper par</span>
+          <Select aria-label="Grouper par" className="h-9 w-[180px]" value={groupKey ?? ""} onChange={onGroup}>
+            <option value="">Aucun</option>
+            {GROUP_KEYS.map((k) => (
+              <option key={k} value={k}>{GROUP_LABELS[k]}</option>
+            ))}
+          </Select>
+        </label>
+        <div className="flex items-center gap-3">
+          {exportNote ? (
+            <span role={exportNote.error ? "alert" : "status"}
+              className={cn("text-xs", exportNote.error ? "text-destructive" : "text-muted-foreground")}>
+              {exportNote.text}
+            </span>
+          ) : null}
+          <Button variant="outline" size="sm" onClick={() => void exportCsv()}
+            disabled={exporting || total === 0} aria-busy={exporting}>
+            <Download className="size-4" aria-hidden="true" />
+            {exporting ? "Export en cours…" : "Exporter en CSV"}
+          </Button>
+        </div>
+      </div>
+
       <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-iris-sm">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-              <th className="px-4 py-3">Référence</th>
-              <th className="px-4 py-3">Objet</th>
-              <th className="px-4 py-3">Statut</th>
-              <th className="px-4 py-3">Destinataire</th>
-              <th className="px-4 py-3">Démarche</th>
-              <th className="px-4 py-3">Priorité</th>
-              <th className="px-4 py-3">Source</th>
-              <th className="px-4 py-3">Reçue le</th>
+              {COLUMNS.map((c) => (
+                <th key={c.title} className="px-4 py-2"
+                  aria-sort={c.key ? ariaSort(sort.key === c.key ? sort.dir : false) : undefined}>
+                  {c.key ? (
+                    <SortableHeader title={c.title} direction={sort.key === c.key ? sort.dir : false}
+                      onToggle={() => onSort(c.key!)} />
+                  ) : (
+                    <span className="inline-flex h-8 items-center">{c.title}</span>
+                  )}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {list.isLoading ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Chargement…</td></tr>
+              <tr><td colSpan={COLUMNS.length} className="px-4 py-8 text-center text-muted-foreground">Chargement…</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-muted-foreground">Aucune demande.</td></tr>
+              <tr><td colSpan={COLUMNS.length} className="px-4 py-8 text-center text-muted-foreground">Aucune demande.</td></tr>
+            ) : groupKey ? (
+              groups.map((g) => {
+                const isCollapsed = collapsed.has(g.id);
+                return (
+                  <React.Fragment key={g.id}>
+                    <tr className="border-b border-border/60 bg-muted/30">
+                      <td colSpan={COLUMNS.length} className="px-3 py-2">
+                        <button type="button" onClick={() => toggleGroup(g.id)} aria-expanded={!isCollapsed}
+                          className="flex w-full items-center gap-2 text-left">
+                          {isCollapsed
+                            ? <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
+                            : <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />}
+                          <span className="text-sm font-semibold">{g.label}</span>
+                          <Badge variant="secondary">{g.items.length}</Badge>
+                        </button>
+                      </td>
+                    </tr>
+                    {isCollapsed ? null : g.items.map((r) => <RequestRow key={r.id} r={r} />)}
+                  </React.Fragment>
+                );
+              })
             ) : (
-              items.map((r) => (
-                <tr key={r.id} className="border-b border-border/60 last:border-0 hover:bg-muted/50">
-                  <td className="px-4 py-3 font-medium">
-                    <Link to={`/demandes/${r.id}`} className="text-primary hover:underline">
-                      {r.reference}
-                    </Link>
-                  </td>
-                  <td className="max-w-[280px] truncate px-4 py-3">{r.subject}</td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                  <td className="px-4 py-3">{r.socle_organization_label ?? "—"}</td>
-                  <td className="px-4 py-3">{r.socle_procedure_label ?? "Demande libre"}</td>
-                  <td className="px-4 py-3">{PRIORITY_LABELS[r.priority] ?? r.priority}</td>
-                  <td className="px-4 py-3"><Badge variant="outline">{r.source}</Badge></td>
-                  <td className="px-4 py-3 text-muted-foreground">{formatDate(r.received_at)}</td>
-                </tr>
-              ))
+              items.map((r) => <RequestRow key={r.id} r={r} />)
             )}
           </tbody>
         </table>
       </div>
 
       <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>Page {page} sur {pageCount}</span>
+        <span>
+          Page {page} sur {pageCount}
+          {groupKey ? " — regroupement sur la page affichée" : ""}
+        </span>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
             Précédente
