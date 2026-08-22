@@ -102,3 +102,8 @@ npm run lint    # tsc -b — doit passer sans erreur
 npm test        # vitest — la validation de configuration est couverte
 npm run build   # tsc -b && vite build — doit produire dist/
 ```
+
+Après tout lot de migrations SQL touchant le RLS (motif du lot **profils de droits**,
+2026-08-22) : rejouer les tests transactionnels de `supabase/tests/` via `apply_migration`
+(jamais `execute_sql`, en lecture seule) et lire le verdict final — procédure détaillée,
+ordre des migrations et abandon/rollback : [`../supabase/tests/README-profils.md`](../supabase/tests/README-profils.md).

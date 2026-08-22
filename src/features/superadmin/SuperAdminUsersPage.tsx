@@ -11,19 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/AuthProvider";
 import {
-  useAllMemberships, useAllTenants, useAllUsers, useCreateUser, useDeleteUser,
+  useAllMemberships, useAllProfileAssignments, useAllTenants, useAllUsers, useCreateUser, useDeleteUser,
   useRemoveMembership, useResetPassword, useSetMembership, useUpdateUserProfile,
-  type CreatedAccount, type UserRow,
+  type CreatedAccount, type ProfileAssignmentInfo, type UserRow,
 } from "./useSuperAdmin";
-
-const ROLE_OPTIONS = [
-  { value: "agent", label: "Agent" },
-  { value: "administrateur", label: "Administrateur" },
-];
-const ROLE_LABELS: Record<string, string> = {
-  agent: "Agent",
-  administrateur: "Administrateur",
-};
 
 function displayName(u: UserRow): string {
   const name = [u.first_name, u.last_name].filter(Boolean).join(" ");
@@ -35,6 +26,7 @@ export function SuperAdminUsersPage() {
   const users = useAllUsers();
   const tenants = useAllTenants();
   const memberships = useAllMemberships();
+  const profileAssignments = useAllProfileAssignments();
   const createUser = useCreateUser();
   const updateProfile = useUpdateUserProfile();
   const setMembership = useSetMembership();
@@ -54,22 +46,35 @@ export function SuperAdminUsersPage() {
   const [cFirst, setCFirst] = React.useState("");
   const [cLast, setCLast] = React.useState("");
   const [cTenant, setCTenant] = React.useState("");
-  const [cRole, setCRole] = React.useState("agent");
 
   // Formulaire d'édition.
   const [eFirst, setEFirst] = React.useState("");
   const [eLast, setELast] = React.useState("");
   const [ePlatform, setEPlatform] = React.useState(false);
 
+  // RM-44 : le rattachement à un tenant est un simple accès, sans rôle — le
+  // rôle de confort (badge) est dérivé côté serveur des profils de droits.
   const membershipsByUser = React.useMemo(() => {
-    const map = new Map<string, Map<string, string>>();
+    const map = new Map<string, Set<string>>();
     for (const m of memberships.data ?? []) {
-      const inner = map.get(m.user_id) ?? new Map<string, string>();
-      inner.set(m.organization_id, m.role);
-      map.set(m.user_id, inner);
+      const set = map.get(m.user_id) ?? new Set<string>();
+      set.add(m.organization_id);
+      map.set(m.user_id, set);
     }
     return map;
   }, [memberships.data]);
+
+  const profileAssignmentsByUser = React.useMemo(() => {
+    const map = new Map<string, Map<string, ProfileAssignmentInfo[]>>();
+    for (const a of profileAssignments.data ?? []) {
+      const inner = map.get(a.user_id) ?? new Map<string, ProfileAssignmentInfo[]>();
+      const list = inner.get(a.organization_id) ?? [];
+      list.push(a);
+      inner.set(a.organization_id, list);
+      map.set(a.user_id, inner);
+    }
+    return map;
+  }, [profileAssignments.data]);
 
   const filtered = (users.data ?? []).filter((u) => {
     if (!search) return true;
@@ -97,10 +102,10 @@ export function SuperAdminUsersPage() {
         email: cEmail,
         firstName: cFirst,
         lastName: cLast,
-        membership: cTenant === "" ? null : { organizationId: cTenant, role: cRole },
+        membership: cTenant === "" ? null : { organizationId: cTenant },
       });
       setCreateOpen(false);
-      setCEmail(""); setCFirst(""); setCLast(""); setCTenant(""); setCRole("agent");
+      setCEmail(""); setCFirst(""); setCLast(""); setCTenant("");
       setCredentials(created);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Création impossible.");
@@ -124,11 +129,12 @@ export function SuperAdminUsersPage() {
     }
   }
 
-  async function onMembershipChange(userId: string, organizationId: string, value: string) {
+  /** « Donner accès » / « Retirer l'accès » — sans rôle (RM-44). */
+  async function onMembershipToggle(userId: string, organizationId: string, hasAccess: boolean) {
     setError(null);
     try {
-      if (value === "") await removeMembership.mutateAsync({ organizationId, userId });
-      else await setMembership.mutateAsync({ organizationId, userId, role: value });
+      if (hasAccess) await removeMembership.mutateAsync({ organizationId, userId });
+      else await setMembership.mutateAsync({ organizationId, userId });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Mise à jour impossible.");
     }
@@ -213,14 +219,29 @@ export function SuperAdminUsersPage() {
                           {u.is_platform_admin ? <Badge variant="secondary">Admin plateforme</Badge> : "—"}
                         </td>
                         <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-col gap-1.5">
                             {(tenants.data ?? [])
                               .filter((t) => userMemberships?.has(t.id))
-                              .map((t) => (
-                                <Badge key={t.id} variant="outline">
-                                  {t.name} · {ROLE_LABELS[userMemberships!.get(t.id)!] ?? userMemberships!.get(t.id)}
-                                </Badge>
-                              ))}
+                              .map((t) => {
+                                const profilesHere = profileAssignmentsByUser.get(u.id)?.get(t.id) ?? [];
+                                return (
+                                  <div key={t.id} className="flex flex-wrap items-center gap-1">
+                                    <Badge variant="outline">{t.name}</Badge>
+                                    {profilesHere.length === 0 ? (
+                                      <Badge variant="muted">Aucun profil</Badge>
+                                    ) : (
+                                      profilesHere.map((p) => (
+                                        <Badge key={p.profile_id} variant={p.profile_status === "inactive" ? "muted" : "secondary"}>
+                                          {p.profile_name}
+                                        </Badge>
+                                      ))
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            {!userMemberships || userMemberships.size === 0 ? (
+                              <span className="text-xs text-muted-foreground">Aucun accès</span>
+                            ) : null}
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -273,24 +294,15 @@ export function SuperAdminUsersPage() {
                 <Input id="cu-last" value={cLast} onChange={(e) => setCLast(e.target.value)} />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Tenant" htmlFor="cu-tenant">
-                <Select id="cu-tenant" value={cTenant} onChange={(e) => setCTenant(e.target.value)}>
-                  <option value="">— Aucun pour l'instant —</option>
-                  {(tenants.data ?? []).map((t) => (
-                    <option key={t.id} value={t.id}>{t.name}</option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Rôle" htmlFor="cu-role">
-                <Select id="cu-role" value={cRole} disabled={cTenant === ""}
-                  onChange={(e) => setCRole(e.target.value)}>
-                  {ROLE_OPTIONS.map((r) => (
-                    <option key={r.value} value={r.value}>{r.label}</option>
-                  ))}
-                </Select>
-              </Field>
-            </div>
+            <Field label="Tenant" htmlFor="cu-tenant"
+              hint="Un simple accès — l'attribution d'un profil de droits se fait ensuite depuis les Paramètres du tenant.">
+              <Select id="cu-tenant" value={cTenant} onChange={(e) => setCTenant(e.target.value)}>
+                <option value="">— Aucun accès pour l'instant —</option>
+                {(tenants.data ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </Select>
+            </Field>
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>Annuler</Button>
@@ -332,25 +344,27 @@ export function SuperAdminUsersPage() {
                 <fieldset className="flex flex-col gap-2 rounded-lg border border-border p-3">
                   <legend className="px-1 text-sm font-semibold">Accès aux tenants</legend>
                   <p className="text-xs text-muted-foreground">
-                    Appliqué immédiatement. L'agent ne voit pas les paramètres ;
-                    l'administrateur voit tout.
+                    Appliqué immédiatement — un simple accès, sans rôle. Les droits
+                    (consultation, création, instruction, clôture, administration) se règlent
+                    ensuite dans les Paramètres du tenant, par l'attribution de profils de
+                    droits.
                   </p>
-                  {(tenants.data ?? []).map((t) => (
-                    <div key={t.id} className="flex items-center justify-between gap-3">
-                      <span className="text-sm">{t.name}</span>
-                      <Select
-                        aria-label={`Rôle sur ${t.name}`}
-                        className="h-9 w-44"
-                        value={membershipsByUser.get(editUser.id)?.get(t.id) ?? ""}
-                        onChange={(e) => void onMembershipChange(editUser.id, t.id, e.target.value)}
-                      >
-                        <option value="">— Aucun accès —</option>
-                        {ROLE_OPTIONS.map((r) => (
-                          <option key={r.value} value={r.value}>{r.label}</option>
-                        ))}
-                      </Select>
-                    </div>
-                  ))}
+                  {(tenants.data ?? []).map((t) => {
+                    const hasAccess = membershipsByUser.get(editUser.id)?.has(t.id) ?? false;
+                    return (
+                      <div key={t.id} className="flex items-center justify-between gap-3">
+                        <span className="text-sm">{t.name}</span>
+                        <Button
+                          type="button"
+                          variant={hasAccess ? "outline" : "ghost"}
+                          size="sm"
+                          onClick={() => void onMembershipToggle(editUser.id, t.id, hasAccess)}
+                        >
+                          {hasAccess ? "Retirer l'accès" : "Donner accès"}
+                        </Button>
+                      </div>
+                    );
+                  })}
                 </fieldset>
 
                 {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}

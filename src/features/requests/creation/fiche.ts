@@ -92,3 +92,8 @@ export function fileCountsFrom(files: Record<string, { length: number }>): FileC
   for (const [key, list] of Object.entries(files)) out[key] = list.length;
   return out;
 }
+
+/** RM-29/RM-59 : l'organisation destinataire est obligatoire à la création dans Iris. */
+export function destinationMissing(destinationId: string): boolean {
+  return destinationId.trim() === "";
+}

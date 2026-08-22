@@ -27,8 +27,9 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   le bundle). Les secrets inter-projets vivent dans les secrets d'edge functions. La seule clé
   côté client est la clé publiable du projet Iris (protégée par le RLS).
 - **La sécurité vit dans le RLS Postgres** — les droits ne sont jamais appliqués côté client,
-  l'UI ne fait que refléter. Visibilité par **sous-arbre d'organisation Socle**
-  (`has_socle_org_access`), y compris pour les administrateurs.
+  l'UI ne fait que refléter. Visibilité par **couple (organisation porteuse Socle en
+  sous-arbre, démarche)**, combinée par profils de droits, y compris pour les administrateurs
+  (détail : bullet « Profils de droits » ci-dessous, [`docs/droits.md`](docs/droits.md)).
 - **Workflow fixe à 7 statuts** (décision PO) : `a_traiter`, `en_instruction`, `en_attente`,
   `annulee`, `resolue_positive`, `resolue_negative`, `archivee`. Gardes de transition
   **serveur** (trigger), jamais UI seulement. « Résolue positivement » exige un passage par
@@ -48,8 +49,15 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   `ON DELETE RESTRICT` depuis le tenant, purge RGPD par procédure `service_role` dédiée.
 - Les **notes internes ne quittent jamais Iris** (miroir de la règle `internal_notes` du
   Socle) ; le texte de clôture destiné à l'usager est un objet distinct.
-- **Deux rôles** (décision PO) : `agent` (instruit, pas de paramètres) et `administrateur`
-  (tout : réouverture, archivage, membres). Portés par la garde SQL ET par `statuts.ts`.
+- **Profils de droits** (décision PO, 2026-08-22, remplace le rôle binaire `agent |
+  administrateur`) : les droits effectifs d'un utilisateur se combinent par **couple**
+  (organisation porteuse Socle, démarche) — trois droits indépendants `création`/`instruction`/
+  `clôture` impliquant chacun `consultation`, plus des droits par défaut (démarches non listées,
+  y compris futures ; valeur initiale « aucun », *fail closed*). L'**administration** est un
+  attribut de profil indépendant : elle **n'accorde par elle-même aucun droit** sur les
+  demandes. Les 5 tables `permission_*` n'ont aucune policy d'écriture cliente : les RPC
+  (`save_permission_profile`…) sont l'unique porte. `organization_members.role` subsiste en
+  **colonne dérivée transitoire**. Détail complet : [`docs/droits.md`](docs/droits.md).
 
 ## Commandes
 
@@ -96,8 +104,8 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   rattacher une pièce à un champ du formulaire).
   Détail des tables, gardes et policies : [`docs/data-model.md`](docs/data-model.md).
   Tests d'étanchéité : `supabase/tests/fondations.test.sql` (transactionnel annulé,
-  15 scénarios). ⚠️ Visibilité par **sous-arbre** Socle différée au miroir
-  `socle_organizations` (vague suivante) — les fondations isolent au tenant.
+  15 scénarios) + `supabase/tests/profils-droits.test.sql`. Visibilité par **sous-arbre**
+  Socle et par démarche : livrée le 2026-08-22 par les profils de droits (bullet ci-dessous).
 - **`socle-proxy`** (edge, JWT vérifié en code + périmètre : membre du tenant demandé ET
   racine Socle du tenant dans le périmètre **réel** de la clé Socle — introspection
   `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches actives du
@@ -108,6 +116,12 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `internal_notes`, consentements, relations, `external_references` ne sont **jamais**
   transmis au navigateur ; champs Socle inconnus tolérés (ignorés). `X-Organization-Id`
   toujours dérivé côté serveur.
+- **Profils de droits** (10 migrations `20260822100000` à `20260822100900`) : 5 tables
+  `permission_*`, moteur de combinaison par couple (`permission_pairs_of`), `requests.
+  socle_scope_org_id`, garde unique `requests_guard_write`, reprise (deux profils par tenant),
+  `organization_members.role` dérivé, bascule des policies. Détail : [`docs/droits.md`](docs/droits.md)
+  et [`docs/data-model.md`](docs/data-model.md) ; rollback dédié dans `supabase/rollback/`
+  (jamais via `apply_migration`).
 - `src/types/database.types.ts` est **généré depuis le schéma live** (Supabase MCP
   `generate_typescript_types`) — ne jamais l'éditer à la main, régénérer après chaque migration.
 - `supabase/` : `config.toml` (CLI), `migrations/` (fichiers miroirs des migrations
@@ -119,9 +133,10 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   utilisateur**, pas sur l'objet session (supabase-js ré-émet un nouvel objet session à chaque
   retour d'onglet → démontage de la page en cours). Commentaire en place dans
   `src/features/auth/AuthProvider.tsx`.
-- **Helpers RLS** (`is_platform_admin`, `is_org_member`, `is_org_admin`,
-  `has_socle_org_access`) : `SECURITY DEFINER` obligatoire — en `SECURITY INVOKER`, récursion
-  infinie (`stack depth limit exceeded`, HTTP 500). À poser **avant la première table**.
+- **Helpers RLS** (`is_platform_admin`, `is_org_member`, `is_org_admin`, et — depuis les
+  profils de droits — `has_admin_scope`, `permission_pairs_of`) : `SECURITY DEFINER`
+  obligatoire — en `SECURITY INVOKER`, récursion infinie (`stack depth limit exceeded`,
+  HTTP 500). À poser **avant la première table**.
 - **Fonctions trigger et RPC de service** : `REVOKE EXECUTE FROM anon, authenticated, PUBLIC`
   dans la **même migration** que leur création, et re-révoquer à chaque `CREATE OR REPLACE`
   (le replace re-grante PUBLIC — piège vécu chez Clara).
@@ -131,6 +146,15 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `storage` — constat Socle).
 - **Test d'étanchéité** dès la première table : cross-tenant ET intra-tenant (deux sous-arbres
   frères).
+- **`SECURITY DEFINER` et `current_user`** (vérifié empiriquement, 2026-08-22) : à l'intérieur
+  d'une fonction `DEFINER`, `current_user` devient le propriétaire de la fonction — y compris en
+  cascade derrière plusieurs `DEFINER` imbriqués — donc `is_service_context()` (fondée sur
+  `current_user`) y vaut **toujours vrai**, même pour un vrai client authentifié. **Ne jamais
+  tester `is_service_context()` dans une fonction `SECURITY DEFINER`** : utiliser
+  `is_platform_admin()` (fondée sur `auth.uid()`) pour un contournement explicite, ou
+  `current_setting('role', true)` pour distinguer un appel client d'un appel service_role — ou
+  décider le contournement côté appelant, resté `SECURITY INVOKER`. Détail :
+  [`docs/droits.md`](docs/droits.md).
 
 ## Features — détail chargé à la demande
 
@@ -145,6 +169,11 @@ les invariants ci-dessus restent la référence.
 - **Contacts** (`src/features/contacts`) : identification du demandeur via `socle-proxy`
   (homonymes cherchés automatiquement, création, sans rapprochement, anonymat) →
   [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
+- **Droits / Paramètres** (`src/features/permissions`, `src/features/rights`) : profils de
+  droits (création, matrice, périmètre, attribution), reflet pur des droits effectifs
+  (`rights.ts`, miroir de `permission_pairs_of`), zone `/parametres/droits` (`AdminRoute`) →
+  doctrine dans [`docs/droits.md`](docs/droits.md), détail front dans
+  [`src/features/permissions/CLAUDE.md`](src/features/permissions/CLAUDE.md).
 - **Zone superadmin** (`src/features/superadmin`) : organisations (consultation),
   utilisateurs, edge function `admin-users` →
   [`src/features/superadmin/CLAUDE.md`](src/features/superadmin/CLAUDE.md).

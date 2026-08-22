@@ -4,6 +4,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { FacetOption } from "@/features/requests/facets";
@@ -132,17 +133,32 @@ export function RequestSummary({
         { label: "Priorité", value: PRIORITY_LABELS[priority] ?? priority },
         { label: "Canal", value: channelLabel },
       ]}>
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor="rs-destination" className="text-[11px] font-semibold text-muted-foreground">
-            Organisation destinataire (Socle)
-          </label>
-          <Select id="rs-destination" className="h-10 max-w-md" value={destination.value}
-            onChange={(e) => destination.onChange(e.target.value)}>
-            <option value="">— À affecter —</option>
-            {destination.options.map((o) => (
-              <option key={o.value} value={o.value}>{o.label}</option>
-            ))}
-          </Select>
+        <div className="max-w-md">
+          <Field
+            label="Organisation destinataire (Socle)"
+            htmlFor="rs-destination"
+            required
+            error={
+              destination.options.length === 0
+                ? "Aucune organisation de votre périmètre n'autorise la création sur cette démarche — contactez votre administrateur."
+                : destination.value === ""
+                  ? "Obligatoire — choisissez le service destinataire."
+                  : undefined
+            }
+          >
+            <Select
+              id="rs-destination"
+              className="h-10"
+              value={destination.value}
+              disabled={destination.options.length === 0}
+              onChange={(e) => destination.onChange(e.target.value)}
+            >
+              <option value="">— Choisir —</option>
+              {destination.options.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </Select>
+          </Field>
         </div>
       </Group>
 

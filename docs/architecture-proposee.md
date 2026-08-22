@@ -436,6 +436,33 @@ contrat de retour gère le 1→N). Toutes journalisées dans `demande_events`.
 
 ## 4. Rôles internes et droits RLS
 
+> **Amendement du 2026-08-22 — profils de droits.** Le reste de ce §4 est le document de
+> cadrage **historique**, tel que validé le 2026-08-20 : il n'est **pas réécrit** ci-dessous et
+> ne décrit plus l'implémentation réelle sur deux points structurants. Le PO a arbitré, le
+> 2026-08-22, une dimension que ce cadrage n'avait pas anticipée : la visibilité et l'écriture
+> sur une demande ne se jouent plus sur la seule **organisation** (sous-arbre d'affectation),
+> mais sur le **couple (organisation porteuse, démarche)**, combiné par **profils de droits**
+> attribuables cumulativement à un utilisateur (matrice consultation/création/instruction/
+> clôture + périmètre + attribut administration indépendant). Conséquences pour ce qui suit :
+>
+> - **`socle_organization_members`** (§4.1, §4.2, §4.3 — affectation directe d'un utilisateur à
+>   une organisation du miroir) **n'existe pas** : remplacée par
+>   `permission_profile_organizations` (périmètre d'un **profil**, pas d'un utilisateur) et
+>   `permission_profile_assignments` (attribution d'un profil à un utilisateur).
+> - **`has_socle_org_access`** (§4.2) **n'a pas été livrée telle quelle** : remplacée par
+>   `permission_pairs_of`/`my_permission_pairs` (couples autorisés, moteur unique) et
+>   `has_admin_scope`/`is_org_admin_anywhere` (administration, attribut de profil indépendant de
+>   la matrice — le rôle **admin** du tableau §4.1 n'accorde plus, par construction, aucun droit
+>   d'instruction par le seul fait d'administrer).
+> - Le rôle binaire **agent/superviseur/admin/lecteur/plateforme/système** du tableau §4.1 est
+>   remplacé par la combinaison de profils ; `organization_members.role` (agent|administrateur)
+>   **subsiste en colonne dérivée transitoire**, recalculée depuis les profils, le temps de la
+>   bascule complète de la surface applicative.
+>
+> Référence normative de l'implémentation réelle : [`droits.md`](droits.md) (sémantique
+> métier) et [`data-model.md`](data-model.md) (tables, gardes, policies). Le reste de ce
+> document (§0 à §3, §5 à §9) reste la référence historique de cadrage et n'est pas concerné.
+
 ### 4.1 Rôles fonctionnels — tous bornés au sous-arbre d'affectation
 
 Le périmètre d'un utilisateur = les organisations Socle auxquelles il est affecté

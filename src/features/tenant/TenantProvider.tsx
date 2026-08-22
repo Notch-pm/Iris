@@ -3,7 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/features/auth/AuthProvider";
 import type { MemberRole } from "@/features/requests/statuts";
+import { emptyRights, hasAnyProfile as hasAnyProfileOf, type MyRights } from "@/features/rights/rights";
+import { useMyRights } from "@/features/rights/useRights";
 
+// `role` reste porté pour compatibilité le temps de la bascule (RM-43 : colonne
+// dérivée côté serveur, plus jamais saisie) — les droits effectifs (`rights`)
+// sont désormais la seule source de vérité pour ce que l'utilisateur peut voir
+// et faire dans le tenant.
 export interface TenantMembership {
   organizationId: string;
   organizationName: string;
@@ -16,6 +22,13 @@ interface TenantContextValue {
   current: TenantMembership | null;
   setCurrentOrgId: (orgId: string) => void;
   loading: boolean;
+  /** Droits effectifs de l'utilisateur sur le tenant courant (RM-08 : réévalués côté serveur). */
+  rights: MyRights;
+  rightsLoading: boolean;
+  /** Administration quelque part dans le tenant (RM-20) — admin plateforme compris (RM-24). */
+  isAdmin: boolean;
+  /** Au moins un profil de droits actif attribué (CL-01) — hors admin plateforme. */
+  hasAnyProfile: boolean;
 }
 
 const TenantContext = React.createContext<TenantContextValue | undefined>(undefined);
@@ -59,8 +72,25 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     setSelected(orgId);
   }, []);
 
+  const orgId = current?.organizationId ?? "";
+  const rightsQuery = useMyRights(orgId);
+  const rights = rightsQuery.data ?? emptyRights(orgId);
+  const isAdmin = rights.is_platform_admin || rights.is_admin;
+  const hasAnyProfile = hasAnyProfileOf(rights);
+
   return (
-    <TenantContext.Provider value={{ memberships, current, setCurrentOrgId, loading: isLoading }}>
+    <TenantContext.Provider
+      value={{
+        memberships,
+        current,
+        setCurrentOrgId,
+        loading: isLoading,
+        rights,
+        rightsLoading: rightsQuery.isLoading,
+        isAdmin,
+        hasAnyProfile,
+      }}
+    >
       {children}
     </TenantContext.Provider>
   );

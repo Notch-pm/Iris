@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
+import { creatableProcedures, creationOrganizationIds } from "@/features/rights/rights";
 import {
   fetchProcedureSnapshot,
   useSocleOrganizationsCatalog,
@@ -60,6 +61,7 @@ import {
   activeFields,
   attachmentStats,
   creationProgress,
+  destinationMissing,
   fileCountsFrom,
   missingRequiredFields,
 } from "./fiche";
@@ -95,7 +97,7 @@ function toSubmission(resolution: RequesterResolution): RequesterSubmission {
 
 export function NewRequestPage() {
   useFullBleedLayout();
-  const { current } = useTenant();
+  const { current, rights, rightsLoading } = useTenant();
   const { session, profile } = useAuth();
   const navigate = useNavigate();
   const orgId = current?.organizationId ?? "";
@@ -157,8 +159,20 @@ export function NewRequestPage() {
   const destinationLabel = (orgCatalog.data ?? []).find((o) => o.value === destinationId)?.label ?? null;
   const fileCounts = fileCountsFrom(files);
   const activeCount = activeFields(schema, values).length;
+
+  // RM-58 : seules les démarches où l'utilisateur détient création sont proposées.
+  const creatableProcedureIds = creatableProcedures(rights, (procRows.data ?? []).map((r) => r.socle_id));
+  const creatableRows = (procRows.data ?? []).filter((r) => creatableProcedureIds.has(r.socle_id));
+  const noCreationRight = !rightsLoading && !procRows.isLoading && creatableRows.length === 0;
+
+  // RM-59 : le destinataire ne propose que l'intersection périmètre (création sur cette
+  // démarche) ∩ organisations non obsolètes du miroir.
+  const destinationAllowedIds = procedure ? creationOrganizationIds(rights, procedureId) : new Set<string>();
+  const destinationOptions = (orgCatalog.data ?? []).filter((o) => destinationAllowedIds.has(o.value));
+
   const missing = missingRequiredFields(schema, values, fileCounts).length
-    + (procedure && subject.trim() === "" ? 1 : 0);
+    + (procedure && subject.trim() === "" ? 1 : 0)
+    + (procedure && destinationMissing(destinationId) ? 1 : 0);
   const pieces = attachmentStats(schema, values, fileCounts);
   const progress = creationProgress({
     hasProcedure: Boolean(procedure), hasRequester: Boolean(resolution),
@@ -205,6 +219,23 @@ export function NewRequestPage() {
 
   if (!current) return null;
 
+  // RM-58 : sans droit de création sur aucune démarche, le parcours ne
+  // s'ouvre pas — sauf pour ne pas interrompre une saisie déjà commencée
+  // (perte de droits en cours de route, RM-54).
+  if (noCreationRight && !procedure) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
+        <h1 className="text-xl font-semibold">Nouvelle demande</h1>
+        <p className="max-w-md text-sm text-muted-foreground">
+          Vous n'avez pas de droit de création de demande — contactez votre administrateur.
+        </p>
+        <Button type="button" variant="outline" onClick={() => navigate("/demandes")}>
+          Retour aux demandes
+        </Button>
+      </div>
+    );
+  }
+
   // ---- Actions -----------------------------------------------------------------
   const setValue = (fieldId: string, value: unknown) =>
     setValues((v) => ({ ...v, [fieldId]: value }));
@@ -229,11 +260,21 @@ export function NewRequestPage() {
       setMaxReached((m) => Math.min(m, 2));
     }
     setSubject((s) => (resetForm || s.trim() === "" ? snapshot.name : s));
-    // Destinataire pré-rempli quand la démarche désigne une organisation du miroir.
-    if (snapshot.organization_id
-        && (orgCatalog.data ?? []).some((o) => o.value === snapshot.organization_id)) {
-      setDestinationId((d) => (resetForm || d === "" ? snapshot.organization_id! : d));
-    }
+    // RM-59 : le destinataire ne peut être que dans l'intersection périmètre
+    // (création sur CETTE démarche) ∩ miroir non obsolète. Si le
+    // pré-remplissage issu de la démarche ou la valeur déjà saisie en sort,
+    // le champ est vidé — l'agent doit choisir explicitement.
+    const allowedIds = creationOrganizationIds(rights, id);
+    const validOrgIds = new Set(
+      (orgCatalog.data ?? []).filter((o) => allowedIds.has(o.value)).map((o) => o.value),
+    );
+    setDestinationId((d) => {
+      if (!resetForm && validOrgIds.has(d)) return d;
+      if (snapshot.organization_id && validOrgIds.has(snapshot.organization_id)) {
+        return snapshot.organization_id;
+      }
+      return "";
+    });
     // Le demandeur déjà désigné doit rester admissible par la nouvelle démarche
     // (publics activés, anonymat) — sinon il est à désigner de nouveau.
     setResolution((r) => (r && validateRequesterSubmission(snapshot.requester_config, toSubmission(r)).ok ? r : null));
@@ -378,6 +419,11 @@ export function NewRequestPage() {
     if (!procedure || !resolution) return;
     setError(null);
     setLinkError(null);
+    if (destinationMissing(destinationId)) {
+      setError("L'organisation destinataire est obligatoire.");
+      setStep(4);
+      return;
+    }
     try {
       const result = await create.mutateAsync({
         organizationId: orgId,
@@ -482,7 +528,7 @@ export function NewRequestPage() {
       value: procedure ? (pieces.total === 0 ? "aucune attendue" : `${pieces.provided} sur ${pieces.total}`) : "—",
       ok: Boolean(procedure) && (pieces.total === 0 || pieces.provided === pieces.total),
     },
-    { key: "Organisation destinataire", value: destinationLabel ?? "à affecter", ok: Boolean(destinationLabel) },
+    { key: "Organisation destinataire", value: destinationLabel ?? "à choisir", ok: Boolean(destinationLabel) },
     { key: "Demandes liées", value: linkedCount > 0 ? Object.values(linked).join(", ") : "aucune", ok: linkedCount > 0 },
     { key: "Statut à la création", value: STATUS_LABELS.a_traiter, ok: true },
   ];
@@ -590,7 +636,7 @@ export function NewRequestPage() {
                 </div>
               ) : null}
               <ProcedurePicker
-                rows={procRows.data ?? []}
+                rows={creatableRows}
                 loading={procRows.isLoading}
                 counts={monthlyCounts.data}
                 selectedId={procedureId}
@@ -660,7 +706,7 @@ export function NewRequestPage() {
             <RequestSummary
               procedure={procedure}
               categoryLabel={categoryLabel}
-              destination={{ value: destinationId, options: orgCatalog.data ?? [], onChange: setDestinationId }}
+              destination={{ value: destinationId, options: destinationOptions, onChange: setDestinationId }}
               channelLabel={`Guichet — consignée par ${agentName}`}
               priority={priority}
               subject={subject}
@@ -732,10 +778,13 @@ export function NewRequestPage() {
             </Button>
           ) : (
             <>
-              <Button type="button" variant="outline" disabled={create.isPending} onClick={() => void submit(true)}>
+              <Button type="button" variant="outline"
+                disabled={create.isPending || destinationMissing(destinationId)}
+                onClick={() => void submit(true)}>
                 Créer et imprimer
               </Button>
-              <Button type="button" disabled={create.isPending} onClick={() => void submit(false)}>
+              <Button type="button" disabled={create.isPending || destinationMissing(destinationId)}
+                onClick={() => void submit(false)}>
                 <Check />
                 {create.isPending ? "Création…" : "Créer la demande"}
               </Button>

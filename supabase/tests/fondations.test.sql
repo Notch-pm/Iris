@@ -71,6 +71,44 @@ begin
   snap2 := jsonb_build_object('id', proc2::text, 'name', 'Demande tenant 2');
 
   -- ----------------------------------------------------------------------
+  -- Décor profils de droits (vague « profils de droits ») — depuis cette
+  -- vague, la visibilité et les gardes de requests ne lisent plus
+  -- organization_members.role (devenu colonne dérivée, M7) mais les droits
+  -- effectifs par couple (organisation, démarche). Sans profils attribués,
+  -- aucun des 15 scénarios ci-dessous ne pourrait plus rien voir ni écrire
+  -- (fail closed). On reproduit ici EXACTEMENT la reprise M6 : deux profils
+  -- par tenant, racine, matrice vide, défaut = les quatre droits — l'un
+  -- is_admin (rôle admin1/administrateur), l'autre non (agent1/agent2/agent).
+  -- ----------------------------------------------------------------------
+  insert into public.socle_organizations (organization_id, socle_id, socle_parent_id, name)
+  values (org1, s_a, null, 'Tenant Un'), (org2, s_b, null, 'Tenant Deux');
+
+  declare
+    p_admin1 uuid; p_agent1 uuid; p_agent2 uuid;
+  begin
+    insert into public.permission_profiles
+      (organization_id, name, is_admin, default_view, default_create, default_process, default_close)
+    values (org1, 'Administrateur', true, true, true, true, true)
+    returning id into p_admin1;
+    insert into public.permission_profile_organizations (profile_id, socle_org_id) values (p_admin1, s_a);
+    insert into public.permission_profile_assignments (organization_id, profile_id, user_id) values (org1, p_admin1, u_admin1);
+
+    insert into public.permission_profiles
+      (organization_id, name, is_admin, default_view, default_create, default_process, default_close)
+    values (org1, 'Agent', false, true, true, true, true)
+    returning id into p_agent1;
+    insert into public.permission_profile_organizations (profile_id, socle_org_id) values (p_agent1, s_a);
+    insert into public.permission_profile_assignments (organization_id, profile_id, user_id) values (org1, p_agent1, u_agent1);
+
+    insert into public.permission_profiles
+      (organization_id, name, is_admin, default_view, default_create, default_process, default_close)
+    values (org2, 'Agent', false, true, true, true, true)
+    returning id into p_agent2;
+    insert into public.permission_profile_organizations (profile_id, socle_org_id) values (p_agent2, s_b);
+    insert into public.permission_profile_assignments (organization_id, profile_id, user_id) values (org2, p_agent2, u_agent2);
+  end;
+
+  -- ----------------------------------------------------------------------
   -- T1 — création par un agent, numérotation, racine Socle, journal,
   --      libellés démarche/catégorie réécrits depuis le cache (vérité serveur)
   -- ----------------------------------------------------------------------
@@ -173,7 +211,10 @@ begin
   if v_ts is null then v_fail := v_fail || 'T6: closed_at non posée à la clôture'; end if;
 
   -- ----------------------------------------------------------------------
-  -- T7 — réouverture : refusée à l'agent, permise à l'administrateur
+  -- T7 — réouverture : refusée à l'agent (a la clôture via le défaut de son
+  -- profil, mais pas l'administration), permise à l'administrateur (profil
+  -- is_admin + clôture par défaut — RM-21, désormais administration + clôture
+  -- plutôt qu'un rôle).
   -- ----------------------------------------------------------------------
   begin
     update public.requests set status = 'en_instruction' where id = r1;
@@ -186,7 +227,8 @@ begin
   if v_ts is not null then v_fail := v_fail || 'T7: closed_at non purgée à la réouverture'; end if;
 
   -- ----------------------------------------------------------------------
-  -- T8 — archivage : refusé à l'agent, permis à l'administrateur ; gel archivé
+  -- T8 — archivage : refusé à l'agent (clôture sans administration), permis
+  --      à l'administrateur (administration + clôture, RM-21) ; gel archivé
   --      (procedure_snapshot compris) ; désarchivage = statut seul
   -- ----------------------------------------------------------------------
   update public.requests set status = 'resolue_positive',

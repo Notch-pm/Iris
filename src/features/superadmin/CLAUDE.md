@@ -18,6 +18,11 @@ Vérifiée au navigateur le 2026-08-20 (arbre, création/rattachement/suppressio
   fois**), édition (noms, statut plateforme — verrouillé sur soi-même —, accès par tenant
   appliqués immédiatement), réinitialisation de mot de passe, suppression (confirmée,
   interdite sur soi-même).
+- Rattachement à un tenant = **simple accès** (« Donner accès » / « Retirer l'accès »), **sans
+  rôle** (RM-44) : `role` n'est plus qu'un filet de compatibilité (`agent`, écrasé par la
+  colonne dérivée côté serveur). Colonne Tenants : chips d'accès + **profils de droits
+  attribués** en lecture seule (`useAllProfileAssignments`, pastille « Aucun profil ») —
+  l'attribution reste un geste du tenant (Paramètres — Droits), pas de la plateforme.
 - **`admin-users`** (edge, JWT + is_platform_admin vérifiés en code, CORS allowlist) : seules
   les opérations service_role y passent — `create_user`, `set_password`, `delete_user`.
   Tout le reste (lecture, profils, appartenances) passe par le RLS.

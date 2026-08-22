@@ -95,13 +95,48 @@ export function useAllMemberships() {
   });
 }
 
+export interface ProfileAssignmentInfo {
+  organization_id: string;
+  user_id: string;
+  profile_id: string;
+  profile_name: string;
+  profile_status: string;
+}
+
+/**
+ * Profils attribués, tous tenants confondus — lecture seule (l'attribution
+ * reste un geste du tenant, RM-44). L'admin plateforme voit tout via le RLS.
+ */
+export function useAllProfileAssignments() {
+  return useQuery({
+    queryKey: ["sa-profile-assignments"],
+    queryFn: async (): Promise<ProfileAssignmentInfo[]> => {
+      const { data, error } = await supabase
+        .from("permission_profile_assignments")
+        .select("organization_id, user_id, profile:permission_profiles(id, name, status)");
+      if (error) throw error;
+      return (data ?? [])
+        .filter((r) => r.profile)
+        .map((r) => ({
+          organization_id: r.organization_id,
+          user_id: r.user_id,
+          profile_id: r.profile!.id,
+          profile_name: r.profile!.name,
+          profile_status: r.profile!.status,
+        }));
+    },
+  });
+}
+
 function useInvalidateUsers() {
   const queryClient = useQueryClient();
   return () => {
     void queryClient.invalidateQueries({ queryKey: ["sa-users"] });
     void queryClient.invalidateQueries({ queryKey: ["sa-memberships"] });
+    void queryClient.invalidateQueries({ queryKey: ["sa-profile-assignments"] });
     void queryClient.invalidateQueries({ queryKey: ["tenant-memberships"] });
     void queryClient.invalidateQueries({ queryKey: ["tenant-members"] });
+    void queryClient.invalidateQueries({ queryKey: ["my-rights"] });
   };
 }
 
@@ -119,7 +154,7 @@ export function useCreateUser() {
       email: string;
       firstName: string;
       lastName: string;
-      membership: { organizationId: string; role: string } | null;
+      membership: { organizationId: string } | null;
     }): Promise<CreatedAccount> => {
       const created = await invokeAdmin<CreatedAccount>({
         action: "create_user",
@@ -128,10 +163,15 @@ export function useCreateUser() {
         last_name: input.lastName,
       });
       if (input.membership) {
+        // RM-43/RM-44 : le rattachement est un simple accès au tenant, sans
+        // rôle — `role` n'est plus qu'un filet de compatibilité, écrasé côté
+        // serveur par la colonne dérivée (administration = un profil actif
+        // is_admin attribué). L'attribution d'un profil de droits est un
+        // geste du tenant (Paramètres), pas de la plateforme.
         const { error } = await supabase.from("organization_members").insert({
           organization_id: input.membership.organizationId,
           user_id: created.user_id,
-          role: input.membership.role,
+          role: "agent",
         } as never);
         if (error) throw new Error("Compte créé, mais rattachement au tenant en échec : " + error.message);
       }
@@ -179,15 +219,16 @@ export function useUpdateUserProfile() {
   });
 }
 
+/** « Donner accès » à un tenant — sans rôle (RM-44) : `role` reste envoyé pour compatibilité, écrasé côté serveur. */
 export function useSetMembership() {
   const invalidate = useInvalidateUsers();
   return useMutation({
-    mutationFn: async (input: { organizationId: string; userId: string; role: string }) => {
+    mutationFn: async (input: { organizationId: string; userId: string }) => {
       const { error } = await supabase.from("organization_members").upsert(
         {
           organization_id: input.organizationId,
           user_id: input.userId,
-          role: input.role,
+          role: "agent",
         } as never,
         { onConflict: "organization_id,user_id" },
       );

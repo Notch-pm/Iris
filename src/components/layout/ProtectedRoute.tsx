@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { useTenant } from "@/features/tenant/TenantProvider";
 
 function LoadingScreen() {
   return (
@@ -27,6 +28,22 @@ export function SuperAdminRoute() {
   if (loading) return <LoadingScreen />;
   if (!session) return <Navigate to="/login" replace />;
   if (!profile?.is_platform_admin) return <Navigate to="/" replace />;
+
+  return <Outlet />;
+}
+
+/**
+ * Zone « Paramètres » — réservée à l'administration du tenant courant
+ * (RM-20). Nécessite le tenant chargé : cette garde vit SOUS `TenantProvider`
+ * dans l'arbre de routes (contrairement à `ProtectedRoute`/`SuperAdminRoute`,
+ * qui n'en dépendent pas). Les droits réels restent portés par le RLS — cette
+ * garde ne fait que router.
+ */
+export function AdminRoute() {
+  const { current, isAdmin, loading, rightsLoading } = useTenant();
+
+  if (loading || rightsLoading) return <LoadingScreen />;
+  if (!current || !isAdmin) return <Navigate to="/" replace />;
 
   return <Outlet />;
 }

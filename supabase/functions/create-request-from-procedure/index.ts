@@ -5,7 +5,8 @@
 // et des références de pièces déjà déposées dans le bucket).
 //
 // Auth : JWT agent vérifié EN CODE (verify_jwt=false pour laisser passer les
-// préflights OPTIONS) + appartenance au tenant et rôle agent/administrateur.
+// préflights OPTIONS) + appartenance au tenant + droit de CRÉATION sur le
+// couple (organisation destinataire, démarche) — profils de droits, RM-60.
 // Écriture : UNE transaction via la RPC create_request_from_procedure
 // (demande + pièces + événement request_created_from_procedure — tout ou rien).
 
@@ -15,11 +16,9 @@ import {
   sanitizeDeclared,
   validateFormSubmission,
   validateRequesterSubmission,
-  type Audience,
-  type AttachmentDeclaration,
-  type RequesterSubmission,
 } from "./_shared/procedureForm.ts";
 import { contactIdentitySnapshot, whitelistProcedureSnapshot } from "./_shared/snapshots.ts";
+import { parsePayload } from "./_shared/payload.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -30,9 +29,6 @@ const supabase = createClient(
 const ALLOWED_ORIGINS = new Set(
   [Deno.env.get("IRIS_APP_URL"), "http://localhost:5174"].filter(Boolean) as string[],
 );
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const PRIORITIES = ["basse", "normale", "haute", "urgente"];
-const AUDIENCES: Audience[] = ["citoyen", "entreprise", "association"];
 
 function corsHeaders(req: Request): Record<string, string> {
   const origin = req.headers.get("origin") ?? "";
@@ -70,131 +66,6 @@ async function socleFetch(url: string, socleOrgId?: string): Promise<Response | 
   return await fetch(url, { headers, signal: AbortSignal.timeout(15_000) }).catch(() => null);
 }
 
-interface CreatePayload {
-  organizationId: string;
-  requestId: string;
-  procedureId: string;
-  subject: string;
-  body: string | null;
-  priority: string;
-  channel: string | null;
-  destinationId: string | null;
-  requester: RequesterSubmission;
-  formValues: Record<string, unknown>;
-  attachments: AttachmentDeclaration[];
-}
-
-const PAYLOAD_KEYS = new Set([
-  "organization_id", "request_id", "socle_procedure_id", "subject", "body",
-  "priority", "channel", "socle_organization_id", "requester", "form_values", "attachments",
-]);
-const REQUESTER_KEYS = new Set(["kind", "audience", "socle_contact_id", "declared"]);
-
-// deno-lint-ignore no-explicit-any
-function parsePayload(raw: any): CreatePayload | { error: string } {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return { error: "Corps JSON attendu." };
-  }
-  // Whitelist stricte : un navigateur ne peut JAMAIS fournir ni altérer un
-  // snapshot (procedure_snapshot, requester_snapshot… → refus explicite).
-  const unknown = Object.keys(raw).filter((k) => !PAYLOAD_KEYS.has(k));
-  if (unknown.length > 0) {
-    return { error: `Clés inconnues : ${unknown.join(", ")}. Les snapshots sont construits côté serveur.` };
-  }
-  for (const key of ["organization_id", "request_id", "socle_procedure_id"] as const) {
-    if (typeof raw[key] !== "string" || !UUID_RE.test(raw[key])) {
-      return { error: `${key} : UUID requis.` };
-    }
-  }
-  const subject = typeof raw.subject === "string" ? raw.subject.trim() : "";
-  if (subject === "" || subject.length > 500) {
-    return { error: "subject : chaîne non vide de 500 caractères maximum requise." };
-  }
-  const priority = raw.priority === undefined ? "normale" : raw.priority;
-  if (!PRIORITIES.includes(priority)) return { error: "priority : valeur inconnue." };
-  if (raw.socle_organization_id !== undefined && raw.socle_organization_id !== null
-      && (typeof raw.socle_organization_id !== "string" || !UUID_RE.test(raw.socle_organization_id))) {
-    return { error: "socle_organization_id : UUID attendu." };
-  }
-
-  const r = raw.requester;
-  if (typeof r !== "object" || r === null) return { error: "requester : objet requis." };
-  const unknownRequester = Object.keys(r).filter((k) => !REQUESTER_KEYS.has(k));
-  if (unknownRequester.length > 0) {
-    return { error: `requester : clés inconnues (${unknownRequester.join(", ")}).` };
-  }
-  let requester: RequesterSubmission;
-  if (r.kind === "anonyme") {
-    requester = { kind: "anonyme" };
-  } else if (r.kind === "contact" || r.kind === "sans_rapprochement") {
-    if (!AUDIENCES.includes(r.audience)) return { error: "requester.audience : valeur inconnue." };
-    if (r.kind === "contact") {
-      if (typeof r.socle_contact_id !== "string" || !UUID_RE.test(r.socle_contact_id)) {
-        return { error: "requester.socle_contact_id : UUID requis." };
-      }
-      requester = { kind: "contact", audience: r.audience, socle_contact_id: r.socle_contact_id };
-    } else {
-      if (typeof r.declared !== "object" || r.declared === null || Array.isArray(r.declared)) {
-        return { error: "requester.declared : objet requis." };
-      }
-      requester = { kind: "sans_rapprochement", audience: r.audience, declared: r.declared };
-    }
-  } else {
-    return { error: "requester.kind : contact, sans_rapprochement ou anonyme." };
-  }
-
-  const formValues = raw.form_values ?? {};
-  if (typeof formValues !== "object" || Array.isArray(formValues)) {
-    return { error: "form_values : objet requis." };
-  }
-
-  const attachments: AttachmentDeclaration[] = [];
-  const rawAttachments = raw.attachments ?? [];
-  if (!Array.isArray(rawAttachments) || rawAttachments.length > 50) {
-    return { error: "attachments : tableau de 50 éléments maximum." };
-  }
-  const prefix = `${raw.organization_id}/${raw.request_id}/`;
-  for (const [i, a] of rawAttachments.entries()) {
-    if (typeof a !== "object" || a === null) return { error: `attachments[${i}] : objet attendu.` };
-    if (typeof a.form_field_key !== "string" || a.form_field_key.trim() === ""
-        || a.form_field_key.length > 120) {
-      return { error: `attachments[${i}].form_field_key : clé de champ requise.` };
-    }
-    if (typeof a.file_name !== "string" || a.file_name.trim() === "" || a.file_name.length > 255) {
-      return { error: `attachments[${i}].file_name : nom de fichier requis.` };
-    }
-    if (typeof a.storage_path !== "string" || !a.storage_path.startsWith(prefix)
-        || a.storage_path.includes("..")) {
-      return { error: `attachments[${i}].storage_path : chemin hors du brouillon de la demande.` };
-    }
-    if (a.size_bytes !== undefined && (typeof a.size_bytes !== "number" || a.size_bytes < 0)) {
-      return { error: `attachments[${i}].size_bytes : entier positif attendu.` };
-    }
-    attachments.push({
-      form_field_key: a.form_field_key.trim(),
-      file_name: a.file_name,
-      storage_path: a.storage_path,
-      mime_type: typeof a.mime_type === "string" ? a.mime_type : null,
-      size_bytes: typeof a.size_bytes === "number" ? a.size_bytes : null,
-    });
-  }
-
-  return {
-    organizationId: raw.organization_id,
-    requestId: raw.request_id,
-    procedureId: raw.socle_procedure_id,
-    subject,
-    body: typeof raw.body === "string" && raw.body.trim() !== "" ? raw.body.trim() : null,
-    priority,
-    channel: typeof raw.channel === "string" && raw.channel.trim() !== ""
-      ? raw.channel.trim().slice(0, 40) : null,
-    destinationId: typeof raw.socle_organization_id === "string" ? raw.socle_organization_id : null,
-    requester,
-    formValues: formValues as Record<string, unknown>,
-    attachments,
-  };
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
@@ -219,18 +90,47 @@ Deno.serve(async (req) => {
   if ("error" in parsed) return fail(req, 400, "bad_request", parsed.error);
   const p = parsed;
 
-  // Appartenance + rôle dans le tenant (hors périmètre = 404, jamais révélé).
+  // Appartenance au tenant (hors périmètre = 404, jamais révélé).
   const { data: membership } = await supabase
     .from("organization_members")
-    .select("role, organization:organizations(socle_org_id)")
+    .select("organization:organizations(socle_org_id)")
     .eq("user_id", agentId)
     .eq("organization_id", p.organizationId)
     .maybeSingle();
   // deno-lint-ignore no-explicit-any
   const socleRootId = (membership as any)?.organization?.socle_org_id as string | undefined;
   if (!membership || !socleRootId) return fail(req, 404, "not_found", "Ressource introuvable.");
-  if (!["agent", "administrateur"].includes(membership.role)) {
-    return fail(req, 403, "forbidden", "Rôle insuffisant pour créer une demande.");
+
+  // Organisation destinataire OBLIGATOIRE (RM-29) : doit être connue du
+  // miroir du tenant (non obsolète) — jamais un simple repli silencieux.
+  const { data: destination } = await supabase
+    .from("socle_organizations")
+    .select("name")
+    .eq("organization_id", p.organizationId)
+    .eq("socle_id", p.destinationId)
+    .is("obsoleted_at", null)
+    .maybeSingle();
+  if (!destination) {
+    return fail(req, 400, "bad_request", "Organisation destinataire inconnue du référentiel du tenant.");
+  }
+  const destinationLabel = destination.name;
+
+  // Droit de CRÉATION sur le couple (destinataire, démarche) — profils de
+  // droits (RM-60). Remplace l'ancienne vérification de rôle.
+  const { data: hasCreationRight, error: rightError } = await supabase.rpc("user_has_request_right", {
+    p_user_id: agentId,
+    p_org_id: p.organizationId,
+    p_socle_org_id: p.destinationId,
+    p_socle_procedure_id: p.procedureId,
+    p_right: "creation",
+  });
+  if (rightError) {
+    console.error("create-request-from-procedure user_has_request_right:", rightError);
+    return fail(req, 500, "internal_error", "Erreur lors de la vérification des droits.");
+  }
+  if (!hasCreationRight) {
+    return fail(req, 403, "forbidden",
+      "Vous n'avez pas le droit de créer une demande pour cette démarche et ce service.");
   }
 
   // Démarche ACTIVE du tenant (cache = autorité de périmètre)…
@@ -296,22 +196,6 @@ Deno.serve(async (req) => {
   const form = validateFormSubmission(schema, p.formValues, p.attachments);
   if (!form.ok) {
     return fail(req, 400, "bad_request", "Formulaire invalide.", { fields: form.errors });
-  }
-
-  // Destinataire éventuel : doit appartenir au sous-arbre miroir du tenant.
-  let destinationLabel: string | null = null;
-  if (p.destinationId) {
-    const { data: dest } = await supabase
-      .from("socle_organizations")
-      .select("name")
-      .eq("organization_id", p.organizationId)
-      .eq("socle_id", p.destinationId)
-      .is("obsoleted_at", null)
-      .maybeSingle();
-    if (!dest) {
-      return fail(req, 400, "bad_request", "Organisation destinataire hors du sous-arbre du tenant.");
-    }
-    destinationLabel = dest.name;
   }
 
   // Écriture ATOMIQUE (RPC = une transaction : demande + pièces + événement).

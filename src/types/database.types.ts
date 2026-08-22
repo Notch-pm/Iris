@@ -104,44 +104,6 @@ export type Database = {
           },
         ]
       }
-      integration_sources: {
-        Row: {
-          code: string
-          created_at: string
-          id: string
-          name: string
-          organization_id: string
-          status: string
-          updated_at: string
-        }
-        Insert: {
-          code: string
-          created_at?: string
-          id?: string
-          name: string
-          organization_id: string
-          status?: string
-          updated_at?: string
-        }
-        Update: {
-          code?: string
-          created_at?: string
-          id?: string
-          name?: string
-          organization_id?: string
-          status?: string
-          updated_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "integration_sources_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       integration_deliveries: {
         Row: {
           attempts: number
@@ -201,6 +163,44 @@ export type Database = {
             columns: ["request_id"]
             isOneToOne: false
             referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      integration_sources: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+          organization_id: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+          organization_id: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          organization_id?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "integration_sources_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
         ]
@@ -267,6 +267,250 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      permission_audit_log: {
+        Row: {
+          action: string
+          actor_id: string | null
+          after: Json | null
+          before: Json | null
+          created_at: string
+          id: string
+          organization_id: string
+          profile_id: string | null
+          profile_name: string
+          target_user_id: string | null
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          organization_id: string
+          profile_id?: string | null
+          profile_name: string
+          target_user_id?: string | null
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          after?: Json | null
+          before?: Json | null
+          created_at?: string
+          id?: string
+          organization_id?: string
+          profile_id?: string | null
+          profile_name?: string
+          target_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permission_audit_log_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permission_audit_log_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permission_audit_log_target_user_id_fkey"
+            columns: ["target_user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permission_profile_assignments: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          organization_id: string
+          profile_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          organization_id: string
+          profile_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          organization_id?: string
+          profile_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permission_profile_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permission_profile_assignments_organization_id_user_id_fkey"
+            columns: ["organization_id", "user_id"]
+            isOneToOne: false
+            referencedRelation: "organization_members"
+            referencedColumns: ["organization_id", "user_id"]
+          },
+          {
+            foreignKeyName: "permission_profile_assignments_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "permission_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permission_profile_organizations: {
+        Row: {
+          created_at: string
+          profile_id: string
+          socle_org_id: string
+        }
+        Insert: {
+          created_at?: string
+          profile_id: string
+          socle_org_id: string
+        }
+        Update: {
+          created_at?: string
+          profile_id?: string
+          socle_org_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permission_profile_organizations_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "permission_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permission_profile_procedures: {
+        Row: {
+          profile_id: string
+          right_close: boolean
+          right_create: boolean
+          right_process: boolean
+          right_view: boolean
+          socle_procedure_id: string
+        }
+        Insert: {
+          profile_id: string
+          right_close?: boolean
+          right_create?: boolean
+          right_process?: boolean
+          right_view?: boolean
+          socle_procedure_id: string
+        }
+        Update: {
+          profile_id?: string
+          right_close?: boolean
+          right_create?: boolean
+          right_process?: boolean
+          right_view?: boolean
+          socle_procedure_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permission_profile_procedures_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "permission_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permission_profiles: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_close: boolean
+          default_create: boolean
+          default_process: boolean
+          default_view: boolean
+          description: string | null
+          id: string
+          is_admin: boolean
+          name: string
+          organization_id: string
+          status: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_close?: boolean
+          default_create?: boolean
+          default_process?: boolean
+          default_view?: boolean
+          description?: string | null
+          id?: string
+          is_admin?: boolean
+          name: string
+          organization_id: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_close?: boolean
+          default_create?: boolean
+          default_process?: boolean
+          default_view?: boolean
+          description?: string | null
+          id?: string
+          is_admin?: boolean
+          name?: string
+          organization_id?: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permission_profiles_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permission_profiles_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permission_profiles_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       request_assignments: {
         Row: {
@@ -587,14 +831,14 @@ export type Database = {
           master_request_id: string | null
           organization_id: string
           priority: string
+          procedure_snapshot: Json | null
           purged_at: string | null
           received_at: string
           reference: string
           reference_seq: number
           reference_year: number
-          retention_until: string | null
-          procedure_snapshot: Json | null
           requester_snapshot: Json | null
+          retention_until: string | null
           socle_category_label: string | null
           socle_contact_id: string | null
           socle_organization_id: string | null
@@ -602,6 +846,7 @@ export type Database = {
           socle_procedure_id: string | null
           socle_procedure_label: string | null
           socle_root_org_id: string
+          socle_scope_org_id: string
           source: string
           status: string
           subject: string
@@ -628,14 +873,14 @@ export type Database = {
           master_request_id?: string | null
           organization_id: string
           priority?: string
+          procedure_snapshot?: Json | null
           purged_at?: string | null
           received_at?: string
           reference: string
           reference_seq: number
           reference_year: number
-          retention_until?: string | null
-          procedure_snapshot?: Json | null
           requester_snapshot?: Json | null
+          retention_until?: string | null
           socle_category_label?: string | null
           socle_contact_id?: string | null
           socle_organization_id?: string | null
@@ -643,6 +888,7 @@ export type Database = {
           socle_procedure_id?: string | null
           socle_procedure_label?: string | null
           socle_root_org_id: string
+          socle_scope_org_id: string
           source?: string
           status?: string
           subject: string
@@ -669,14 +915,14 @@ export type Database = {
           master_request_id?: string | null
           organization_id?: string
           priority?: string
+          procedure_snapshot?: Json | null
           purged_at?: string | null
           received_at?: string
           reference?: string
           reference_seq?: number
           reference_year?: number
-          retention_until?: string | null
-          procedure_snapshot?: Json | null
           requester_snapshot?: Json | null
+          retention_until?: string | null
           socle_category_label?: string | null
           socle_contact_id?: string | null
           socle_organization_id?: string | null
@@ -684,6 +930,7 @@ export type Database = {
           socle_procedure_id?: string | null
           socle_procedure_label?: string | null
           socle_root_org_id?: string
+          socle_scope_org_id?: string
           source?: string
           status?: string
           subject?: string
@@ -861,13 +1108,148 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      assert_editor_can_manage_profile: {
+        Args: { p_org_id: string; p_profile_id?: string }
+        Returns: undefined
+      }
+      assert_tenant_keeps_root_admin: {
+        Args: { p_org_id: string }
+        Returns: undefined
+      }
+      assign_permission_profile: {
+        Args: { p_profile_id: string; p_user_id: string }
+        Returns: Json
+      }
+      can_admin_request: { Args: { p_request_id: string }; Returns: boolean }
+      can_process_request: { Args: { p_request_id: string }; Returns: boolean }
+      can_read_request: { Args: { p_request_id: string }; Returns: boolean }
+      can_write_request: { Args: { p_request_id: string }; Returns: boolean }
+      create_request_from_procedure: { Args: { p: Json }; Returns: Json }
+      delete_permission_profile: {
+        Args: { p_expected_version: number; p_profile_id: string }
+        Returns: Json
+      }
+      eligible_assignees: {
+        Args: { p_request_id: string }
+        Returns: {
+          display_name: string
+          email: string
+          user_id: string
+        }[]
+      }
+      has_admin_scope: {
+        Args: { p_org_id: string; p_socle_org_id: string }
+        Returns: boolean
+      }
+      has_any_creation_right: { Args: { p_org_id: string }; Returns: boolean }
+      has_any_creation_right_for: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      is_last_root_admin: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
       is_org_admin: { Args: { p_org_id: string }; Returns: boolean }
+      is_org_admin_anywhere: { Args: { p_org_id: string }; Returns: boolean }
       is_org_member: { Args: { p_org_id: string }; Returns: boolean }
-      is_org_writer: { Args: { p_org_id: string }; Returns: boolean }
       is_platform_admin: { Args: never; Returns: boolean }
       is_service_context: { Args: never; Returns: boolean }
       member_role: { Args: { p_org_id: string }; Returns: string }
+      member_role_derived: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: string
+      }
+      members_without_profile: {
+        Args: { p_org_id: string }
+        Returns: {
+          display_name: string
+          email: string
+          user_id: string
+        }[]
+      }
+      my_permission_pairs: {
+        Args: { p_right: string }
+        Returns: {
+          organization_id: string
+          socle_org_id: string
+          socle_procedure_id: string
+        }[]
+      }
+      my_rights: { Args: { p_org_id: string }; Returns: Json }
+      nil_procedure: { Args: never; Returns: string }
+      permission_coverage_report: {
+        Args: { p_org_id: string }
+        Returns: {
+          open_requests: number
+          org_name: string
+          procedure_name: string
+          socle_org_id: string
+          socle_procedure_id: string
+        }[]
+      }
+      permission_pairs_of: {
+        Args: { p_org_id?: string; p_profile_ids: string[]; p_right: string }
+        Returns: {
+          organization_id: string
+          socle_org_id: string
+          socle_procedure_id: string
+        }[]
+      }
+      permission_profile_scope: {
+        Args: { p_profile_id: string }
+        Returns: {
+          socle_org_id: string
+        }[]
+      }
+      refresh_member_roles: { Args: { p_org_id: string }; Returns: undefined }
+      refresh_request_scope_org: {
+        Args: { p_org_id?: string }
+        Returns: number
+      }
+      request_exists: { Args: { p_id: string }; Returns: boolean }
+      request_scope_org: {
+        Args: { p_org_id: string; p_socle_org_id: string }
+        Returns: string
+      }
+      revoke_permission_profile: {
+        Args: { p_profile_id: string; p_user_id: string }
+        Returns: Json
+      }
+      rights_array: {
+        Args: {
+          p_close: boolean
+          p_create: boolean
+          p_process: boolean
+          p_view: boolean
+        }
+        Returns: Json
+      }
+      save_permission_profile: { Args: { p: Json }; Returns: Json }
+      set_permission_profile_status: {
+        Args: {
+          p_expected_version: number
+          p_profile_id: string
+          p_status: string
+        }
+        Returns: Json
+      }
       shares_org_with: { Args: { p_user_id: string }; Returns: boolean }
+      user_has_request_right: {
+        Args: {
+          p_org_id: string
+          p_right: string
+          p_socle_org_id: string
+          p_socle_procedure_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
+      uuid_or_null: { Args: { p: string }; Returns: string }
+      validate_permission_profile_shape: {
+        Args: { p_profile_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       [_ in never]: never

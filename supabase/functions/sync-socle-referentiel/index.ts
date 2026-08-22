@@ -147,11 +147,29 @@ Deno.serve(async (req) => {
       await supabase.from("organizations").update({ name: t.name }).eq("id", t.organizationId);
     }
 
+    // Recalcul du périmètre porteur des droits (profils de droits, ADR-14) :
+    // le miroir vient de bouger (nouvelles organisations, reparentages,
+    // obsolescences), certaines demandes peuvent devoir changer de
+    // socle_scope_org_id. Une erreur ici est journalisée en avertissement,
+    // jamais fatale : la sync du référentiel reste réussie.
+    let requestsScopeRecalculees = 0;
+    const warnings: string[] = [];
+    const { data: scopeRecalc, error: scopeError } = await supabase
+      .rpc("refresh_request_scope_org", { p_org_id: null });
+    if (scopeError) {
+      console.error("sync-socle-referentiel refresh_request_scope_org:", scopeError);
+      warnings.push(`refresh_request_scope_org : ${scopeError.message}`);
+    } else {
+      requestsScopeRecalculees = typeof scopeRecalc === "number" ? scopeRecalc : 0;
+    }
+
     const counters = {
       ...plan.counters,
       tenants_observes: observedTenantIds.length,
       organizations_obsoleted: staleOrgCount,
       procedures_obsoleted: staleProcCount,
+      requests_scope_recalculees: requestsScopeRecalculees,
+      ...(warnings.length > 0 ? { warnings } : {}),
     };
     if (run) {
       await supabase

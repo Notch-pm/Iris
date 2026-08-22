@@ -2,6 +2,14 @@
 // requests_guard_transition (migration 20260820100100_requests.sql).
 // ⚠️ Ce module ne PROTÈGE rien : la vérité est dans le trigger Postgres.
 // Il ne sert qu'à refléter dans l'UI ce que le serveur acceptera.
+//
+// Bascule vers les profils de droits (ADR-07, `requests_guard_write`) :
+// `allowedTransitionsFor(status, rr)` est le nouveau miroir, gouverné par les
+// droits effectifs sur le couple (organisation porteuse, démarche) plutôt que
+// par le rôle. `allowedTransitions(status, role)` et `canWrite(role)` restent
+// en place, dépréciés, le temps de basculer les pages (voir CLAUDE.md racine).
+
+import type { Right } from "@/features/rights/rights";
 
 export type RequestStatus =
   | "a_traiter"
@@ -77,14 +85,14 @@ export interface TransitionSpec {
 const WRITER_ROLES: MemberRole[] = ["administrateur", "agent"];
 
 /**
- * Transitions que la garde SQL acceptera pour ce statut et ce rôle.
+ * Catalogue COMPLET des transitions envisageables pour ce statut, indépendant
+ * de tout rôle ou droit — c'est la garde (assigné, texte de clôture, motifs)
+ * qui varie par transition, jamais par qui la déclenche. `allowedTransitions`
+ * et `allowedTransitionsFor` filtrent ce catalogue chacun à sa façon.
  * NB : le motif « doublon » exige une demande maître — non proposé par l'UI
  * pour l'instant (le rapprochement de doublons viendra avec son propre geste).
  */
-export function allowedTransitions(status: RequestStatus, role: MemberRole): TransitionSpec[] {
-  if (!WRITER_ROLES.includes(role)) return [];
-  const isAdmin = role === "administrateur";
-
+function transitionCatalogFor(status: RequestStatus): TransitionSpec[] {
   switch (status) {
     case "a_traiter":
       return [
@@ -140,26 +148,99 @@ export function allowedTransitions(status: RequestStatus, role: MemberRole): Tra
       ];
     case "annulee":
     case "resolue_positive":
-    case "resolue_negative": {
-      const out: TransitionSpec[] = [];
-      if (isAdmin) out.push({ to: "en_instruction", label: "Rouvrir" });
-      if (isAdmin) out.push({ to: "archivee", label: "Archiver" });
-      return out;
-    }
+    case "resolue_negative":
+      return [
+        { to: "en_instruction", label: "Rouvrir" },
+        { to: "archivee", label: "Archiver" },
+      ];
     case "archivee":
-      return isAdmin
-        ? [
-            { to: "resolue_positive", label: "Désarchiver (résolue positivement)" },
-            { to: "resolue_negative", label: "Désarchiver (résolue négativement)" },
-            { to: "annulee", label: "Désarchiver (annulée)" },
-          ]
-        : [];
+      return [
+        { to: "resolue_positive", label: "Désarchiver (résolue positivement)" },
+        { to: "resolue_negative", label: "Désarchiver (résolue négativement)" },
+        { to: "annulee", label: "Désarchiver (annulée)" },
+      ];
   }
 }
 
-/** Un utilisateur peut-il écrire (créer, affecter, annoter) ? Les deux rôles actuels le peuvent. */
+/**
+ * Droit exigé par la garde SQL pour une transition donnée (`requests_guard_write`,
+ * ADR-07) : réouverture / archivage / désarchivage exigent `clôture` ET
+ * l'administration sur l'organisation de la demande ; les allers-retours entre
+ * `a_traiter`/`en_instruction`/`en_attente` exigent `instruction` ; le reste
+ * (résolutions, annulation) exige `clôture`.
+ */
+function requiredGateFor(from: RequestStatus, to: RequestStatus): { right: Right; needsAdmin: boolean } {
+  const isReopen = TERMINAL_STATUSES.includes(from) && to === "en_instruction";
+  const isArchive = to === "archivee";
+  const isUnarchive = from === "archivee";
+  if (isReopen || isArchive || isUnarchive) return { right: "cloture", needsAdmin: true };
+
+  const isInstructionMove =
+    (from === "a_traiter" && to === "en_instruction") ||
+    (from === "en_instruction" && to === "en_attente") ||
+    (from === "en_attente" && to === "en_instruction") ||
+    (from === "en_instruction" && to === "a_traiter");
+  if (isInstructionMove) return { right: "instruction", needsAdmin: false };
+
+  return { right: "cloture", needsAdmin: false };
+}
+
+/**
+ * @deprecated Vestige du rôle binaire agent/administrateur (décision PO
+ * 2026-08-20), remplacé par les profils de droits. Conservé, wrappé sur
+ * `allowedTransitionsFor`, le temps de basculer les pages qui l'appellent
+ * encore (voir CLAUDE.md racine, invariant « profils de droits »).
+ */
+export function allowedTransitions(status: RequestStatus, role: MemberRole): TransitionSpec[] {
+  if (!WRITER_ROLES.includes(role)) return [];
+  return allowedTransitionsFor(status, { rights: WRITER_RIGHTS, isAdmin: role === "administrateur" });
+}
+
+/** Droits effectifs d'un utilisateur sur le couple (organisation porteuse, démarche) d'une demande. */
+export interface RequestRights {
+  rights: Set<Right>;
+  /** Administration sur l'organisation de la demande (RM-20 à RM-24) — n'accorde par elle-même aucun droit. */
+  isAdmin: boolean;
+}
+
+/** Les quatre droits, utilisés par le wrapper déprécié `allowedTransitions` pour les deux rôles historiques. */
+const WRITER_RIGHTS = new Set<Right>(["consultation", "creation", "instruction", "cloture"]);
+
+/**
+ * Transitions que la garde SQL acceptera pour ce statut, compte tenu des
+ * droits effectifs `rr` sur le couple (organisation porteuse, démarche) de la
+ * demande — miroir EXACT de `requests_guard_write` (ADR-07). Remplace
+ * `allowedTransitions(status, role)`.
+ */
+export function allowedTransitionsFor(status: RequestStatus, rr: RequestRights): TransitionSpec[] {
+  return transitionCatalogFor(status).filter((t) => {
+    const gate = requiredGateFor(status, t.to);
+    if (gate.needsAdmin && !rr.isAdmin) return false;
+    return rr.rights.has(gate.right);
+  });
+}
+
+/**
+ * @deprecated Vestige du rôle binaire — voir `allowedTransitions`. Utiliser
+ * `canWriteWith(rr)`.
+ */
 export function canWrite(role: MemberRole): boolean {
   return WRITER_ROLES.includes(role);
+}
+
+/** RM-15 : écrire une note interne exige au moins un droit d'écriture (création, instruction ou clôture). */
+export function canWriteWith(rr: RequestRights): boolean {
+  return rr.rights.has("creation") || rr.rights.has("instruction") || rr.rights.has("cloture");
+}
+
+/** RM-13 : affectation, édition du dossier, requalification — exigent le droit d'instruction. */
+export function canProcessWith(rr: RequestRights): boolean {
+  return rr.rights.has("instruction");
+}
+
+/** RM-20 à RM-24 : administration sur l'organisation de la demande (paramètres, réouverture, archivage). */
+export function canAdminWith(rr: RequestRights): boolean {
+  return rr.isAdmin;
 }
 
 /** Construit le payload de mise à jour d'une transition (les gardes SQL revalident tout). */

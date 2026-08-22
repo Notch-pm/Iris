@@ -173,6 +173,25 @@ Deno.serve(async (req) => {
   const tenant = await resolveTenant(req, userId, body.organization_id);
   if (tenant instanceof Response) return tenant;
 
+  // ── Routes /v1/contacts/* uniquement : au moins un droit de CRÉATION dans
+  // le tenant (RM-64). Sans cela, interroger le référentiel des usagers du
+  // Socle n'a aucune justification métier. /v1/procedures/* restent ouvertes
+  // à tout membre (le cache des démarches est déjà lisible par tout membre).
+  if (path.startsWith("/v1/contacts/")) {
+    const { data: canCreate, error: rightError } = await supabase.rpc("has_any_creation_right_for", {
+      p_user_id: userId,
+      p_org_id: tenant.organizationId,
+    });
+    if (rightError) {
+      console.error("socle-proxy has_any_creation_right_for:", rightError);
+      return fail(req, 500, "internal_error", "Erreur lors de la vérification des droits.");
+    }
+    if (!canCreate) {
+      return fail(req, 403, "forbidden",
+        "Le rapprochement d'usagers exige un droit de création de demande dans ce tenant.");
+    }
+  }
+
   if (path === "/v1/procedures/list") {
     const res = await socleFetch(`${publicApiBase()}/v1/procedures`);
     if (!res?.ok) return relaySocleError(req, res);

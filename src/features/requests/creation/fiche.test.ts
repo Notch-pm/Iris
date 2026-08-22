@@ -3,6 +3,7 @@ import type { FormSchema } from "@fn/create-request-from-procedure/_shared/proce
 import {
   attachmentStats,
   creationProgress,
+  destinationMissing,
   fileCountsFrom,
   missingRequiredFields,
 } from "./fiche";
@@ -76,5 +77,16 @@ describe("creationProgress", () => {
 describe("fileCountsFrom", () => {
   it("réduit des listes de fichiers à leurs effectifs", () => {
     expect(fileCountsFrom({ a: [{ length: 0 }, { length: 0 }], b: [] })).toEqual({ a: 2, b: 0 });
+  });
+});
+
+describe("destinationMissing — RM-29/RM-59", () => {
+  it("vide ou blanc : manquant", () => {
+    expect(destinationMissing("")).toBe(true);
+    expect(destinationMissing("   ")).toBe(true);
+  });
+
+  it("renseigné : présent", () => {
+    expect(destinationMissing("22222222-2222-2222-2222-222222222222")).toBe(false);
   });
 });

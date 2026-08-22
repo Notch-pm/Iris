@@ -1,7 +1,8 @@
 import * as React from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { ChevronsUpDown, Inbox, LayoutDashboard, LogOut, ShieldCheck } from "lucide-react";
+import { ChevronsUpDown, Inbox, LayoutDashboard, LogOut, Settings, ShieldCheck } from "lucide-react";
 import notchLogo from "@/assets/logo-notch.svg";
+import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { Select } from "@/components/ui/select";
@@ -12,17 +13,24 @@ import { ShellLayoutContext } from "./shellLayout";
 // AppSidebar : rail vert 52px, premier item épinglé en haut, groupe restant
 // centré verticalement). Design system Notch/Ariane.
 
-const NAV_ITEMS = [
+interface NavItem {
+  to: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  end: boolean;
+}
+
+const BASE_NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, end: true },
   { to: "/demandes", label: "Demandes", icon: Inbox, end: false },
 ];
 
-const ROLE_LABELS: Record<string, string> = {
-  administrateur: "Administrateur",
-  agent: "Agent",
-};
+// Visible uniquement pour les administrateurs (RM-20) — l'accès réel reste
+// gardé côté serveur (RLS) et par `AdminRoute` ; cette entrée n'est qu'un
+// raccourci de confort.
+const ADMIN_NAV_ITEM: NavItem = { to: "/parametres", label: "Paramètres", icon: Settings, end: false };
 
-function SidebarItem({ item }: { item: (typeof NAV_ITEMS)[number] }) {
+function SidebarItem({ item }: { item: NavItem }) {
   const Icon = item.icon;
   return (
     <li>
@@ -48,7 +56,9 @@ function SidebarItem({ item }: { item: (typeof NAV_ITEMS)[number] }) {
 }
 
 function AppSidebar() {
-  const [first, ...rest] = NAV_ITEMS;
+  const { isAdmin } = useTenant();
+  const items = isAdmin ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS;
+  const [first, ...rest] = items;
   return (
     <nav
       aria-label="Navigation principale"
@@ -70,7 +80,7 @@ function AppSidebar() {
 
 function UserMenu() {
   const { session, profile, signOut } = useAuth();
-  const { current } = useTenant();
+  const { isAdmin, rights } = useTenant();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -89,7 +99,10 @@ function UserMenu() {
     ? ([profile.first_name?.[0], profile.last_name?.[0]].filter(Boolean).join("").toUpperCase() ||
       profile.email[0].toUpperCase())
     : "U";
-  const roleName = current ? (ROLE_LABELS[current.role] ?? current.role) : "—";
+  // RM-46 : le badge de rôle est remplacé par les profils de droits attribués
+  // sur ce tenant — c'est la seule réponse fiable à « pourquoi ne puis-je pas
+  // faire ceci ? », le rôle binaire n'existant plus dans le modèle de droits.
+  const activeProfiles = rights.profiles.filter((p) => p.status === "active");
 
   return (
     <div ref={ref} className="relative">
@@ -107,11 +120,23 @@ function UserMenu() {
       {open ? (
         <div
           role="menu"
-          className="absolute right-0 top-11 z-40 min-w-[220px] rounded-xl border border-border bg-popover p-1.5 shadow-airbnb-lg"
+          className="absolute right-0 top-11 z-40 min-w-[240px] rounded-xl border border-border bg-popover p-1.5 shadow-airbnb-lg"
         >
           <div className="px-2.5 py-2">
             <p className="text-[13px] font-semibold">{displayName}</p>
-            <p className="mt-0.5 text-[11px] text-muted-foreground">{roleName}</p>
+            {isAdmin ? (
+              <Badge variant="secondary" className="mt-1.5">
+                Administrateur
+              </Badge>
+            ) : null}
+            <p className="mt-1.5 text-[11px] font-semibold text-muted-foreground">Profils attribués</p>
+            <p className="mt-0.5 text-[11px] text-muted-foreground">
+              {rights.is_platform_admin
+                ? "Administrateur de la plateforme"
+                : activeProfiles.length > 0
+                  ? activeProfiles.map((p) => p.name).join(", ")
+                  : "Aucun"}
+            </p>
           </div>
           <div className="my-1 h-px bg-border" />
           <button
@@ -131,7 +156,7 @@ function UserMenu() {
 
 export function AppShell() {
   const { profile } = useAuth();
-  const { memberships, current, setCurrentOrgId, loading } = useTenant();
+  const { memberships, current, setCurrentOrgId, loading, isAdmin } = useTenant();
   const [fullBleed, setFullBleed] = React.useState(false);
   const layoutValue = React.useMemo(() => ({ setFullBleed }), []);
 
@@ -172,8 +197,13 @@ export function AppShell() {
 
         <div className="flex-1" />
 
-        {/* Droite : superadmin (plateforme uniquement) + menu utilisateur */}
+        {/* Droite : chip administrateur + superadmin (plateforme uniquement) + menu utilisateur */}
         <div className="flex shrink-0 items-center gap-2">
+          {isAdmin ? (
+            <Badge variant="secondary" className="hidden sm:inline-flex">
+              Administrateur
+            </Badge>
+          ) : null}
           {profile?.is_platform_admin ? (
             <Link
               to="/superadmin"

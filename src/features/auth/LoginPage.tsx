@@ -6,6 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 
+// Une fiche de demande est propre à un tenant/utilisateur : si un premier
+// utilisateur s'est fait rediriger vers /login depuis /demandes/:id (session
+// expirée) puis se déconnecte, l'URL de retour ne doit JAMAIS être rejouée
+// pour un second utilisateur qui se connecterait ensuite sur ce poste — on
+// retombe alors sur le tableau de bord plutôt que sur une fiche qui n'est
+// peut-être plus la sienne.
+const REQUEST_DETAIL_RE = /^\/demandes\/[^/]+$/;
+
 export function LoginPage() {
   const { session, loading } = useAuth();
   const location = useLocation();
@@ -23,7 +31,8 @@ export function LoginPage() {
   }
 
   if (session) {
-    const redirectTo = (location.state as { from?: string } | null)?.from ?? "/";
+    const from = (location.state as { from?: string } | null)?.from ?? "/";
+    const redirectTo = REQUEST_DETAIL_RE.test(from) ? "/" : from;
     return <Navigate to={redirectTo} replace />;
   }
 

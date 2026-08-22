@@ -1,11 +1,17 @@
 import { describe, expect, it } from "vitest";
+import { ALL_RIGHTS, type Right } from "@/features/rights/rights";
 import {
   allowedTransitions,
+  allowedTransitionsFor,
   buildTransitionUpdate,
+  canAdminWith,
+  canProcessWith,
   canWrite,
+  canWriteWith,
   isFinal,
   STATUS_LABELS,
   type MemberRole,
+  type RequestRights,
   type RequestStatus,
 } from "./statuts";
 
@@ -94,5 +100,95 @@ describe("isFinal", () => {
     expect(isFinal("annulee")).toBe(true);
     expect(isFinal("archivee")).toBe(true);
     expect(isFinal("en_attente")).toBe(false);
+  });
+});
+
+describe("allowedTransitionsFor — miroir de requests_guard_write (droits effectifs, ADR-07)", () => {
+  const rr = (rights: Right[], isAdmin = false): RequestRights => ({ rights: new Set(rights), isAdmin });
+  const targetsFor = (status: RequestStatus, rights: RequestRights) =>
+    allowedTransitionsFor(status, rights).map((t) => t.to).sort();
+
+  it("CA-05 — combinaison : chaque droit ajouté élargit l'ensemble des transitions, sans jamais en retirer", () => {
+    const cloture = rr(["consultation", "cloture"]);
+    const instruction = rr(["consultation", "instruction"]);
+    const les_deux = rr(["consultation", "instruction", "cloture"]);
+
+    expect(targetsFor("a_traiter", cloture)).toEqual(["annulee", "resolue_negative"]);
+    expect(targetsFor("a_traiter", instruction)).toEqual(["en_instruction"]);
+    expect(targetsFor("a_traiter", les_deux)).toEqual(
+      ["annulee", "en_instruction", "resolue_negative"].sort(),
+    );
+  });
+
+  it("CA-07 — création sans instruction (guichet) : aucune transition proposée sur ses propres demandes", () => {
+    const guichet = rr(["consultation", "creation"]);
+    expect(targetsFor("a_traiter", guichet)).toEqual([]);
+  });
+
+  it("CA-08 — instruction sans clôture : les allers-retours d'instruction, jamais les résolutions", () => {
+    const instructeur = rr(["consultation", "instruction"]);
+    expect(targetsFor("en_instruction", instructeur)).toEqual(["a_traiter", "en_attente"].sort());
+    const withClosureText = allowedTransitionsFor("en_instruction", instructeur).find(
+      (t) => t.to === "resolue_positive",
+    );
+    expect(withClosureText).toBeUndefined();
+  });
+
+  it("CA-09 — réouverture et archivage exigent clôture ET administration", () => {
+    // Camille : clôture mais pas administration → refusé.
+    const camille: RequestRights = { rights: new Set(["consultation", "cloture"]), isAdmin: false };
+    expect(targetsFor("resolue_positive", camille)).toEqual([]);
+
+    // Alex : administration ET clôture (via le défaut) → autorisé.
+    const alex: RequestRights = { rights: new Set(["consultation", "cloture"]), isAdmin: true };
+    expect(targetsFor("resolue_positive", alex)).toEqual(["archivee", "en_instruction"].sort());
+
+    // Morgane : administration seule, aucun droit de clôture → toujours refusé (RM-22).
+    const morgane: RequestRights = { rights: new Set<Right>(), isAdmin: true };
+    expect(targetsFor("resolue_positive", morgane)).toEqual([]);
+  });
+
+  it("désarchivage : miroir de l'archivage (clôture + administration)", () => {
+    const admin: RequestRights = { rights: new Set(["consultation", "cloture"]), isAdmin: true };
+    expect(targetsFor("archivee", admin)).toEqual(["annulee", "resolue_negative", "resolue_positive"].sort());
+    const nonAdmin: RequestRights = { rights: new Set(["consultation", "cloture"]), isAdmin: false };
+    expect(targetsFor("archivee", nonAdmin)).toEqual([]);
+  });
+
+  it("consultation seule : aucune transition, quel que soit le statut", () => {
+    const lecteur: RequestRights = { rights: new Set(["consultation"]), isAdmin: false };
+    for (const status of Object.keys(STATUS_LABELS) as RequestStatus[]) {
+      expect(allowedTransitionsFor(status, lecteur)).toEqual([]);
+    }
+  });
+});
+
+describe("allowedTransitions (déprécié) ≡ allowedTransitionsFor avec les 4 droits", () => {
+  it("pour chaque statut, le wrapper déprécié égale exactement le miroir des droits effectifs", () => {
+    for (const status of Object.keys(STATUS_LABELS) as RequestStatus[]) {
+      const agentRr: RequestRights = { rights: new Set<Right>(ALL_RIGHTS), isAdmin: false };
+      const adminRr: RequestRights = { rights: new Set<Right>(ALL_RIGHTS), isAdmin: true };
+      expect(allowedTransitions(status, "agent")).toEqual(allowedTransitionsFor(status, agentRr));
+      expect(allowedTransitions(status, "administrateur")).toEqual(allowedTransitionsFor(status, adminRr));
+    }
+  });
+});
+
+describe("canWriteWith / canProcessWith / canAdminWith", () => {
+  it("canWriteWith : au moins un droit d'écriture (création, instruction ou clôture)", () => {
+    expect(canWriteWith({ rights: new Set(["consultation"]), isAdmin: false })).toBe(false);
+    expect(canWriteWith({ rights: new Set(["consultation", "creation"]), isAdmin: false })).toBe(true);
+    expect(canWriteWith({ rights: new Set(["consultation", "instruction"]), isAdmin: false })).toBe(true);
+    expect(canWriteWith({ rights: new Set(["consultation", "cloture"]), isAdmin: false })).toBe(true);
+  });
+
+  it("canProcessWith : uniquement le droit d'instruction", () => {
+    expect(canProcessWith({ rights: new Set(["consultation", "creation"]), isAdmin: false })).toBe(false);
+    expect(canProcessWith({ rights: new Set(["consultation", "instruction"]), isAdmin: false })).toBe(true);
+  });
+
+  it("canAdminWith : reflète isAdmin, indépendamment des droits sur la demande", () => {
+    expect(canAdminWith({ rights: new Set(), isAdmin: true })).toBe(true);
+    expect(canAdminWith({ rights: new Set(["consultation", "cloture"]), isAdmin: false })).toBe(false);
   });
 });
