@@ -14,7 +14,9 @@ import {
   humanizeKey,
   initials,
   linkReason,
+  firstInstructionAt,
   requesterIdentity,
+  requesterView,
   splitTransitions,
 } from "./instruction";
 
@@ -57,6 +59,15 @@ describe("headerSubtitle", () => {
       requesterName: "X", channel: "pigeon", source: "iris", receivedAt: "2026-08-21T10:00:00", dueAt: "n/a",
     });
     expect(text).toBe("X · déposée via pigeon le 21 août 2026");
+  });
+  it("omet le nom tant que l'identité n'est pas arrêtée (relecture Socle en cours)", () => {
+    // Afficher le nom du dépôt puis le remplacer par celui de la fiche ferait
+    // clignoter le titre de la page : sans nom, le sous-titre reste stable.
+    const text = headerSubtitle({
+      requesterName: null, channel: "guichet", source: "iris",
+      receivedAt: "2026-08-21T10:00:00", dueAt: null,
+    });
+    expect(text).toBe("déposée au guichet le 21 août 2026");
   });
 });
 
@@ -115,6 +126,152 @@ describe("requesterIdentity", () => {
     expect(id.known).toBe(false);
     expect(id.name).toBe("Identité déclarée");
     expect(id.rows).toEqual([]);
+  });
+});
+
+describe("requesterView — la fiche Socle d'aujourd'hui, le dépôt à côté", () => {
+  // Le dépôt d'une demande rapprochée : whitelist de contactIdentitySnapshot.
+  const DEPOT = {
+    declared: { display_name: "Marie Durand", first_name: "Marie", usage_name: "Durand", city: "Nantes" },
+    socle_contact_id: "c-1",
+  };
+  // La même fiche AUJOURD'HUI : un courriel ajouté, la ville corrigée.
+  const FICHE = {
+    id: "c-1",
+    display_name: "Marie Durand",
+    first_name: "Marie",
+    usage_name: "Durand",
+    email: "marie.durand@example.fr",
+    city: "Rezé",
+  };
+
+  it("retombe sur le dépôt sans fiche relue", () => {
+    const view = requesterView(DEPOT, "rapprochee", null);
+    expect(view.live).toBe(false);
+    expect(view.changes).toEqual([]);
+    expect(view.identity).toEqual(view.deposited);
+    expect(view.identity.email).toBeNull();
+  });
+
+  it("affiche la fiche relue, y compris une adresse ajoutée APRÈS le dépôt", () => {
+    const view = requesterView(DEPOT, "rapprochee", FICHE);
+    expect(view.live).toBe(true);
+    expect(view.identity.email).toBe("marie.durand@example.fr");
+    // Le dépôt reste intact : c'est la pièce du dossier.
+    expect(view.deposited.email).toBeNull();
+  });
+
+  it("liste les écarts, un champ apparu ayant `before: null`", () => {
+    const view = requesterView(DEPOT, "rapprochee", FICHE);
+    expect(view.changes).toEqual([
+      { label: "Adresse", before: "Nantes", after: "Rezé" },
+      { label: "Courriel", before: null, after: "marie.durand@example.fr" },
+    ]);
+  });
+
+  it("signale aussi un champ VIDÉ depuis le dépôt (`after: null`) et un nom changé", () => {
+    const depot = { declared: { display_name: "Marie Dupont", email: "ancien@example.fr" } };
+    const view = requesterView(depot, "rapprochee", { id: "c-1", display_name: "Marie Durand" });
+    expect(view.changes).toEqual([
+      { label: "Nom", before: "Marie Dupont", after: "Marie Durand" },
+      { label: "Courriel", before: "ancien@example.fr", after: null },
+    ]);
+  });
+
+  it("ne signale rien quand la fiche n'a pas bougé", () => {
+    const view = requesterView(
+      { declared: { display_name: "Marie Durand", email: "m@example.fr" } },
+      "rapprochee",
+      { id: "c-1", display_name: "Marie Durand", email: "m@example.fr" },
+    );
+    expect(view.live).toBe(true);
+    expect(view.changes).toEqual([]);
+  });
+
+  it("ne relit jamais par-dessus un dépôt anonyme", () => {
+    const view = requesterView(null, "anonyme", FICHE);
+    expect(view.live).toBe(false);
+    expect(view.identity.anonymous).toBe(true);
+  });
+
+  it("ignore une réponse Socle inexploitable plutôt que d'effacer le dépôt", () => {
+    for (const junk of [undefined, {}, { id: "c-1" }, { display_name: "X" }, "boom"]) {
+      const view = requesterView(DEPOT, "rapprochee", junk);
+      expect(view.live).toBe(false);
+      expect(view.identity.name).toBe("Marie Durand");
+    }
+  });
+});
+
+describe("requesterIdentity — les champs BRUTS (variables des modèles d'e-mail)", () => {
+  it("expose la civilité, que rien ne lisait jusqu'ici", () => {
+    // `civility` figurait dans KNOWN_IDENTITY_KEYS — donc exclue des lignes
+    // « clés inconnues » — sans qu'aucun pick() ne la lise : elle se perdait.
+    const id = requesterIdentity({ declared: { civility: "Mme", last_name: "Durand" } }, "rapprochee");
+    expect(id.civility).toBe("Mme");
+  });
+
+  it("traduit les valeurs du contrat en français", () => {
+    expect(requesterIdentity({ declared: { civility: "madame" } }, "rapprochee").civility).toBe("Madame");
+    expect(requesterIdentity({ declared: { civilite: "monsieur" } }, "non_rapprochee").civility).toBe("Monsieur");
+  });
+
+  it("sépare prénom et nom, quelles que soient les clés d'origine", () => {
+    const socle = requesterIdentity({ declared: { first_name: "Marie", usage_name: "Durand" } }, "rapprochee");
+    expect([socle.firstName, socle.lastName]).toEqual(["Marie", "Durand"]);
+    const guichet = requesterIdentity({ declared: { prenoms: "Jean", nom_naissance: "Dupont" } }, "non_rapprochee");
+    expect([guichet.firstName, guichet.lastName]).toEqual(["Jean", "Dupont"]);
+  });
+
+  it("ne déduit ni prénom ni nom d'un display_name Socle", () => {
+    const id = requesterIdentity({ declared: { display_name: "Marie Durand" } }, "rapprochee");
+    expect(id.name).toBe("Marie Durand");
+    expect(id.firstName).toBeNull();
+    expect(id.lastName).toBeNull();
+  });
+
+  it("expose la raison sociale même sans nom de personne (aucune ligne ne la portait)", () => {
+    const id = requesterIdentity({ declared: { raison_sociale: "Boulangerie Durand" } }, "non_rapprochee");
+    expect(id.rows).toEqual([]);
+    expect(id.legalName).toBe("Boulangerie Durand");
+  });
+
+  it("expose l'adresse recomposée comme l'adresse libre", () => {
+    const compose = requesterIdentity({
+      declared: { address_line1: "12 rue des Lilas", postal_code: "44210", city: "Saint-Aubin" },
+    }, "rapprochee");
+    expect(compose.address).toBe("12 rue des Lilas, 44210 Saint-Aubin");
+    const libre = requesterIdentity({ declared: { adresse: "1 place Royale, Nantes" } }, "non_rapprochee");
+    expect(libre.address).toBe("1 place Royale, Nantes");
+  });
+
+  it("ne rend AUCUN champ brut pour un dépôt anonyme", () => {
+    const id = requesterIdentity(null, "anonyme");
+    expect([id.civility, id.firstName, id.lastName, id.legalName, id.address])
+      .toEqual([null, null, null, null, null]);
+  });
+});
+
+describe("firstInstructionAt", () => {
+  it("retient le PREMIER passage en instruction, pas le dernier", () => {
+    expect(firstInstructionAt([
+      { event_type: "status_changed", payload: { to: "en_instruction" }, created_at: "2026-08-22T08:00:00Z" },
+      { event_type: "status_changed", payload: { to: "resolue_positive" }, created_at: "2026-08-25T08:00:00Z" },
+      { event_type: "status_changed", payload: { to: "en_instruction" }, created_at: "2026-08-30T08:00:00Z" },
+    ])).toBe("2026-08-22T08:00:00Z");
+  });
+
+  it("compte une demande CRÉÉE directement en instruction", () => {
+    expect(firstInstructionAt([
+      { event_type: "created", payload: { status: "en_instruction" }, created_at: "2026-08-21T09:00:00Z" },
+    ])).toBe("2026-08-21T09:00:00Z");
+  });
+
+  it("rend null tant que l'étape n'a pas été atteinte", () => {
+    expect(firstInstructionAt([
+      { event_type: "created", payload: { status: "a_traiter" }, created_at: "2026-08-21T09:00:00Z" },
+    ])).toBeNull();
+    expect(firstInstructionAt([])).toBeNull();
   });
 });
 

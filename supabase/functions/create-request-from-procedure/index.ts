@@ -17,7 +17,8 @@ import {
   validateFormSubmission,
   validateRequesterSubmission,
 } from "./_shared/procedureForm.ts";
-import { contactIdentitySnapshot, whitelistProcedureSnapshot } from "./_shared/snapshots.ts";
+import { whitelistProcedureSnapshot } from "./_shared/snapshots.ts";
+import { contactIdentitySnapshot } from "../_shared/identity/declared.ts";
 import { parsePayload } from "./_shared/payload.ts";
 
 const supabase = createClient(
@@ -168,6 +169,10 @@ Deno.serve(async (req) => {
   let declared: Record<string, unknown> | null = null;
   let socleContactId: string | null = null;
   let identityStatus: "rapprochee" | "non_rapprochee" | "anonyme";
+  // Tableau d'OBJETS `{code}` — jamais de chaînes nues : `requests_set_scope_org`
+  // filtre par `a ->> 'code'`, et une chaîne y donne NULL puis disparaît au
+  // premier recalcul de périmètre.
+  const anomalies: { code: string }[] = [];
   if (p.requester.kind === "contact") {
     const contactRes = await socleFetch(
       `${contactsApiBase()}/v1/contacts/${p.requester.socle_contact_id}`,
@@ -184,8 +189,14 @@ Deno.serve(async (req) => {
     socleContactId = p.requester.socle_contact_id;
     identityStatus = "rapprochee";
   } else if (p.requester.kind === "sans_rapprochement") {
+    // SORTIE DE SECOURS (décision PO 2026-08-26). Le parcours normal crée
+    // désormais la fiche dans le Socle : on n'arrive ici qu'après un échec
+    // avéré du référentiel. La demande le dit d'elle-même — l'anomalie est
+    // posée par le SERVEUR, jamais sur un drapeau du navigateur, sans quoi
+    // n'importe quel client pourrait s'en dispenser.
     declared = sanitizeDeclared(p.requester.audience, p.requester.declared);
     identityStatus = "non_rapprochee";
+    anomalies.push({ code: "usager_a_creer_dans_socle" });
   } else {
     declared = { anonymous: true };
     identityStatus = "anonyme";
@@ -215,6 +226,7 @@ Deno.serve(async (req) => {
       procedure_snapshot: procedureSnapshot,
       requester_snapshot: { declared, socle_contact_id: socleContactId },
       identity_status: identityStatus,
+      anomalies,
       form_data: form.formData,
       audience: p.requester.kind === "anonyme" ? null : p.requester.audience,
       attachments: p.attachments,

@@ -46,6 +46,8 @@ export function SurfaceHead({ title, sub, action }: SurfaceHeadProps) {
 
 interface AvatarProps {
   initials: string;
+  /** Photo de profil (URL signée). Absente ou illisible → les initiales. */
+  src?: string | null;
   size?: "sm" | "md" | "lg";
   muted?: boolean;
   className?: string;
@@ -57,18 +59,33 @@ const AVATAR_SIZE = {
   lg: "h-10 w-10 text-sm",
 } as const;
 
-export function Avatar({ initials, size = "md", muted = false, className }: AvatarProps) {
+export function Avatar({ initials, src, size = "md", muted = false, className }: AvatarProps) {
+  // Une photo qui ne charge pas ne doit pas laisser un rond vide : on repasse
+  // aux initiales, qui sont déjà là, dessous.
+  const [broken, setBroken] = React.useState(false);
+  const showImage = Boolean(src) && !broken;
+  React.useEffect(() => setBroken(false), [src]);
+
   return (
     <span
       aria-hidden="true"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-full font-extrabold",
+        "inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full font-extrabold",
         AVATAR_SIZE[size],
         muted ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground",
         className,
       )}
     >
-      {initials}
+      {showImage ? (
+        <img
+          src={src!}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        initials
+      )}
     </span>
   );
 }

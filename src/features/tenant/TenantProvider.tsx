@@ -3,7 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/features/auth/AuthProvider";
 import type { MemberRole } from "@/features/requests/statuts";
-import { emptyRights, hasAnyProfile as hasAnyProfileOf, type MyRights } from "@/features/rights/rights";
+import {
+  emptyRights, hasAnyProfile as hasAnyProfileOf, type MyRights,
+} from "@/features/rights/rights";
 import { useMyRights } from "@/features/rights/useRights";
 
 // `role` reste porté pour compatibilité le temps de la bascule (RM-43 : colonne
@@ -13,6 +15,8 @@ import { useMyRights } from "@/features/rights/useRights";
 export interface TenantMembership {
   organizationId: string;
   organizationName: string;
+  /** Racine Socle du tenant — un tenant Iris EST une organisation racine Socle. */
+  socleOrgId: string;
   role: MemberRole;
 }
 
@@ -27,6 +31,11 @@ interface TenantContextValue {
   rightsLoading: boolean;
   /** Administration quelque part dans le tenant (RM-20) — admin plateforme compris (RM-24). */
   isAdmin: boolean;
+  /**
+   * Administration de l'ORGANISME PRINCIPAL (racine du tenant). Gouverne ce qui
+   * vaut pour tout le sous-arbre et ne se règle donc qu'en haut : le serveur
+   * d'envoi (décision PO 2026-08-23).
+   */
   /** Au moins un profil de droits actif attribué (CL-01) — hors admin plateforme. */
   hasAnyProfile: boolean;
 }
@@ -47,7 +56,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
     queryFn: async (): Promise<TenantMembership[]> => {
       const { data, error } = await supabase
         .from("organization_members")
-        .select("role, organization:organizations(id, name, status)")
+        .select("role, organization:organizations(id, name, socle_org_id, status)")
         .eq("user_id", userId!);
       if (error) throw error;
       return (data ?? [])
@@ -55,6 +64,7 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
         .map((row) => ({
           organizationId: row.organization!.id,
           organizationName: row.organization!.name,
+          socleOrgId: row.organization!.socle_org_id,
           role: row.role as MemberRole,
         }))
         .sort((a, b) => a.organizationName.localeCompare(b.organizationName, "fr"));

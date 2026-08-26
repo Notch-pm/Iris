@@ -186,3 +186,76 @@ export function filterMatchRequest(
   }
   return { ok: true, payload };
 }
+
+/**
+ * Paramètres de la LISTE des usagers (`/v1/contacts/list` → contacts-api
+ * `GET /v1/contacts`) : whitelist stricte, valeurs bornées. La liste d'Iris
+ * pagine côté serveur du Socle ; le tri, les compteurs de demandes et les
+ * filtres propres à Iris (quartier, volumétrie) s'appliquent ensuite dans le
+ * navigateur sur l'ensemble rapatrié.
+ *
+ * `status` : « active » par défaut (le référentiel archive, il n'efface pas),
+ * « archived », ou « all » — auquel cas le paramètre n'est PAS transmis, ce
+ * que le contrat contacts-api interprète comme « tous statuts ».
+ */
+const CONTACT_TYPES = ["personne", "entreprise", "association", "administration"] as const;
+export const CONTACT_LIST_MAX_LIMIT = 500;
+export const CONTACT_LIST_DEFAULT_LIMIT = 200;
+
+export function filterContactListQuery(
+  raw: any,
+): { ok: true; params: Record<string, string>; limit: number } | { ok: false; message: string } {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { ok: false, message: "Corps JSON attendu." };
+  }
+  const params: Record<string, string> = {};
+
+  const search = raw.search;
+  if (search !== undefined && search !== null && search !== "") {
+    if (typeof search !== "string") return { ok: false, message: "search : texte attendu." };
+    const trimmed = search.trim();
+    if (trimmed.length > 200) return { ok: false, message: "search : 200 caractères au plus." };
+    if (trimmed !== "") params.search = trimmed;
+  }
+
+  const type = raw.type;
+  if (type !== undefined && type !== null && type !== "") {
+    if (typeof type !== "string" || !(CONTACT_TYPES as readonly string[]).includes(type)) {
+      return { ok: false, message: `type : une valeur parmi ${CONTACT_TYPES.join(", ")}.` };
+    }
+    params.type = type;
+  }
+
+  const status = raw.status === undefined || raw.status === null || raw.status === ""
+    ? "active"
+    : raw.status;
+  if (status !== "active" && status !== "archived" && status !== "all") {
+    return { ok: false, message: "status : active, archived ou all." };
+  }
+  if (status !== "all") params.status = status;
+
+  const rawLimit = raw.limit;
+  let limit = CONTACT_LIST_DEFAULT_LIMIT;
+  if (rawLimit !== undefined && rawLimit !== null) {
+    if (typeof rawLimit !== "number" || !Number.isFinite(rawLimit)) {
+      return { ok: false, message: "limit : nombre attendu." };
+    }
+    limit = Math.floor(rawLimit);
+    if (limit < 1 || limit > CONTACT_LIST_MAX_LIMIT) {
+      return { ok: false, message: `limit : entre 1 et ${CONTACT_LIST_MAX_LIMIT}.` };
+    }
+  }
+  params.limit = String(limit);
+
+  const rawOffset = raw.offset;
+  let offset = 0;
+  if (rawOffset !== undefined && rawOffset !== null) {
+    if (typeof rawOffset !== "number" || !Number.isFinite(rawOffset) || rawOffset < 0) {
+      return { ok: false, message: "offset : entier positif attendu." };
+    }
+    offset = Math.floor(rawOffset);
+  }
+  params.offset = String(offset);
+
+  return { ok: true, params, limit };
+}

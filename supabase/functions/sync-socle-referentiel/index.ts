@@ -1,5 +1,7 @@
-// sync-socle-referentiel — synchronisation du miroir d'organisations Socle et
-// du cache léger des démarches, pour tous les tenants Iris.
+// sync-socle-referentiel — synchronisation, pour tous les tenants Iris, du
+// miroir d'organisations Socle, du cache léger des démarches ET du serveur
+// d'envoi (SMTP) de l'organisation principale : le Socle en est propriétaire
+// (onglet « Emails (SMTP) » de la racine), Iris n'en tient qu'un miroir.
 // Auth — DEUX modes, motif Clara (sync-socle-referentiel) :
 //   - en-tête x-cron-secret === env CRON_SECRET (pg_cron quotidien) ;
 //   - JWT vérifié en code (verify_jwt=false : préflights OPTIONS) :
@@ -20,6 +22,7 @@ import {
   type SocleProcedure,
   type TenantRef,
 } from "./_shared/mapping.ts";
+import { smtpMirrorArgs, smtpWarning, type SocleSmtpDto } from "./_shared/smtp.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -127,6 +130,34 @@ async function fetchSocle<T>(base: string, key: string, path: string): Promise<T
   return (await res.json()) as T;
 }
 
+/** Message lisible d'une erreur — `PostgrestError` n'est pas une instance d'`Error`. */
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err !== null && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return String(err);
+}
+
+/**
+ * Serveur d'envoi d'une organisation principale. À la différence des autres
+ * lectures, un statut d'erreur n'est pas une exception : une clé sans le scope
+ * `smtp` (403) ou un Socle antérieur à cette route (404) doivent laisser la
+ * synchronisation du référentiel réussir, avec un avertissement.
+ */
+async function fetchSocleSmtp(
+  base: string,
+  key: string,
+  socleOrgId: string,
+): Promise<{ status: number; dto: SocleSmtpDto | null }> {
+  const res = await fetch(`${base}/v1/organizations/${socleOrgId}/smtp`, {
+    headers: { Authorization: `Bearer ${key}` },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!res.ok) return { status: res.status, dto: null };
+  return { status: res.status, dto: (await res.json()) as SocleSmtpDto };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
@@ -215,9 +246,8 @@ Deno.serve(async (req) => {
     // obsolete. On ne marque obsolète que les lignes des tenants dont la racine
     // EST visible dans la réponse Socle (périmètre réellement observé).
     const visibleRoots = new Set(orgs.filter((o) => !o.parent_id).map((o) => o.id));
-    const observedTenantIds = tenants
-      .filter((t) => visibleRoots.has(t.socleOrgId))
-      .map((t) => t.organizationId);
+    const observedTenants = tenants.filter((t) => visibleRoots.has(t.socleOrgId));
+    const observedTenantIds = observedTenants.map((t) => t.organizationId);
 
     let staleOrgCount = 0;
     let staleProcCount = 0;
@@ -254,13 +284,56 @@ Deno.serve(async (req) => {
       await supabase.from("organizations").update({ name: t.name }).eq("id", t.organizationId);
     }
 
+    // Avertissements : ce qui n'a pas pu être fait sans pour autant faire
+    // échouer la synchronisation. Journalisés dans `sync_runs.counters`.
+    const warnings: string[] = [];
+
+    // Serveur d'envoi (SMTP) — le Socle en est propriétaire, Iris n'en tient
+    // qu'un miroir. Seuls les tenants du périmètre RÉELLEMENT observé sont
+    // relus : avec une clé Socle liée à une racine (décision PO : clé scopée,
+    // pas plateforme), les autres tenants sont hors de portée et n'ont pas à
+    // encombrer le journal.
+    //
+    // Un tenant qui échoue ne fait échouer ni les autres, ni la synchronisation
+    // du référentiel : son miroir reste en l'état et un avertissement dit quoi
+    // faire. Le mot de passe ne transite que d'ici vers la RPC de service, qui
+    // le range au Vault — il n'apparaît dans aucun journal.
+    let smtpSynchronises = 0;
+    let smtpRetires = 0;
+    for (const tenant of observedTenants) {
+      try {
+        const { status, dto } = await fetchSocleSmtp(base, socleKey, tenant.socleOrgId);
+        if (status !== 200) {
+          warnings.push(smtpWarning(tenant, status));
+          continue;
+        }
+        const args = smtpMirrorArgs(tenant, dto);
+        if (args) {
+          const { error } = await supabase.rpc("sync_smtp_settings_from_socle", args);
+          if (error) throw error;
+          smtpSynchronises++;
+        } else {
+          // Le Socle ne déclare plus de relais exploitable : le miroir s'efface
+          // (l'envoi retombera sur le relais de plateforme), il ne survit pas à
+          // sa source.
+          const { data: retire, error } = await supabase
+            .rpc("clear_smtp_settings_from_socle", { p_org_id: tenant.organizationId });
+          if (error) throw error;
+          if (retire === true) smtpRetires++;
+        }
+      } catch (err) {
+        const message = errorMessage(err);
+        console.error(`sync-socle-referentiel smtp ${tenant.organizationId}:`, message);
+        warnings.push(`serveur d'envoi (tenant ${tenant.organizationId}) : ${message}`);
+      }
+    }
+
     // Recalcul du périmètre porteur des droits (profils de droits, ADR-14) :
     // le miroir vient de bouger (nouvelles organisations, reparentages,
     // obsolescences), certaines demandes peuvent devoir changer de
     // socle_scope_org_id. Une erreur ici est journalisée en avertissement,
     // jamais fatale : la sync du référentiel reste réussie.
     let requestsScopeRecalculees = 0;
-    const warnings: string[] = [];
     const { data: scopeRecalc, error: scopeError } = await supabase
       .rpc("refresh_request_scope_org", { p_org_id: scopeOrgId });
     if (scopeError) {
@@ -278,6 +351,8 @@ Deno.serve(async (req) => {
       organizations_obsoleted: staleOrgCount,
       procedures_obsoleted: staleProcCount,
       requests_scope_recalculees: requestsScopeRecalculees,
+      smtp_synchronises: smtpSynchronises,
+      smtp_retires: smtpRetires,
       ...(warnings.length > 0 ? { warnings } : {}),
     };
     if (run) {
@@ -288,7 +363,7 @@ Deno.serve(async (req) => {
     }
     return json(req, 200, { status: "success", counters });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    const message = errorMessage(err);
     if (run) {
       await supabase
         .from("sync_runs")

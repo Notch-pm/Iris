@@ -1,0 +1,33 @@
+-- Stockage physique de `public.requests` : sortir le gros JSONB de la ligne.
+--
+-- CONSTAT (mesuré le 2026-08-26 sur la base réelle) : la table TOAST de
+-- `requests` était VIDE (`relpages = 0`) et `reloptions` nul — donc seuil par
+-- défaut à 2048 octets — alors que la ligne moyenne pesait 1 999 octets. Tout
+-- tenait en ligne, à un octet du seuil : ~4 lignes par page de 8 ko, dont
+-- ~1 267 octets de `procedure_snapshot` que la liste, les facettes et l'export
+-- ne lisent JAMAIS (voir `LIST_SELECT`, src/features/requests/useRequests.ts).
+--
+-- POURQUOI 1024, ET SURTOUT PAS MOINS. Postgres évince les attributs DU PLUS
+-- GROS AU PLUS PETIT jusqu'à ce que la ligne tienne sous le seuil, puis
+-- s'arrête. À 1024 : `procedure_snapshot` (~1 267 o) part en TOAST, la ligne
+-- retombe à ~733 o, c'est déjà sous le seuil — l'éviction s'arrête là.
+-- Descendre plus bas serait CONTRE-PRODUCTIF : l'éviction continuerait sur
+-- `requester_snapshot` (~250 o), que la recherche de « demandes proches »
+-- balaie (`ilike` sur `requester_snapshot->declared->>…`, sans index), puis sur
+-- `body`, puis sur `subject` — que la liste lit à CHAQUE ligne. Le seuil doit
+-- rester au-dessus de ce dont `LIST_SELECT` a besoin (~400 o : 8 UUID,
+-- 6 horodatages, référence, objet, statut, priorité, source, deux libellés).
+--
+-- ⚠️ NE VAUT QUE POUR LES LIGNES ÉCRITES APRÈS : les lignes existantes gardent
+-- leur disposition jusqu'à leur prochaine réécriture. C'est précisément
+-- pourquoi ce réglage se pose MAINTENANT, table quasi vide : sur une table
+-- remplie il exigerait un `VACUUM FULL` et son verrou ACCESS EXCLUSIVE.
+--
+-- Contrepartie assumée : la carte (`useMapRequests`, 500 lignes, sélectionne
+-- `procedure_snapshot->form_schema`) paiera une lecture TOAST par ligne. Chemin
+-- rare et déjà plafonné ; les chemins fréquents — liste, facettes, export — y
+-- gagnent. Aucun code applicatif n'est concerné, aucune sémantique ne change.
+--
+-- Retour arrière : `alter table public.requests reset (toast_tuple_target);`
+
+alter table public.requests set (toast_tuple_target = 1024);

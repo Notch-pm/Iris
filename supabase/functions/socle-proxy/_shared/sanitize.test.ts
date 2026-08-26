@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   filterContactCreate,
+  filterContactListQuery,
   filterContactUpdate,
   filterMatchRequest,
   sanitizeContact,
@@ -146,5 +147,43 @@ describe("filterMatchRequest", () => {
     expect(ok).toMatchObject({ ok: true });
     expect(filterMatchRequest({ last_name: "Dupont", exclude_ids: [] })).toMatchObject({ ok: false });
     expect(filterMatchRequest("Dupont")).toMatchObject({ ok: false });
+  });
+});
+
+describe("filterContactListQuery", () => {
+  it("borne la page et retient « actifs » par défaut", () => {
+    expect(filterContactListQuery({})).toEqual({
+      ok: true,
+      limit: 200,
+      params: { status: "active", limit: "200", offset: "0" },
+    });
+  });
+
+  it("transmet recherche, type et pagination", () => {
+    expect(filterContactListQuery({
+      search: "  Dupont ", type: "entreprise", status: "archived", limit: 500, offset: 1000,
+    })).toEqual({
+      ok: true,
+      limit: 500,
+      params: {
+        search: "Dupont", type: "entreprise", status: "archived", limit: "500", offset: "1000",
+      },
+    });
+  });
+
+  it("« all » n'envoie AUCUN status (tous statuts, contrat contacts-api)", () => {
+    const out = filterContactListQuery({ status: "all" });
+    expect(out).toMatchObject({ ok: true });
+    expect(out.ok && "status" in out.params).toBe(false);
+  });
+
+  it("refuse ce qui sort du contrat", () => {
+    expect(filterContactListQuery({ type: "fournisseur" })).toMatchObject({ ok: false });
+    expect(filterContactListQuery({ status: "supprime" })).toMatchObject({ ok: false });
+    expect(filterContactListQuery({ limit: 0 })).toMatchObject({ ok: false });
+    expect(filterContactListQuery({ limit: 501 })).toMatchObject({ ok: false });
+    expect(filterContactListQuery({ offset: -1 })).toMatchObject({ ok: false });
+    expect(filterContactListQuery({ search: "x".repeat(201) })).toMatchObject({ ok: false });
+    expect(filterContactListQuery("Dupont")).toMatchObject({ ok: false });
   });
 });

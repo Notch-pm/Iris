@@ -289,11 +289,10 @@ export function fingerprintPayload(env: IngestEnvelope): unknown {
   };
 }
 
-export function identityStatus(env: IngestEnvelope): "rapprochee" | "non_rapprochee" | "anonyme" {
-  if (env.socle_contact_id) return "rapprochee";
-  if (env.requester && env.requester.anonymous === true) return "anonyme";
-  return "non_rapprochee";
-}
+// `identityStatus()` a été RETIRÉE le 2026-08-26 : le statut d'identité ne se
+// déduit plus de l'enveloppe. Une identité déclarée sans identifiant Socle est
+// désormais rapprochée ou CRÉÉE dans le référentiel (`resolveRequester`, dans
+// index.ts), et ne retombe en `non_rapprochee` que si le Socle est muet.
 
 /** Nom de fichier → segment de chemin sûr (le chemin est généré, jamais fourni). */
 export function slugifyFileName(name: string): string {

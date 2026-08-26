@@ -1,11 +1,13 @@
-// Paramètres — Droits : profils de droits, attributions aux membres du
-// tenant, rapport de couverture (RM-62) et journal (RM-57). Réservée aux
-// administrateurs (`AdminRoute`) ; les gardes réelles restent côté serveur
-// (RM-09, RM-38 à RM-42) — cette page ne fait que refléter et confirmer.
+// Paramètres : accueil en blocs cliquables (motif Clara `SettingsPage`) puis une
+// section à la fois — profils de droits, utilisateurs, couverture (RM-62),
+// référentiel Socle, journal (RM-57). Réservée aux administrateurs
+// (`AdminRoute`) ; les gardes réelles restent côté serveur (RM-09, RM-38 à
+// RM-42) — cette page ne fait que refléter et confirmer.
 
 import * as React from "react";
 import {
-  AlertTriangle, ClipboardList, Copy, DatabaseZap, Layers, Pencil, Plus, Power, Settings, Trash2, UserPlus, Users, X,
+  AlertTriangle, ArrowLeft, Building2, ClipboardList, Copy, KeyRound, Layers, Mail, Pencil,
+  Plus, Power, RefreshCw, Settings, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -16,8 +18,10 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { syncSummary, useTriggerSocleSync } from "@/features/socle/useSocleSync";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { cn } from "@/lib/utils";
 import {
@@ -26,21 +30,58 @@ import {
 } from "./profileRows";
 import type { ProfileDraft } from "./profileValidation";
 import { ProfileDialog } from "./ProfileDialog";
-import { ReferentielPanel } from "./ReferentielPanel";
+import { EmailTemplatesPanel } from "@/features/templates/EmailTemplatesPanel";
+import { OrganisationsPanel } from "@/features/templates/OrganisationsPanel";
+import { useInviteMember, useSendMemberPasswordReset } from "./useComptes";
 import {
   useAllProcedureRows, useAssignProfile, useAuditLog, useCoverageReport, useDeleteProfile,
   useMembersWithoutProfile, useRevokeProfile, useSetProfileStatus, useSocleOrgRows, useTenantMemberRows,
   useTenantProfiles, type AuditLogRow, type MemberProfileChip, type MemberRow,
 } from "./usePermissions";
 
-type Section = "profils" | "utilisateurs" | "couverture" | "referentiel" | "journal";
+type SectionId =
+  | "profils" | "utilisateurs" | "couverture" | "modeles" | "referentiel" | "journal";
+type Section = "menu" | SectionId;
 
-const SECTIONS: { id: Section; label: string; icon: typeof Layers }[] = [
-  { id: "profils", label: "Profils", icon: Layers },
-  { id: "utilisateurs", label: "Utilisateurs", icon: Users },
-  { id: "couverture", label: "Couverture", icon: AlertTriangle },
-  { id: "referentiel", label: "Référentiel", icon: DatabaseZap },
-  { id: "journal", label: "Journal", icon: ClipboardList },
+// Motif Clara (`SettingsPage`) : une page d'accueil « Paramètres » faite de blocs
+// cliquables, une seule section affichée à la fois, retour par la flèche du titre.
+const SECTIONS: { id: SectionId; title: string; description: string; icon: typeof Layers }[] = [
+  {
+    id: "profils",
+    title: "Profils de droits",
+    description: "Périmètre d'organisations et matrice démarche × droits, attribuables aux utilisateurs.",
+    icon: Layers,
+  },
+  {
+    id: "utilisateurs",
+    title: "Utilisateurs",
+    description: "Membres du tenant : invitation, attribution des profils, lien de mot de passe.",
+    icon: Users,
+  },
+  {
+    id: "couverture",
+    title: "Couverture des démarches",
+    description: "Couples organisation × démarche qu'aucun profil ne couvre au niveau instruction.",
+    icon: AlertTriangle,
+  },
+  {
+    id: "modeles",
+    title: "Modèles d'e-mail",
+    description: "Textes réutilisables pour répondre à un usager, avec variables de la demande.",
+    icon: Mail,
+  },
+  {
+    id: "referentiel",
+    title: "Organisations",
+    description: "Arbre des organisations que vous administrez, et modèles d'e-mail actifs sur chacune.",
+    icon: Building2,
+  },
+  {
+    id: "journal",
+    title: "Journal des modifications",
+    description: "Historique des créations, modifications et attributions de profils.",
+    icon: ClipboardList,
+  },
 ];
 
 // Codes exacts émis par les RPC (supabase/migrations/20260822100400_profils_droits_rpc.sql) —
@@ -87,7 +128,7 @@ export function PermissionsPage() {
   const orgId = current?.organizationId ?? "";
   const userId = session?.user.id ?? null;
 
-  const [section, setSection] = React.useState<Section>("profils");
+  const [section, setSection] = React.useState<Section>("menu");
 
   const profiles = useTenantProfiles(orgId);
   const members = useTenantMemberRows(orgId);
@@ -101,6 +142,19 @@ export function PermissionsPage() {
   const deleteProfile = useDeleteProfile(orgId);
   const assignProfile = useAssignProfile(orgId);
   const revokeProfile = useRevokeProfile(orgId);
+  const inviteMember = useInviteMember(orgId);
+  const sendPasswordReset = useSendMemberPasswordReset();
+  // Une seule instance de la mutation pour les deux boutons (en-tête des
+  // paramètres et section Référentiel) : même état « en cours » des deux côtés.
+  const sync = useTriggerSocleSync(orgId);
+
+  // ---- Invitation d'un membre ----------------------------------------------
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [inviteError, setInviteError] = React.useState<string | null>(null);
+  const [memberNotice, setMemberNotice] = React.useState<string | null>(null);
+  const [iEmail, setIEmail] = React.useState("");
+  const [iFirst, setIFirst] = React.useState("");
+  const [iLast, setILast] = React.useState("");
 
   const orgNameById = React.useMemo(
     () => new Map((orgRows.data ?? []).map((r) => [r.socle_id, r.name])),
@@ -203,105 +257,176 @@ export function PermissionsPage() {
     }
   }
 
-  // ---- Onglets (I9 : navigation flèches gauche/droite, roving tabindex) ------
-  function handleTabKeyDown(e: React.KeyboardEvent<HTMLButtonElement>, index: number) {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+  // ---- Invitation d'un membre (RM-20 : geste d'administrateur de tenant) ----
+  async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
-    const dir = e.key === "ArrowRight" ? 1 : -1;
-    const next = SECTIONS[(index + dir + SECTIONS.length) % SECTIONS.length];
-    setSection(next.id);
-    document.getElementById(`tab-${next.id}`)?.focus();
+    setInviteError(null);
+    try {
+      const result = await inviteMember.mutateAsync({
+        email: iEmail,
+        firstName: iFirst,
+        lastName: iLast,
+      });
+      setInviteOpen(false);
+      setIEmail(""); setIFirst(""); setILast("");
+      if (!result.invited) {
+        setMemberNotice(`${result.email} avait déjà un compte Iris : il a simplement reçu l'accès à ce tenant.`);
+      } else if (result.email_sent) {
+        setMemberNotice(`Invitation envoyée à ${result.email}. Attribuez-lui un profil de droits : sans profil, il ne verra aucune demande.`);
+      } else {
+        setInviteError(result.email_error ?? "Compte créé, mais l'invitation n'est pas partie.");
+      }
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Invitation impossible.");
+    }
   }
+
+  async function onSendPasswordReset(m: MemberRow) {
+    setMemberNotice(null);
+    setInviteError(null);
+    try {
+      await sendPasswordReset.mutateAsync(m.userId);
+      setMemberNotice(`${m.email} vient de recevoir un lien pour choisir un nouveau mot de passe.`);
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Envoi impossible.");
+    }
+  }
+
+  // `undefined` = accueil des paramètres (les blocs cliquables).
+  const activeSection = SECTIONS.find((s) => s.id === section);
 
   if (!current) return null;
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center gap-3">
-        <Settings className="size-6 text-primary" aria-hidden="true" />
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Paramètres — Droits</h1>
-          <p className="text-sm text-muted-foreground">
-            Profils de droits et attributions pour {current.organizationName}.
-          </p>
-        </div>
-      </div>
-
-      {membersWithoutProfile.data && membersWithoutProfile.data.length > 0 ? (
-        <button
-          type="button"
-          onClick={() => setSection("utilisateurs")}
-          className="flex flex-col gap-1.5 rounded-[14px] border border-secondary bg-secondary/20 px-4 py-3 text-left transition-colors hover:bg-secondary/30"
-        >
-          <p className="text-sm font-bold text-secondary-foreground">
-            {membersWithoutProfile.data.length} membre{membersWithoutProfile.data.length > 1 ? "s" : ""} sans
-            profil de droits
-          </p>
-          <p className="text-xs text-secondary-foreground">
-            {membersWithoutProfile.data.map((m) => m.display_name || m.email).join(", ")} — ces personnes ne
-            voient aucune demande tant qu'aucun profil ne leur est attribué. Voir la section
-            Utilisateurs →
-          </p>
-        </button>
-      ) : null}
-
-      {coverage.data && coverage.data.length > 0 ? (() => {
-        const openTotal = coverage.data.reduce((sum, c) => sum + c.open_requests, 0);
-        const destructive = openTotal > 0;
-        return (
-          <button
-            type="button"
-            onClick={() => setSection("couverture")}
-            className={cn(
-              "flex flex-col gap-1 rounded-[14px] border px-4 py-3 text-left transition-colors",
-              destructive
-                ? "border-destructive/30 bg-destructive/5 hover:bg-destructive/10"
-                : "border-border bg-muted/40 hover:bg-muted",
-            )}
+      {activeSection ? (
+        <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label="Retour aux paramètres"
+            onClick={() => setSection("menu")}
           >
-            <p className={cn("text-sm font-bold", destructive ? "text-destructive" : "text-foreground")}>
-              {coverage.data.length} couple{coverage.data.length > 1 ? "s" : ""} organisation × démarche non
-              couvert{coverage.data.length > 1 ? "s" : ""}
-              {destructive
-                ? `, dont ${openTotal} demande${openTotal > 1 ? "s" : ""} ouverte${openTotal > 1 ? "s" : ""}`
-                : ""}
-            </p>
-            <p className={cn("text-xs", destructive ? "text-destructive" : "text-muted-foreground")}>
-              Voir le rapport de couverture →
-            </p>
-          </button>
-        );
-      })() : null}
-
-      <div role="tablist" aria-label="Sections des paramètres de droits" className="flex flex-wrap gap-1.5 border-b border-border pb-2">
-        {SECTIONS.map((s, i) => {
-          const Icon = s.icon;
-          const active = section === s.id;
-          return (
-            <button
-              key={s.id}
-              id={`tab-${s.id}`}
-              type="button"
-              role="tab"
-              aria-selected={active}
-              aria-controls={`panel-${s.id}`}
-              tabIndex={active ? 0 : -1}
-              onClick={() => setSection(s.id)}
-              onKeyDown={(e) => handleTabKeyDown(e, i)}
-              className={cn(
-                "flex h-9 items-center gap-1.5 rounded-full px-3 text-sm font-semibold transition-colors",
-                active ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground",
-              )}
+            <ArrowLeft />
+          </Button>
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight">Paramètres</h1>
+            <p className="text-sm text-muted-foreground">{activeSection.title}</p>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <Settings className="size-6 text-primary" aria-hidden="true" />
+              <div>
+                <h1 className="text-2xl font-semibold tracking-tight">Paramètres</h1>
+                <p className="text-sm text-muted-foreground">
+                  Droits, utilisateurs, organisations et modèles de {current.organizationName}.
+                </p>
+              </div>
+            </div>
+            {/* Motif Clara : la synchronisation du référentiel est l'action de tête des
+                paramètres, pas un bouton enfoui dans une section. */}
+            <Button
+              variant="outline"
+              className="shrink-0"
+              onClick={() => sync.mutate()}
+              disabled={sync.isPending}
+              aria-busy={sync.isPending}
             >
-              <Icon className="size-4" aria-hidden="true" />
-              {s.label}
+              <RefreshCw className={cn("size-4", sync.isPending && "animate-spin")} aria-hidden="true" />
+              {sync.isPending ? "Synchronisation…" : "Synchroniser le référentiel"}
+            </Button>
+          </div>
+
+          {sync.isError ? (
+            <p role="alert" className="flex items-center gap-2 text-sm text-destructive">
+              <AlertTriangle className="size-4" aria-hidden="true" />
+              {sync.error instanceof Error ? sync.error.message : "Synchronisation en échec."}
+            </p>
+          ) : sync.isSuccess ? (
+            <p role="status" className="text-sm text-muted-foreground">
+              Synchronisation réussie — {syncSummary(sync.data.counters)}.
+            </p>
+          ) : null}
+
+          {membersWithoutProfile.data && membersWithoutProfile.data.length > 0 ? (
+            <button
+              type="button"
+              onClick={() => setSection("utilisateurs")}
+              className="flex flex-col gap-1.5 rounded-[14px] border border-secondary bg-secondary/20 px-4 py-3 text-left transition-colors hover:bg-secondary/30"
+            >
+              <p className="text-sm font-bold text-secondary-foreground">
+                {membersWithoutProfile.data.length} membre{membersWithoutProfile.data.length > 1 ? "s" : ""} sans
+                profil de droits
+              </p>
+              <p className="text-xs text-secondary-foreground">
+                {membersWithoutProfile.data.map((m) => m.display_name || m.email).join(", ")} — ces personnes ne
+                voient aucune demande tant qu'aucun profil ne leur est attribué. Voir la section
+                Utilisateurs →
+              </p>
             </button>
-          );
-        })}
-      </div>
+          ) : null}
+
+          {coverage.data && coverage.data.length > 0 ? (() => {
+            const openTotal = coverage.data.reduce((sum, c) => sum + c.open_requests, 0);
+            const destructive = openTotal > 0;
+            return (
+              <button
+                type="button"
+                onClick={() => setSection("couverture")}
+                className={cn(
+                  "flex flex-col gap-1 rounded-[14px] border px-4 py-3 text-left transition-colors",
+                  destructive
+                    ? "border-destructive/30 bg-destructive/5 hover:bg-destructive/10"
+                    : "border-border bg-muted/40 hover:bg-muted",
+                )}
+              >
+                <p className={cn("text-sm font-bold", destructive ? "text-destructive" : "text-foreground")}>
+                  {coverage.data.length} couple{coverage.data.length > 1 ? "s" : ""} organisation × démarche non
+                  couvert{coverage.data.length > 1 ? "s" : ""}
+                  {destructive
+                    ? `, dont ${openTotal} demande${openTotal > 1 ? "s" : ""} ouverte${openTotal > 1 ? "s" : ""}`
+                    : ""}
+                </p>
+                <p className={cn("text-xs", destructive ? "text-destructive" : "text-muted-foreground")}>
+                  Voir le rapport de couverture →
+                </p>
+              </button>
+            );
+          })() : null}
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {SECTIONS.map((s) => {
+              const Icon = s.icon;
+              return (
+                <button
+                  key={s.id}
+                  type="button"
+                  onClick={() => setSection(s.id)}
+                  className={cn(
+                    "flex items-start gap-4 rounded-lg border border-border bg-card p-4 text-left shadow-iris-sm",
+                    "transition-all hover:border-primary/30 hover:shadow-airbnb-md",
+                    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  )}
+                >
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <Icon className="size-5 text-primary" aria-hidden="true" />
+                  </span>
+                  <span className="flex flex-col gap-1">
+                    <span className="text-base font-semibold">{s.title}</span>
+                    <span className="text-sm text-muted-foreground">{s.description}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
       {section === "profils" ? (
-        <div id="panel-profils" role="tabpanel" aria-labelledby="tab-profils" tabIndex={0} className="flex flex-col gap-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-wrap items-center gap-2">
             <Button onClick={() => openCreate(emptyDraft())}>
               <Plus /> Nouveau profil
@@ -390,80 +515,102 @@ export function PermissionsPage() {
       ) : null}
 
       {section === "utilisateurs" ? (
-        <Card id="panel-utilisateurs" role="tabpanel" aria-labelledby="tab-utilisateurs" tabIndex={0}>
-          <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
-                    <th className="px-4 py-3">Nom</th>
-                    <th className="px-4 py-3">Email</th>
-                    <th className="px-4 py-3">Profils attribués</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {members.isLoading ? (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Chargement…</td></tr>
-                  ) : (members.data ?? []).length === 0 ? (
-                    <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Aucun membre.</td></tr>
-                  ) : (
-                    (members.data ?? []).map((m) => (
-                      <tr key={m.userId} className="border-b border-border/60 align-top last:border-0">
-                        <td className="px-4 py-3 font-medium">
-                          {m.displayName}
-                          {m.isAdmin ? <Badge variant="secondary" className="ml-2">Administrateur</Badge> : null}
-                        </td>
-                        <td className="px-4 py-3">{m.email}</td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-wrap gap-1">
-                            {m.assignedProfiles.length === 0 ? (
-                              <span className="text-xs text-muted-foreground">Aucun profil</span>
-                            ) : (
-                              m.assignedProfiles.map((p) => (
-                                <span
-                                  key={p.id}
-                                  title={p.status === "inactive" ? "Profil désactivé — ne produit aucun droit." : undefined}
-                                  className={cn(
-                                    "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
-                                    p.status === "inactive"
-                                      ? "border-transparent bg-muted text-muted-foreground"
-                                      : "border-input bg-transparent text-foreground",
-                                  )}
-                                >
-                                  {p.name}
-                                  {p.status === "inactive" ? <span className="text-xs">(désactivé)</span> : null}
-                                  <button
-                                    type="button"
-                                    aria-label={`Retirer le profil ${p.name} à ${m.displayName}`}
-                                    onClick={() => requestRevoke(m, p)}
-                                    className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="max-w-[640px] text-sm text-muted-foreground">
+              Invitez un agent : il reçoit un lien d'activation et choisit son mot de passe. Tant
+              qu'aucun profil ne lui est attribué, il ne voit aucune demande.
+            </p>
+            <Button onClick={() => { setInviteError(null); setMemberNotice(null); setInviteOpen(true); }}>
+              <UserPlus className="size-4" aria-hidden="true" /> Inviter un utilisateur
+            </Button>
+          </div>
+
+          {inviteError ? <p role="alert" className="text-sm text-destructive">{inviteError}</p> : null}
+          {memberNotice ? <p role="status" className="text-sm text-muted-foreground">{memberNotice}</p> : null}
+
+          <Card>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+                      <th className="px-4 py-3">Nom</th>
+                      <th className="px-4 py-3">Email</th>
+                      <th className="px-4 py-3">Profils attribués</th>
+                      <th className="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {members.isLoading ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Chargement…</td></tr>
+                    ) : (members.data ?? []).length === 0 ? (
+                      <tr><td colSpan={4} className="px-4 py-8 text-center text-muted-foreground">Aucun membre.</td></tr>
+                    ) : (
+                      (members.data ?? []).map((m) => (
+                        <tr key={m.userId} className="border-b border-border/60 align-top last:border-0">
+                          <td className="px-4 py-3 font-medium">
+                            {m.displayName}
+                            {m.isAdmin ? <Badge variant="secondary" className="ml-2">Administrateur</Badge> : null}
+                          </td>
+                          <td className="px-4 py-3">{m.email}</td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-1">
+                              {m.assignedProfiles.length === 0 ? (
+                                <span className="text-xs text-muted-foreground">Aucun profil</span>
+                              ) : (
+                                m.assignedProfiles.map((p) => (
+                                  <span
+                                    key={p.id}
+                                    title={p.status === "inactive" ? "Profil désactivé — ne produit aucun droit." : undefined}
+                                    className={cn(
+                                      "inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold",
+                                      p.status === "inactive"
+                                        ? "border-transparent bg-muted text-muted-foreground"
+                                        : "border-input bg-transparent text-foreground",
+                                    )}
                                   >
-                                    <X className="size-3" aria-hidden="true" />
-                                  </button>
-                                </span>
-                              ))
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Button variant="ghost" size="sm" onClick={() => openAssign(m)}>
-                            <UserPlus className="size-3.5" /> Attribuer
-                          </Button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            {revokeError ? <p role="alert" className="px-4 pb-3 text-sm text-destructive">{revokeError}</p> : null}
-          </CardContent>
-        </Card>
+                                    {p.name}
+                                    {p.status === "inactive" ? <span className="text-xs">(désactivé)</span> : null}
+                                    <button
+                                      type="button"
+                                      aria-label={`Retirer le profil ${p.name} à ${m.displayName}`}
+                                      onClick={() => requestRevoke(m, p)}
+                                      className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                    >
+                                      <X className="size-3" aria-hidden="true" />
+                                    </button>
+                                  </span>
+                                ))
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-right">
+                            <Button variant="ghost" size="icon"
+                              title="Envoyer un lien de réinitialisation de mot de passe"
+                              aria-label={`Envoyer un lien de réinitialisation à ${m.email}`}
+                              disabled={sendPasswordReset.isPending}
+                              onClick={() => void onSendPasswordReset(m)}>
+                              <KeyRound className="size-3.5" />
+                            </Button>
+                            <Button variant="ghost" size="sm" onClick={() => openAssign(m)}>
+                              <UserPlus className="size-3.5" /> Attribuer
+                            </Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+              {revokeError ? <p role="alert" className="px-4 pb-3 text-sm text-destructive">{revokeError}</p> : null}
+            </CardContent>
+          </Card>
+        </div>
       ) : null}
 
       {section === "couverture" ? (
-        <Card id="panel-couverture" role="tabpanel" aria-labelledby="tab-couverture" tabIndex={0}>
+        <Card>
           <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -502,12 +649,14 @@ export function PermissionsPage() {
         </Card>
       ) : null}
 
+      {section === "modeles" ? <EmailTemplatesPanel orgId={orgId} /> : null}
+
       {section === "referentiel" ? (
-        <ReferentielPanel orgId={orgId} onOpenCoverage={() => setSection("couverture")} />
+        <OrganisationsPanel orgId={orgId} sync={sync} onOpenCoverage={() => setSection("couverture")} />
       ) : null}
 
       {section === "journal" ? (
-        <div id="panel-journal" role="tabpanel" aria-labelledby="tab-journal" tabIndex={0} className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2">
           {audit.isLoading ? (
             <p className="text-sm text-muted-foreground">Chargement…</p>
           ) : (audit.data ?? []).length === 0 ? (
@@ -673,6 +822,40 @@ export function PermissionsPage() {
               </div>
             </>
           ) : null}
+        </DialogContent>
+      </Dialog>
+
+      {/* Invitation d'un membre — le compte s'ouvre par un lien d'activation */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Inviter un utilisateur</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={submitInvite} className="flex flex-col gap-4">
+            <p className="text-sm text-muted-foreground">
+              Le compte est ouvert sans mot de passe : son titulaire reçoit un lien d'activation
+              envoyé par le serveur de {current.organizationName} et choisit lui-même le sien.
+            </p>
+            <Field label="Email" htmlFor="inv-email" required>
+              <Input id="inv-email" type="email" required value={iEmail}
+                onChange={(e) => setIEmail(e.target.value)} />
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Prénom" htmlFor="inv-first">
+                <Input id="inv-first" value={iFirst} onChange={(e) => setIFirst(e.target.value)} />
+              </Field>
+              <Field label="Nom" htmlFor="inv-last">
+                <Input id="inv-last" value={iLast} onChange={(e) => setILast(e.target.value)} />
+              </Field>
+            </div>
+            {inviteError ? <p role="alert" className="text-sm text-destructive">{inviteError}</p> : null}
+            <DialogFooter>
+              <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}>Annuler</Button>
+              <Button type="submit" disabled={inviteMember.isPending}>
+                {inviteMember.isPending ? "Envoi…" : "Inviter"}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

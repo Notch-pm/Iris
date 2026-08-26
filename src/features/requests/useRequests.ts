@@ -11,6 +11,7 @@ export type RequestEvent = Tables<"request_events">;
 export type RequestAttachment = Tables<"request_attachments">;
 export type RequestAssignment = Tables<"request_assignments">;
 export type RequestMessage = Tables<"request_messages">;
+export type RequestEmail = Tables<"request_emails">;
 export type RequestLink = Tables<"request_links">;
 
 export const PAGE_SIZE = 20;
@@ -167,6 +168,10 @@ export const useRequestAssignments = (id: string | undefined) =>
 export const useRequestMessages = (id: string | undefined) =>
   useSatellite<RequestMessage>("request_messages", id);
 export const useRequestLinks = (id: string | undefined) => useSatellite<RequestLink>("request_links", id);
+/** Échanges SORTANTS vers l'usager (onglet Échanges). En lecture seule ici :
+ *  l'écriture n'a qu'une porte, l'edge function `send-request-email`. */
+export const useRequestEmails = (id: string | undefined) =>
+  useSatellite<RequestEmail>("request_emails", id);
 
 export interface TenantMember {
   userId: string;
@@ -220,6 +225,32 @@ export function useEligibleAssignees(requestId: string | undefined) {
   });
 }
 
+/** `eligible_assignees` + la photo : le menu de mentions montre un visage. */
+export interface MentionableUserRow extends EligibleAssigneeRow {
+  avatar_path: string | null;
+}
+
+/**
+ * Membres pouvant CONSULTER la demande — les seuls mentionnables dans une note
+ * interne. Sœur d'`eligible_assignees`, autre droit : on ne propose pas de
+ * citer quelqu'un qui ne pourrait pas ouvrir la fiche.
+ *
+ * ⚠️ La liste INCLUT l'utilisateur courant : elle sert aussi à résoudre les
+ * noms et photos des mentions DÉJÀ écrites, les siennes comprises. C'est le
+ * menu (`MentionTextarea`) qui ne se propose pas soi-même.
+ */
+export function useMentionableUsers(requestId: string | undefined) {
+  return useQuery({
+    queryKey: ["mentionable-users", requestId],
+    enabled: Boolean(requestId),
+    queryFn: async (): Promise<MentionableUserRow[]> => {
+      const { data, error } = await supabase.rpc("mentionable_users", { p_request_id: requestId! });
+      if (error) throw error;
+      return (data ?? []) as MentionableUserRow[];
+    },
+  });
+}
+
 function useInvalidateRequest() {
   const queryClient = useQueryClient();
   return (requestId?: string) => {
@@ -232,6 +263,7 @@ function useInvalidateRequest() {
         "request_assignments",
         "request_messages",
         "request_attachments",
+        "request_emails",
         "request_links",
         "eligible-assignees",
       ]) {

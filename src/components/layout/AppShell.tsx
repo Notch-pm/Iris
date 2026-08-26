@@ -1,17 +1,22 @@
 import * as React from "react";
 import { Link, NavLink, Outlet } from "react-router-dom";
-import { ChevronsUpDown, Inbox, LayoutDashboard, LogOut, Settings, ShieldCheck } from "lucide-react";
+import { ChevronsUpDown, Inbox, LayoutDashboard, LogOut, Map, ShieldCheck, User, Users } from "lucide-react";
+import parametresIcon from "@/assets/icons/parametres.svg";
 import notchLogo from "@/assets/logo-notch.svg";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
+import { NotificationBell } from "@/features/notifications/NotificationBell";
+import { useMyAvatarUrl } from "@/features/account/useAccount";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { ShellLayoutContext } from "./shellLayout";
+import { ShellLayoutContext, type ShellWidth } from "./shellLayout";
 
-// Shell agent — réplique du shell de production Clara (AppHeader h-14 +
-// AppSidebar : rail vert 52px, premier item épinglé en haut, groupe restant
-// centré verticalement). Design system Notch/Ariane.
+// Shell agent — réplique du shell de production Clara (AppHeader h-14, dont
+// l'accès aux Paramètres en haut à droite + AppSidebar : rail vert 52px,
+// premier item épinglé en haut, groupe restant centré verticalement). Design
+// system Notch/Ariane.
 
 interface NavItem {
   to: string;
@@ -23,12 +28,15 @@ interface NavItem {
 const BASE_NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, end: true },
   { to: "/demandes", label: "Demandes", icon: Inbox, end: false },
+  { to: "/carte", label: "Carte des interventions", icon: Map, end: false },
 ];
 
-// Visible uniquement pour les administrateurs (RM-20) — l'accès réel reste
-// gardé côté serveur (RLS) et par `AdminRoute` ; cette entrée n'est qu'un
-// raccourci de confort.
-const ADMIN_NAV_ITEM: NavItem = { to: "/parametres", label: "Paramètres", icon: Settings, end: false };
+// L'annuaire des usagers exige le même droit que « Nouvelle demande » (garde de
+// socle-proxy sur /v1/contacts/*) : l'entrée n'apparaît que s'il est acquis —
+// reflet de confort, l'edge function reste l'autorité.
+const USAGERS_NAV_ITEM: NavItem = {
+  to: "/usagers", label: "Usagers", icon: Users, end: false,
+};
 
 function SidebarItem({ item }: { item: NavItem }) {
   const Icon = item.icon;
@@ -56,8 +64,10 @@ function SidebarItem({ item }: { item: NavItem }) {
 }
 
 function AppSidebar() {
-  const { isAdmin } = useTenant();
-  const items = isAdmin ? [...BASE_NAV_ITEMS, ADMIN_NAV_ITEM] : BASE_NAV_ITEMS;
+  const canBrowseUsagers = useCanBrowseUsagers();
+  const items = canBrowseUsagers
+    ? [...BASE_NAV_ITEMS, USAGERS_NAV_ITEM]
+    : BASE_NAV_ITEMS;
   const [first, ...rest] = items;
   return (
     <nav
@@ -81,6 +91,7 @@ function AppSidebar() {
 function UserMenu() {
   const { session, profile, signOut } = useAuth();
   const { isAdmin, rights } = useTenant();
+  const avatarUrl = useMyAvatarUrl();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
 
@@ -112,8 +123,12 @@ function UserMenu() {
         onClick={() => setOpen((v) => !v)}
         className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors hover:bg-muted focus:outline-none"
       >
-        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-primary font-bold text-primary-foreground">
-          {initials}
+        <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-primary font-bold text-primary-foreground">
+          {avatarUrl ? (
+            <img src={avatarUrl} alt="" className="h-full w-full object-cover" />
+          ) : (
+            initials
+          )}
         </span>
         <ChevronsUpDown className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
       </button>
@@ -139,6 +154,16 @@ function UserMenu() {
             </p>
           </div>
           <div className="my-1 h-px bg-border" />
+          <NavLink
+            role="menuitem"
+            to="/mon-compte"
+            onClick={() => setOpen(false)}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-muted"
+          >
+            <User className="h-3.5 w-3.5" aria-hidden="true" />
+            Mon compte
+          </NavLink>
+          <div className="my-1 h-px bg-border" />
           <button
             role="menuitem"
             type="button"
@@ -157,8 +182,8 @@ function UserMenu() {
 export function AppShell() {
   const { profile } = useAuth();
   const { memberships, current, setCurrentOrgId, loading, isAdmin } = useTenant();
-  const [fullBleed, setFullBleed] = React.useState(false);
-  const layoutValue = React.useMemo(() => ({ setFullBleed }), []);
+  const [width, setWidth] = React.useState<ShellWidth>("default");
+  const layoutValue = React.useMemo(() => ({ setWidth }), []);
 
   return (
     <ShellLayoutContext.Provider value={layoutValue}>
@@ -214,13 +239,36 @@ export function AppShell() {
               <span className="sr-only">Superadmin</span>
             </Link>
           ) : null}
+          {/* Notifications : cloche du tenant courant, à gauche des
+              Paramètres. Le RLS ne montre que les siennes. */}
+          <NotificationBell />
+          {/* Accès aux Paramètres : en haut à droite, avec l'icône de Clara
+              (`assets/icons/parametres.svg`, recopiée telle quelle) — RM-20,
+              l'accès réel reste gardé par le RLS et `AdminRoute`. */}
+          {isAdmin ? (
+            <NavLink
+              to="/parametres"
+              title="Paramètres"
+              className={({ isActive }) =>
+                cn(
+                  "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
+                  isActive
+                    ? "bg-primary/10 text-primary"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                )
+              }
+            >
+              <img src={parametresIcon} alt="" aria-hidden="true" className="h-5 w-5" />
+              <span className="sr-only">Paramètres</span>
+            </NavLink>
+          ) : null}
           <UserMenu />
         </div>
       </header>
 
       <div className="flex min-h-0 flex-1">
         <AppSidebar />
-        {fullBleed ? (
+        {width === "full" ? (
           <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {loading ? (
               <p className="p-6 text-sm text-muted-foreground">Chargement…</p>
@@ -229,8 +277,8 @@ export function AppShell() {
             )}
           </main>
         ) : (
-          <main className="flex-1 overflow-auto px-6 py-5 pb-10">
-            <div className="mx-auto max-w-[1240px]">
+          <main className="min-w-0 flex-1 overflow-auto px-6 py-5 pb-10">
+            <div className={cn("mx-auto", width === "wide" ? "w-full" : "max-w-[1240px]")}>
               {loading ? (
                 <p className="text-sm text-muted-foreground">Chargement…</p>
               ) : (

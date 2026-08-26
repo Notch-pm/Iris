@@ -8,4 +8,48 @@ project_id = "iris"
 # process-attachment-queue, process-webhook-outbox) seront déclarées ici avec
 # leur verify_jwt, selon docs/architecture-proposee.md §8.2 :
 #   demandes-api / jobs internes → verify_jwt = false (auth portée par le code)
-#   socle-proxy                  → verify_jwt = true  (JWT agent + revérification)
+#   socle-proxy                  → verify_jwt = false EN PRATIQUE : le JWT de
+#     l'agent est vérifié en code (et le périmètre revérifié), la passerelle
+#     rejetant sinon les préflights OPTIONS du navigateur.
+
+# ── Edge functions ───────────────────────────────────────────────────────────
+# API d'ingestion serveur-à-serveur : aucun JWT — l'authentification est portée
+# par la clé d'intégration (Bearer irs_…), vérifiée dans le code. Les deux
+# routes de documentation du contrat (`/`, `/v1/openapi.json`) sont publiques.
+[functions.requests-api]
+verify_jwt = false
+
+# Hook « Send Email » de GoTrue : appelé sans JWT, authentifié par signature
+# Standard Webhooks dans le code (docs/emails.md).
+[functions.auth-email-hook]
+verify_jwt = false
+
+# JWT vérifié en code, pour laisser passer les préflights OPTIONS du navigateur.
+[functions.admin-users]
+verify_jwt = false
+
+# Idem : JWT de l'agent vérifié EN CODE (et périmètre revérifié tenant par
+# tenant) — la passerelle bloquerait les préflights OPTIONS sans Authorization.
+[functions.socle-proxy]
+verify_jwt = false
+
+# Idem — création de demande depuis une démarche Socle.
+[functions.create-request-from-procedure]
+verify_jwt = false
+
+# Deux appelants : pg_cron (en-tête x-cron-secret, sans JWT) et l'application
+# (JWT vérifié en code). L'authentification est donc portée par la fonction
+# elle-même — elle sert aussi le miroir du serveur d'envoi (docs/emails.md).
+[functions.sync-socle-referentiel]
+verify_jwt = false
+
+# Facteur de la boîte d'envoi des notifications : appelée UNIQUEMENT par
+# pg_cron (en-tête x-cron-secret, sans JWT). Jamais depuis un navigateur, donc
+# aucun CORS non plus.
+[functions.notifications-mailer]
+verify_jwt = false
+
+# Idem — réponse à l'usager depuis l'onglet Échanges de la fiche demande
+# (droit d'instruction revérifié en SQL, destinataire résolu côté serveur).
+[functions.send-request-email]
+verify_jwt = false

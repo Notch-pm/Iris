@@ -1,13 +1,14 @@
-// Paramètres › Référentiel — état du miroir Socle du tenant (organisations,
-// démarches, dernière synchronisation) et bouton « Synchroniser maintenant »
-// (motif Clara). La synchro lancée ici ne porte QUE sur ce tenant : le
-// périmètre est dérivé de l'appelant côté serveur (sync-socle-referentiel).
+// Paramètres › Référentiel Socle — état du miroir du tenant (organisations,
+// démarches, dernière synchronisation). La mutation de synchro est celle de la
+// page Paramètres (même bouton qu'en tête d'accueil, même état « en cours »).
+// La synchro lancée ici ne porte QUE sur ce tenant : le périmètre est dérivé de
+// l'appelant côté serveur (sync-socle-referentiel).
 
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { syncSummary, useTriggerSocleSync } from "@/features/socle/useSocleSync";
+import { syncSummary, type SocleSyncMutation } from "@/features/socle/useSocleSync";
 import { useReferentielStatus } from "./usePermissions";
 
 function formatDateTime(iso: string): string {
@@ -16,13 +17,18 @@ function formatDateTime(iso: string): string {
   });
 }
 
-export function ReferentielPanel({ orgId, onOpenCoverage }: { orgId: string; onOpenCoverage: () => void }) {
+interface ReferentielPanelProps {
+  orgId: string;
+  sync: SocleSyncMutation;
+  onOpenCoverage: () => void;
+}
+
+export function ReferentielPanel({ orgId, sync, onOpenCoverage }: ReferentielPanelProps) {
   const status = useReferentielStatus(orgId);
-  const sync = useTriggerSocleSync(orgId);
   const s = status.data;
 
   return (
-    <Card id="panel-referentiel" role="tabpanel" aria-labelledby="tab-referentiel" tabIndex={0}>
+    <Card>
       <CardContent className="flex flex-col gap-5 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">

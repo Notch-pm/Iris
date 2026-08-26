@@ -1,7 +1,3 @@
-// Types du schéma Supabase Iris — GÉNÉRÉS depuis le schéma live
-// (Supabase MCP `generate_typescript_types`, projet tqcoqlneybtbrrcvpkpk).
-// Ne jamais éditer à la main : régénérer après chaque migration.
-
 export type Json =
   | string
   | number
@@ -14,10 +10,110 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
   }
   public: {
     Tables: {
+      email_template_organizations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          socle_org_id: string
+          template_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          socle_org_id: string
+          template_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          socle_org_id?: string
+          template_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_template_organizations_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_template_organizations_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_templates: {
+        Row: {
+          body: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          name: string
+          organization_id: string
+          subject: string
+          updated_at: string
+          updated_by: string | null
+          version: number
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name: string
+          organization_id: string
+          subject: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          name?: string
+          organization_id?: string
+          subject?: string
+          updated_at?: string
+          updated_by?: string | null
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_templates_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       integration_api_logs: {
         Row: {
           created_at: string
@@ -201,6 +297,124 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_preferences: {
+        Row: {
+          email: boolean
+          in_app: boolean
+          kind: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          email?: boolean
+          in_app?: boolean
+          kind: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          email?: boolean
+          in_app?: boolean
+          kind?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_preferences_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          actor_id: string | null
+          created_at: string
+          email_attempted_at: string | null
+          email_attempts: number
+          email_error: string | null
+          email_next_attempt_at: string | null
+          email_sent_at: string | null
+          email_status: string
+          id: string
+          in_app: boolean
+          kind: string
+          organization_id: string
+          payload: Json
+          read_at: string | null
+          request_id: string
+          user_id: string
+        }
+        Insert: {
+          actor_id?: string | null
+          created_at?: string
+          email_attempted_at?: string | null
+          email_attempts?: number
+          email_error?: string | null
+          email_next_attempt_at?: string | null
+          email_sent_at?: string | null
+          email_status?: string
+          id?: string
+          in_app?: boolean
+          kind: string
+          organization_id: string
+          payload?: Json
+          read_at?: string | null
+          request_id: string
+          user_id: string
+        }
+        Update: {
+          actor_id?: string | null
+          created_at?: string
+          email_attempted_at?: string | null
+          email_attempts?: number
+          email_error?: string | null
+          email_next_attempt_at?: string | null
+          email_sent_at?: string | null
+          email_status?: string
+          id?: string
+          in_app?: boolean
+          kind?: string
+          organization_id?: string
+          payload?: Json
+          read_at?: string | null
+          request_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_actor_id_fkey"
+            columns: ["actor_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -568,6 +782,7 @@ export type Database = {
           created_at: string
           document_type_label: string | null
           document_type_socle_id: string | null
+          email_id: string | null
           fetch_url: string | null
           file_name: string
           file_size: number | null
@@ -585,6 +800,7 @@ export type Database = {
           created_at?: string
           document_type_label?: string | null
           document_type_socle_id?: string | null
+          email_id?: string | null
           fetch_url?: string | null
           file_name: string
           file_size?: number | null
@@ -602,6 +818,7 @@ export type Database = {
           created_at?: string
           document_type_label?: string | null
           document_type_socle_id?: string | null
+          email_id?: string | null
           fetch_url?: string | null
           file_name?: string
           file_size?: number | null
@@ -615,6 +832,13 @@ export type Database = {
         }
         Relationships: [
           {
+            foreignKeyName: "request_attachments_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "request_emails"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "request_attachments_request_id_fkey"
             columns: ["request_id"]
             isOneToOne: false
@@ -626,6 +850,83 @@ export type Database = {
             columns: ["uploaded_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_emails: {
+        Row: {
+          body: string
+          created_at: string
+          error: string | null
+          id: string
+          organization_id: string
+          request_id: string
+          sent_at: string | null
+          sent_by: string
+          status: string
+          subject: string
+          template_id: string | null
+          template_name: string | null
+          to_email: string
+        }
+        Insert: {
+          body: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          organization_id: string
+          request_id: string
+          sent_at?: string | null
+          sent_by: string
+          status?: string
+          subject: string
+          template_id?: string | null
+          template_name?: string | null
+          to_email: string
+        }
+        Update: {
+          body?: string
+          created_at?: string
+          error?: string | null
+          id?: string
+          organization_id?: string
+          request_id?: string
+          sent_at?: string | null
+          sent_by?: string
+          status?: string
+          subject?: string
+          template_id?: string | null
+          template_name?: string | null
+          to_email?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_emails_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_emails_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_emails_sent_by_fkey"
+            columns: ["sent_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_emails_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "email_templates"
             referencedColumns: ["id"]
           },
         ]
@@ -961,6 +1262,59 @@ export type Database = {
           },
         ]
       }
+      smtp_settings: {
+        Row: {
+          from_email: string
+          from_name: string | null
+          has_password: boolean | null
+          host: string
+          organization_id: string
+          password_secret_id: string | null
+          port: number
+          socle_org_id: string | null
+          socle_updated_at: string | null
+          synced_at: string
+          use_tls: boolean
+          username: string | null
+        }
+        Insert: {
+          from_email: string
+          from_name?: string | null
+          has_password?: boolean | null
+          host: string
+          organization_id: string
+          password_secret_id?: string | null
+          port?: number
+          socle_org_id?: string | null
+          socle_updated_at?: string | null
+          synced_at?: string
+          use_tls?: boolean
+          username?: string | null
+        }
+        Update: {
+          from_email?: string
+          from_name?: string | null
+          has_password?: boolean | null
+          host?: string
+          organization_id?: string
+          password_secret_id?: string | null
+          port?: number
+          socle_org_id?: string | null
+          socle_updated_at?: string | null
+          synced_at?: string
+          use_tls?: boolean
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smtp_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       socle_organizations: {
         Row: {
           id: string
@@ -1078,6 +1432,7 @@ export type Database = {
       }
       users: {
         Row: {
+          avatar_path: string | null
           created_at: string
           email: string
           first_name: string | null
@@ -1086,6 +1441,7 @@ export type Database = {
           last_name: string | null
         }
         Insert: {
+          avatar_path?: string | null
           created_at?: string
           email: string
           first_name?: string | null
@@ -1094,6 +1450,7 @@ export type Database = {
           last_name?: string | null
         }
         Update: {
+          avatar_path?: string | null
           created_at?: string
           email?: string
           first_name?: string | null
@@ -1108,6 +1465,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      administrable_organizations: {
+        Args: { p_org_id: string }
+        Returns: {
+          name: string
+          obsolete: boolean
+          socle_org_id: string
+          socle_parent_id: string
+        }[]
+      }
       assert_editor_can_manage_profile: {
         Args: { p_org_id: string; p_profile_id?: string }
         Returns: undefined
@@ -1121,9 +1487,39 @@ export type Database = {
         Returns: Json
       }
       can_admin_request: { Args: { p_request_id: string }; Returns: boolean }
+      can_manage_account: {
+        Args: { p_actor_id: string; p_target_id: string }
+        Returns: boolean
+      }
       can_process_request: { Args: { p_request_id: string }; Returns: boolean }
       can_read_request: { Args: { p_request_id: string }; Returns: boolean }
       can_write_request: { Args: { p_request_id: string }; Returns: boolean }
+      claim_notification_emails: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          kind: string
+          notification_id: string
+          organization_id: string
+          organization_name: string
+          payload: Json
+          recipient_email: string
+          recipient_name: string
+          request_id: string
+        }[]
+      }
+      clear_smtp_settings_from_socle: {
+        Args: { p_org_id: string }
+        Returns: boolean
+      }
+      contact_request_counts: {
+        Args: { p_org_id: string }
+        Returns: {
+          contact_id: string
+          open_count: number
+          total: number
+        }[]
+      }
       create_request_from_procedure: { Args: { p: Json }; Returns: Json }
       delete_permission_profile: {
         Args: { p_expected_version: number; p_profile_id: string }
@@ -1137,6 +1533,11 @@ export type Database = {
           user_id: string
         }[]
       }
+      email_template_unknown_variables: {
+        Args: { p_text: string }
+        Returns: string[]
+      }
+      email_template_variables: { Args: never; Returns: string[] }
       has_admin_scope: {
         Args: { p_org_id: string; p_socle_org_id: string }
         Returns: boolean
@@ -1152,9 +1553,32 @@ export type Database = {
       }
       is_org_admin: { Args: { p_org_id: string }; Returns: boolean }
       is_org_admin_anywhere: { Args: { p_org_id: string }; Returns: boolean }
+      is_org_admin_anywhere_for: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
       is_org_member: { Args: { p_org_id: string }; Returns: boolean }
       is_platform_admin: { Args: never; Returns: boolean }
       is_service_context: { Args: never; Returns: boolean }
+      mail_context_for_user: {
+        Args: { p_user_id: string }
+        Returns: {
+          from_email: string
+          from_name: string
+          host: string
+          organization_id: string
+          organization_name: string
+          password: string
+          port: number
+          use_tls: boolean
+          username: string
+        }[]
+      }
+      mark_all_notifications_read: {
+        Args: { p_org_id: string }
+        Returns: number
+      }
+      mark_notifications_read: { Args: { p_ids: string[] }; Returns: number }
       member_role: { Args: { p_org_id: string }; Returns: string }
       member_role_derived: {
         Args: { p_org_id: string; p_user_id: string }
@@ -1168,6 +1592,16 @@ export type Database = {
           user_id: string
         }[]
       }
+      mentionable_users: {
+        Args: { p_request_id: string }
+        Returns: {
+          avatar_path: string
+          display_name: string
+          email: string
+          user_id: string
+        }[]
+      }
+      message_mentions: { Args: { p_body: string }; Returns: string[] }
       my_permission_pairs: {
         Args: { p_right: string }
         Returns: {
@@ -1178,6 +1612,14 @@ export type Database = {
       }
       my_rights: { Args: { p_org_id: string }; Returns: Json }
       nil_procedure: { Args: never; Returns: string }
+      notification_channels_for: {
+        Args: { p_kind: string; p_user_id: string }
+        Returns: {
+          use_email: boolean
+          use_in_app: boolean
+        }[]
+      }
+      notification_email_max_attempts: { Args: never; Returns: number }
       permission_coverage_report: {
         Args: { p_org_id: string }
         Returns: {
@@ -1202,12 +1644,35 @@ export type Database = {
           socle_org_id: string
         }[]
       }
+      push_notification: {
+        Args: {
+          p_actor_id: string
+          p_extra?: Json
+          p_kind: string
+          p_org_id: string
+          p_reference: string
+          p_request_id: string
+          p_subject: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       refresh_member_roles: { Args: { p_org_id: string }; Returns: undefined }
       refresh_request_scope_org: {
         Args: { p_org_id?: string }
         Returns: number
       }
       request_exists: { Args: { p_id: string }; Returns: boolean }
+      request_right_for: {
+        Args: {
+          p_org_id: string
+          p_right: string
+          p_socle_org_id: string
+          p_socle_procedure_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       request_scope_org: {
         Args: { p_org_id: string; p_socle_org_id: string }
         Returns: string
@@ -1234,7 +1699,62 @@ export type Database = {
         }
         Returns: Json
       }
+      settle_notification_email: {
+        Args: { p_error?: string; p_id: string; p_ok: boolean }
+        Returns: undefined
+      }
+      settle_request_email: {
+        Args: { p_error?: string; p_id: string; p_ok: boolean }
+        Returns: undefined
+      }
       shares_org_with: { Args: { p_user_id: string }; Returns: boolean }
+      skip_notification_email: {
+        Args: { p_id: string; p_reason: string }
+        Returns: undefined
+      }
+      smtp_config_for_org: {
+        Args: { p_org_id: string }
+        Returns: {
+          from_email: string
+          from_name: string
+          host: string
+          organization_id: string
+          organization_name: string
+          password: string
+          port: number
+          use_tls: boolean
+          username: string
+        }[]
+      }
+      start_request_email: {
+        Args: {
+          p_attachments?: Json
+          p_body: string
+          p_request_id: string
+          p_sent_by: string
+          p_subject: string
+          p_template_id?: string
+          p_template_name?: string
+          p_to_email: string
+        }
+        Returns: string
+      }
+      sync_smtp_settings_from_socle: {
+        Args: {
+          p_from_email: string
+          p_from_name: string
+          p_host: string
+          p_org_id: string
+          p_password: string
+          p_port: number
+          p_socle_org_id: string
+          p_socle_updated_at: string
+          p_use_tls: boolean
+          p_username: string
+        }
+        Returns: undefined
+      }
+      user_display_name: { Args: { p_user_id: string }; Returns: string }
       user_has_request_right: {
         Args: {
           p_org_id: string

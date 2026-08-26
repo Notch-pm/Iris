@@ -88,6 +88,26 @@ propre garde anti-sondage). Toutes les **fonctions trigger et internes** ont leu
 révoqué de `anon`/`authenticated`/`PUBLIC` dans la même migration que leur création — à
 re-révoquer à chaque `CREATE OR REPLACE`.
 
+### Administration des comptes, côté service (`20260823100100`)
+
+L'edge function `admin-users` tourne en `service_role` : `auth.uid()` y est nul, les helpers
+clients ne lui répondent pas. Deux variantes paramétrées par utilisateur, **révoquées de tout
+rôle client** (motif déjà en place avec `has_any_creation_right_for`) :
+
+- `is_org_admin_anywhere_for(p_user_id, p_org_id)` — miroir de `is_org_admin_anywhere` pour un
+  utilisateur donné. Gouverne l'invitation et le test d'envoi.
+- `can_manage_account(p_actor_id, p_target_id)` — autorité sur un compte : plateforme, ou
+  administration d'au moins un tenant dont la cible est membre. Gouverne le renvoi d'un lien de
+  mot de passe.
+- `sync_smtp_settings_from_socle(...)` / `clear_smtp_settings_from_socle(p_org_id)` (service,
+  `20260823150000`) — unique porte d'écriture du **miroir** du serveur d'envoi, appelée par
+  `sync-socle-referentiel`. Révoquées de `anon` et `authenticated`.
+  (`is_tenant_root_admin` / `is_tenant_root_admin_for`, posées le matin du 2026-08-23 pour
+  réserver la saisie SMTP à la racine, ont été **retirées le même jour** : la saisie a quitté
+  Iris, la garde n'avait plus d'objet.)
+
+La règle reste écrite une seule fois, en SQL ; l'edge function la consulte.
+
 ### Piège SECURITY DEFINER / `current_user` (règle de projet, vérifié empiriquement 2026-08-22)
 
 À l'intérieur d'une fonction `SECURITY DEFINER`, `current_user` devient le **propriétaire** de
@@ -122,6 +142,23 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
   (BEFORE DELETE, contourné en contexte de service) : refuse la suppression du dernier membre
   détenant l'administration sur la racine du tenant. Visible des membres du tenant, géré par les
   administrateurs.
+- **`smtp_settings`** (`20260823100000`, réécrite par `20260823150000`) — **miroir** du
+  serveur d'envoi défini **dans le Socle** pour l'organisation principale du tenant. Ce n'est
+  pas une table de paramétrage : Iris n'offre aucune saisie (décision PO 2026-08-23), la source
+  de vérité est le Socle et le miroir est rafraîchi par `sync-socle-referentiel`, au même titre
+  que `socle_organizations` et `socle_procedure_cache`. **Une ligne par tenant** (PK
+  `organization_id` — un tenant Iris EST une organisation racine Socle), valable pour tout le
+  sous-arbre : `host`, `port` (défaut 587, CHECK 1–65535), `username`, `from_email`,
+  `from_name`, `use_tls`, plus la provenance et la fraîcheur (`socle_org_id`,
+  `socle_updated_at`, `synced_at`). Le **mot de passe n'y figure pas** : `password_secret_id`
+  pointe un secret **Vault** (`vault.create_secret`, chiffré au repos) — le Socle le sert en
+  clair par son API, Iris ne le repose jamais en clair dans une colonne. Écriture : **RPC de
+  service uniquement** (`sync_smtp_settings_from_socle` / `clear_smtp_settings_from_socle`),
+  aucune policy d'écriture cliente. Lecture : **aucune surface cliente** — ni policy, ni grant
+  pour `authenticated` (l'écran de consultation a disparu avec la saisie ; la configuration se
+  lit dans le Socle). Déchiffrement réservé au service : `smtp_config_for_org(org)` et
+  `mail_context_for_user(user)`, révoquées de `anon` et `authenticated`. Détail et parcours :
+  [`emails.md`](emails.md).
 
 ### Cœur métier
 
@@ -147,7 +184,8 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
     **Construit CÔTÉ SERVEUR depuis Socle** (edge function ou socle-proxy) — jamais accepté
     comme vérité d'un navigateur ou d'un partenaire ;
   - `requester_snapshot` JSONB (objet, **immuable**) — identité retenue au dépôt :
-    `{ declared: {...} | null, socle_contact_id: uuid | null }`. **Jamais d'internal_notes** ;
+    `{ declared: {...} | null, socle_contact_id: uuid | null }`. **Jamais d'internal_notes**
+    (justification et coût mesuré : § « Pourquoi figer l'identité au dépôt » ci-dessous) ;
   - `form_data` JSONB — réponses au formulaire, indexées par la **clé machine `key`** des
     champs du `form_schema` Socle (jamais `id`) ; jamais validé à l'ingestion ;
   - `identity_status` `rapprochee|non_rapprochee|anonyme` ;
@@ -187,6 +225,84 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
 | `t19_requests_touch` (INVOKER) | BEFORE UPDATE | `version := version + 1`, `updated_at := now()` |
 | `t30_requests_log_insert` / `t30_requests_log_update` (DEFINER) | AFTER | Journal `request_events` (`created`, `status_changed`, `assigned`) + historique `request_assignments` |
 
+### Anomalies (`requests.anomalies`)
+
+**Un TABLEAU D'OBJETS `{"code": "..."}`, jamais de chaînes nues.** C'est la forme qu'impose
+`requests_set_scope_org`, qui filtre par `a ->> 'code'` : une chaîne nue y donne NULL et se
+fait **silencieusement effacer** au premier recalcul de périmètre. `requests-api` poussait des
+chaînes — corrigé le 2026-08-26, avant qu'une anomalie n'ait jamais été posée en production
+(vérifié : aucune demande n'en portait).
+
+| Code | Posé par | Signification |
+|---|---|---|
+| `destinataire_inconnu` | trigger `requests_set_scope_org` | Le destinataire n'est pas (ou plus) dans le miroir du tenant ; le périmètre retombe sur la racine Socle |
+| `referentiel_indisponible` | `requests-api` | Socle injoignable au dépôt : `procedure_snapshot` minimal issu du cache |
+| `usager_a_creer_dans_socle` | `create-request-from-procedure`, `requests-api` | L'usager n'a pu être ni rapproché ni créé dans le Socle (panne avérée) : la demande est passée quand même, en `non_rapprochee`, et reste à régulariser |
+
+Les anomalies décrivent un **geste restant à faire**, jamais un refus : la doctrine de la
+gamme est qu'un référentiel muet ne fait pas perdre une demande.
+
+### Pourquoi figer l'identité au dépôt (question PO du 2026-08-26)
+
+La question revient à chaque relecture du modèle, d'autant plus depuis que la fiche d'une
+demande **relit** la fiche Socle (« identité vivante », `requesterView`) : si l'identité du jour
+est affichée, à quoi sert encore l'instantané, et que coûte-t-il quand on prévoit beaucoup de
+demandes ?
+
+**Trois raisons, dont une décisive.**
+
+1. **Toutes les demandes n'ont pas de fiche Socle à relire.** Pour `identity_status =
+   non_rapprochee` (identité déclarée au guichet, payload d'un partenaire arrivé par
+   `requests-api`) ou `anonyme`, il n'y a **aucun** `socle_contact_id` : le snapshot *est*
+   l'identité, il n'y a rien d'autre à lire. C'est la raison décisive — elle ne dépend d'aucun
+   arbitrage d'ergonomie.
+2. **Une demande est une pièce administrative et ne se supprime jamais.** Ce qui fait foi, c'est
+   l'identité *retenue au dépôt* : l'usager changera de nom d'usage, déménagera, sera archivé,
+   ou purgé du Socle au titre du RGPD. Sans instantané, une demande de 2026 afficherait
+   l'adresse de 2029 — ou plus rien. L'écart entre les deux est lui-même une information, et
+   c'est ce que montre le dépliant « N champs modifiés depuis le dépôt ».
+3. **Aucune FK ne franchit la frontière de projet, aucun flux base-à-base.** Sans instantané,
+   afficher un nom coûterait un appel HTTP à `contacts-api` par demande, via edge function, avec
+   le Socle en point de panne unique. La carte (500 demandes), l'export CSV (5 000 lignes) et la
+   détection de « demandes proches » (`ilike` côté Iris sur `requester_snapshot->declared->>…`)
+   deviendraient impraticables ou impossibles.
+
+**Ce qu'il coûte, mesuré** (2026-08-26, base `tqcoqlneybtbrrcvpkpk`) :
+
+| Colonne | Moyenne | Max | Part de la ligne |
+|---|---|---|---|
+| `requester_snapshot` | **250 o** | 394 o | ~12 % |
+| `procedure_snapshot` | **1 267 o** | 1 718 o | **~63 %** |
+| `form_data` | 107 o | — | ~5 % |
+| ligne complète | ~2 000 o | 2 529 o | 100 % |
+
+L'identité pèse donc **5× moins que le snapshot de démarche**, et ne coûte rien sur le chemin
+chaud : `LIST_SELECT` (`src/features/requests/useRequests.ts`) ne la sélectionne pas — la liste
+n'a pas de colonne « Usager ». À 50 000 demandes par tenant : 12 Mo. À 1 million : 250 Mo.
+
+**Le vrai sujet était ailleurs.** La mesure a montré que la table TOAST de `requests` était
+**vide** (`relpages = 0`, `reloptions` nul, seuil par défaut 2048 o) pour une ligne moyenne de
+1 999 o : tout tenait en ligne, à un octet du seuil, ~4 lignes par page de 8 ko. Chaque balayage
+de liste, de facettes ou d'export traînait ~1,3 ko de `procedure_snapshot` par ligne que
+personne ne lit sur ce chemin. D'où la migration `20260826130000_requests_toast_tuple_target`
+(`toast_tuple_target = 1024`), qui n'évince **que** `procedure_snapshot` : vérifié sur les
+7 lignes réelles, le reste après éviction va de 558 à 898 o — sous le seuil partout, donc
+l'éviction s'arrête et `requester_snapshot`, `subject` et les libellés restent en ligne. Un
+seuil plus bas serait contre-productif (voir le commentaire de la migration). ⚠️ Le réglage ne
+vaut que pour les lignes **écrites après** : il a été posé table quasi vide, plus tard il
+exigerait un `VACUUM FULL`.
+
+**Deux leviers repérés et volontairement NON pris** (à rouvrir si le volume le justifie) :
+
+- `procedure_snapshot.requester_config` pèse **668 o par demande** et n'est **jamais relu après
+  la création** — ses deux seuls consommateurs (`creation/NewRequestPage.tsx`,
+  `create-request-from-procedure/index.ts`) lisent la démarche **rechargée depuis Socle**, pas
+  le snapshot de la demande. Le retirer de la whitelist ferait un tiers du plus gros JSONB de la
+  table, au prix de la trace de ce que la démarche exigeait comme identité au dépôt.
+- `useNearbyRequests` filtre par `ilike` sur `requester_snapshot->declared->>{field}` :
+  **aucun index** ne couvre ce chemin, c'est un balayage séquentiel du tenant. C'est aussi
+  pourquoi il ne faut pas sortir `requester_snapshot` de la ligne.
+
 **Matrice des transitions** (le contexte de service la contourne explicitement — une garde
 sans contournement bloquerait la péremption automatique et l'ingestion, leçon Clara) :
 
@@ -216,12 +332,21 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `assigned_to` NULL = désaffectation.
 - **`request_messages`** — notes internes (`kind='note_interne'`). **Ne quittent jamais Iris.**
   Trigger de cohérence `t01_*_check_org` (demande visible et du même tenant).
+- **`request_emails`** *(2026-08-26)* — échanges **sortants** vers l'usager : `sent_by`,
+  `to_email` (adresse RÉELLEMENT servie, figée), `subject`, `body` (le texte réellement parti),
+  `template_id` (`on delete set null`) + `template_name` figé, `status`
+  `en_cours|envoye|echec`, `error`, `sent_at`. Même trigger de cohérence.
+  **Aucune écriture cliente et aucune suppression** : la seule porte est l'edge function
+  `send-request-email`, en service_role, via `start_request_email` / `settle_request_email`.
+  Le pendant de `request_messages` : celles-ci ne sortent jamais, celle-ci ne fait que sortir.
 - **`request_attachments`** — pièces : `storage_path`
   (`{organization_id}/{request_id}/{uuid}-{slug}`), `checksum` (dédup),
   `copy_status` `copied|pending|error` (copie asynchrone à venir), type de PJ Socle en
   UUID nu + libellé figé, `form_field_key` (nullable — clé machine `key` du champ « pièce
-  justificative » du `form_schema` auquel la pièce répond ; NULL = pièce hors formulaire).
-  Même trigger de cohérence.
+  justificative » du `form_schema` auquel la pièce répond ; NULL = pièce hors formulaire),
+  `email_id` (nullable — pièce jointe à un échange sortant, dont elle suit le sort ; NULL =
+  pièce déposée par l'usager ou par l'ingestion, seule catégorie affichée dans « Pièces de la
+  demande »). Même trigger de cohérence.
 - **`request_links`** — relations : `doublon_de` / `issue_de_scission` / `liee_a`
   (demande↔demande, même tenant imposé par trigger — une cible invisible par RLS est
   « introuvable ») et `externe` (`external_type` + `external_id` + `external_url`).
@@ -347,6 +472,199 @@ vérification empirique du piège `SECURITY DEFINER`/`current_user` (ci-dessus) 
 soit systématiquement court-circuités, soit en échec « permission denied » au COMMIT en
 production. Les validations sont appelées **explicitement et immédiatement** par les RPC.
 
+### Compteurs de demandes par usager (`20260823160000`)
+
+`contact_request_counts(p_org_id)` → `(contact_id, total, open_count)` : une ligne par usager
+Socle rapproché du tenant. Sert la **liste des usagers** (`/usagers`), qui ne peut pas être
+servie par une seule base — les fiches viennent du Socle, les compteurs d'Iris.
+
+- **`SECURITY INVOKER` volontairement** : le RLS s'applique donc à l'appelant et les compteurs
+  ne comptent que les demandes de son périmètre. Deux agents peuvent lire deux nombres
+  différents pour le même usager — même règle que la liste des demandes et la fiche usager.
+  La passer en `DEFINER` fuirait une volumétrie hors périmètre (et rejouerait le piège
+  `current_user` ci-dessus). `EXECUTE` révoqué de `public`/`anon`, accordé à `authenticated`.
+- `open_count` = les trois statuts non finaux (`a_traiter`, `en_instruction`, `en_attente`) —
+  miroir exact de `isFinal()` côté front.
+- Index d'appui : `requests_org_contact_idx (organization_id, socle_contact_id)
+  where socle_contact_id is not null`.
+- Noms de colonnes de sortie **distincts** des colonnes de `requests` : en `language sql`, les
+  colonnes d'un `RETURNS TABLE` sont des paramètres `OUT` visibles dans le corps
+  (`socle_contact_id` y serait ambigu).
+
+### Notifications in-app (`20260824100000`, `20260824100100`)
+
+`notifications` — une ligne par (destinataire, événement). **Produite exclusivement par des
+triggers `SECURITY DEFINER`** : aucune policy d'écriture cliente, un navigateur ne peut pas en
+fabriquer pour autrui.
+
+- Colonnes : `organization_id`, `user_id` (destinataire), `request_id`, `kind`
+  (`assigned` | `unassigned` | `status_changed` | `note_added` | `new_request_in_scope`),
+  `payload jsonb`, `actor_id` (NULL = système/ingestion), `created_at`, `read_at`.
+- Trois FK en `on delete cascade` : la purge RGPD d'une demande emporte ses notifications.
+- Index : `(user_id, organization_id, created_at desc)` pour le volet, index **partiel**
+  `(user_id, organization_id) where read_at is null` pour la pastille, `(request_id)`.
+- **`created_at default clock_timestamp()`** et non `now()` : `now()` est l'heure de DÉBUT DE
+  TRANSACTION, donc les deux notifications d'une réaffectation (« retirée » à l'un, « affectée »
+  à l'autre) portaient une date identique et l'ordre antichronologique du volet devenait
+  indéterminé. Constat du test T6c.
+- Le `payload` est un **instantané** (`reference`, `subject`, `actor_name`, statuts, démarche,
+  destinataire) : le volet se rend sans jointure et reste lisible si le périmètre du
+  destinataire change ensuite. **Jamais le corps d'une note interne** (invariant : les notes
+  internes ne quittent pas Iris).
+
+Triggers (nommés `t40_*`, donc après le journal `t30_*`) :
+
+| Trigger | Table | Produit |
+|---|---|---|
+| `t40_requests_notify_insert` | `requests` (AFTER INSERT) | `assigned` à l'affectataire, puis fan-out `new_request_in_scope` aux membres détenant **instruction** sur le couple — affectataire et acteur exclus |
+| `t40_requests_notify_update` | `requests` (AFTER UPDATE) | affectation changée → `assigned` au nouveau + `unassigned` à l'ancien ; **sinon** statut changé → `status_changed` à l'affectataire |
+| `t40_request_messages_notify_insert` | `request_messages` (AFTER INSERT) | `note_added` à l'affectataire de la demande |
+
+Fonctions d'appui, **toutes sans `EXECUTE` cliente** :
+
+- `push_notification(...)` — insertion unitaire, porte la règle **« jamais pour son propre
+  geste »** (`p_user_id = p_actor_id` → no-op) en un seul endroit. L'acteur est `auth.uid()`,
+  NULL en contexte de service : `is [not] distinct from` sert alors tout le monde, ce qui est
+  le comportement voulu pour une demande ingérée.
+- `can_process_request_for(user, org, socle_org, procedure)` — droit d'instruction d'un tiers.
+  **Même moteur** que partout (`permission_pairs_of`, ADR-04), sans la garde anti-sondage de
+  `user_has_request_right` : cette garde protège un appel RPC client, elle n'a pas de sens dans
+  un trigger et ferait taire les notifications quand l'auteur du geste n'est pas membre du
+  tenant (administrateur de plateforme).
+- `user_display_name(uuid)` — nom affichable figé dans le payload, repli sur le courriel.
+
+RPC clientes (les seules, `EXECUTE` accordée à `authenticated` — advisor 0029 assumé, même
+posture que les helpers existants) : `mark_notifications_read(uuid[])` et
+`mark_all_notifications_read(uuid)`, toutes deux filtrées sur `user_id = auth.uid()` — les
+identifiants d'autrui sont ignorés silencieusement.
+
+**Temps réel** : la table est ajoutée à la publication `supabase_realtime`. Realtime ré-applique
+le RLS par abonné ; le filtre `user_id` posé côté client n'est qu'une économie de trafic.
+
+### Doublage e-mail et préférences par canal (`20260824110000`)
+
+**Un événement, une ligne, N canaux.** On ne duplique pas la ligne par canal : `notifications`
+porte l'état de chacun. Ajouter un canal (SMS, push) = ajouter des colonnes, sans toucher aux
+déclencheurs ni au volet.
+
+- `in_app boolean` — `false` : la ligne existe UNIQUEMENT pour porter l'e-mail (canal in-app
+  coupé par préférence). Le volet filtre dessus ; le RLS est inchangé.
+- `email_status` — boîte d'envoi : `pending` · `sending` (réclamée) · `sent` · `skipped`
+  (canal coupé, destinataire sans adresse, tenant sans relais) · `failed` (abandon).
+  Plus `email_attempts`, `email_attempted_at`, `email_sent_at`, `email_next_attempt_at`,
+  `email_error`. Index partiel `notifications_email_queue_idx` sur la file.
+
+**L'envoi ne part JAMAIS du déclencheur** : un appel SMTP dans la transaction métier la fait
+traîner (le relais met des secondes) et la fait échouer quand le relais est indisponible — on
+n'annule pas une affectation parce qu'un serveur de mail tousse. La ligne est une boîte
+d'envoi drainée par l'edge function `notifications-mailer` sur `pg_cron` (`* * * * *`), même
+motif que `integration_deliveries` et que le cron de `sync-socle-referentiel` (secret au Vault).
+
+| Fonction | Rôle |
+|---|---|
+| `claim_notification_emails(limit)` | réclame un lot ET le marque `sending` **atomiquement** (`for update skip locked`) — deux mailers concurrents n'expédient jamais deux fois ; récupère les lignes `sending` figées depuis 15 min |
+| `settle_notification_email(id, ok, error)` | succès → `sent` ; échec → retour en file avec temporisation croissante (2, 4, 8, 16 min), puis `failed` au-delà de 5 tentatives |
+| `skip_notification_email(id, raison)` | renonce définitivement (pas d'adresse, pas de relais) |
+
+Toutes `service_role` uniquement — aucune `EXECUTE` cliente.
+
+**Préférences** (`notification_preferences`, réglées depuis « Mon compte ») : clé
+`(user_id, kind)` — **GLOBALES à tous les tenants du compte** (décision PO 2026-08-24,
+migration `20260824130000` ; la clé portait d'abord `organization_id`). « Je ne veux pas de
+courriel pour les notes internes » est une décision sur SOI, pas sur une organisation : un
+agent rattaché à deux collectivités ne règle pas deux fois la même chose. `'*'` porte le défaut
+du compte, une ligne de motif le surcharge. `notification_channels_for(user, kind)` est la
+SEULE porteuse de cette sémantique, et elle est **fail OPEN** — l'absence de préférence notifie
+sur tous les canaux. C'est l'inverse du modèle de droits (*fail closed*) et c'est délibéré :
+un droit manquant doit fermer, une préférence manquante ne doit pas faire taire une information.
+Si les deux canaux sont coupés, **aucune ligne n'est créée**.
+
+Contrairement à `notifications` (aucune écriture cliente : ce n'est pas un geste d'utilisateur),
+une préférence **est** le geste de son titulaire : policies SELECT/INSERT/UPDATE/DELETE bornées
+à `user_id = auth.uid()`, l'écriture exigeant en plus l'appartenance au tenant.
+
+### Compte utilisateur — photo et verrouillage de l'adresse (`20260824120000`)
+
+- `public.users.avatar_path` — chemin de la photo dans le bucket **privé** `avatars`
+  (`{user_id}/{uuid}.{ext}`). NULL = initiales. Lu par **URL signée** (1 h) : un bucket public
+  servirait la photo d'un agent à qui connaît l'adresse, sans authentification ni trace.
+- Bucket `avatars` : privé, 2 Mio, `allowed_mime_types` limité aux images. Le **premier segment
+  du chemin EST l'identifiant** — c'est lui que la policy compare à `auth.uid()`. Écriture et
+  suppression : **son dossier uniquement** (aucun administrateur ne pose la photo d'un autre,
+  ce n'est pas un attribut administré). Lecture : la sienne + celle des membres du même tenant
+  (`shares_org_with`). Un nouvel envoi écrit un NOUVEAU chemin, l'ancien est supprimé ensuite :
+  pas de cache de navigateur à combattre.
+- **`t03_users_protect_email`** — `public.users.email` est un miroir de `auth.users.email`,
+  c'est-à-dire l'identifiant de connexion. La policy `users_update` autorise un utilisateur à
+  écrire SA ligne (nom, photo) ; sans cette garde il pourrait aussi y réécrire son adresse et
+  désynchroniser le miroir **sans que sa connexion change pour autant**. Le contexte de service
+  et l'administrateur de plateforme passent — même posture que l'anti-escalade voisine.
+- Le **changement de mot de passe** n'a aucune empreinte SQL : il vit dans GoTrue. GoTrue
+  n'ayant pas d'« update with current password », la revérification se fait par une
+  **reconnexion** avec l'ancien mot de passe avant `updateUser` — Iris ne stocke ni ne voit
+  jamais un mot de passe.
+
+### Mentions dans les notes internes (`20260824140000`)
+
+La mention vit **dans le corps** de la note : `@[Nom affiché](uuid)`. Pas de table satellite —
+la note est auto-portante, la base valide et notifie depuis le seul corps, et le nom figé suit
+la philosophie d'instantané du projet.
+
+- `message_mentions(text) → uuid[]` (IMMUTABLE, interne) — le motif n'accepte que des UUID bien
+  formés. Jumeau exact du motif front (`src/features/requests/instruction/mentions.ts`).
+- **`t03_request_messages_guard_mentions`** (BEFORE INSERT OR UPDATE) — refuse la note si un
+  mentionné n'est pas membre du tenant, ou n'a pas **consultation** sur le couple de la demande.
+  C'est la garde : le sélecteur de l'écran n'en est que le reflet.
+- `mentionable_users(request_id)` (RPC `authenticated`, gardée par `can_read_request`) — membres
+  détenant consultation, **avec `avatar_path`** (migration `20260824150000` : le sélecteur
+  montre un visage). Sœur d'`eligible_assignees`, autre droit. **Inclut l'appelant à dessein** :
+  elle sert aussi à résoudre les noms et photos des mentions déjà écrites, les siennes
+  comprises. Ne pas se proposer soi-même est une décision d'interface, prise à l'écran.
+- `request_right_for(user, org, socle_org, procedure, right)` — enveloppe **générique** du
+  moteur (`permission_pairs_of`) pour un tiers, sans la garde anti-sondage de
+  `user_has_request_right`. **Remplace `can_process_request_for`** : une enveloppe paramétrée
+  par droit plutôt que deux quasi-identiques.
+- Nouveau motif **`mentioned`** dans `notifications.kind` et `notification_preferences.kind`.
+  Il **prime sur `note_added`** : l'affectataire cité reçoit `mentioned` et pas les deux — même
+  règle « un geste, une notification par personne » que pour l'affectation.
+
+⚠️ Le nom figé dans le jeton n'est pas de confiance (`@[Le Maire](uuid-d-un-autre)` s'écrit à la
+main). Le normaliser côté base coûterait une réécriture de chaîne dans un trigger pour un gain
+nul : **l'affichage** préfère toujours le nom vivant de l'annuaire.
+
+### Modèles d'e-mail (`20260826100000`, `20260826100100`, `20260826110000`)
+
+`email_templates` — textes réutilisables du tenant : `name` (unique par tenant, casse et
+espaces ignorés), `description`, `subject`, `body`, `version` (verrou optimiste RM-56),
+traçabilité `created_by` / `updated_by`. Texte BRUT à variables `{{groupe.cle}}`.
+
+**Écriture par policies, pas par RPC** — à rebours des tables `permission_*`, et délibérément :
+une ligne, un prédicat simple (`is_org_admin_anywhere`), aucune lecture de cette table par le
+moteur de droits, aucun secret. Le seul invariant qui dépasse le prédicat est porté par un
+trigger. Lecture ouverte à tout membre (`is_org_member`) : un agent choisira un modèle depuis
+une demande, rien ne justifie de le lui cacher.
+
+**Le catalogue de variables est un contrat** : `email_template_variables()` (liste figée) et
+`email_template_unknown_variables(text)`, toutes deux internes, alimentent
+`t03_email_templates_guard_variables` qui **refuse** l'écriture citant une variable inconnue.
+⚠️ Cette garde doit être **`SECURITY DEFINER`** : en `INVOKER` elle s'exécute comme l'agent,
+qui n'a aucun droit sur le catalogue — c'est le défaut corrigé par `20260826100100`, invisible
+au test tant que celui-ci se contentait de constater « une erreur a été levée ».
+
+**Activation par organisation** (`email_template_organizations`, clé
+`(template_id, socle_org_id)`) — satellite au motif de `permission_profile_organizations` :
+`socle_org_id` est un UUID Socle **nu** (aucune FK ne franchit une frontière de projet), la
+cohérence de tenant étant tenue par `t01_email_template_organizations_scope`.
+
+- **Un modèle neuf n'est activé nulle part.** L'absence de ligne vaut « inactif ».
+- **Pas de descendance implicite** (contrairement au périmètre d'un profil) : chaque
+  organisation est activée nommément.
+- Écriture gouvernée par **`has_admin_scope(tenant, socle_org)`** et non
+  `is_org_admin_anywhere` : ouvrir un modèle à la Voirie est une décision sur la Voirie.
+- Pas de policy UPDATE : on active (insert) ou on désactive (delete).
+- `administrable_organizations(p_org_id)` (RPC `authenticated`) rend les organisations du
+  tenant que l'appelant administre — la LISTE que `has_admin_scope` ne donne que nœud à nœud.
+
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 
 Toutes les policies par couple ci-dessous enveloppent `is_platform_admin()` en `(select …)`
@@ -361,14 +679,21 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `organizations` | membre | plateforme | plateforme | plateforme |
 | `users` | soi / plateforme / tenant partagé | — (trigger) | soi / plateforme (escalade bloquée par trigger) | — |
 | `organization_members` | soi ou admin | admin | admin | admin (garde `t05` : refuse le dernier administrateur racine, service excepté) |
+| `smtp_settings` | — (aucune surface cliente : miroir du Socle) | — (RPC de service) | — (RPC de service) | — (RPC de service) |
 | `request_sequences` | membre (diagnostic) | — | — | — |
 | `requests` | couple **consultation** (`(org, socle_scope_org_id, coalesce(socle_procedure_id, nil_procedure())) IN my_permission_pairs('consultation')`) | couple **création** **et** `source='iris'` | couple **écriture** (USING) ; `with check` = appartenance seule, la finesse par droit vit dans `t11_requests_guard_write` | — |
 | `request_events` | `EXISTS` demande visible (couple consultation, via le RLS de `requests`) | — | — (trigger raise) | — (trigger raise) |
 | `request_assignments` | idem | — | — (trigger raise) | — (trigger raise) |
 | `request_messages` | idem (RM-10 : notes internes comprises dans la consultation) | couple **écriture** + `author_id = auth.uid()` | auteur avec couple écriture **ou** `has_admin_scope` sur l'organisation de la demande | idem UPDATE |
 | `request_attachments` | `EXISTS` demande visible | couple **instruction** + `uploaded_by = auth.uid()` | — | `has_admin_scope` sur l'organisation de la demande |
+| `request_emails` | `EXISTS` demande visible (un échange avec l'usager n'est pas une note interne) | **aucune** — service seul | **aucune** — le corps doit rester celui qui est parti | **aucune** — un e-mail parti ne se dé-envoie pas |
 | `request_links` | `EXISTS` demande visible (la ligne appartient à la source) | couple **écriture** sur la source ; trigger `request_links_check_scope` exige en plus la **consultation** de la cible (hors contexte de service) | — | `has_admin_scope` sur l'organisation de la demande |
 | `integration_deliveries` | membre (diagnostic) | — | — | — |
+| `notifications` | **soi seul** (`user_id = auth.uid()`) | — (triggers DEFINER) | — (RPC `mark_*_read`) | — |
+| `notification_preferences` | soi seul | soi seul | soi seul | soi seul |
+| `email_templates` | membre du tenant | `is_org_admin_anywhere` + `created_by = auth.uid()` | `is_org_admin_anywhere` | `is_org_admin_anywhere` |
+| `email_template_organizations` | membre du tenant du modèle | **`has_admin_scope`** sur l'organisation visée | — (rien à modifier) | **`has_admin_scope`** sur l'organisation visée |
+| `storage.objects` (bucket `avatars`) | son dossier, ou celui d'un membre du même tenant | **son dossier seul** | son dossier seul | son dossier seul |
 | `permission_profiles` | administration quelque part dans le tenant (`is_org_admin_anywhere`), sinon **seulement** les profils auxquels on est attribué | — | — | — |
 | `permission_profile_organizations`, `permission_profile_procedures` | même règle, via jointure vers `permission_profiles` | — | — | — |
 | `permission_profile_assignments` | soi-même ou administration quelque part dans le tenant | — | — | — |
@@ -407,6 +732,86 @@ versionnées (le `db dump` ne couvre pas le schéma `storage` — constat Socle)
 `20260820100300_storage_attachments.sql` puis `20260822100700_policies_droits.sql`.
 
 ## Tests
+
+[`../supabase/tests/echanges-usager.test.sql`](../supabase/tests/echanges-usager.test.sql) —
+**10 groupes, tous passés le 2026-08-26** : la RPC de service ouvre l'échange ET ses pièces en
+une transaction · `settle` pose `sent_at` / tronque le motif d'échec à 500 · la lecture SUIT la
+demande (instructeur **et** simple consultant) · fuite intra-tenant (sous-arbre frère) et
+cross-tenant · **aucune écriture cliente**, pas même par l'expéditeur (INSERT refusé par le RLS
+avec le bon message, UPDATE et DELETE sans effet) · une pièce à `email_id` exige le droit
+d'**instruction** · RPC fermées aux clients et `request_right_for` ouverte au seul
+`service_role` · le moteur de droits distingue instructeur / consultant / autre sous-arbre ·
+cascade depuis la demande · garde de périmètre cross-tenant.
+⚠️ Ce test a établi qu'**une demande n'est pas supprimable par un simple DELETE** : la cascade
+atteint `request_events`, que `t01_request_events_immutable` protège. La purge RGPD (écart 3)
+devra lever cette garde.
+
+[`../supabase/tests/modeles-email.test.sql`](../supabase/tests/modeles-email.test.sql) —
+**8 groupes, tous passés le 2026-08-26** : création par un administrateur · variable inconnue
+refusée **avec le bon message** (le test vérifie le TEXTE du refus : un
+`exception when others` accueillait un `permission denied` comme un refus légitime, et c'est
+ainsi qu'un vrai défaut est passé) · texte entre accolades ordinaire accepté · nom unique par
+tenant · verrou optimiste · étanchéité cross-tenant · un agent lit sans écrire · catalogue hors
+de portée d'`authenticated`.
+
+[`../supabase/tests/modeles-email-organisations.test.sql`](../supabase/tests/modeles-email-organisations.test.sql)
+— **10 groupes, tous passés le 2026-08-26** : un modèle neuf n'est actif nulle part ·
+administrateur racine vs **administrateur borné à une branche** (le cœur du fichier : il active
+sur sa branche, jamais sur le CCAS ni sur la racine) · un agent ne voit aucune organisation
+administrable · étanchéité cross-tenant · garde de cohérence de tenant · cascade à la
+suppression du modèle.
+
+[`../supabase/tests/mentions.test.sql`](../supabase/tests/mentions.test.sql) — **10 scénarios,
+tous passés le 2026-08-24**, transactionnel annulé : extraction et dédoublonnage · mention d'un
+CONSULTANT acceptée et notifiée · mention d'un non-consultant **refusée** et mention d'un membre
+d'un autre tenant **refusée** (attaques directes sur l'insertion, écran contourné) · se
+mentionner soi-même ne notifie pas · l'affectataire cité reçoit `mentioned` et **pas** en plus
+`note_added`, l'affectataire non cité reçoit bien `note_added` · la préférence « mentioned »
+coupée fait taire les deux canaux · `mentionable_users` ne rend que les consultants ·
+`request_right_for` et `message_mentions` hors de portée d'`authenticated`.
+
+[`../supabase/tests/compte-utilisateur.test.sql`](../supabase/tests/compte-utilisateur.test.sql)
+— **9 scénarios, tous passés le 2026-08-24**, transactionnel annulé : je modifie mes noms et le
+chemin de ma photo · **je ne peux pas réécrire mon adresse e-mail**, mais le contexte de service
+le peut (sans quoi la garde bloquerait aussi l'administration légitime) · le profil d'autrui
+reste hors d'atteinte · dépôt et suppression bornés à mon dossier · lecture de la photo d'un
+collègue du même tenant, **jamais** celle d'un autre tenant.
+
+[`../supabase/tests/notifications-email.test.sql`](../supabase/tests/notifications-email.test.sql)
+— **11 scénarios, tous passés le 2026-08-24**, transactionnel annulé : sans préférence les deux
+canaux sont servis (*fail open*) · e-mail coupé → la ligne existe mais l'envoi est `skipped` ·
+la **même préférence s'applique dans un second tenant** (le décor rattache l'agent à deux
+collectivités — c'est tout l'objet de la portée globale) ·
+in-app coupé → ligne **muette** qui ne sert qu'à l'envoi · les deux coupés → **aucune ligne** ·
+une ligne de motif surcharge le défaut `'*'` · le **fan-out** respecte les préférences, pas
+seulement l'envoi unitaire · **double réclamation impossible** · règlement : succès, échec
+temporisé (avec vérification que la temporisation est bien posée), abandon au-delà du plafond ·
+la boîte d'envoi est hors de portée d'`authenticated` · une préférence n'est lisible et
+écrivable que par son titulaire.
+
+[`../supabase/tests/notifications.test.sql`](../supabase/tests/notifications.test.sql) — **11
+scénarios, tous passés le 2026-08-24**, transactionnel annulé : les cinq motifs · **jamais pour
+son propre geste** (changement de statut, note, auto-affectation puis auto-désaffectation) · le
+fan-out sert l'**instruction** et ni la consultation seule ni un autre couple (organisation,
+démarche) · une demande ingérée (acteur NULL) sert tout le périmètre sans inventer d'acteur ·
+le **corps de la note interne ne fuite pas** dans le payload · un client ne voit que les
+siennes et ne peut ni en fabriquer, ni en modifier, ni en supprimer · `push_notification` et
+`can_process_request_for` hors de portée d'`authenticated` · les RPC d'accusé de lecture ne
+touchent que ses propres lignes · la table est bien publiée en temps réel.
+
+[`../supabase/tests/messagerie.test.sql`](../supabase/tests/messagerie.test.sql) — **12
+scénarios, tous passés le 2026-08-23** (version « miroir du Socle ») : les RPC de saisie et
+leurs gardes n'existent plus (`to_regprocedure`) · le service écrit le miroir en normalisant
+(hôte détouré, adresse en minuscules) et trace la provenance (`socle_org_id`,
+`socle_updated_at`) · secret rangé au Vault, déchiffré par `smtp_config_for_org` seul ·
+**aucune surface cliente** : un administrateur ne lit même plus `host`, et INSERT/UPDATE/DELETE
+directs sont refusés · les quatre fonctions de service sont hors de portée d'un client
+authentifié · un mot de passe changé **remplace** le secret sans doublon · un mot de passe
+retiré côté Socle **supprime** le secret (miroir strict, à l'inverse de l'ancienne saisie où le
+champ vide valait « inchangé ») · déclaration inexploitable refusée, port hors bornes ramené à
+587 · un agent de branche est servi par le relais de son tenant · effacement du miroir emportant
+le secret Vault (et second effacement honnête) · étanchéité cross-tenant · l'invitation d'un
+agent reste ouverte à tout administrateur du tenant.
 
 [`../supabase/tests/fondations.test.sql`](../supabase/tests/fondations.test.sql) — test SQL
 transactionnel **toujours annulé** (l'exception finale porte le verdict, aucune donnée ne
@@ -472,7 +877,10 @@ empêche l'enregistrement d'une migration).
 2. **Outbox non branchée** : `integration_deliveries` existe, l'émission d'événements et les
    workers arrivent en phase 4 (webhook signé + réconciliation).
 3. **Purge RGPD** : colonnes prêtes (`retention_until`, `purged_at`), la procédure
-   `service_role` de purge reste à écrire (phase 5).
+   `service_role` de purge reste à écrire (phase 5). ⚠️ Elle devra **lever l'immuabilité de
+   `request_events`** : sans cela un `delete from requests` échoue, la cascade butant sur
+   `t01_request_events_immutable` (constaté par `echanges-usager.test.sql`). Les satellites,
+   `request_emails` compris, cascadent sans difficulté une fois cette garde levée.
 4. **Advisors** : les WARN 0029 sur les helpers (fondations + profils de droits) sont assumés
    (voir plus haut) ; `rls_auto_enable` a été verrouillé (migration 5).
 5. **FK non indexées sur l'audit** : `permission_audit_log.actor_id`/`target_user_id`

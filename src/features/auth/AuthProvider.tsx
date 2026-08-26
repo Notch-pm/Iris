@@ -11,6 +11,10 @@ interface AuthContextValue {
   profile: Profile | null;
   loading: boolean;
   signOut: () => Promise<void>;
+  /** Relit `public.users` après une modification faite par l'utilisateur
+   *  lui-même (nom, photo) — « Mon compte ». Ne touche PAS à `loading` : le
+   *  shell ne doit pas se démonter pour un rafraîchissement de profil. */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = React.createContext<AuthContextValue | undefined>(undefined);
@@ -75,8 +79,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  // ⚠️ Volontairement SANS setLoading : passer `loading` à true ferait
+  // retomber les routes protégées sur leur écran de chargement et démonterait
+  // la page en cours — exactement le piège que le keyage sur `userId`
+  // ci-dessus évite. Un rafraîchissement de profil est silencieux.
+  const refreshProfile = React.useCallback(async () => {
+    if (!userId) return;
+    const { data } = await supabase.from("users").select("*").eq("id", userId).maybeSingle();
+    setProfile(data);
+  }, [userId]);
+
   return (
-    <AuthContext.Provider value={{ session, profile, loading, signOut }}>
+    <AuthContext.Provider value={{ session, profile, loading, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

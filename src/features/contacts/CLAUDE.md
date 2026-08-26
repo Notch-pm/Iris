@@ -30,10 +30,22 @@ navigateur le 2026-08-20 dans le parcours de création.
   identifiant fort ou nom ≥ 2 caractères, réponses périmées ignorées — aucun bouton
   « rechercher ») → candidats (score relatif + raisons, étiquette « Nom seul — à
   vérifier », **choix = clic explicite sur la fiche**, jamais automatique) ; sans
-  correspondance : « Créer un nouvel usager » (contacts-api, rejeu anti-doublon juste avant :
-  utiliser le candidat ou « créer quand même ») ou « Poursuivre sans rapprochement »
-  (bouton explicite, plus de case d'assomption) ; **dépôt anonyme uniquement si la démarche
-  ne rend aucune identité obligatoire** (`allowsAnonymous` du moteur partagé).
+  correspondance : **« Créer un nouvel usager »** (contacts-api, rejeu anti-doublon juste
+  avant : utiliser le candidat ou « créer quand même ») ; **dépôt anonyme uniquement si la
+  démarche ne rend aucune identité obligatoire** (`allowsAnonymous` du moteur partagé).
+  - ⚠️ **« Poursuivre sans rapprochement » a été RETIRÉ du parcours normal** (décision PO
+    2026-08-26) : sans correspondance, c'est une nouvelle personne, et une nouvelle personne
+    se crée dans le Socle. Une demande instruite pendant des semaines contre une identité qui
+    n'est nulle part dans le référentiel n'est rattrapable par personne.
+  - **Sortie de secours, sur panne AVÉRÉE seulement** (`isSocleOutage`, pur/testé) : le bouton
+    ne réapparaît qu'après un échec de création dû à une panne (`socle_unavailable`,
+    `socle_auth_failed`, `socle_error`, ou une erreur sans code = l'edge function n'a pas
+    répondu). Un **refus métier** du Socle (`bad_request`, `conflict` : SIRET déjà pris,
+    invariant de type) ne l'ouvre JAMAIS — il se corrige au formulaire, sinon la porte se
+    contourne à volonté. L'agent a un usager en face de lui : on ne le renvoie pas chez lui.
+  - L'identité qui part alors vient du formulaire de **création** (`declaredFromNewContact`),
+    pas de celui de recherche — c'est la saisie la plus complète et la plus récente. Le
+    serveur pose l'anomalie `usager_a_creer_dans_socle` (jamais sur un drapeau du navigateur).
 - **Fiche usager** (`/usagers/:contactId`, `UsagerPage.tsx`, 2026-08-22 — reprise de la
   représentation de la fiche contact de Clara) : pile verticale de cartes pleine largeur,
   sans onglets ni rail. **Carte d'identité** (icône du public, nom, badges public / statut
@@ -70,7 +82,56 @@ navigateur le 2026-08-20 dans le parcours de création.
     le bouton n'apparaît qu'avec un droit de création sur au moins une démarche du cache
     (reflet de confort, le serveur revalide). Verrouillage et cas de refus : voir
     [`src/features/requests/CLAUDE.md`](../requests/CLAUDE.md).
-  - Entrée : bouton « Voir la fiche » du bloc Usager de la fiche d'instruction.
+  - Entrées : bouton « Voir la fiche » du bloc Usager de la fiche d'instruction — et, depuis
+    le 2026-08-26, le bouton **« Modifier »** du même bloc, qui ouvre `UsagerEditDialog`
+    **sans quitter la demande** (la fiche demande relit le Socle avec `useSocleContact`,
+    exactement comme cette page). Même droit, même autorité : la correction va au Socle, la
+    fiche est relue, et le `requester_snapshot` de la demande — la pièce du dossier — ne
+    bouge pas. Détail : [`src/features/requests/CLAUDE.md`](../requests/CLAUDE.md),
+    « Identité vivante de l'usager ».
+- **Liste des usagers** (`/usagers`, `UsagersListPage.tsx` + `usagers.ts` pur/testé +
+  `useUsagers.ts`, 2026-08-23 — reprise de l'annuaire des contacts de Clara) : entrée de rail
+  dédiée, recherche par mot-clé, filtres, tri par colonne, export CSV de toute la sélection
+  filtrée. Les filtres du **fichier domiciliaire** de Clara (grands anniversaires, mariages)
+  ne sont **pas** repris : hors sujet ici.
+  - **Gabarit large** (`useWideLayout`, comme la liste des demandes) : le tableau prend
+    toute la largeur de l'écran ; chapeau et barre de filtres restent bornés (largeur de
+    lecture / listes déroulantes de taille utile).
+  - **Deux sources qu'aucun serveur ne joint** : les fiches viennent du Socle
+    (`socle-proxy /v1/contacts/list`, pagination par `offset`, aucune rétention —
+    `gcTime: 0`, comme la fiche usager), les compteurs de demandes viennent d'Iris
+    (RPC `contact_request_counts`, `SECURITY INVOKER` : **bornée par le RLS au périmètre du
+    lecteur**, d'où la colonne « Demandes » et non « toutes ses demandes »). Le
+    rapprochement, le tri, les filtres et la pagination sont donc **client**, sur l'ensemble
+    rapatrié — plafonné à `USAGERS_MAX` (5 000) avec **mention explicite** de la troncature,
+    jamais silencieuse.
+  - **Filtres** (décision d'implémentation 2026-08-23) : nombre de demandes et nombre de
+    demandes en cours par **paliers** (« aucune », « au moins 1 », « 2 et plus »…) — les
+    mêmes grandeurs étant aussi des **colonnes triables**, ce qui couvre le « qui en a le
+    plus » —, quartier (observé dans les fiches rapatriées, plus « Sans quartier » ; le
+    référentiel des quartiers vit dans le Socle et n'est pas mis en cache), type d'usager,
+    actifs / archivés / tous, et recherche par mot-clé.
+  - **`status` est le SEUL filtre servi par le Socle** : il change ce qui est chargé (les
+    fiches archivées ne sont pas rapatriées tant qu'on ne les demande pas), donc la clé de
+    requête. Tous les autres filtrent en mémoire, sans aller-retour.
+  - **Recherche** (`matchesSearch`, pur) : accents et casse ignorés, TOUS les mots exigés
+    dans n'importe quel ordre, sur identité / courriel / téléphones / adresse / commune /
+    code postal / quartier / SIRET. Un mot fait de chiffres est aussi cherché sur les seuls
+    chiffres de la fiche (« 06 12 34 » trouve `0612345678`).
+  - **Droit requis** : le même que « Nouvelle demande » et que la fiche usager — au moins une
+    démarche créable (`useCanBrowseUsagers`), qui est exactement la garde de `socle-proxy`
+    sur `/v1/contacts/*`. L'entrée de rail n'apparaît que dans ce cas et la page explique le
+    refus si on y arrive par l'URL ; l'edge function reste l'autorité.
+  - Pas de création d'usager depuis cette page : elle se fait dans le parcours de création de
+    demande (rejeu anti-doublon compris). Ligne cliquable → fiche usager.
 - Le `requester_snapshot` est construit CÔTÉ SERVEUR au dépôt (contact rapproché relu depuis
   Socle) — la résolution ne transporte que le choix de l'agent. `internal_notes` n'existe
-  nulle part côté Iris (sanitisation proxy + whitelists).
+  nulle part côté Iris (sanitisation proxy + whitelists). Immuable ne veut pas dire seul
+  affiché : la fiche demande montre l'identité **relue** et garde le dépôt à côté (voir
+  « Identité vivante de l'usager »). La whitelist `contactIdentitySnapshot`
+  (`@fn/_shared/identity/declared.ts`) sert aux DEUX — construire le snapshot au dépôt, et
+  normaliser la fiche du jour : une seule table de clés, donc des écarts comparables champ par
+  champ. Ce module porte aussi `DECLARED_KEYS`, la **seule** table de synonymes de clés
+  (contacts-api / publics Iris / formats partenaires), partagée par l'affichage
+  (`requesterIdentity`) et par l'écriture dans le Socle (ingestion) — deux listes
+  divergeraient au premier format partenaire un peu exotique.

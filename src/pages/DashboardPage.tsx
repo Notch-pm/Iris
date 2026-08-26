@@ -79,7 +79,7 @@ export function DashboardPage() {
           ) : null}
           {isAdmin ? (
             <Button asChild variant="outline" size="sm">
-              <Link to="/parametres/droits">
+              <Link to="/parametres">
                 <Settings /> Paramètres
               </Link>
             </Button>

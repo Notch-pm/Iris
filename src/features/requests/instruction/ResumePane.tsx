@@ -1,26 +1,30 @@
 // Onglet « Résumé » : clôture (le cas échéant), informations saisies
-// (étiquetées par le snapshot de démarche), lieu d'intervention (à venir) et
-// demandes liées.
+// (étiquetées par le snapshot de démarche), lieu d'intervention (quand la
+// démarche pose la question) et demandes liées.
 
 import { Link } from "react-router-dom";
-import { ExternalLink, MapPin } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "../StatusBadge";
 import { MOTIF_LABELS, type ClosureMotif } from "../statuts";
 import type { RequestLink, RequestRow, RequestSummary } from "../useRequests";
-import { InfoCell, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
+import { InfoCell, Surface, SurfaceHead } from "@/components/ui/surface";
 import { channelLabel, linkReason, type AnswerRow } from "./instruction";
+import { LieuIntervention } from "./LieuIntervention";
+import type { InterventionLocation } from "./lieu";
 
 interface Props {
   request: RequestRow;
   answers: AnswerRow[];
   formVersion: number | null;
+  /** Adresse d'intervention de la démarche — `null` si elle ne la demande pas. */
+  lieu: InterventionLocation | null;
   links: RequestLink[];
   linkedSummaries: RequestSummary[];
 }
 
-export function ResumePane({ request: r, answers, formVersion, links, linkedSummaries }: Props) {
+export function ResumePane({ request: r, answers, formVersion, lieu, links, linkedSummaries }: Props) {
   const channel = channelLabel(r.channel);
   const internalLinks = links.filter((l) => l.target_request_id);
   const externalLinks = links.filter((l) => !l.target_request_id);
@@ -72,16 +76,7 @@ export function ResumePane({ request: r, answers, formVersion, links, linkedSumm
         ) : null}
       </Surface>
 
-      <Surface className="opacity-60" aria-disabled="true">
-        <SurfaceHead
-          title="Lieu d'intervention"
-          sub="Localisation depuis les champs d'adresse du formulaire — à venir"
-          action={<Button type="button" variant="outline" size="sm" {...SOON}>Itinéraire</Button>}
-        />
-        <div className="flex h-[120px] items-center justify-center gap-2 rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-          <MapPin className="size-4" aria-hidden="true" /> Carte disponible dans une prochaine version
-        </div>
-      </Surface>
+      {lieu ? <LieuIntervention lieu={lieu} /> : null}
 
       <Surface>
         <SurfaceHead title="Demandes liées" sub={hasLinks ? undefined : "Aucune demande liée"} />

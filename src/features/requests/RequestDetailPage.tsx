@@ -15,6 +15,9 @@ import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { useSocleOrganizationsCatalog } from "@/features/socle/useSocleCatalog";
+import { useSocleContact } from "@/features/contacts/useContacts";
+import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
+import { UsagerEditDialog } from "@/features/contacts/UsagerEditDialog";
 import { isAdminOn, rightsFor } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
@@ -24,22 +27,23 @@ import {
   type RequestRights, type RequestStatus, type TransitionSpec,
 } from "./statuts";
 import {
-  createAttachmentUrl, useAddMessage, useAssignRequest, useDeleteMessage, useEligibleAssignees,
-  useRequest, useRequestAttachments, useRequestEvents, useRequestLinks, useRequestMessages,
-  useRequestSummaries, useRequesterRequests, useTenantMembers, useUpdatePriority,
+  createAttachmentUrl, useAddMessage, useAssignRequest, useDeleteMessage, useEligibleAssignees, useMentionableUsers,
+  useRequest, useRequestAttachments, useRequestEmails, useRequestEvents, useRequestLinks,
+  useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useUpdatePriority,
   type RequestAttachment, type TenantMember,
 } from "./useRequests";
+import { useSendRequestEmail } from "./instruction/useSendRequestEmail";
 import { ActivityPane } from "./instruction/ActivityPane";
 import { DocumentsPane } from "./instruction/DocumentsPane";
-import { EchangesPane } from "./instruction/EchangesPane";
+import { EchangesPane, type SendEmailPayload } from "./instruction/EchangesPane";
 import { NotesPane } from "./instruction/NotesPane";
 import { ResumePane } from "./instruction/ResumePane";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
-import { SOON } from "@/components/ui/surface";
 import {
   activityItems, attachmentFieldLabels, buildStages, dueView, formAnswers, formSchemaVersion,
-  headerSubtitle, memberName, priorityOption, requesterIdentity, splitTransitions,
+  headerSubtitle, memberName, priorityOption, requesterView, splitTransitions,
 } from "./instruction/instruction";
+import { interventionLocation } from "./instruction/lieu";
 
 type TabKey = "resume" | "docs" | "echanges" | "notes" | "activite";
 
@@ -60,10 +64,13 @@ export function RequestDetailPage() {
   const events = useRequestEvents(id);
   const attachments = useRequestAttachments(id);
   const messages = useRequestMessages(id);
+  const emails = useRequestEmails(id);
   const links = useRequestLinks(id);
   const members = useTenantMembers(orgId);
   const eligibleAssignees = useEligibleAssignees(id);
+  const mentionables = useMentionableUsers(id);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
+  const sendEmail = useSendRequestEmail();
   const r = request.data ?? null;
   const linkTargets = React.useMemo(
     () => (links.data ?? []).map((l) => l.target_request_id).filter((x): x is string => Boolean(x)),
@@ -71,6 +78,14 @@ export function RequestDetailPage() {
   );
   const linkedSummaries = useRequestSummaries(linkTargets);
   const otherRequests = useRequesterRequests(orgId, r?.socle_contact_id ?? null, id ?? "");
+  // Identité de l'usager RELUE dans le Socle (source de vérité) : le
+  // `requester_snapshot` fige ce qui a été retenu au dépôt, mais l'agent doit
+  // voir — et pouvoir corriger — la fiche telle qu'elle est aujourd'hui.
+  // Sans rétention (`gcTime: 0`), comme la page `/usagers/:contactId`.
+  // Le droit reflété est celui que `socle-proxy` exige sur /v1/contacts/*
+  // (création dans le tenant) ; sans lui, la fiche retombe sur le dépôt.
+  const canBrowseUsagers = useCanBrowseUsagers();
+  const socleContact = useSocleContact(orgId, canBrowseUsagers ? r?.socle_contact_id ?? null : null);
 
   const assignRequest = useAssignRequest();
   const updatePriority = useUpdatePriority();
@@ -79,6 +94,7 @@ export function RequestDetailPage() {
 
   const [tab, setTab] = React.useState<TabKey>("resume");
   const [menuOpen, setMenuOpen] = React.useState(false);
+  const [usagerEditOpen, setUsagerEditOpen] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   // Le texte est conservé pendant le fondu de sortie (visible=false).
   const [toast, setToast] = React.useState<{ text: string; visible: boolean }>({ text: "", visible: false });
@@ -129,6 +145,9 @@ export function RequestDetailPage() {
   };
   const writer = canWriteWith(rr);
   const isAdmin = canAdminWith(rr);
+  // Écrire à l'usager exige le droit d'INSTRUCTION — miroir de la garde de
+  // `send-request-email` (request_right_for … 'instruction'), qui reste l'autorité.
+  const canInstruct = canProcessWith(rr);
   const status = r.status as RequestStatus;
   const transitions = writer ? allowedTransitionsFor(status, rr) : [];
 
@@ -144,13 +163,24 @@ export function RequestDetailPage() {
   });
 
   // ---- Dérivés purs ---------------------------------------------------------------
-  const identity = requesterIdentity(r.requester_snapshot, r.identity_status);
-  const answers = formAnswers(r.procedure_snapshot, r.form_data);
+  // Identité affichée = fiche Socle du jour si elle a pu être relue, dépôt sinon
+  // (`view.changes` porte l'écart, `view.deposited` la pièce du dossier).
+  const view = requesterView(r.requester_snapshot, r.identity_status, socleContact.data ?? null);
+  const identity = view.identity;
+  // Les champs d'adresse partent dans le bloc « Lieu d'intervention » : ils ne
+  // sont pas répétés dans les informations saisies.
+  const lieu = interventionLocation(r.procedure_snapshot, r.form_data);
+  const lieuKeys = new Set(lieu?.keys ?? []);
+  const answers = formAnswers(r.procedure_snapshot, r.form_data).filter((a) => !lieuKeys.has(a.key));
   const formVersion = formSchemaVersion(r.procedure_snapshot);
   const fieldLabels = attachmentFieldLabels(r.procedure_snapshot);
   const due = dueView(r.due_at, now);
   const subtitle = headerSubtitle({
-    requesterName: identity.name, channel: r.channel, source: r.source,
+    // Pendant la relecture, aucun nom plutôt que celui du dépôt : le voir
+    // remplacé sous les yeux dans le titre de la page est exactement ce qu'on
+    // vient de supprimer du bloc Usager.
+    requesterName: socleContact.isLoading ? null : identity.name,
+    channel: r.channel, source: r.source,
     receivedAt: r.received_at, dueAt: r.due_at,
   });
   const stages = buildStages({
@@ -168,7 +198,9 @@ export function RequestDetailPage() {
 
   const tabs: { key: TabKey; label: string; count: number | null }[] = [
     { key: "resume", label: "Résumé", count: null },
-    { key: "docs", label: "Documents", count: attachmentList.length },
+    // Le compteur suit l'onglet : les pièces d'un e-mail sortant vivent sous
+    // leur échange, pas dans « Pièces de la demande ».
+    { key: "docs", label: "Documents", count: attachmentList.filter((a) => !a.email_id).length },
     { key: "echanges", label: "Échanges", count: null },
     { key: "notes", label: "Notes internes", count: noteList.length },
     { key: "activite", label: "Activité", count: null },
@@ -228,7 +260,19 @@ export function RequestDetailPage() {
             <p className="text-[13px] text-muted-foreground">{subtitle}</p>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" {...SOON}>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!canInstruct || archived || !identity.email}
+              title={
+                !canInstruct ? "Exige le droit d'instruction sur cette demande"
+                  : archived ? "Demande archivée"
+                  : !identity.email ? "Aucune adresse de courriel dans l'identité déposée"
+                  : undefined
+              }
+              onClick={() => setTab("echanges")}
+            >
               <MessageSquare /> Écrire à l'usager
             </Button>
             {writer && primary ? (
@@ -309,6 +353,7 @@ export function RequestDetailPage() {
                   request={r}
                   answers={answers}
                   formVersion={formVersion}
+                  lieu={lieu}
                   links={links.data ?? []}
                   linkedSummaries={linkedSummaries.data ?? []}
                 />
@@ -321,11 +366,40 @@ export function RequestDetailPage() {
                   onDownload={(a) => void openAttachment(a, true)}
                 />
               ) : null}
-              {tab === "echanges" ? <EchangesPane identity={identity} /> : null}
+              {tab === "echanges" ? (
+                <EchangesPane
+                  request={r}
+                  identity={identity}
+                  emails={emails.data ?? []}
+                  attachments={attachmentList}
+                  members={memberList}
+                  events={events.data ?? []}
+                  tenantName={current?.organizationName ?? ""}
+                  canInstruct={canInstruct}
+                  archived={archived}
+                  sending={sendEmail.isPending}
+                  onSend={(payload: SendEmailPayload) => sendEmail.mutateAsync({
+                    requestId: r.id,
+                    organizationId: r.organization_id,
+                    subject: payload.subject,
+                    body: payload.body,
+                    files: payload.files,
+                    templateId: payload.templateId,
+                    templateName: payload.templateName,
+                  }).then(() => { flash("Message envoyé à l'usager."); })}
+                  onDownload={(a) => void openAttachment(a, true)}
+                />
+              ) : null}
               {tab === "notes" ? (
                 <NotesPane
                   messages={noteList}
                   members={memberList}
+                  mentionables={(mentionables.data ?? []).map((u) => ({
+                    userId: u.user_id,
+                    displayName: u.display_name,
+                    email: u.email,
+                    avatarPath: u.avatar_path,
+                  }))}
                   canWrite={writer}
                   archived={archived}
                   currentUserId={session?.user.id ?? null}
@@ -377,15 +451,38 @@ export function RequestDetailPage() {
             />
             <UsagerCard
               identity={identity}
+              changes={view.changes}
               socleContactId={r.socle_contact_id}
+              identityError={socleContact.isError}
+              identityPending={socleContact.isLoading}
               otherRequests={otherRequests.data ?? []}
               otherLoading={otherRequests.isLoading}
+              // Reflet du DROIT, pas de l'état de chargement : la carte pose le
+              // bouton dès le départ et le désactive tant que la fiche manque.
+              // `isLoading` reste faux pour une requête désactivée (sans droit)
+              // comme pour un rafraîchissement après enregistrement : pas de
+              // squelette au retour d'une modification.
+              canEdit={canBrowseUsagers && Boolean(r.socle_contact_id)}
+              onEdit={() => setUsagerEditOpen(true)}
             />
           </div>
         </div>
       </div>
 
       <TransitionDialog runner={runner} members={eligibleMembers} />
+
+      {/* Correction de l'usager sans quitter la demande : l'écriture va au
+          SOCLE (socle-proxy → contacts-api), la fiche est ensuite relue.
+          Le `requester_snapshot` de la demande, lui, ne bouge pas. */}
+      {socleContact.data ? (
+        <UsagerEditDialog
+          open={usagerEditOpen}
+          onOpenChange={setUsagerEditOpen}
+          organizationId={orgId}
+          contact={socleContact.data}
+          onSaved={flash}
+        />
+      ) : null}
 
       <div
         aria-live="polite"

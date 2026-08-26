@@ -17,7 +17,11 @@ interface Props {
 }
 
 export function DocumentsPane({ attachments, fieldLabels, onOpen, onDownload }: Props) {
-  const n = attachments.length;
+  // Les pièces d'un e-mail SORTANT (`email_id`) appartiennent à leur échange :
+  // les mêler ici les ferait passer pour des pièces déposées par l'usager.
+  // Elles s'affichent dans l'onglet « Échanges », sous leur message.
+  const deposited = attachments.filter((a) => !a.email_id);
+  const n = deposited.length;
   return (
     <div className="flex flex-col gap-3.5">
       <Surface>
@@ -28,7 +32,7 @@ export function DocumentsPane({ attachments, fieldLabels, onOpen, onDownload }: 
         />
         {n > 0 ? (
           <div className="flex flex-col gap-2">
-            {attachments.map((a) => {
+            {deposited.map((a) => {
               const ext = attachmentExt(a.file_name, a.mime_type);
               const status = COPY_STATUS[a.copy_status] ?? { label: a.copy_status, tone: "neutral" as const };
               const meta = [

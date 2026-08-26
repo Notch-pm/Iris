@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  identityStatus,
   slugifyFileName,
   validateAttachmentList,
   validateEnvelope,
@@ -99,21 +98,6 @@ describe("validateEnvelope", () => {
     expect(r.ok).toBe(true);
     expect(validateEnvelope({ ...valid, context: { imprevu: 1 } }).ok).toBe(false);
     expect(validateEnvelope({ ...valid, links: [{ type: "courrier" }] }).ok).toBe(false);
-  });
-});
-
-describe("identityStatus", () => {
-  const parse = (input: object) => {
-    const r = validateEnvelope(input);
-    if (!r.ok) throw new Error(r.message);
-    return r.value;
-  };
-
-  it("rapprochee avec un contact Socle, anonyme sur anonymat assumé, non_rapprochee sinon", () => {
-    expect(identityStatus(parse({ ...valid, socle_contact_id: ROOT }))).toBe("rapprochee");
-    const anon = { ...valid, requester: { anonymous: true } };
-    expect(identityStatus(parse(anon))).toBe("anonyme");
-    expect(identityStatus(parse(valid))).toBe("non_rapprochee");
   });
 });
 

@@ -5,7 +5,8 @@
 
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Download, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Download, Map, Plus } from "lucide-react";
+import { useWideLayout } from "@/components/layout/shellLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select } from "@/components/ui/select";
@@ -52,7 +53,7 @@ function RequestRow({ r }: { r: RequestListItem }) {
           {r.reference}
         </Link>
       </td>
-      <td className="max-w-[280px] truncate px-4 py-3">{r.subject}</td>
+      <td className="max-w-[280px] truncate px-4 py-3 xl:max-w-[560px]">{r.subject}</td>
       <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
       <td className="px-4 py-3">{r.socle_organization_label ?? "—"}</td>
       <td className="px-4 py-3">{r.socle_procedure_label ?? "Demande libre"}</td>
@@ -64,6 +65,7 @@ function RequestRow({ r }: { r: RequestListItem }) {
 }
 
 export function RequestsListPage() {
+  useWideLayout();
   const { current, rights } = useTenant();
   // Filtre initial depuis l'URL (fil d'Ariane de la fiche : `/demandes?status=…`).
   const [searchParams] = useSearchParams();
@@ -171,17 +173,25 @@ export function RequestsListPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Demandes</h1>
           <Badge variant="muted">{total}</Badge>
         </div>
-        {canCreate ? (
-          <Button asChild>
-            <Link to="/demandes/nouvelle">
-              <Plus />
-              Nouvelle demande
+        <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to="/carte">
+              <Map />
+              Carte
             </Link>
           </Button>
-        ) : null}
+          {canCreate ? (
+            <Button asChild>
+              <Link to="/demandes/nouvelle">
+                <Plus />
+                Nouvelle demande
+              </Link>
+            </Button>
+          ) : null}
+        </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-2 md:grid-cols-5" aria-label="Filtres">
+      <div className="grid grid-cols-2 gap-2 md:max-w-[1240px] md:grid-cols-5" aria-label="Filtres">
         <Select aria-label="Filtrer par statut" value={filters.status} onChange={setFilter("status")}>
           <option value="">Tous les statuts</option>
           {Object.entries(STATUS_LABELS).map(([value, label]) => (

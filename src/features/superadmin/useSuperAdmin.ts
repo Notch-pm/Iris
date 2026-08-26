@@ -1,10 +1,13 @@
 // Données de la zone superadmin. Lecture et appartenances passent par le RLS
-// (l'admin plateforme court-circuite les helpers) ; seules la création de
-// compte, la réinitialisation de mot de passe et la suppression passent par
+// (l'admin plateforme court-circuite les helpers) ; seules l'invitation d'un
+// compte, l'envoi d'un lien de mot de passe et la suppression passent par
 // l'edge function admin-users (service role).
+//
+// Aucun mot de passe ne transite plus par cet écran : un compte s'ouvre par un
+// lien d'activation envoyé à son titulaire (docs/emails.md).
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { FunctionsHttpError } from "@supabase/supabase-js";
+import { invokeAdminUsers } from "@/lib/adminUsers";
 import { supabase } from "@/lib/supabase";
 import type { Tables } from "@/types/database.types";
 import type { SocleOrgRow } from "./socleOrgTree";
@@ -16,18 +19,6 @@ export interface MembershipRow {
   organization_id: string;
   user_id: string;
   role: string;
-}
-
-async function invokeAdmin<T>(body: Record<string, unknown>): Promise<T> {
-  const { data, error } = await supabase.functions.invoke("admin-users", { body });
-  if (error) {
-    if (error instanceof FunctionsHttpError) {
-      const payload = await error.context.json().catch(() => null);
-      throw new Error(payload?.error?.message ?? "Erreur serveur.");
-    }
-    throw new Error("Service d'administration injoignable.");
-  }
-  return data as T;
 }
 
 export function useAllTenants() {
@@ -140,58 +131,60 @@ function useInvalidateUsers() {
   };
 }
 
-export interface CreatedAccount {
+export interface InviteResult {
   user_id: string;
   email: string;
-  /** Affiché UNE SEULE FOIS à l'admin plateforme. */
-  password: string;
+  /** Un compte a été créé (faux si un compte existant a simplement été rattaché). */
+  invited: boolean;
+  email_sent: boolean;
+  /** Renseigné quand le compte est créé mais que le message n'est pas parti. */
+  email_error?: string;
+  message?: string;
 }
 
-export function useCreateUser() {
+/**
+ * Invitation : création du compte, rattachement au tenant et envoi du lien
+ * d'activation sont faits d'un bloc côté serveur — plus de compte à moitié
+ * créé si le rattachement échoue.
+ */
+export function useInviteUser() {
   const invalidate = useInvalidateUsers();
   return useMutation({
     mutationFn: async (input: {
       email: string;
       firstName: string;
       lastName: string;
-      membership: { organizationId: string } | null;
-    }): Promise<CreatedAccount> => {
-      const created = await invokeAdmin<CreatedAccount>({
-        action: "create_user",
+      organizationId: string | null;
+    }): Promise<InviteResult> =>
+      invokeAdminUsers<InviteResult>({
+        action: "invite_user",
         email: input.email,
         first_name: input.firstName,
         last_name: input.lastName,
-      });
-      if (input.membership) {
-        // RM-43/RM-44 : le rattachement est un simple accès au tenant, sans
-        // rôle — `role` n'est plus qu'un filet de compatibilité, écrasé côté
-        // serveur par la colonne dérivée (administration = un profil actif
-        // is_admin attribué). L'attribution d'un profil de droits est un
-        // geste du tenant (Paramètres), pas de la plateforme.
-        const { error } = await supabase.from("organization_members").insert({
-          organization_id: input.membership.organizationId,
-          user_id: created.user_id,
-          role: "agent",
-        } as never);
-        if (error) throw new Error("Compte créé, mais rattachement au tenant en échec : " + error.message);
-      }
-      return created;
-    },
+        organization_id: input.organizationId,
+      }),
     onSuccess: () => invalidate(),
   });
 }
 
-export function useResetPassword() {
+export interface PasswordResetResult {
+  user_id: string;
+  email: string;
+  email_sent: boolean;
+}
+
+/** Envoie au titulaire un lien de réinitialisation — l'admin ne voit aucun secret. */
+export function useSendPasswordReset() {
   return useMutation({
-    mutationFn: async (userId: string): Promise<CreatedAccount> =>
-      invokeAdmin<CreatedAccount>({ action: "set_password", user_id: userId }),
+    mutationFn: async (userId: string): Promise<PasswordResetResult> =>
+      invokeAdminUsers<PasswordResetResult>({ action: "send_password_reset", user_id: userId }),
   });
 }
 
 export function useDeleteUser() {
   const invalidate = useInvalidateUsers();
   return useMutation({
-    mutationFn: async (userId: string) => invokeAdmin({ action: "delete_user", user_id: userId }),
+    mutationFn: async (userId: string) => invokeAdminUsers({ action: "delete_user", user_id: userId }),
     onSuccess: () => invalidate(),
   });
 }

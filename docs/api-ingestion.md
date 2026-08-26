@@ -2,7 +2,7 @@
 
 > **Public** : équipes intégrant un émetteur de demandes vers Iris (futur connecteur Clara,
 > portail citoyen, partenaire tiers) · **Question traitée** : comment s'authentifier et créer
-> des demandes dans Iris, sans rien modifier côté Iris ? · **Dernière mise à jour** : 2026-08-20
+> des demandes dans Iris, sans rien modifier côté Iris ? · **Dernière mise à jour** : 2026-08-23
 
 Iris expose une **API d'ingestion générique et multi-source** : la même enveloppe, le même
 contrat et la même authentification pour toute application autorisée. Il n'existe **aucune
@@ -13,7 +13,8 @@ simples *sources enregistrées*.
 |---|---|
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
-| Version | `1.1.0` — politique v1 : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus |
+| Documentation lisible | `https://<app-iris>/api-doc` — le même contrat rendu par Redoc, consultable **sans compte** (motif `/api-doc` du Socle) |
+| Version | `1.2.0` — politique v1 : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -78,9 +79,20 @@ Points de contrat :
   depuis Socle : vous ne pouvez pas l'imposer (une clé `procedure_snapshot` dans l'enveloppe
   → 400 whitelist). Si Socle est injoignable au dépôt, la demande n'est **pas** refusée :
   snapshot minimal + anomalie `referentiel_indisponible` à lever à la qualification.
-- **Identité du demandeur** : `socle_contact_id`, **ou** `requester` (identité déclarée,
-  conservée intégralement comme pièce du dossier), **ou** `requester: { "anonymous": true }`
-  (anonymat assumé). Au moins l'un des trois.
+- **Identité du demandeur** : `socle_contact_id`, **ou** `requester` (identité déclarée),
+  **ou** `requester: { "anonymous": true }` (anonymat assumé). Au moins l'un des trois.
+  - **Depuis la 1.2.0, Iris tient le référentiel à jour pour vous** : sans `socle_contact_id`,
+    l'identité est rapprochée d'une fiche usager du Socle, et une fiche est **créée** à défaut.
+    La demande revient en `identity_status: "rapprochee"`, avec le `socle_contact_id` obtenu.
+  - ⚠️ **Envoyez un identifiant fort dès que vous en avez un** (`email`, un téléphone, ou
+    `siret`) : c'est la seule chose qui permet de RÉUTILISER une fiche existante. Un nom
+    identique ne suffit jamais — aucun agent n'arbitre les homonymes à l'ingestion, et
+    rattacher la demande d'un habitant à son homonyme donnerait à l'un accès aux échanges de
+    l'autre. Sans identifiant fort, une fiche est créée : c'est-à-dire, peut-être, un doublon.
+  - L'identité déclarée reste conservée intégralement comme pièce du dossier, y compris les
+    clés que le référentiel ne connaît pas.
+  - Socle injoignable ⇒ **jamais un refus** : la demande passe, reste en `non_rapprochee`, et
+    porte l'anomalie `usager_a_creer_dans_socle`.
 - **`external_id`** = l'identifiant de la demande **chez vous** — l'unité qui devient UNE
   demande Iris (pour un futur connecteur Clara : l'id du *ticket d'action*, jamais celui du
   courrier — un courrier peut engendrer plusieurs demandes).
@@ -134,6 +146,11 @@ ne dépend plus de votre stockage ensuite (règle : Iris copie, il ne référenc
 Deux dépôts possibles : `attachments[]` dans l'enveloppe, ou après coup
 `POST /v1/requests/{id}/attachments`.
 
+> **État de livraison (2026-08-23)** : le worker de copie n'est **pas encore actif** —
+> les pièces déposées restent `copy_status: pending` et vos URL signées expireront
+> avant d'avoir été lues. N'envoyez pas encore de pièces en production ; la demande,
+> elle, est bien créée. Phase 2 du plan de livraison.
+
 ## 4. Suivre ses demandes (scope `requests:read`)
 
 - `GET /v1/requests/{id}` — relecture. **404** si la demande n'est pas de votre source ou de
@@ -184,3 +201,11 @@ persisté · rejeu identique → 200 · rejeu divergent → 409 · dépôt sur d
 libellés démarche/catégorie issus du cache. Données de test intégralement purgées.
 Logique pure couverte par vitest (`_shared/*.test.ts` : validation, empreinte, sérialisation
 whitelist, snapshot de démarche, version du contrat).
+
+**Documentation lisible livrée le 2026-08-23** — route publique `/api-doc` de l'app Iris
+(Redoc pointé sur le contrat, motif du Socle : la passerelle Supabase interdisant un rendu
+HTML depuis une edge function). Le contrat gagne au passage ses groupes d'opérations, ses
+exemples d'enveloppe (vérifiés par test : ils passent la validation réelle) et une URL de
+serveur en `https` (l'origine vue par la function est en clair). Seules les deux routes de
+documentation (`/` et `/v1/openapi.json`) portent des en-têtes CORS ; les routes
+authentifiées n'en portent aucun — cette API ne se consomme pas depuis un navigateur.

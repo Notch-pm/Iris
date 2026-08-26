@@ -152,6 +152,32 @@ export function reasonLabel(reason: string): string {
 }
 
 /**
+ * Codes d'échec d'INFRASTRUCTURE de `socle-proxy` — le Socle n'a pas pu être
+ * joint, ou a répondu n'importe quoi. À distinguer absolument d'un REFUS
+ * métier (`bad_request`, `conflict` : SIRET déjà pris, invariant de type),
+ * qui, lui, se corrige dans le formulaire et ne justifie aucune dégradation.
+ */
+const SOCLE_OUTAGE_CODES = new Set(["socle_unavailable", "socle_auth_failed", "socle_error"]);
+
+/**
+ * Le Socle est-il HORS SERVICE (par opposition à : il a refusé) ?
+ *
+ * C'est la seule porte qui rouvre « Poursuivre sans rapprochement » : depuis la
+ * décision PO du 2026-08-26, une identité sans correspondance est une nouvelle
+ * personne, qu'on crée dans le Socle — il n'y a plus d'échappatoire dans le
+ * parcours normal. Elle ne réapparaît que sur un échec AVÉRÉ, pour ne pas
+ * laisser un agent bloqué au guichet avec l'usager en face de lui.
+ *
+ * Une erreur sans code vient d'`invokeEdge` : l'edge function elle-même n'a pas
+ * répondu — c'est une panne, pas un refus.
+ */
+export function isSocleOutage(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = (error as { code?: string }).code;
+  return code === undefined || SOCLE_OUTAGE_CODES.has(code);
+}
+
+/**
  * Vrai si le rapprochement ne repose QUE sur le nom : jamais suffisant pour
  * choisir sans vérification (règle : pas de rapprochement sur le seul nom).
  */
@@ -227,6 +253,41 @@ export function newContactFromDeclared(declared: Record<string, string>): NewCon
     landlinePhone: declared.tel_fixe ?? "",
     addressLine1: declared.adresse ?? "",
   };
+}
+
+/**
+ * Réciproque de `newContactFromDeclared` : formulaire de création → identité
+ * déclarée (clés du `requester_config`).
+ *
+ * Sert UNIQUEMENT à la sortie de secours (panne avérée du Socle) : l'agent a
+ * saisi son usager dans le formulaire de CRÉATION, c'est donc cette
+ * saisie-là — la plus complète et la plus récente — qui doit partir en
+ * identité déclarée. Repartir du formulaire de recherche perdrait tout ce
+ * qu'il vient de taper.
+ *
+ * `code_postal`/`ville` n'ont pas de clé dans le contrat `requester_config` :
+ * ils sont recomposés dans `adresse`, faute de quoi ils seraient simplement
+ * perdus.
+ */
+export function declaredFromNewContact(form: NewContactForm): Record<string, string> {
+  const t = (v: string) => v.trim();
+  const address = [t(form.addressLine1), [t(form.postalCode), t(form.city)].filter(Boolean).join(" ")]
+    .filter((part) => part !== "")
+    .join(", ");
+  const out: Record<string, string> = {
+    civilite: t(form.civilite),
+    nom_naissance: t(form.lastName),
+    nom_usuel: t(form.usageName),
+    prenoms: t(form.firstName),
+    raison_sociale: t(form.legalName),
+    siret: t(form.siret),
+    courriel: t(form.email),
+    tel_portable: t(form.mobilePhone),
+    tel_fixe: t(form.landlinePhone),
+    adresse: address,
+  };
+  for (const key of Object.keys(out)) if (out[key] === "") delete out[key];
+  return out;
 }
 
 /**

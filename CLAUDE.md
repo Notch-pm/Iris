@@ -43,12 +43,34 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   functions) : jamais accepté comme vérité d'un navigateur ou d'un partenaire. Les demandes
   historiques sans démarche restent lisibles et transitionnables.
 - **Aucun miroir local d'usagers** : les contacts vivent dans le Socle (contacts-api), Iris
-  les lit/rapproche/crée via `socle-proxy` et ne conserve par demande que le
-  `requester_snapshot` (identité retenue au dépôt, immuable).
+  les lit/rapproche/crée/**corrige** via `socle-proxy`. **Une identité sans correspondance est
+  une nouvelle personne : on la CRÉE dans le Socle** (décision PO 2026-08-26) — parcours agent
+  comme ingestion partenaire. À l'ingestion, une fiche existante n'est réutilisée que sur un
+  **identifiant fort** (courriel, téléphone, SIRET) : personne n'y arbitre les homonymes.
+  « Sans rapprochement » ne subsiste que comme sortie de secours sur panne avérée du
+  référentiel, avec l'anomalie `usager_a_creer_dans_socle`. Iris et ne conserve par demande que le
+  `requester_snapshot` (identité retenue au dépôt, immuable). *Immuable* ne veut pas dire
+  *seul affiché* : la fiche d'une demande relit la fiche Socle et montre l'identité du jour,
+  le dépôt et leurs écarts restant lisibles à côté (`requesterView`) — et le destinataire d'un
+  e-mail à l'usager suit la fiche relue, résolu côté serveur. Le snapshot, lui, n'est jamais
+  réécrit — et il n'est pas une commodité d'affichage : pour une identité **non rapprochée** ou
+  un dépôt anonyme, c'est la **seule** identité qui existe. Coût mesuré : ~250 octets par
+  demande, cinq fois moins que `procedure_snapshot` (justification, chiffres et leviers
+  écartés : [`docs/data-model.md`](docs/data-model.md), § « Pourquoi figer l'identité au
+  dépôt »).
 - **Aucune suppression de demande** (pièce administrative) : pas de policy DELETE, FK
   `ON DELETE RESTRICT` depuis le tenant, purge RGPD par procédure `service_role` dédiée.
 - Les **notes internes ne quittent jamais Iris** (miroir de la règle `internal_notes` du
   Socle) ; le texte de clôture destiné à l'usager est un objet distinct.
+- **Aucun mot de passe n'est généré ni affiché à un administrateur** : un compte s'ouvre par
+  une **invitation** (lien d'activation à usage unique, mot de passe choisi par son titulaire)
+  et se dépanne par un **lien de réinitialisation** envoyé au titulaire. Le **serveur d'envoi
+  ne se configure pas dans Iris** (décision PO 2026-08-23) : il est défini dans le **Socle**
+  pour l'organisation principale et recopié par la synchro du référentiel — `smtp_settings`
+  est un miroir, sans aucune surface d'écriture ni de lecture cliente. Le mot de passe reçu
+  vit dans le **Vault Postgres**, jamais dans une colonne lisible : Iris ne réplique pas la
+  dette « mots de passe SMTP en clair » de Socle et Clara.
+  Détail : [`docs/emails.md`](docs/emails.md).
 - **Profils de droits** (décision PO, 2026-08-22, remplace le rôle binaire `agent |
   administrateur`) : les droits effectifs d'un utilisateur se combinent par **couple**
   (organisation porteuse Socle, démarche) — trois droits indépendants `création`/`instruction`/
@@ -87,8 +109,12 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
 
 ## Architecture applicative
 
-- **Routes publiques** (hors shell) : `/login`, `/mot-de-passe-oublie` (placeholder), et une
-  route catch-all 404 (`NotFoundPage`) — dette assumée chez Socle, pas répliquée ici.
+- **Routes publiques** (hors shell) : `/login`, `/mot-de-passe-oublie`, `/activer-compte`,
+  `/nouveau-mot-de-passe`, **`/api-doc`** (contrat d'ingestion rendu par Redoc, lisible sans
+  compte — motif `/api-doc` du Socle : la page est servie par l'app, jamais par l'edge
+  function, dont la passerelle Supabase force les réponses HTML en `text/plain` + CSP
+  `sandbox`), et une route catch-all 404 (`NotFoundPage`) — dette assumée chez Socle, pas
+  répliquée ici.
 - **Zone authentifiée** : `ProtectedRoute` › `AppShell` (rail latéral forêt + header), page
   d'accueil `DashboardPage` (placeholder).
 - **Le schéma des fondations est appliqué** (miroirs dans `supabase/migrations/`) : tenants,
@@ -96,8 +122,9 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   (`integration_sources`/`integration_credentials`/`integration_api_logs`, registre de sources
   dynamique — aucune logique spécifique à un émetteur).
 - **L'API d'ingestion `requests-api` est déployée et vérifiée** (18 + 7 scénarios HTTP bout
-  en bout) : contrat OpenAPI **1.1.0** sur `/v1/openapi.json`, guide consommateurs dans
-  [`docs/api-ingestion.md`](docs/api-ingestion.md). Périmètre dérivé de la clé (jamais d'un
+  en bout) : contrat OpenAPI **1.1.0** sur `/v1/openapi.json` (routes `/` et `/v1/openapi.json`
+  **publiques et seules ouvertes au navigateur** — CORS ; rendu humain sur `/api-doc`), guide
+  consommateurs dans [`docs/api-ingestion.md`](docs/api-ingestion.md). Périmètre dérivé de la clé (jamais d'un
   header/payload), **démarche obligatoire** (vérifiée dans le cache du tenant, snapshot
   construit côté serveur — dégradé + anomalie si Socle injoignable, jamais un refus), rejeu
   identique → 200, divergent → 409, pièces par URL signée uniquement (`form_field_key` pour
@@ -110,7 +137,9 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   racine Socle du tenant dans le périmètre **réel** de la clé Socle — introspection
   `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches actives du
   tenant), `/v1/procedures/get` (fiche complète : `form_schema`, `requester_config` — jamais
-  `knowledge_base`), `/v1/contacts/search`, `/v1/contacts/match` (rapprochement/homonymes),
+  `knowledge_base`), `/v1/contacts/search`, `/v1/contacts/list` (annuaire paginé de la page
+  « Usagers » : `offset`, et seule route qui sait montrer les fiches archivées),
+  `/v1/contacts/match` (rapprochement/homonymes),
   `/v1/contacts/get`, `/v1/contacts/create`, `/v1/contacts/update` (via contacts-api Socle
   uniquement, whitelist d'entrée ; l'update est un **PATCH partiel** — `contact_type` et
   `status` refusés, pays jamais vidé — et les refus du Socle sont relayés tels quels). Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
@@ -123,6 +152,20 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `organization_members.role` dérivé, bascule des policies. Détail : [`docs/droits.md`](docs/droits.md)
   et [`docs/data-model.md`](docs/data-model.md) ; rollback dédié dans `supabase/rollback/`
   (jamais via `apply_migration`).
+- **Emails** : gabarit unique dans `supabase/functions/_shared/email/` (modules purs testés
+  + `transport.ts` nodemailer), serveur d'envoi **hérité du Socle** (`smtp_settings` = miroir
+  de l'organisation principale, écrit par la seule synchro du référentiel via
+  `sync_smtp_settings_from_socle`, mot de passe au Vault) avec repli sur un relais de
+  plateforme (`IRIS_SMTP_*`). La clé Socle doit porter le scope `smtp`. Deux chemins :
+  `auth-email-hook` (hook « Send Email » de GoTrue — mot de passe oublié self-service, **à
+  activer une fois dans le dashboard**) et `admin-users` (invitation, renvoi de lien — liens
+  produits par `generateLink`, donc indépendants du hook). Depuis le 2026-08-26, un troisième
+  chemin sort du cercle des agents : **`send-request-email`**, la réponse à l'usager depuis
+  l'onglet Échanges (envoi SYNCHRONE, droit d'**instruction** revérifié en SQL, destinataire et
+  chemins de pièces résolus côté serveur, marque = la collectivité seule). La doctrine « ce qui
+  sort d'Iris » de `notifications.ts` vise les e-mails **aux agents** et ne s'y applique pas —
+  seul reste absolu : **le corps d'une note interne ne sort jamais**.
+  Détail : [`docs/emails.md`](docs/emails.md).
 - `src/types/database.types.ts` est **généré depuis le schéma live** (Supabase MCP
   `generate_typescript_types`) — ne jamais l'éditer à la main, régénérer après chaque migration.
 - `supabase/` : `config.toml` (CLI), `migrations/` (fichiers miroirs des migrations
@@ -162,22 +205,54 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
 Chaque feature a son `CLAUDE.md` de dossier, chargé automatiquement quand on y travaille ;
 les invariants ci-dessus restent la référence.
 
-- **Parcours agent** (`src/features/requests`, `src/features/tenant`) : liste, fiche,
-  transitions, **parcours de création guidé** (`creation/`), brouillon local, demandes
-  proches, edge function `create-request-from-procedure` et moteur partagé
-  `@fn/create-request-from-procedure/_shared/procedureForm.ts` →
+- **Parcours agent** (`src/features/requests`, `src/features/tenant`) : liste, fiche
+  (dont **lieu d'intervention** : adresse, carte, itinéraire), **carte des interventions**
+  (`carte/`, route `/carte`), transitions, **parcours de création guidé** (`creation/`),
+  brouillon local, demandes proches, **échanges avec l'usager** (onglet Échanges : e-mail avec
+  ou sans modèle, variables résolues sur la demande, pièces jointes réelles — edge function
+  `send-request-email`), edge function `create-request-from-procedure` et moteur
+  partagé `@fn/create-request-from-procedure/_shared/procedureForm.ts` →
   [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
-- **Contacts** (`src/features/contacts`) : identification du demandeur via `socle-proxy`
-  (homonymes cherchés automatiquement, création, sans rapprochement, anonymat) et **fiche
-  usager** `/usagers/:contactId` (motif de la fiche contact Clara : identité Socle relue
-  sans rétention + demandes de l'usager bornées par le RLS, création de demande avec usager
-  imposé) →
+- **Contacts / Usagers** (`src/features/contacts`) : identification du demandeur via
+  `socle-proxy` (homonymes cherchés automatiquement, création, sans rapprochement,
+  anonymat), **fiche usager** `/usagers/:contactId` (motif de la fiche contact Clara :
+  identité Socle relue sans rétention + demandes de l'usager bornées par le RLS, création
+  de demande avec usager imposé) et **liste des usagers** `/usagers` (motif de l'annuaire
+  Clara, entrée de rail : recherche par mot-clé, filtres type / actifs-archivés /
+  quartier / volumétrie de demandes, tri par colonne, export CSV — fiches du Socle et
+  compteurs Iris bornés par le RLS, rapprochés dans le navigateur) →
   [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
 - **Droits / Paramètres** (`src/features/permissions`, `src/features/rights`) : profils de
   droits (création, matrice, périmètre, attribution), reflet pur des droits effectifs
-  (`rights.ts`, miroir de `permission_pairs_of`), zone `/parametres/droits` (`AdminRoute`) →
+  (`rights.ts`, miroir de `permission_pairs_of`), zone `/parametres` (`AdminRoute`, accueil
+  en blocs cliquables au motif Clara) →
   doctrine dans [`docs/droits.md`](docs/droits.md), détail front dans
   [`src/features/permissions/CLAUDE.md`](src/features/permissions/CLAUDE.md).
+- **Notifications** (`src/features/notifications`, edge `notifications-mailer`) : cloche du
+  header **et e-mail**, cinq motifs (affectation, retrait d'affectation, changement de statut,
+  note interne, nouvelle demande dans le périmètre d'instruction). **La base est le seul
+  producteur** — triggers `t40_*` `SECURITY DEFINER`, aucune policy d'écriture cliente, jamais
+  de notification pour son propre geste ; temps réel + repli par sondage. **Un événement, une
+  ligne, N canaux** : l'e-mail part d'une **boîte d'envoi** drainée sur cron (jamais du
+  déclencheur), et `notification_preferences` (*fail open*, **globales au compte**) décide des
+  canaux, réglées depuis « Mon compte » →
+  [`src/features/notifications/CLAUDE.md`](src/features/notifications/CLAUDE.md).
+- **Mon compte** (`src/features/account`, route `/mon-compte`, entrée du menu compte) :
+  identité et **photo de profil** (bucket privé `avatars`, URL signée — jamais public : la
+  photo d'un agent est une donnée personnelle), **changement de mot de passe** avec
+  revérification de l'ancien, et **préférences de notification** par événement × canal
+  (in-app / e-mail / rien). Photo et préférences sont **globales au compte**, pas par tenant. L'**adresse e-mail n'est pas modifiable par son titulaire** :
+  c'est l'identifiant de connexion, administré — garde `t03_users_protect_email`, l'UI ne fait
+  que refléter →
+  [`src/features/account/CLAUDE.md`](src/features/account/CLAUDE.md).
+- **Modèles d'e-mail** (`src/features/templates`, Paramètres › « Modèles d'e-mail » et
+  « Organisations ») : textes réutilisables pour répondre à un usager, à **variables**
+  `{{groupe.cle}}` (catalogue FIGÉ, jumeau SQL, garde serveur `t03`), CRUD réservé aux
+  administrateurs, et **activation organisation par organisation** (`has_admin_scope` :
+  ouvrir un modèle à la Voirie est une décision sur la Voirie ; un modèle neuf n'est actif
+  nulle part). Texte BRUT — ni HTML ni PDF : la mise en page d'un pli est le métier de Clara
+  (D7, Q8) →
+  [`src/features/templates/CLAUDE.md`](src/features/templates/CLAUDE.md).
 - **Zone superadmin** (`src/features/superadmin`) : organisations (consultation),
   utilisateurs, edge function `admin-users` →
   [`src/features/superadmin/CLAUDE.md`](src/features/superadmin/CLAUDE.md).
@@ -199,12 +274,32 @@ les invariants ci-dessus restent la référence.
   (+ `--primary-bright` marketing), secondaire beurre, radius 14px, ombres « airbnb »
   (`shadow-airbnb-sm…xl`, alias `iris-*`). **Police : Nunito Sans, seule famille**
   (Google Fonts). Le shell agent calque le **shell de production Clara** : header sticky
-  `h-14` (wordmark `src/assets/logo-notch.svg` en `h-6` + séparateur + tenant), **rail vert
-  `bg-primary` 52px** (tuiles 36px, icônes Lucide 20px, premier item épinglé, groupe centré) ;
-  la zone superadmin garde son rail forêt. Boutons : hover `brightness-105` (pleins) /
+  `h-14` (wordmark `src/assets/logo-notch.svg` en `h-6` + séparateur + tenant à gauche ;
+  à droite, chip administrateur, superadmin, **accès aux Paramètres** — tuile `h-9 w-9`,
+  active en `bg-primary/10 text-primary` — puis menu compte), **rail vert `bg-primary` 52px**
+  (tuiles 36px, icônes Lucide 20px, premier item épinglé, groupe centré). Le gabarit
+  horizontal de la zone de contenu est **demandé par la page** (`src/components/layout/
+  shellLayout.tsx`) : `default` = colonne centrée 1240px (formulaires, réglages), `wide` =
+  pleine largeur avec le padding du shell (`useWideLayout` — listes denses : demandes, usagers),
+  `full` = pleine hauteur sans gabarit ni padding (`useFullBleedLayout` — création, fiche,
+  carte) ; la zone superadmin
+  garde son rail forêt. L'icône des Paramètres est l'**asset de Clara** recopié tel quel
+  (`src/assets/icons/parametres.svg`, rendu en `<img>`), pas une icône Lucide — les
+  Paramètres ne sont donc **pas** dans le rail, exactement comme chez Clara. Boutons : hover `brightness-105` (pleins) /
   bascule **beurre** (`bg-secondary`) sur outline et ghost, press `scale-[0.98]`, radius 10px
   (idem inputs). `_adherence.oxlintrc.json` (racine) = garde-fou DS (hex bruts, px bruts,
-  polices hors DS) — exécutable via `npx oxlint -c _adherence.oxlintrc.json src`.
+  polices hors DS) — ⚠️ **il ne s'exécute plus** (oxlint n'implémente pas `no-restricted-syntax`) :
+  l'adhérence se vérifie à la main en attendant, dette O1 de
+  [`docs/dette-technique.md`](docs/dette-technique.md).
+- **Cartographie libre** (`src/lib/carto.ts`, pur/testé ; rendu dans
+  `src/components/map/TileLayer.tsx`) : tuiles **OpenStreetMap** (attribution ODbL
+  obligatoire à l'affichage — elle est portée par la mosaïque, ne pas la retirer) et
+  géocodage **Base Adresse Nationale** (unitaire pour une fiche, **en masse par CSV** pour
+  une carte) — services publics sans clé ni compte, donc rien à cacher dans le bundle. Seule
+  l'**adresse du lieu d'intervention** y transite : jamais l'identité de l'usager, jamais la
+  référence de la demande, et aucun point n'est stocké côté Iris. Substituables sans toucher
+  au code par `VITE_MAP_TILE_URL` / `VITE_GEOCODE_URL` (fournisseur dédié le jour où le
+  volume l'exige).
 - Textes et libellés **en français**. Formulaires en `Dialog`, confirmations destructives en
   `AlertDialog`, classes fusionnées avec `cn()`.
 - Documentation : un document = un public + une question ; toute évolution de surface de

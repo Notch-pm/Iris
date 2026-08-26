@@ -37,6 +37,9 @@ export function useTriggerSocleSync(organizationId?: string) {
   });
 }
 
+/** La mutation partagée entre l'en-tête des Paramètres et la section Référentiel. */
+export type SocleSyncMutation = ReturnType<typeof useTriggerSocleSync>;
+
 const COUNTER_LABELS: [string, string][] = [
   ["tenants", "tenant(s)"],
   ["organizations", "organisation(s)"],

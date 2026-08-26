@@ -17,6 +17,7 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
   filterContactCreate,
+  filterContactListQuery,
   filterContactUpdate,
   filterMatchRequest,
   sanitizeContact,
@@ -236,6 +237,28 @@ Deno.serve(async (req) => {
     );
     if (!res?.ok) return relaySocleError(req, res);
     return json(req, 200, { contacts: sanitizeContactList(await res.json().catch(() => null)) });
+  }
+
+  // Liste paginée du référentiel d'usagers (page « Usagers »). Volontairement
+  // distincte de /v1/contacts/search, qui sert le rapprochement : celle-ci
+  // pagine (offset) et sait montrer les fiches ARCHIVÉES. Le tri, les
+  // compteurs de demandes et les filtres propres à Iris (quartier, volumétrie)
+  // s'appliquent ensuite côté navigateur sur l'ensemble rapatrié — rien n'est
+  // stocké, la liste est relue à chaque visite comme la fiche usager.
+  if (path === "/v1/contacts/list") {
+    const filtered = filterContactListQuery(body);
+    if (!filtered.ok) return fail(req, 400, "bad_request", filtered.message);
+    const params = new URLSearchParams(filtered.params);
+    const res = await socleFetch(
+      `${contactsApiBase()}/v1/contacts?${params}`,
+      { socleOrgId: tenant.socleOrgId },
+    );
+    if (!res?.ok) return relaySocleError(req, res);
+    const raw = await res.json().catch(() => null);
+    // `has_more` déduit du BRUT : la sanitisation peut écarter des entrées,
+    // ce qui ne dit rien de l'existence d'une page suivante.
+    const has_more = Array.isArray(raw) && raw.length >= filtered.limit;
+    return json(req, 200, { contacts: sanitizeContactList(raw), has_more });
   }
 
   if (path === "/v1/contacts/match") {

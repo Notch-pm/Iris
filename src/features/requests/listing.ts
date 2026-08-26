@@ -8,7 +8,7 @@
 // Regroupement = client, sur la page courante, avec pré-tri serveur sur la clé
 // de groupe pour que les groupes restent contigus d'une page à l'autre.
 
-import type { CsvColumn } from "@/lib/csv";
+import { csvFilename, type CsvColumn } from "@/lib/csv";
 import type { RequestListItem } from "./useRequests";
 import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
 
@@ -159,9 +159,5 @@ export function requestCsvColumns(nameOf: (userId: string | null) => string): Cs
 
 /** `demandes-<tenant>-AAAA-MM-JJ.csv`, nom de tenant épuré. */
 export function exportFilename(tenantName: string, now: Date): string {
-  const slug = tenantName
-    .normalize("NFD").replace(/[̀-ͯ]/g, "")
-    .toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "tenant";
-  const day = now.toISOString().slice(0, 10);
-  return `demandes-${slug}-${day}.csv`;
+  return csvFilename("demandes", tenantName, now);
 }

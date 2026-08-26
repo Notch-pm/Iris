@@ -13,6 +13,12 @@ import {
   type FormSchema,
   type FormValues,
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
+import {
+  ALL_DECLARED_KEYS,
+  contactIdentitySnapshot,
+  DECLARED_KEYS,
+} from "@fn/_shared/identity/declared";
+import { civilityLabel } from "@/features/contacts/usager";
 import { displayFieldValue, formatIsoDate } from "../creation/model";
 import {
   MOTIF_LABELS,
@@ -120,14 +126,17 @@ export function channelLabel(channel: string | null): string | null {
 }
 
 export interface SubtitleInput {
-  requesterName: string;
+  /** `null` tant que l'identité n'est pas arrêtée : mieux vaut pas de nom du
+   *  tout qu'un nom du dépôt remplacé sous les yeux par celui de la fiche. */
+  requesterName: string | null;
   channel: string | null;
   source: string;
   receivedAt: string;
   dueAt: string | null;
 }
 
-/** « Marie Durand · déposée au guichet le 21 août 2026 · échéance le 28 août 2026 ». */
+/** « Marie Durand · déposée au guichet le 21 août 2026 · échéance le 28 août 2026 ».
+ *  Sans nom (`requesterName: null`), le segment est simplement absent. */
 export function headerSubtitle(input: SubtitleInput): string {
   const received = formatDayMonth(input.receivedAt, true);
   let deposit: string;
@@ -139,7 +148,7 @@ export function headerSubtitle(input: SubtitleInput): string {
   } else {
     deposit = `déposée le ${received}`;
   }
-  const parts = [input.requesterName, deposit];
+  const parts = [input.requesterName, deposit].filter((p): p is string => Boolean(p));
   if (input.dueAt && asDate(input.dueAt)) parts.push(`échéance le ${formatDayMonth(input.dueAt, true)}`);
   return parts.join(" · ");
 }
@@ -161,6 +170,18 @@ export interface RequesterIdentity {
   rows: IdentityRow[];
   email: string | null;
   phone: string | null;
+  // Champs bruts — pour qui doit s'adresser à l'usager plutôt que l'afficher
+  // (variables des modèles d'e-mail). Ils vivent ICI, et pas dans un résolveur
+  // à part, parce que les cascades de clés (contacts-api, publics Iris,
+  // synonymes partenaires) n'ont qu'un seul endroit légitime : les recopier
+  // ailleurs ferait deux vérités qui divergeraient au premier format partenaire.
+  /** Libellé français : « Madame », « Monsieur », ou la valeur telle quelle. */
+  civility: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  legalName: string | null;
+  /** Adresse recomposée : libre, ou lignes + code postal + ville. */
+  address: string | null;
 }
 
 export function initials(name: string): string {
@@ -174,17 +195,21 @@ export function humanizeKey(key: string): string {
   return text === "" ? key : text[0]!.toUpperCase() + text.slice(1);
 }
 
-/** Clés interprétées par `requesterIdentity` (contacts-api Socle, publics Iris, synonymes partenaires). */
-const KNOWN_IDENTITY_KEYS = new Set([
-  "anonymous", "civility", "civilite",
-  "display_name", "name", "full_name",
-  "first_name", "prenoms", "prenom", "firstName",
-  "usage_name", "last_name", "nom_usuel", "nom_naissance", "nom", "lastName",
-  "legal_name", "raison_sociale", "birth_date", "date_naissance", "siret",
-  "email", "courriel", "mail",
-  "mobile_phone", "tel_portable", "phone", "telephone", "mobile", "landline_phone", "tel_fixe",
-  "adresse", "address", "address_line1", "address_line2", "postal_code", "city",
-]);
+/**
+ * Clés interprétées ici (contacts-api Socle, publics Iris, synonymes
+ * partenaires) : la table vit dans `@fn/_shared/identity/declared`, partagée
+ * avec l'ingestion qui, elle, ÉCRIT ces identités dans le Socle. Deux listes
+ * divergeraient au premier format partenaire un peu exotique.
+ * `anonymous` s'y ajoute : c'est un marqueur, pas un champ d'identité.
+ */
+const KNOWN_IDENTITY_KEYS = new Set<string>(["anonymous", ...ALL_DECLARED_KEYS]);
+
+/**
+ * Le « nom » d'un écran fusionne deux champs que contacts-api distingue : le
+ * nom d'USAGE l'emporte sur le nom de naissance — c'est celui sous lequel la
+ * personne se présente.
+ */
+const DISPLAY_LAST_NAME_KEYS = [...DECLARED_KEYS.usageName, ...DECLARED_KEYS.lastName];
 
 const ANONYMOUS_IDENTITY: RequesterIdentity = {
   anonymous: true,
@@ -195,6 +220,11 @@ const ANONYMOUS_IDENTITY: RequesterIdentity = {
   rows: [],
   email: null,
   phone: null,
+  civility: null,
+  firstName: null,
+  lastName: null,
+  legalName: null,
+  address: null,
 };
 
 /**
@@ -218,20 +248,24 @@ export function requesterIdentity(
     return null;
   };
 
-  const display = pick("display_name", "name", "full_name");
-  const first = pick("first_name", "prenoms", "prenom", "firstName");
-  const last = pick("usage_name", "last_name", "nom_usuel", "nom_naissance", "nom", "lastName");
-  const legal = pick("legal_name", "raison_sociale");
-  const birth = pick("birth_date", "date_naissance");
-  const siret = pick("siret");
-  const email = pick("email", "courriel", "mail");
-  const mobile = pick("mobile_phone", "tel_portable", "phone", "telephone", "mobile");
-  const landline = pick("landline_phone", "tel_fixe");
-  const freeAddress = pick("adresse", "address");
-  const line1 = pick("address_line1");
-  const line2 = pick("address_line2");
-  const postal = pick("postal_code");
-  const city = pick("city");
+  // `civility` / `civilite` figuraient dans KNOWN_IDENTITY_KEYS — donc exclues
+  // des lignes « clés inconnues » — sans qu'aucun pick() ne les lise : la
+  // civilité se perdait entre les deux règles.
+  const civility = pick(...DECLARED_KEYS.civility);
+  const display = pick(...DECLARED_KEYS.displayName);
+  const first = pick(...DECLARED_KEYS.firstName);
+  const last = pick(...DISPLAY_LAST_NAME_KEYS);
+  const legal = pick(...DECLARED_KEYS.legalName);
+  const birth = pick(...DECLARED_KEYS.birthDate);
+  const siret = pick(...DECLARED_KEYS.siret);
+  const email = pick(...DECLARED_KEYS.email);
+  const mobile = pick(...DECLARED_KEYS.mobilePhone);
+  const landline = pick(...DECLARED_KEYS.landlinePhone);
+  const freeAddress = pick(...DECLARED_KEYS.addressFree);
+  const line1 = pick(...DECLARED_KEYS.addressLine1);
+  const line2 = pick(...DECLARED_KEYS.addressLine2);
+  const postal = pick(...DECLARED_KEYS.postalCode);
+  const city = pick(...DECLARED_KEYS.city);
 
   const composed = [first, last].filter(Boolean).join(" ");
   const name = display ?? (composed !== "" ? composed : null);
@@ -268,7 +302,91 @@ export function requesterIdentity(
     rows,
     email,
     phone,
+    civility: civility ? civilityLabel(civility) : null,
+    firstName: first,
+    lastName: last,
+    legalName: legal,
+    address,
   };
+}
+
+// ---- Identité vivante (fiche Socle relue) -----------------------------------
+
+/** Un champ d'identité qui a bougé entre le dépôt et la fiche Socle d'aujourd'hui. */
+export interface IdentityChange {
+  label: string;
+  /** Valeur retenue au dépôt — `null` si le champ n'était pas renseigné. */
+  before: string | null;
+  /** Valeur actuelle dans le Socle — `null` si le champ a été vidé depuis. */
+  after: string | null;
+}
+
+export interface RequesterView {
+  /** Identité À AFFICHER : la fiche Socle d'aujourd'hui si elle a pu être relue. */
+  identity: RequesterIdentity;
+  /** Identité RETENUE AU DÉPÔT, jamais réécrite — la pièce administrative. */
+  deposited: RequesterIdentity;
+  /** La fiche Socle a bien été relue (sinon on n'affiche que le dépôt). */
+  live: boolean;
+  /** Écarts entre le dépôt et la fiche du jour, vide s'ils coïncident. */
+  changes: IdentityChange[];
+}
+
+/**
+ * Compare deux identités déjà normalisées, champ visible par champ visible :
+ * le nom, puis les lignes (`rows`), qui portent aussi bien les clés connues
+ * (adresse, courriel, téléphone, SIRET) que les clés inconnues d'un partenaire.
+ * Un champ apparu depuis le dépôt a `before: null` ; un champ vidé, `after: null`.
+ */
+function identityChanges(before: RequesterIdentity, after: RequesterIdentity): IdentityChange[] {
+  const changes: IdentityChange[] = [];
+  if (before.name !== after.name) {
+    changes.push({
+      label: "Nom",
+      before: before.known ? before.name : null,
+      after: after.known ? after.name : null,
+    });
+  }
+  const bRows = new Map(before.rows.map((r) => [r.label, r.value]));
+  const aRows = new Map(after.rows.map((r) => [r.label, r.value]));
+  // Ordre : les lignes du dépôt d'abord, puis celles qui n'existaient pas.
+  const labels = Array.from(new Set([...bRows.keys(), ...aRows.keys()]));
+  for (const label of labels) {
+    const b = bRows.get(label) ?? null;
+    const a = aRows.get(label) ?? null;
+    if (b !== a) changes.push({ label, before: b, after: a });
+  }
+  return changes;
+}
+
+/**
+ * Ce que la fiche montre de l'usager. Le `requester_snapshot` est IMMUABLE —
+ * il fige l'identité retenue au dépôt et ne se complète jamais après coup —
+ * mais il n'est pas pour autant ce qu'un agent doit lire un mois plus tard :
+ * l'usager a pu corriger son courriel ou déménager dans le Socle, qui reste la
+ * source de vérité. On affiche donc la fiche RELUE quand elle est disponible,
+ * en conservant le dépôt à côté (et l'écart entre les deux, qui est lui-même
+ * une information : ce n'est pas cette adresse-là qui figurait au dossier).
+ *
+ * `liveContact` est la réponse de `socle-proxy /v1/contacts/get`, relue sans
+ * rétention par l'écran. Absente — usager non rapproché, dépôt anonyme, Socle
+ * injoignable, ou lecteur sans droit de création (garde du proxy) — on retombe
+ * simplement sur le dépôt : aucune erreur, aucun trou.
+ */
+export function requesterView(
+  snapshot: unknown,
+  identityStatus: string,
+  liveContact: unknown,
+): RequesterView {
+  const deposited = requesterIdentity(snapshot, identityStatus);
+  const declared = deposited.anonymous ? null : contactIdentitySnapshot(liveContact);
+  // Whitelist vide = fiche Socle sans aucun champ d'identité lisible : afficher
+  // « Identité déclarée » à la place du nom du dépôt serait une régression.
+  if (!declared || Object.keys(declared).length === 0) {
+    return { identity: deposited, deposited, live: false, changes: [] };
+  }
+  const identity = requesterIdentity({ declared }, "rapprochee");
+  return { identity, deposited, live: true, changes: identityChanges(deposited, identity) };
 }
 
 // ---- Réponses du formulaire (form_data étiqueté par procedure_snapshot) -----
@@ -365,6 +483,28 @@ export interface StageEvent {
   event_type: string;
   payload: unknown;
   created_at: string;
+}
+
+/**
+ * PREMIER passage au statut « En cours d'instruction », d'après le journal —
+ * la « date de prise en charge » que promet le catalogue de variables des
+ * modèles d'e-mail.
+ *
+ * ⚠️ `buildStages()` fait un calcul voisin qui ne peut PAS servir ici : son
+ * `visited.set` écrase, donc après une réouverture il retient le DERNIER
+ * passage. C'est juste pour « depuis le … » (l'étape en cours) et faux pour
+ * « prise en charge le … » (le fait daté). Deux besoins, deux fonctions.
+ */
+export function firstInstructionAt(events: StageEvent[]): string | null {
+  const sorted = [...events].sort((a, b) => a.created_at.localeCompare(b.created_at));
+  for (const event of sorted) {
+    if (!isRecord(event.payload)) continue;
+    const reached =
+      (event.event_type === "status_changed" && event.payload.to === "en_instruction") ||
+      (event.event_type === "created" && event.payload.status === "en_instruction");
+    if (reached) return event.created_at;
+  }
+  return null;
 }
 
 const STAGE_DEFS: { key: StageKey; label: string; todo: string; skipped: string }[] = [

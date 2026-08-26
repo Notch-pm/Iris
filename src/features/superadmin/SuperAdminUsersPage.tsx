@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Copy, KeyRound, Pencil, Plus, Search, Trash2, UserCog } from "lucide-react";
+import { KeyRound, Pencil, Plus, Search, Trash2, UserCog } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -11,10 +11,17 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/AuthProvider";
 import {
-  useAllMemberships, useAllProfileAssignments, useAllTenants, useAllUsers, useCreateUser, useDeleteUser,
-  useRemoveMembership, useResetPassword, useSetMembership, useUpdateUserProfile,
-  type CreatedAccount, type ProfileAssignmentInfo, type UserRow,
+  useAllMemberships, useAllProfileAssignments, useAllTenants, useAllUsers, useDeleteUser,
+  useInviteUser, useRemoveMembership, useSendPasswordReset, useSetMembership, useUpdateUserProfile,
+  type ProfileAssignmentInfo, type UserRow,
 } from "./useSuperAdmin";
+
+/** Message de fin de geste — remplace l'ancien encart d'identifiants. */
+interface Notice {
+  title: string;
+  lines: string[];
+  tone: "success" | "warning";
+}
 
 function displayName(u: UserRow): string {
   const name = [u.first_name, u.last_name].filter(Boolean).join(" ");
@@ -27,21 +34,21 @@ export function SuperAdminUsersPage() {
   const tenants = useAllTenants();
   const memberships = useAllMemberships();
   const profileAssignments = useAllProfileAssignments();
-  const createUser = useCreateUser();
+  const inviteUser = useInviteUser();
   const updateProfile = useUpdateUserProfile();
   const setMembership = useSetMembership();
   const removeMembership = useRemoveMembership();
-  const resetPassword = useResetPassword();
+  const sendPasswordReset = useSendPasswordReset();
   const deleteUser = useDeleteUser();
 
   const [search, setSearch] = React.useState("");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [editUser, setEditUser] = React.useState<UserRow | null>(null);
   const [deleteTarget, setDeleteTarget] = React.useState<UserRow | null>(null);
-  const [credentials, setCredentials] = React.useState<CreatedAccount | null>(null);
+  const [notice, setNotice] = React.useState<Notice | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
-  // Formulaire de création.
+  // Formulaire d'invitation.
   const [cEmail, setCEmail] = React.useState("");
   const [cFirst, setCFirst] = React.useState("");
   const [cLast, setCLast] = React.useState("");
@@ -94,21 +101,49 @@ export function SuperAdminUsersPage() {
     setEditUser(u);
   }
 
-  async function submitCreate(e: React.FormEvent) {
+  async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     try {
-      const created = await createUser.mutateAsync({
+      const result = await inviteUser.mutateAsync({
         email: cEmail,
         firstName: cFirst,
         lastName: cLast,
-        membership: cTenant === "" ? null : { organizationId: cTenant },
+        organizationId: cTenant === "" ? null : cTenant,
       });
       setCreateOpen(false);
       setCEmail(""); setCFirst(""); setCLast(""); setCTenant("");
-      setCredentials(created);
+
+      if (!result.invited) {
+        setNotice({
+          title: "Compte existant rattaché",
+          tone: "success",
+          lines: [
+            `${result.email} avait déjà un compte Iris : il a simplement reçu l'accès à ce tenant.`,
+            "Aucun mail n'a été envoyé — ce compte a déjà son mot de passe.",
+          ],
+        });
+      } else if (result.email_sent) {
+        setNotice({
+          title: "Invitation envoyée",
+          tone: "success",
+          lines: [
+            `Le lien d'activation est parti à ${result.email}.`,
+            "Le compte reste inutilisable tant que son titulaire n'a pas choisi son mot de passe.",
+          ],
+        });
+      } else {
+        setNotice({
+          title: "Compte créé, invitation NON envoyée",
+          tone: "warning",
+          lines: [
+            result.email_error ?? "Le message n'a pas pu partir.",
+            "Vérifiez le serveur d'envoi du tenant : il est défini dans le Socle (organisation principale, onglet « Emails (SMTP) ») et descend à la synchronisation du référentiel. Renvoyez ensuite un lien depuis la liste.",
+          ],
+        });
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Création impossible.");
+      setError(err instanceof Error ? err.message : "Invitation impossible.");
     }
   }
 
@@ -140,13 +175,17 @@ export function SuperAdminUsersPage() {
     }
   }
 
-  async function onResetPassword(u: UserRow) {
+  async function onSendPasswordReset(u: UserRow) {
     setError(null);
     try {
-      const account = await resetPassword.mutateAsync(u.id);
-      setCredentials({ ...account, email: u.email });
+      await sendPasswordReset.mutateAsync(u.id);
+      setNotice({
+        title: "Lien envoyé",
+        tone: "success",
+        lines: [`${u.email} vient de recevoir un lien pour choisir un nouveau mot de passe.`],
+      });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Réinitialisation impossible.");
+      setError(err instanceof Error ? err.message : "Envoi impossible.");
     }
   }
 
@@ -174,7 +213,7 @@ export function SuperAdminUsersPage() {
           </div>
         </div>
         <Button onClick={() => { setError(null); setCreateOpen(true); }}>
-          <Plus /> Nouvel utilisateur
+          <Plus /> Inviter un utilisateur
         </Button>
       </div>
 
@@ -250,9 +289,11 @@ export function SuperAdminUsersPage() {
                               aria-label={`Modifier ${u.email}`} onClick={() => openEdit(u)}>
                               <Pencil />
                             </Button>
-                            <Button variant="ghost" size="icon" title="Réinitialiser le mot de passe"
-                              aria-label={`Réinitialiser le mot de passe de ${u.email}`}
-                              onClick={() => void onResetPassword(u)}>
+                            <Button variant="ghost" size="icon"
+                              title="Envoyer un lien de réinitialisation"
+                              aria-label={`Envoyer un lien de réinitialisation à ${u.email}`}
+                              disabled={sendPasswordReset.isPending}
+                              onClick={() => void onSendPasswordReset(u)}>
                               <KeyRound />
                             </Button>
                             <Button variant="ghost" size="icon" title="Supprimer" disabled={isSelf}
@@ -272,16 +313,17 @@ export function SuperAdminUsersPage() {
         </CardContent>
       </Card>
 
-      {/* Création */}
+      {/* Invitation */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Créer un utilisateur</DialogTitle>
+            <DialogTitle>Inviter un utilisateur</DialogTitle>
             <DialogDescription>
-              Le mot de passe sera généré et affiché une seule fois.
+              Le compte est ouvert sans mot de passe : son titulaire reçoit un lien d'activation
+              et choisit lui-même le sien.
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={submitCreate} className="flex flex-col gap-4">
+          <form onSubmit={submitInvite} className="flex flex-col gap-4">
             <Field label="Email" htmlFor="cu-email" required>
               <Input id="cu-email" type="email" required value={cEmail}
                 onChange={(e) => setCEmail(e.target.value)} />
@@ -295,7 +337,7 @@ export function SuperAdminUsersPage() {
               </Field>
             </div>
             <Field label="Tenant" htmlFor="cu-tenant"
-              hint="Un simple accès — l'attribution d'un profil de droits se fait ensuite depuis les Paramètres du tenant.">
+              hint="Un simple accès — l'attribution d'un profil de droits se fait ensuite depuis les Paramètres du tenant. Le mail part par le serveur d'envoi de ce tenant.">
               <Select id="cu-tenant" value={cTenant} onChange={(e) => setCTenant(e.target.value)}>
                 <option value="">— Aucun accès pour l'instant —</option>
                 {(tenants.data ?? []).map((t) => (
@@ -306,8 +348,8 @@ export function SuperAdminUsersPage() {
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}
             <DialogFooter>
               <Button type="button" variant="ghost" onClick={() => setCreateOpen(false)}>Annuler</Button>
-              <Button type="submit" disabled={createUser.isPending}>
-                {createUser.isPending ? "Création…" : "Créer"}
+              <Button type="submit" disabled={inviteUser.isPending}>
+                {inviteUser.isPending ? "Envoi…" : "Inviter"}
               </Button>
             </DialogFooter>
           </form>
@@ -403,32 +445,23 @@ export function SuperAdminUsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Identifiants affichés une seule fois */}
-      <Dialog open={credentials !== null} onOpenChange={(o) => { if (!o) setCredentials(null); }}>
+      {/* Issue du geste — aucun secret n'y figure */}
+      <Dialog open={notice !== null} onOpenChange={(o) => { if (!o) setNotice(null); }}>
         <DialogContent>
-          {credentials ? (
+          {notice ? (
             <>
               <DialogHeader>
-                <DialogTitle>Identifiants de connexion</DialogTitle>
-                <DialogDescription>
-                  Transmettez-les de manière sécurisée — le mot de passe ne sera plus jamais
-                  affiché.
-                </DialogDescription>
+                <DialogTitle>{notice.title}</DialogTitle>
               </DialogHeader>
               <div className="flex flex-col gap-2 text-sm">
-                <p><span className="text-muted-foreground">Email :</span> {credentials.email}</p>
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground">Mot de passe :</span>
-                  <code className="rounded bg-muted px-2 py-1">{credentials.password}</code>
-                  <Button variant="ghost" size="icon" title="Copier"
-                    aria-label="Copier le mot de passe"
-                    onClick={() => void navigator.clipboard.writeText(credentials.password)}>
-                    <Copy />
-                  </Button>
-                </div>
+                {notice.lines.map((line) => (
+                  <p key={line} className={notice.tone === "warning" ? "text-destructive" : "text-muted-foreground"}>
+                    {line}
+                  </p>
+                ))}
               </div>
               <DialogFooter>
-                <Button onClick={() => setCredentials(null)}>J'ai transmis les identifiants</Button>
+                <Button onClick={() => setNotice(null)}>Fermer</Button>
               </DialogFooter>
             </>
           ) : null}

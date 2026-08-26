@@ -2,8 +2,19 @@
 // Socle. L'agent renseigne l'identité ; les homonymes du Socle sont recherchés
 // AUTOMATIQUEMENT au fil de la saisie (débounce) et proposés — le choix d'un
 // candidat reste un geste explicite (clic sur la fiche), jamais une sélection
-// automatique. Sans correspondance : création de l'usager dans le Socle (avec
-// rejeu anti-doublon juste avant), ou poursuite sans rapprochement.
+// automatique.
+//
+// ⚠️ SANS CORRESPONDANCE, C'EST UNE NOUVELLE PERSONNE — ON LA CRÉE DANS LE
+// SOCLE (décision PO du 2026-08-26). « Poursuivre sans rapprochement » n'existe
+// plus dans le parcours normal : une demande instruite pendant des semaines
+// contre une identité qui n'est nulle part dans le référentiel n'est
+// rattrapable par personne. La création rejoue l'anti-doublon juste avant
+// d'écrire.
+//
+// La SEULE exception est une panne AVÉRÉE du Socle (`isSocleOutage`) : l'agent
+// a un usager en face de lui, on ne le renvoie pas chez lui. La demande part
+// alors en `non_rapprochee`, et le serveur pose l'anomalie
+// `usager_a_creer_dans_socle` pour qu'elle soit réconciliée plus tard.
 // Les champs proposés et l'anonymat sont gouvernés par le requester_config de
 // la démarche (masqué / visible / obligatoire).
 
@@ -28,7 +39,9 @@ import {
   candidateSummary,
   duplicateCheckIdentity,
   EMPTY_NEW_CONTACT,
+  declaredFromNewContact,
   isNameOnlyMatch,
+  isSocleOutage,
   liveSearchIdentity,
   newContactFromDeclared,
   reasonLabel,
@@ -178,6 +191,8 @@ export function RequesterIdentification({
   const [createForm, setCreateForm] = React.useState<NewContactForm>(EMPTY_NEW_CONTACT);
   const [duplicates, setDuplicates] = React.useState<MatchCandidate[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  /** Message d'une panne AVÉRÉE du Socle — la seule sortie de secours. */
+  const [socleDown, setSocleDown] = React.useState<string | null>(null);
   const searchSeq = React.useRef(0);
 
   const { mutateAsync: runMatch } = useMatchContacts();
@@ -230,20 +245,32 @@ export function RequesterIdentification({
     onResolve({ kind: "contact", audience, contact });
   }
 
+  /**
+   * Sortie de secours, atteignable UNIQUEMENT depuis le panneau de panne. On
+   * repart du formulaire de CRÉATION (`declaredFromNewContact`) : c'est la
+   * saisie la plus complète et la plus récente de l'agent — celle du
+   * formulaire de recherche est déjà périmée à ce stade.
+   */
   function proceedWithoutMatch() {
     setError(null);
     const submission = {
       kind: "sans_rapprochement" as const,
       audience,
-      declared: sanitizeDeclared(audience, declared),
+      declared: sanitizeDeclared(audience, {
+        ...declared,
+        ...declaredFromNewContact(createForm),
+      }),
     };
     const check = validateRequesterSubmission(requesterConfig, submission);
     if (!check.ok) { setError(check.message); return; }
     onResolve(submission);
   }
 
+  // Panne AVÉRÉE du Socle : le message est conservé pour l'afficher tel quel,
+  // et c'est la seule chose qui rouvre « Poursuivre sans rapprochement ».
   function openCreate() {
     setError(null);
+    setSocleDown(null);
     setDuplicates(null);
     setCreateForm(newContactFromDeclared(declared));
     setMode("creation");
@@ -251,6 +278,7 @@ export function RequesterIdentification({
 
   async function submitCreate(ignoreDuplicates: boolean) {
     setError(null);
+    setSocleDown(null);
     const payload = buildContactCreatePayload(audience, createForm);
     if (!payload.ok) { setError(payload.message); return; }
     try {
@@ -269,7 +297,12 @@ export function RequesterIdentification({
       const contact = await create.mutateAsync({ organizationId, contact: payload.payload });
       resolveContact(contact);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Création impossible.");
+      const message = err instanceof Error ? err.message : "Création impossible.";
+      // Un REFUS du Socle (SIRET déjà pris, invariant de type) se corrige dans
+      // le formulaire ; une PANNE ne se corrige pas — elle seule ouvre la
+      // sortie de secours.
+      if (isSocleOutage(err)) { setSocleDown(message); setError(null); }
+      else setError(message);
     }
   }
 
@@ -420,17 +453,14 @@ export function RequesterIdentification({
               <div className="flex flex-col gap-1">
                 <span className="font-bold">Aucun usager du Socle ne correspond à cette identité</span>
                 <small className="text-sm text-muted-foreground">
-                  Créez sa fiche dans le Socle (recommandé — elle sera réutilisable), ou poursuivez
-                  avec la seule identité déclarée.
+                  C'est donc une nouvelle personne : créez sa fiche dans le Socle. Elle servira à
+                  toute la gamme, et aux prochaines demandes de cet usager.
                 </small>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Button type="button" disabled={pending} onClick={openCreate}>
                   <UserRoundPlus />
                   Créer un nouvel usager
-                </Button>
-                <Button type="button" variant="outline" disabled={pending} onClick={proceedWithoutMatch}>
-                  Poursuivre sans rapprochement
                 </Button>
               </div>
             </div>
@@ -447,10 +477,6 @@ export function RequesterIdentification({
                 Aucun de ces usagers ?{" "}
                 <button type="button" className="font-semibold text-primary hover:underline" onClick={openCreate}>
                   Créer un nouvel usager
-                </button>
-                {" · "}
-                <button type="button" className="font-semibold text-foreground hover:underline" onClick={proceedWithoutMatch}>
-                  Poursuivre sans rapprochement
                 </button>
               </p>
             </div>
@@ -550,14 +576,38 @@ export function RequesterIdentification({
             </div>
           ) : null}
 
+          {/* SORTIE DE SECOURS — uniquement sur une panne AVÉRÉE. On ne renvoie
+              pas un usager chez lui parce que le référentiel tousse ; en
+              échange, la demande porte une anomalie que le serveur pose
+              lui-même (il ne croit aucun drapeau du navigateur). */}
+          {socleDown ? (
+            <div className="flex flex-col gap-2.5 rounded-[14px] border border-destructive/40 bg-destructive/[0.06] p-3.5">
+              <p className="text-sm font-bold text-destructive">Le Socle n'a pas répondu</p>
+              <p className="text-sm text-muted-foreground">{socleDown}</p>
+              <p className="text-sm text-muted-foreground">
+                Réessayez : c'est souvent passager. Si l'usager attend, poursuivez avec l'identité
+                déclarée — la demande sera signalée comme « usager à créer dans le Socle », à
+                régulariser plus tard.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" disabled={pending} onClick={() => submitCreate(true)}>
+                  {create.isPending ? "Création…" : "Réessayer"}
+                </Button>
+                <Button type="button" variant="outline" disabled={pending} onClick={proceedWithoutMatch}>
+                  Poursuivre sans rapprochement
+                </Button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex flex-wrap gap-2">
-            {duplicates === null || duplicates.length === 0 ? (
+            {(duplicates === null || duplicates.length === 0) && !socleDown ? (
               <Button type="button" disabled={pending} onClick={() => submitCreate(false)}>
                 {pending ? "Vérification…" : "Vérifier et créer"}
               </Button>
             ) : null}
             <Button type="button" variant="ghost" disabled={pending}
-              onClick={() => { setMode("recherche"); setDuplicates(null); setError(null); }}>
+              onClick={() => { setMode("recherche"); setDuplicates(null); setError(null); setSocleDown(null); }}>
               <ArrowLeft />
               Retour à la recherche
             </Button>

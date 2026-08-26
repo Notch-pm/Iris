@@ -26,25 +26,6 @@ export function whitelistProcedureSnapshot(raw: any): ProcedureSnapshot | null {
   };
 }
 
-/**
- * Identité retenue au dépôt pour un usager RAPPROCHÉ : relue depuis la fiche
- * Socle (vérité référentiel au moment T), whitelist stricte — internal_notes,
- * consentements, relations… n'existent pas ici par construction.
- */
-const CONTACT_IDENTITY_KEYS = [
-  "display_name", "civility", "first_name", "last_name", "usage_name", "birth_date",
-  "legal_name", "siret",
-  "email", "mobile_phone", "landline_phone",
-  "address_line1", "postal_code", "city",
-] as const;
-
-// deno-lint-ignore no-explicit-any
-export function contactIdentitySnapshot(raw: any): Record<string, unknown> | null {
-  if (typeof raw !== "object" || raw === null || typeof raw.id !== "string") return null;
-  const out: Record<string, unknown> = {};
-  for (const key of CONTACT_IDENTITY_KEYS) {
-    const value = raw[key];
-    if (typeof value === "string" && value.trim() !== "") out[key] = value;
-  }
-  return out;
-}
+// `contactIdentitySnapshot` a DÉMÉNAGÉ le 2026-08-26 vers
+// `../../_shared/identity/declared.ts` : `requests-api` en a besoin à son tour,
+// et une fonction n'importe pas le module privé d'une autre.

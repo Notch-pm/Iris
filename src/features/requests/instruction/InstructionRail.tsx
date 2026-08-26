@@ -1,12 +1,13 @@
 // Rail latéral de la fiche d'instruction : prise en charge (urgence, agent
 // instructeur — le service instructeur est à venir), avancement (étapes du
-// cycle de vie + action principale) et usager (identité retenue au dépôt,
+// cycle de vie + action principale) et usager (identité RELUE dans le Socle
+// quand elle est disponible, écarts avec le dépôt, correction sur place,
 // autres demandes du même usager Socle). Les droits restent portés par le
 // RLS / la garde SQL : `editable` ne fait que refléter.
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Check, ChevronDown, ChevronUp, ChevronsUp, Minus } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, ChevronsUp, History, Loader2, Minus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
@@ -20,6 +21,7 @@ import {
   memberName,
   PRIORITY_OPTIONS,
   priorityOption,
+  type IdentityChange,
   type PriorityTone,
   type RequesterIdentity,
   type StageView,
@@ -240,38 +242,99 @@ export function AvancementCard({ reference, stages, primary, fallbackLabel, show
 // ---- Usager -------------------------------------------------------------------
 
 interface UsagerProps {
+  /** Identité AFFICHÉE : la fiche Socle relue si elle l'a été, sinon le dépôt. */
   identity: RequesterIdentity;
+  /** Écarts entre l'identité du dépôt et celle d'aujourd'hui (vide si aucun). */
+  changes: IdentityChange[];
   socleContactId: string | null;
+  /** La relecture de la fiche Socle a échoué : on n'affiche que le dépôt. */
+  identityError: boolean;
+  /** Relecture EN COURS : on attend plutôt que de montrer le dépôt puis basculer. */
+  identityPending: boolean;
   otherRequests: RequestSummary[];
   otherLoading: boolean;
+  /** Reflet du droit de création dans le tenant (garde réelle : socle-proxy).
+   *  Le bouton est POSÉ dès le départ et seulement désactivé tant que la fiche
+   *  n'est pas là : le voir surgir en cours de chargement déplacerait l'en-tête. */
+  canEdit: boolean;
+  onEdit: () => void;
 }
 
-export function UsagerCard({ identity, socleContactId, otherRequests, otherLoading }: UsagerProps) {
+export function UsagerCard({
+  identity, changes, socleContactId, identityError, identityPending,
+  otherRequests, otherLoading, canEdit, onEdit,
+}: UsagerProps) {
   const [open, setOpen] = React.useState(false);
+  const [showDeposited, setShowDeposited] = React.useState(false);
   const n = otherRequests.length;
 
   return (
     <Surface className="gap-3 px-4 py-[15px]">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[12.5px] font-bold">Usager</span>
-        {socleContactId ? (
-          <Button asChild variant="ghost" size="sm" className="h-[26px] px-2 text-[11.5px]">
-            <Link to={`/usagers/${socleContactId}`}>Voir la fiche</Link>
-          </Button>
-        ) : (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-[26px] px-2 text-[11.5px]"
-            disabled
-            aria-disabled="true"
-            title="Aucun usager rapproché — identité déclarée au dépôt"
-          >
-            Voir la fiche
-          </Button>
-        )}
+        <span className="flex items-center gap-0.5">
+          {canEdit ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-[26px] gap-1 px-2 text-[11.5px]"
+              onClick={onEdit}
+              disabled={identityPending || identityError}
+              aria-disabled={identityPending || identityError}
+              title={
+                identityPending ? "Lecture de la fiche dans le Socle…"
+                  : identityError ? "Fiche du Socle illisible — modification impossible"
+                    : "Corriger la fiche de l'usager dans le Socle"
+              }
+            >
+              <Pencil className="size-3.5" aria-hidden="true" />
+              Modifier
+            </Button>
+          ) : null}
+          {socleContactId ? (
+            <Button asChild variant="ghost" size="sm" className="h-[26px] px-2 text-[11.5px]">
+              <Link to={`/usagers/${socleContactId}`}>Voir la fiche</Link>
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-[26px] px-2 text-[11.5px]"
+              disabled
+              aria-disabled="true"
+              title="Aucun usager rapproché — identité déclarée au dépôt"
+            >
+              Voir la fiche
+            </Button>
+          )}
+        </span>
       </div>
+      {/* Pendant la relecture on ATTEND explicitement : afficher le dépôt puis
+          basculer sur la fiche du jour faisait clignoter les champs qui ont
+          justement changé — c'est-à-dire les seuls qui comptent ici. */}
+      {identityPending ? (
+        <div className="flex flex-col gap-3" aria-busy="true">
+          <div className="flex items-center gap-[11px]">
+            <span className="h-10 w-10 shrink-0 animate-pulse rounded-full bg-muted" aria-hidden="true" />
+            <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+              <span className="h-3 w-2/3 animate-pulse rounded bg-muted" aria-hidden="true" />
+              <span className="h-2.5 w-1/2 animate-pulse rounded bg-muted" aria-hidden="true" />
+            </span>
+          </div>
+          <div className="flex flex-col gap-2" aria-hidden="true">
+            <span className="h-2.5 w-full animate-pulse rounded bg-muted" />
+            <span className="h-2.5 w-5/6 animate-pulse rounded bg-muted" />
+            <span className="h-2.5 w-3/4 animate-pulse rounded bg-muted" />
+          </div>
+          <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <Loader2 className="size-3 animate-spin" aria-hidden="true" />
+            Lecture de la fiche dans le Socle…
+          </p>
+        </div>
+      ) : (
+        <>
       <div className="flex items-center gap-[11px]">
         <Avatar initials={identity.initials} size="lg" muted={identity.anonymous || !identity.known} />
         <span className="flex min-w-0 flex-col gap-0.5">
@@ -291,6 +354,50 @@ export function UsagerCard({ identity, socleContactId, otherRequests, otherLoadi
       ) : identity.anonymous ? (
         <p className="text-xs text-muted-foreground">Aucune notification possible — dépôt anonyme assumé par l'agent.</p>
       ) : null}
+      {/* L'identité affichée est celle du Socle AUJOURD'HUI ; celle retenue au
+          dépôt reste la pièce du dossier et se relit ici, avec ses écarts. */}
+      {changes.length > 0 ? (
+        <div className="flex flex-col gap-2 rounded-xl bg-secondary/25 p-2.5">
+          <button
+            type="button"
+            className="flex items-center gap-1.5 text-left text-[11.5px] font-semibold text-secondary-foreground"
+            onClick={() => setShowDeposited((v) => !v)}
+            aria-expanded={showDeposited}
+          >
+            <History className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              {changes.length} champ{changes.length > 1 ? "s" : ""} modifié{changes.length > 1 ? "s" : ""} depuis le dépôt
+            </span>
+            {showDeposited
+              ? <ChevronUp className="size-3.5 shrink-0" aria-hidden="true" />
+              : <ChevronDown className="size-3.5 shrink-0" aria-hidden="true" />}
+          </button>
+          {showDeposited ? (
+            <div className="flex flex-col gap-1.5 border-t border-border/60 pt-2">
+              <p className="text-[10.5px] font-semibold uppercase tracking-wide text-muted-foreground">
+                Identité retenue au dépôt
+              </p>
+              <dl className="flex flex-col gap-1.5">
+                {changes.map((c) => (
+                  <div key={c.label} className="flex justify-between gap-3 text-[12px]">
+                    <dt className="shrink-0 text-muted-foreground">{c.label}</dt>
+                    <dd className="min-w-0 break-words text-right font-semibold">
+                      {c.before ?? <span className="font-normal italic text-muted-foreground">non renseigné</span>}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+      {identityError ? (
+        <p className="text-[11px] leading-relaxed text-muted-foreground">
+          Identité retenue au dépôt : la fiche du Socle n'a pas pu être relue.
+        </p>
+      ) : null}
+        </>
+      )}
       {socleContactId ? (
         <p className="truncate font-mono text-[10.5px] text-muted-foreground" title={socleContactId}>Socle · {socleContactId}</p>
       ) : null}

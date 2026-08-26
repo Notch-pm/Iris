@@ -5,9 +5,11 @@ import {
   buildContactCreatePayload,
   buildMatchIdentity,
   candidateSummary,
+  declaredFromNewContact,
   duplicateCheckIdentity,
   EMPTY_NEW_CONTACT,
   isNameOnlyMatch,
+  isSocleOutage,
   liveSearchIdentity,
   newContactFromDeclared,
   reasonLabel,
@@ -179,5 +181,63 @@ describe("résolution", () => {
     expect(contactAudience("association")).toBe("association");
     expect(contactAudience("administration")).toBeNull();
     expect(contactAudience(null)).toBeNull();
+  });
+});
+
+describe("isSocleOutage — panne AVÉRÉE contre refus métier", () => {
+  const withCode = (code: string) => Object.assign(new Error("peu importe"), { code });
+
+  it("reconnaît une panne du Socle", () => {
+    expect(isSocleOutage(withCode("socle_unavailable"))).toBe(true);
+    expect(isSocleOutage(withCode("socle_auth_failed"))).toBe(true);
+    expect(isSocleOutage(withCode("socle_error"))).toBe(true);
+  });
+
+  it("traite une erreur SANS code comme une panne (l'edge function n'a pas répondu)", () => {
+    expect(isSocleOutage(new Error("Serveur injoignable — réessayez dans un instant."))).toBe(true);
+  });
+
+  it("ne prend PAS un refus métier pour une panne — il se corrige au formulaire", () => {
+    // C'est le cœur de la règle : un SIRET déjà pris ne doit jamais rouvrir
+    // « Poursuivre sans rapprochement », sinon la porte se contourne à volonté.
+    expect(isSocleOutage(withCode("conflict"))).toBe(false);
+    expect(isSocleOutage(withCode("bad_request"))).toBe(false);
+    expect(isSocleOutage(withCode("forbidden"))).toBe(false);
+    expect(isSocleOutage(withCode("not_found"))).toBe(false);
+  });
+
+  it("ignore ce qui n'est pas une erreur", () => {
+    expect(isSocleOutage(null)).toBe(false);
+    expect(isSocleOutage("socle_unavailable")).toBe(false);
+  });
+});
+
+describe("declaredFromNewContact — la saisie de création part en identité déclarée", () => {
+  it("retourne les clés du contrat, les vides retirées", () => {
+    const declared = declaredFromNewContact({
+      ...EMPTY_NEW_CONTACT,
+      civilite: "madame", lastName: "Durand", firstName: " Marie ", email: "m@example.fr",
+    });
+    expect(declared).toEqual({
+      civilite: "madame", nom_naissance: "Durand", prenoms: "Marie", courriel: "m@example.fr",
+    });
+  });
+
+  it("recompose l'adresse : code postal et ville n'ont pas de clé au contrat", () => {
+    const declared = declaredFromNewContact({
+      ...EMPTY_NEW_CONTACT,
+      lastName: "Durand", addressLine1: "10 rue des Lilas", postalCode: "44000", city: "Nantes",
+    });
+    expect(declared.adresse).toBe("10 rue des Lilas, 44000 Nantes");
+  });
+
+  it("n'invente pas d'adresse quand rien n'est saisi", () => {
+    const declared = declaredFromNewContact({ ...EMPTY_NEW_CONTACT, legalName: "Boulangerie" });
+    expect(declared).toEqual({ raison_sociale: "Boulangerie" });
+  });
+
+  it("fait l'aller-retour avec newContactFromDeclared sur les champs partagés", () => {
+    const source = { nom_naissance: "Durand", prenoms: "Marie", courriel: "m@example.fr" };
+    expect(declaredFromNewContact(newContactFromDeclared(source))).toEqual(source);
   });
 });
