@@ -1,7 +1,7 @@
 # Dette technique — backlog
 
 > **Public** : équipe Iris · **Question traitée** : qu'est-ce qui est assumé comme dette, et
-> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-08-23
+> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-08-26
 
 Ce document ne recopie rien : il ne porte que la dette **sans autre domicile** (outillage,
 conventions, transverse). La dette de modèle de données et d'API vit là où elle se constate :
@@ -53,3 +53,74 @@ code.
 
 Repéré en livrant la page `/api-doc` (la vérification d'adhérence des nouveaux fichiers a dû
 se faire à la main : aucun hex ni px brut).
+
+## O2 — Deux chemins livrés sans épreuve de bout en bout
+
+**Constat (2026-08-26)** : la règle « sans correspondance, on crée l'usager dans le Socle »
+(décision PO) est couverte par des tests unitaires — `isSocleOutage`, `hasStrongMatch`,
+`contactCreatePayload`, `matchIdentityFromDeclared` — et le retrait de « Poursuivre sans
+rapprochement » a été vérifié en navigateur. Mais **deux chemins n'ont jamais tourné en
+réel** :
+
+- **la sortie de secours** (panne avérée du Socle) : il faudrait provoquer une indisponibilité
+  de `contacts-api`, ou injecter une erreur dans `socle-proxy` ;
+- **l'ingestion `requests-api`** (rapprochement puis création) : il faudrait poster une demande
+  réelle, qui **ne se supprime jamais**, et qui créerait au passage une fiche de test dans le
+  référentiel Socle.
+
+**Pourquoi ça compte** : ce sont précisément les chemins qui écrivent dans le référentiel
+d'une autre application de la gamme. Un défaut y produit des fiches parasites que personne ne
+verra passer.
+
+**Piste** : campagne E2E avec seed à UUID fixes et migration de cleanup, sur le motif du
+2026-08-22 (voir la convention dans les tests SQL) — en y ajoutant la purge des fiches Socle
+créées, que le cleanup Iris ne couvre pas.
+
+## O3 — Doublons d'usagers attendus à l'ingestion
+
+**Constat (2026-08-26)** : à l'ingestion, une fiche existante n'est réutilisée que sur un
+**identifiant fort** (courriel, téléphone, SIRET). Un partenaire qui envoie deux fois le même
+habitant **sans** identifiant fort créera **deux fiches** dans le Socle.
+
+**C'est un choix, pas un oubli.** L'alternative — rapprocher sur le nom — a été écartée :
+aucun agent n'arbitre les homonymes à l'ingestion, et rattacher la demande d'un habitant à son
+homonyme lui donnerait accès aux échanges d'un autre. Un doublon se fusionne ; une fuite, non.
+
+**Ce qui a été fait pour le borner** : le contrat OpenAPI 1.2.0 et
+[`api-changelog.md`](api-changelog.md) disent explicitement aux émetteurs d'envoyer un
+identifiant fort chaque fois qu'ils en ont un.
+
+**Piste, si le volume devient gênant** : le levier n'est pas dans Iris mais dans la **fusion
+de fiches** côté Socle. À défaut, un rapport « fiches créées par l'ingestion, sans identifiant
+fort » permettrait au moins de les repérer.
+
+## O4 — Deux leviers de volumétrie repérés et volontairement non pris
+
+**Constat (2026-08-26)**, mesuré sur la base réelle en répondant à une question du PO sur le
+coût des snapshots :
+
+- `procedure_snapshot.requester_config` pèse **668 octets par demande** et n'est **jamais relu
+  après la création** — ses deux seuls consommateurs (`creation/NewRequestPage.tsx`,
+  `create-request-from-procedure/index.ts`) lisent la démarche **rechargée depuis Socle**, pas
+  le snapshot de la demande. C'est un tiers du plus gros JSONB de la table. Le retirer de la
+  whitelist coûterait la trace de ce que la démarche exigeait comme identité au dépôt.
+- `useNearbyRequests` (`creation/useCreationData.ts`) filtre par `ilike` sur
+  `requester_snapshot->declared->>{field}` : **aucun index** ne couvre ce chemin, c'est un
+  balayage séquentiel des demandes du tenant. C'est aussi la raison pour laquelle
+  `toast_tuple_target` a été réglé à 1024 et pas plus bas — sortir `requester_snapshot` de la
+  ligne rendrait ce balayage nettement plus coûteux.
+
+**Pourquoi ne rien faire maintenant** : le volume visé est de quelques dizaines de milliers de
+demandes par collectivité (PO, 2026-08-26). À cette échelle, rien de tout cela ne se voit.
+Détail et chiffres : [`data-model.md`](data-model.md) § « Pourquoi figer l'identité au dépôt ».
+
+## O5 — Une migration appliquée sans miroir dans le dépôt
+
+**Constat (2026-08-26)** : `echanges_usager_commentaire_purge` (appliquée le 2026-08-26 à
+16:05 UTC) n'a **pas** de fichier miroir dans `supabase/migrations/`. La convention du dépôt
+veut que toute migration appliquée y laisse son jumeau, faute de quoi un rejeu du schéma
+depuis zéro ne reproduit pas la base.
+
+**Piste** : relire la définition appliquée (`supabase_migrations.schema_migrations`) et écrire
+le miroir manquant. Antérieure aux travaux du 26 août au soir ; repérée en ajoutant les deux
+migrations de cette vague.

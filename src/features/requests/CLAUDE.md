@@ -287,7 +287,19 @@ note interne → résolution avec texte de clôture → journal.
     illisible, lecteur sans droit de création. `requesterView` ignore aussi une réponse
     inexploitable plutôt que d'effacer un nom connu.
   - Conséquence : `identity` alimente l'en-tête, les variables des modèles d'e-mail et le
-    destinataire affiché dans Échanges — tout suit la fiche du jour. Le message qui annonçait
+    destinataire affiché dans Échanges — tout suit la fiche du jour.
+  - **L'attente est EXPLICITE** (PO, 2026-08-26) : pendant la relecture, le bloc Usager
+    affiche un squelette et « Lecture de la fiche dans le Socle… », et l'en-tête **omet le
+    nom** (`headerSubtitle` accepte `requesterName: null`). Montrer le dépôt puis basculer
+    faisait clignoter exactement les champs qui ont changé — c'est-à-dire les seuls qui
+    comptent ici —, y compris le nom dans le titre de la page. Mieux vaut pas de nom du tout
+    qu'un nom remplacé sous les yeux.
+  - Le bouton « Modifier » est **posé dès le départ et désactivé** tant que la fiche n'est pas
+    là : le faire surgir en cours de chargement déplacerait l'en-tête de la carte.
+  - ⚠️ Le drapeau est `socleContact.isLoading`, **pas** `isPending` : TanStack le laisse à faux
+    pour une requête désactivée (lecteur sans droit de création → aucune relecture, aucun
+    squelette) comme pour un rafraîchissement avec données en cache (retour d'un
+    enregistrement → pas de squelette non plus). C'est exactement le comportement voulu. Le message qui annonçait
     une identité « figée, impossible à compléter après coup » n'a donc plus lieu d'être : il ne
     reste que pour une identité déclarée **sans rapprochement**, seul cas où il n'existe
     aucune fiche à corriger.
