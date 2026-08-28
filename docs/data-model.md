@@ -222,8 +222,9 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
 | `t09_requests_set_scope_org` (DEFINER) | BEFORE UPDATE | Même calcul, **inconditionnel** à chaque UPDATE (pas seulement `OF socle_organization_id` — correctif de sécurité 2026-08-22 : un client omettant cette colonne de son `SET` ne pouvait sinon pas en survivre l'ancienne valeur) ; repart toujours de `old.anomalies`, jamais de `new.anomalies` (même motif) ; **avant** `t10`/`t11` |
 | `t10_requests_protect_immutable` (INVOKER) | BEFORE UPDATE | `id` (2026-08-22 : une clé primaire ne se réécrit jamais, service_role compris), `reference`, `organization_id`, `socle_root_org_id`, `source`, `external_ref`, `received_at`, `created_at`, **`requester_snapshot`** immuables ; demande **archivée gelée** (seul le statut peut changer, pour désarchiver — `procedure_snapshot` compris) — **dérogation service (2026-08-22)** : en contexte de service uniquement, une demande archivée peut recevoir un simple recalcul de `socle_scope_org_id`/`anomalies` (reparentage Socle post-sync) sans que ce soit traité comme une modification interdite |
 | `t11_requests_guard_write` (INVOKER, **remplace `t11_requests_guard_transition` le 2026-08-22**) | BEFORE UPDATE | **Porte unique** (fusion garde de transition + garde d'édition, ADR-07) : matrice fixe + exigences de données **inchangées** (ci-dessous) ; en plus, portes **par droit** : édition du dossier = **instruction** sur le couple actuel (liste exhaustive de colonnes « métier », `closure_*` compris hors changement de statut) ; affectation (RM-16) = le destinataire doit détenir l'**instruction** sur le couple retenu ; requalification (RM-18) = instruction sur le couple **actuel et cible** ; transfert d'organisation (RM-19) = instruction sur le couple actuel, cible libre dans le sous-arbre du tenant ; transitions courantes = **instruction**, transitions terminales/archivage = **clôture**, réouverture/archivage/désarchivage = **administration** (`has_admin_scope`) **en plus** de la clôture ; `closed_at` **neutralisée en entrée** (`new.closed_at := old.closed_at` avant tout calcul — seule la section Effets, plus bas dans la même fonction, la fait évoluer) ; pose/purge `closed_at` ; purge la clôture à la réouverture. Contournement `is_service_context()` conservé intégralement (fonction restée `SECURITY INVOKER`, voir piège DEFINER ci-dessus) |
+| `t17_requests_require_pieces_conformes` (DEFINER) | BEFORE UPDATE | **Qualification des pièces (2026-08-28)** : refuse `en_instruction → resolue_positive` tant qu'une exigence de pièce **obligatoire** n'est pas conforme (manquante, pas encore qualifiée, ou non conforme) — `request_pieces_blocking`, qui relit `procedure_snapshot -> form_schema` et rejoue les conditions sur `form_data`. **Elle seule** est fermée : mise en attente, annulation et résolution négative restent ouvertes (on refuse souvent PARCE QU'une pièce manque). Ne vise pas le désarchivage (`archivee → resolue_positive`), qui restaure un état déjà jugé. S'applique à tout le monde, service_role compris (règle métier, motif `t16`) |
 | `t19_requests_touch` (INVOKER) | BEFORE UPDATE | `version := version + 1`, `updated_at := now()` |
-| `t30_requests_log_insert` / `t30_requests_log_update` (DEFINER) | AFTER | Journal `request_events` (`created`, `status_changed`, `assigned`) + historique `request_assignments` |
+| `t30_requests_log_insert` / `t30_requests_log_update` (DEFINER) | AFTER | Journal `request_events` (`created`, `status_changed`, `assigned`, et **`form_data_updated`** depuis le 2026-08-28) + historique `request_assignments`. NB : `piece_qualifiee` et `piece_ajoutee` sont écrits par leurs RPC (`qualify_request_attachment`, `attach_request_piece`), pas par un trigger |
 
 ### Anomalies (`requests.anomalies`)
 
@@ -309,9 +310,9 @@ sans contournement bloquerait la péremption automatique et l'ingestion, leçon 
 | Depuis | Vers | Exigences |
 |---|---|---|
 | `a_traiter` | `en_instruction` | `assigned_to` NOT NULL |
-| `a_traiter` | `resolue_negative` | motif ∈ irrecevable/doublon/reorientation + texte de clôture |
+| `a_traiter` | `resolue_negative` | motif ∈ irrecevable/doublon/reorientation (le commentaire pour l'usager est FACULTATIF depuis le 2026-08-28) |
 | `a_traiter` | `annulee` | motif ∈ abandon/retrait_usager |
-| `en_instruction` | `en_attente` · `resolue_positive` · `resolue_negative` · `annulee` · `a_traiter` | résolutions : `closure_text` obligatoire ; annulation : motif |
+| `en_instruction` | `en_attente` · `resolue_positive` · `resolue_negative` · `annulee` · `a_traiter` | résolutions : **aucune exigence de données** depuis le 2026-08-28 (`closure_text` facultatif) ; annulation : motif |
 | `en_attente` | `en_instruction` · `annulee` | annulation : motif |
 | terminal (`annulee`/`resolue_*`) | `en_instruction` (**réouverture**) | droit **clôture** + **administration** (`has_admin_scope`) sur la demande ; purge closed_at + clôture |
 | terminal | `archivee` | droit **clôture** + **administration** |
@@ -347,6 +348,17 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `email_id` (nullable — pièce jointe à un échange sortant, dont elle suit le sort ; NULL =
   pièce déposée par l'usager ou par l'ingestion, seule catégorie affichée dans « Pièces de la
   demande »). Même trigger de cohérence.
+  **Qualification** *(2026-08-28)* : `compliance` (`NULL` = pas encore examinée, `conforme`,
+  `non_conforme`), `compliance_motif` (catalogue FERMÉ de cinq, obligatoire si non conforme et
+  interdit sinon), `compliance_note` (précision libre, 500 car. — écrite POUR l'usager, reprise
+  telle quelle dans le courriel de signalement), `compliance_by`, `compliance_at`. Cohérence
+  tenue par un CHECK (pas de motif sans verdict, pas de trace sans verdict).
+  **Aucune policy UPDATE cliente** (la table n'en a jamais eu) : la seule porte est la RPC
+  `qualify_request_attachment`.
+  **Remplacement** *(2026-08-28)* : `superseded_by` (auto-référence, `on delete set null`) +
+  `superseded_at`, posés par la seule RPC `attach_request_piece`. Non-NULL = pièce hors du
+  calcul de conformité, mais **toujours au dossier** — une pièce administrative ne se supprime
+  pas. CHECKs : les deux colonnes vont ensemble, et une pièce ne se remplace pas elle-même.
 - **`request_links`** — relations : `doublon_de` / `issue_de_scission` / `liee_a`
   (demande↔demande, même tenant imposé par trigger — une cible invisible par RLS est
   « introuvable ») et `externe` (`external_type` + `external_id` + `external_url`).
@@ -665,6 +677,141 @@ cohérence de tenant étant tenue par `t01_email_template_organizations_scope`.
 - `administrable_organizations(p_org_id)` (RPC `authenticated`) rend les organisations du
   tenant que l'appelant administre — la LISTE que `has_admin_scope` ne donne que nœud à nœud.
 
+### Qualification des pièces (`20260828100000`, `20260828100100`)
+
+L'agent déclare chaque pièce **conforme** ou **non conforme**. Trois effets, tous serveur :
+
+1. une exigence de pièce **obligatoire** non conforme ferme `en_instruction → resolue_positive`
+   (garde `t17`, tableau ci-dessus) ;
+2. déclarer une pièce non conforme place la demande **`en_attente`** — le statut existe déjà et
+   s'intitule « En attente d'information » : aucun 8ᵉ statut, l'invariant du workflow fixe tient.
+   Depuis `a_traiter`, la matrice interdit la transition : le statut ne bouge pas, et la RPC le
+   **dit** dans son retour (`status_changed: false`) plutôt que de laisser l'écran le deviner ;
+3. le retour en instruction reste un **geste d'agent** : l'UI le propose quand tout est
+   redevenu conforme, elle ne le fait pas à sa place.
+
+**Ce que « obligatoire » veut dire.** La garde ne peut pas se contenter des lignes déposées —
+une exigence jamais honorée n'a aucune ligne, et c'est justement le cas qu'il faut voir. Elle
+relit donc `procedure_snapshot -> 'form_schema'` et rejoue les conditions sur `form_data`,
+comme l'écran. D'où un **jumeau SQL du moteur de formulaire** (contrat Socle `form_schema` v1) :
+`form_condition_valid` / `form_condition_met` / `form_value_empty` / `form_rule_target` /
+`form_rule_equals` / `form_rule_includes` / `form_field_valid` / `form_node_valid` /
+`form_schema_content` / `form_data_key` / `form_attachment_required` /
+`form_attachment_requirements` — toutes `IMMUTABLE`, sans accès aux tables, `EXECUTE` révoqué
+partout. Le jumeau TypeScript est
+[`src/features/requests/instruction/conformite.ts`](../src/features/requests/instruction/conformite.ts).
+
+**Le parseur est fidèle, pas tolérant** : côté TS, un seul nœud illisible vide le schéma ENTIER
+(parité Socle). Le SQL refait ce choix à l'identique. Sans cela, la base bloquerait sur une
+exigence que l'écran ne sait pas afficher — un refus qu'un agent ne pourrait ni comprendre ni
+lever. En cas de doute, le SQL ne trouve **aucune** exigence et ne bloque rien.
+
+⚠️ **La propagation de NULL est le piège de tout jumeau SQL d'un contrat JSON** (correctif
+`20260828100100`, trouvé par le test avant toute mise en service). `p_field -> 'requiredIf'`
+vaut SQL NULL quand la clé est absente, donc `jsonb_typeof(...) <> 'object'` vaut **NULL, pas
+TRUE** : le `CASE` ne prend pas cette branche, tombe dans le `else` et appelle
+`form_condition_met(NULL)` — qui répond TRUE à juste titre, mais à la mauvaise question. Toute
+pièce **facultative** devenait ainsi obligatoire. Six fonctions étaient touchées, toujours dans
+le sens dangereux (accepter un nœud illisible, donc garder un schéma que l'écran aurait vidé).
+**Règle : comparer un `jsonb_typeof` sans `coalesce(..., '')` est un bug en attente**, et seul
+un test qui passe par la garde RÉELLE — pas par la seule fonction — l'attrape.
+
+**`qualify_request_attachment(attachment_id, compliance, motif, note)`** est l'unique porte
+d'écriture (motif `permission_*` et `request_emails`) : elle vérifie le droit d'**instruction**,
+refuse une pièce jointe à un échange sortant (c'est un envoi du service, pas une pièce de
+l'usager) et une demande close, écrit le verdict, journalise `piece_qualifiee`, puis bascule le
+statut. Elle rend `{attachment_id, request_id, compliance, motif, status, status_changed}`.
+
+⚠️ Elle est `SECURITY DEFINER`, donc son UPDATE de statut traverse `requests_guard_write` en
+**contexte de service** (`is_service_context()` y vaut toujours vrai — piège documenté plus
+haut) : les portes par droit y sont contournées. C'est assumé, et c'est **pourquoi le droit
+d'instruction est vérifié dans la RPC elle-même**, explicitement, avant toute écriture. La
+matrice des transitions, les exigences de données et la garde `t17` restent appliquées : elles
+ne dépendent pas du contexte.
+
+**Reprise** : les demandes déjà en cours n'ont aucune pièce qualifiée, donc ne peuvent être
+résolues positivement qu'après qualification. C'est le comportement voulu, pas un effet de bord.
+
+### Ajouter une pièce, modifier les réponses (`20260828110000`)
+
+Deux gestes de la fiche d'instruction, décidés le 2026-08-28.
+
+**Ajouter une pièce — « la plus récente fait foi » (décision PO).** La pièce déposée sur une
+exigence REMPLACE celles qui y étaient actives : elles passent en `superseded_by` et sortent du
+calcul, sans quitter le dossier. Sans cela, corriger un justificatif ne débloquerait rien —
+l'ancien, non conforme, continuerait de compter.
+
+> ⚠️ **Conséquence assumée, signalée au PO avant sa décision** : sur le motif « la pièce est
+> incomplète », la page manquante ne s'AJOUTE pas, elle remplace. Le dialogue l'annonce avant
+> l'envoi (« remplacera les N pièces déjà déposées, qui resteront au dossier »). Le jour où le
+> besoin se précise, seule change la LISTE des lignes que la RPC marque : la colonne tient déjà
+> les deux régimes, et `pieceRequirements` distingue déjà actives et remplacées.
+
+**`attach_request_piece(request_id, storage_path, file_name, mime, size, form_field_key,
+replaces_id)`** — porte unique. Pourquoi une RPC alors que `request_attachments_insert` autorise
+déjà le client : l'ajout, le remplacement et le journal doivent être **atomiques**. Un INSERT
+client suivi d'un UPDATE client laisserait, sur coupure, une pièce neuve à côté d'une ancienne
+toujours active — une exigence bloquée que personne ne comprendrait. Elle vérifie le droit
+d'**instruction** (piège DEFINER : `is_service_context()` y vaut toujours vrai, donc le contrôle
+est fait ICI), refuse une demande close, et **vérifie le préfixe du `storage_path`**
+(`{organization_id}/{request_id}/`) : le chemin porte le RLS storage, il ne peut désigner ni une
+autre demande ni un autre tenant. Sans `form_field_key`, seule la ligne nommée par `replaces_id`
+est remplacée — il n'y a pas d'exigence à laquelle rattacher un groupe. Journalise
+`piece_ajoutee` (avec le nombre de remplacées).
+
+**Modifier les réponses (`requests.form_data`)** — aucune garde nouvelle : `requests_guard_write`
+exige déjà le droit d'**instruction** pour toucher `form_data`, et `requests_protect_immutable`
+gèle une demande archivée. Ce qui manquait, c'est la **trace** : `requests_log_update` émet
+désormais `form_data_updated`. Le payload ne porte que les **clés** touchées, jamais les
+valeurs — une réponse peut contenir des données personnelles, et le journal est immuable : on
+n'y écrit pas ce qu'une purge devrait plus tard effacer.
+
+⚠️ Le `procedure_snapshot` reste **FIGÉ**. On corrige les réponses au formulaire retenu au dépôt,
+jamais la définition de la démarche : elle vit dans le Socle, et Iris ne la redéfinit pas
+(invariant). C'est pourquoi aucune relecture Socle n'intervient ici, contrairement à la création.
+
+⚠️ **Conséquence de sécurité connue** : `form_data` conditionne ce que `t17` juge obligatoire
+(`requiredIf`). Un agent pourrait donc modifier une réponse pour qu'une pièce cesse d'être
+exigée, et clore. Ce n'est **pas** une escalade — le même agent peut tout aussi bien déclarer la
+pièce conforme —, et les deux gestes sont journalisés. À revoir si le PO veut un second regard
+sur la clôture.
+
+### Avis de clôture à l'usager (`20260828120000`)
+
+Résoudre une demande PRÉVIENT l'usager par courriel (décision PO 2026-08-28) — objets figés
+« Votre demande a été résolue positivement » et « Nous ne pouvons répondre positivement à votre
+demande » —, et l'échange est enregistré dans `request_emails` comme n'importe quel autre.
+
+**Le commentaire de l'agent devient facultatif.** La migration réémet `requests_guard_write`
+sans l'exigence `closure_text` (une seule ligne de moins, le reste copié à l'identique — le prix
+assumé d'une porte unique). L'exigence servait à garantir qu'on dise QUELQUE CHOSE à l'usager ;
+c'est désormais l'avis lui-même qui s'en charge, et il se tient sans commentaire. Le motif de
+clôture, lui, reste obligatoire là où il l'était.
+
+**`send-request-email` gagne un mode** `kind: "cloture"` : le navigateur n'envoie QUE
+l'identifiant de la demande, et le serveur compose objet, salutation, phrase d'annonce,
+commentaire et signature depuis l'état enregistré (`_shared/email/cloture.ts`, pur/testé).
+C'est cette composition serveur qui autorise le mode à exiger la **clôture** plutôt que
+l'instruction — le droit qui vient d'autoriser la transition : détenir `cloture` ne donne pas le
+pouvoir d'écrire n'importe quoi à un habitant, seulement celui d'annoncer une décision qu'on
+vient de prendre. Ni pièce jointe ni modèle ne sont acceptés dans ce mode.
+
+⚠️ **Le motif de clôture ne sort jamais.** `closure_motif` (« irrecevable », « réorientation »,
+« doublon ») classe le dossier pour le service ; il n'explique rien à un habitant. Seul le texte
+libre de l'agent l'atteint — ce que la colonne `closure_text` promet depuis l'origine.
+
+⚠️ **L'envoi SUIT la transition, il ne la conditionne pas.** La demande est résolue quoi qu'il
+arrive ; un échec s'affiche comme tel sans laisser croire que la clôture a échoué, et le cas le
+plus courant — aucune adresse au dossier — est annoncé comme un fait, pas comme une erreur.
+Résidu connu : si le navigateur meurt entre la transition et l'appel, l'avis ne part pas et
+aucune trace n'est écrite. Le jour où ça gêne, la sortie est une boîte d'envoi drainée sur cron
+(motif `notifications-mailer`), pas un envoi synchrone plus robuste.
+
+⚠️ **Une civilité se normalise avant de sortir** (`civilityLabel`, `_shared/identity/declared.ts`) :
+le Socle la stocke en minuscules, et le premier envoi réel a produit « monsieur Laurent Jacquot, »
+en tête d'un avis pendant que l'écran affichait « Monsieur ». Le catalogue est désormais PARTAGÉ
+entre l'écran et le serveur — il n'y en a qu'un.
+
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 
 Toutes les policies par couple ci-dessous enveloppent `is_platform_admin()` en `(select …)`
@@ -732,6 +879,40 @@ versionnées (le `db dump` ne couvre pas le schéma `storage` — constat Socle)
 `20260820100300_storage_attachments.sql` puis `20260822100700_policies_droits.sql`.
 
 ## Tests
+
+[`../supabase/tests/qualification-pieces.test.sql`](../supabase/tests/qualification-pieces.test.sql) —
+**8 groupes, tous passés le 2026-08-28** : le jumeau SQL du moteur rend les MÊMES exigences que
+`conformite.test.ts` (14 cas littéralement jumeaux : `required` statique, `requiredIf` satisfaite
+ou non, champ et section masqués par `visibleIf`, clé machine vide, nœud illisible, version non
+prise en charge, snapshot dégradé, combinator `or`, `isNotEmpty` sur tableau vide, `equals` valant
+« contient », `requiredIf` sans règle) · `request_pieces_blocking` bloque sur manquante / à
+qualifier / non conforme, jamais sur une pièce facultative, jamais sur une pièce d'échange
+SORTANT · la garde `t17` ferme la résolution POSITIVE et **elle seule** (attente, annulation et
+résolution négative passent), même en contexte de service · la RPC écrit le verdict, normalise la
+précision, journalise, bascule en attente depuis l'instruction et **pas** depuis « À traiter » ·
+refus de verdict inconnu / motif manquant / motif hors catalogue / précision > 500 / pièce
+d'échange sortant / demande close · le droit d'**instruction** est exigé (consultant, autre
+sous-arbre, autre tenant refusés **avec le bon message**) · aucune écriture directe possible
+(0 ligne affectée) et les fonctions du jumeau restent fermées aux clients · les CHECK de la table
+tiennent la cohérence en dernier recours.
+⚠️ **C'est ce test qui a trouvé le bug de propagation de NULL** (correctif `20260828100100`) : il
+n'apparaissait qu'en passant par la garde RÉELLE, sur une pièce **facultative** — la fonction
+prise isolément n'aurait rien montré.
+
+[`../supabase/tests/pieces-remplacees.test.sql`](../supabase/tests/pieces-remplacees.test.sql) —
+**7 groupes, tous passés le 2026-08-28** : la pièce ajoutée remplace TOUTES les actives de son
+exigence (y compris une conforme — c'est la règle choisie) · une pièce d'échange sortant portant
+la même clé n'est PAS touchée, ni une pièce hors formulaire · l'exigence retombe « à qualifier »
+puis se débloque une fois la neuve conforme — ce que l'ancienne empêchait · le journal porte le
+nombre de remplacées · hors formulaire, le remplacement se désigne nommément, et sans clé ni
+cible rien n'est remplacé · gardes de la RPC (chemin hors de la demande, nom vide, demande close,
+fuite intra-tenant, toutes vérifiées **sur le message**) · `form_data_updated` compte les clés,
+n'écrit aucune valeur, ne se déclenche pas sur une écriture sans changement, et le CCAS ne peut
+pas modifier les réponses de la Voirie · les CHECK de cohérence de `superseded_*`.
+⚠️ Deux faux échecs de ce test valent d'être notés, tous deux dans le TEST et non dans le code :
+appeler `request_pieces_blocking` en se faisant passer pour un client (EXECUTE révoqué — ce qui
+CONFIRME la garde), et vérifier « `superseded_by` sans `superseded_at` » sur une ligne déjà
+remplacée, où `superseded_at` était donc déjà posé.
 
 [`../supabase/tests/echanges-usager.test.sql`](../supabase/tests/echanges-usager.test.sql) —
 **10 groupes, tous passés le 2026-08-26** : la RPC de service ouvre l'échange ET ses pièces en
@@ -824,7 +1005,7 @@ reproduisant exactement la reprise M6, au lieu du rôle `organization_members.ro
 création par un agent (référence, statut de naissance, racine dérivée, journal, **libellés
 démarche/catégorie réécrits depuis le cache même si falsifiés**) · numérotation indépendante
 par tenant · isolation lecture et écriture entre deux tenants (cache des démarches compris) ·
-transitions refusées (matrice, agent non assigné, texte de clôture manquant) · réouverture
+transitions refusées (matrice, agent non assigné) · **T6 inversé le 2026-08-28** : une résolution SANS commentaire est désormais acceptée, et le commentaire reste écrivable après coup · réouverture
 refusée sans administration, permise avec · archivage refusé sans administration, permis avec ·
 gel des archivées (désarchivage avec altération du `procedure_snapshot` refusé) · colonnes
 immuables (`requester_snapshot` compris) · DELETE impossible · lien cross-tenant refusé ·

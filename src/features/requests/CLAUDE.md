@@ -13,7 +13,8 @@ note interne → résolution avec texte de clôture → journal.
   sélecteur dans le header d'`AppShell` (masqué si un seul tenant), rôle affiché en badge.
 - **`statuts.ts`** (pur, testé) : libellés FR des 7 statuts/motifs/priorités et
   **`allowedTransitions(status, role)`** — miroir EXACT de la garde SQL
-  `requests_guard_transition` (exigences : assigné, texte de clôture, motifs ; portes :
+  `requests_guard_transition` (exigences : assigné, motifs — le texte de clôture n'est plus
+  exigé depuis le 2026-08-28, d'où `asksClosureText` et non `needs…` ; portes :
   réouverture superviseur+, archivage/désarchivage admin ; lecteur = rien). ⚠️ Ce module ne
   protège rien : il reflète ce que le trigger acceptera. Toute évolution de la matrice SQL se
   répercute ICI et dans `statuts.test.ts`.
@@ -94,8 +95,10 @@ note interne → résolution avec texte de clôture → journal.
   étiquetées par `procedure_snapshot.form_schema` avec conditions rejouées — `formAnswers` —,
   description, **lieu d'intervention** (carte + itinéraire, ci-dessous), demandes liées via
   `useRequestSummaries`), Documents
-  (pièces de la demande : vignette, taille, état de copie, « Voir » / « Télécharger » par URL
-  signée ; pièces d'instruction ; courriers), Échanges, Notes internes (`request_messages`,
+  (pièces de la demande **groupées par exigence du formulaire**, avec leur qualification et
+  l'historique de leurs remplacements — vignette, taille, état de copie, « Voir » /
+  « Télécharger » par URL signée, « Qualifier », « Remplacer la pièce » ;
+  pièces d'instruction ; courriers), Échanges, Notes internes (`request_messages`,
   bulles beurre, suppression auteur/admin), Activité (`activityItems` : journal `request_events`
   fusionné aux notes, plus récent en tête). **Rail** : prise en charge (urgence = `priority`
   via `useUpdatePriority`, agent instructeur via `useAssignRequest`, service instructeur),
@@ -133,7 +136,7 @@ note interne → résolution avec texte de clôture → journal.
   - **`instruction/instruction.ts`** (pur, testé) porte TOUTE la déduction (échéance,
     sous-titre, identité, réponses, étapes, activité, vignettes) ; les composants affichent.
   - **`TransitionActions.tsx`** = `useTransitionRunner` (transition active, application
-    directe ou dialogue, erreur) + `TransitionDialog` (motif / texte de clôture / assigné),
+    directe ou dialogue, erreur) + `TransitionDialog` (motif / commentaire pour l'usager / assigné),
     monté une fois par fiche. Les refus de la garde SQL sont affichés tels quels (bandeau
     d'en-tête ou dialogue). `src/components/ui/dropdown.tsx` = menu flottant minimal (`ar-pop`).
 - RLS = source de vérité : l'UI ne masque les actions que par confort ; toute erreur de garde
@@ -265,6 +268,139 @@ note interne → résolution avec texte de clôture → journal.
     de la pièce des « Pièces de la demande », et porte « aucune adresse » sur DEM-2026-000005.
     Les quatre gardes serveur ont été éprouvées **hors interface** (404 demande introuvable,
     400 objet vide, 400 pièce hors demande, 400 aucun destinataire).
+
+- **Qualification des pièces justificatives** (2026-08-28, `instruction/conformite.ts`
+  pur/testé — 31 cas —, `QualificationDialog.tsx`, `useQualifyAttachment.ts`, onglet Documents) :
+  l'agent déclare chaque pièce **conforme** ou **non conforme**, avec un motif pris dans un
+  catalogue **fermé de cinq** et une précision libre facultative.
+  - **L'onglet Documents groupe désormais PAR EXIGENCE du formulaire**, plus par fichier. Une
+    pièce se juge par rapport à ce qui était demandé : « le justificatif de domicile est-il en
+    règle ? » a un sens, « ce PDF-là est-il en règle ? » beaucoup moins — surtout quand un champ
+    accepte plusieurs fichiers, et que le motif « la pièce est incomplète » ne veut rien dire
+    autrement. C'est aussi la seule façon de montrer une exigence **obligatoire jamais honorée**
+    (`manquante`) : elle n'a aucune ligne à afficher, et c'est justement ce qu'il faut voir.
+    Le verdict, lui, s'écrit fichier par fichier.
+  - **Seule la résolution POSITIVE est fermée** par une pièce obligatoire non conforme (décision
+    PO 2026-08-28). Mise en attente, annulation et résolution négative restent ouvertes : on
+    refuse souvent PARCE QU'une pièce manque, et une pièce qui cloche doit pouvoir mettre le
+    dossier en attente. Le blocage se reflète dans l'en-tête, le menu « ⋯ » **et** le bouton de
+    l'Avancement (`blockedReason`), toujours avec le motif écrit — un bouton grisé sans
+    explication est le pire des deux mondes.
+  - **Une pièce non conforme place la demande « En attente d'information »**, côté SERVEUR, dans
+    la même transaction que le verdict. Le statut `en_attente` porte déjà exactement ce libellé :
+    aucun 8ᵉ statut, l'invariant du workflow fixe tient. Depuis « À traiter » la matrice interdit
+    la transition — la RPC le **dit** (`status_changed: false`) au lieu de laisser l'écran le
+    deviner, et le toast annonce ce qui s'est passé, pas ce qu'on espérait.
+  - **Le retour en instruction reste un geste d'agent** : quand tout est redevenu conforme, un
+    bandeau le PROPOSE (`readyToResume`), il ne le fait pas à sa place.
+  - **« Signaler à l'usager » n'envoie rien** : il dépose un brouillon (`buildNonConformityEmail`)
+    dans le composeur de l'onglet Échanges — objet, salutation, liste des pièces avec motif et
+    précision — que l'agent relit, amende et envoie lui-même. Ce texte parle au nom de la
+    collectivité. Le brouillon voyage par la prop `draft` d'`EchangesPane`, appliquée une fois
+    par nouvel OBJET puis rendue au parent (`onDraftApplied`) : sans cela, un rendu de plus
+    écraserait ce que l'agent vient de corriger.
+  - Le courriel **ne cite QUE les pièces non conformes**, jamais les manquantes : réclamer une
+    pièce jamais déposée est un autre geste (« Demander une pièce », encore `SOON`), avec ses
+    propres mots. Mélanger les deux ferait un courriel qui reproche à l'usager quelque chose
+    qu'il n'a pas fait. Une valeur absente est **omise**, jamais remplacée par un repli — même
+    règle que `requestTemplateValues` (`identity.known ? identity.name : null`).
+  - ⚠️ **`conformite.ts` est un JUMEAU SQL.** La vérité vit dans `form_attachment_requirements`,
+    la garde `t17_requests_require_pieces_conformes` et la RPC `qualify_request_attachment`
+    (migrations `20260828100000` / `20260828100100`). Toute évolution de la règle se répercute
+    dans les DEUX, plus `conformite.test.ts` et `supabase/tests/qualification-pieces.test.sql`,
+    dont les 14 premiers cas sont littéralement jumeaux.
+  - ⚠️ **`request_attachments` n'a aucune policy UPDATE cliente** (elle n'en a jamais eu) : un
+    UPDATE direct depuis le navigateur ne toucherait **aucune ligne, silencieusement**. La seule
+    porte est la RPC, qui vérifie le droit d'**instruction**.
+  - Le journal nomme le geste (`piece_qualifiee` → « Pièce déclarée conforme / non conforme »,
+    fichier et motif). Le catalogue de motifs est **injecté** dans `activityItems`
+    (`motifLabel`), comme `nameOf` : `conformite.ts` lit déjà `formSchemaFrom` d'`instruction.ts`,
+    l'importer en retour ferait un cycle.
+  - `attachmentFieldLabels` a été **supprimée** : `pieceFields` la remplace en mieux (elle rejoue
+    la visibilité et rend l'exigence, pas seulement le libellé).
+  - Vérifié en navigateur le 2026-08-28 sur DEM-2026-000007 (« Acte de naissance », justificatif
+    de domicile obligatoire) : blocage affiché avec son motif, qualification non conforme →
+    bascule en attente + journal, brouillon de signalement pré-rempli, requalification conforme →
+    bandeau de reprise, reprise → résolution positive rouverte.
+
+- **Avis de clôture à l'usager** (2026-08-28, `@fn/_shared/email/cloture.ts` pur/testé — 16 cas —,
+  `useSendClosureEmail`, mode `kind: "cloture"` de l'edge `send-request-email`) : résoudre une
+  demande PRÉVIENT l'usager par courriel, et l'échange est enregistré comme tous les autres.
+  - **Le commentaire devient FACULTATIF** (décision PO). `needsClosureText` est devenu
+    `asksClosureText` : le dialogue propose le champ, la garde SQL ne l'exige plus
+    (migration `20260828120000`, qui réémet `requests_guard_write` moins une ligne).
+    `buildTransitionUpdate` écrit `closure_text: null` quand il est vide, **explicitement** :
+    sur une demande rouverte puis reclose, omettre la colonne y laisserait le commentaire de la
+    clôture précédente — que l'usager recevrait comme s'il venait d'être écrit.
+  - **Le serveur compose TOUT** : le navigateur n'envoie que l'identifiant de la demande. C'est
+    ce qui permet au mode d'exiger le droit de **clôture** plutôt que l'instruction — celui qui
+    vient d'autoriser la transition. Les deux décisions vont ensemble : ouvrir la fonction à la
+    clôture SANS composition serveur ferait d'Iris un relais ouvert pour quiconque peut clore.
+  - Le dialogue **annonce l'objet exact** que recevra l'usager (`CLOSURE_NOTICE`, cité depuis
+    `CLOSURE_SUBJECTS`) : l'agent doit reconnaître le message dans l'onglet Échanges.
+  - ⚠️ **L'envoi SUIT la transition, il ne la conditionne pas.** La demande est résolue quoi
+    qu'il arrive. Un `no_recipient` est annoncé comme un fait (« aucun courriel : la demande ne
+    porte pas d'adresse »), pas comme une erreur ; tout autre échec s'affiche en bandeau, en
+    disant explicitement que la clôture, elle, a bien eu lieu.
+  - ⚠️ **Le motif de clôture ne sort jamais** — il n'est même pas une entrée de `closureEmail`.
+  - ⚠️ **La civilité se normalise avant de sortir.** Le Socle la stocke en minuscules : le
+    premier envoi réel a produit « monsieur Laurent Jacquot, » pendant que l'écran affichait
+    « Monsieur ». `civilityLabel` vit désormais dans `@fn/_shared/identity/declared` et
+    `src/features/contacts/usager.ts` le RÉEXPORTE — un seul catalogue pour l'écran et le serveur.
+  - `salutation()` et `quotedSubject()` vivent dans `@fn/_shared/email/adresse.ts`, partagés
+    avec le signalement de non-conformité : deux courriels d'Iris ne doivent pas saluer
+    différemment.
+  - Résidu connu : si le navigateur meurt entre la transition et l'appel, l'avis ne part pas et
+    rien n'est tracé. Sortie le jour venu : une boîte d'envoi drainée sur cron (motif
+    `notifications-mailer`), pas un envoi synchrone « plus robuste ».
+  - Vérifié en envoi RÉEL le 2026-08-28 (avec l'accord explicite du PO) sur DEM-2026-000004,
+    résolue positivement SANS commentaire : courriel reçu, échange enregistré dans l'onglet
+    Échanges avec le corps exact. C'est cet envoi qui a révélé le défaut de civilité, corrigé
+    et couvert par un test.
+
+- **Ajouter une pièce, modifier les réponses** (2026-08-28, `instruction/formulaire.ts`
+  pur/testé — 15 cas —, `AjouterPieceDialog.tsx`, `FormulaireEditDialog.tsx`,
+  `useEditRequestForm.ts`) : les deux gestes qui manquaient pour qu'une non-conformité se
+  résolve depuis la fiche.
+  - **« Remplacer la pièce » / « Déposer la pièce »** n'apparaît que sur une exigence
+    `non_conforme` ou `manquante` — une exigence conforme n'appelle pas de pièce de plus.
+  - **« La plus récente fait foi »** (décision PO) : la pièce déposée REMPLACE celles qui
+    étaient actives sur l'exigence (`superseded_by`). Elles restent au dossier, sous un
+    dépliant « N pièces remplacées », barrées, avec leur verdict et leur motif — et toujours
+    téléchargeables. Rien n'est supprimé.
+    ⚠️ **Conséquence signalée au PO avant sa décision** : sur le motif « la pièce est
+    incomplète », la page manquante ne s'ajoute pas, elle remplace. Le dialogue l'ANNONCE avant
+    l'envoi (« remplacera les N pièces déjà déposées »), et le module distingue déjà `attachments`
+    (actives) de `superseded` : rouvrir un mode « compléter » ne changerait que la liste des
+    lignes que la RPC marque.
+  - **`attach_request_piece` est la porte unique** : téléversement navigateur (policy storage =
+    droit d'instruction), puis RPC qui revérifie le chemin, déclare, remplace et journalise —
+    en UNE transaction. Un INSERT client puis un UPDATE client laisserait, sur coupure, une
+    pièce neuve à côté d'une ancienne encore active : une exigence bloquée inexplicable.
+  - **« Modifier » les réponses** (onglet Résumé) rejoue le `form_schema` **FIGÉ** du
+    `procedure_snapshot` dans `ProcedureFormFields` (prop `attachmentsReadOnly` : les champs
+    « pièce » sont rappelés, non déposables — elles se gèrent dans Documents). Le bouton
+    compte les modifications réelles (`changedAnswerKeys`) et reste fermé s'il n'y en a aucune.
+  - ⚠️ **On modifie les RÉPONSES, jamais la démarche.** Sa définition vit dans le Socle
+    (invariant), et le snapshot est la pièce du dossier : le formulaire rejoué est celui
+    présenté au dépôt, pas celui d'aujourd'hui. Aucune relecture Socle ici, contrairement à la
+    création.
+  - ⚠️ **`validateAnswers` ÉCARTE les erreurs de pièces** — `validateFormSubmission` refuse une
+    pièce obligatoire absente, ce qui est juste à la création mais absurde ici : bloquer la
+    correction d'une date de naissance parce qu'un justificatif n'est pas arrivé n'a aucun sens.
+    Le manque est un fait du dossier, que Documents affiche et que `t17` sanctionne au bon
+    moment. Le geste reste un simple UPDATE : `requests_guard_write` exige déjà l'instruction.
+  - Modifier une réponse peut rendre une pièce obligatoire, ou cesser de l'exiger (`requiredIf`) :
+    le dialogue le dit. Corollaire connu et documenté dans `data-model.md` : un agent peut donc
+    desserrer `t17` en éditant `form_data` — ce n'est pas une escalade (il pourrait tout aussi
+    bien déclarer la pièce conforme) et les deux gestes sont journalisés.
+  - Le journal nomme les deux gestes : `piece_ajoutee` (« Pièce ajoutée » / « Pièce remplacée »
+    avec le compte) et `form_data_updated` (« Réponses du formulaire modifiées » — le nombre,
+    jamais les valeurs : une réponse peut porter des données personnelles et le journal est
+    immuable).
+  - Vérifié en navigateur le 2026-08-28 sur DEM-2026-000007 : prénom corrigé et journalisé,
+    remplacement annoncé puis effectué (« 1 pièce remplacée »), ancienne barrée avec son motif,
+    nouvelle qualifiée conforme, résolution positive rouverte.
 
 - **Identité vivante de l'usager** (2026-08-26, `requesterView` dans `instruction.ts`,
   pur/testé) : le `requester_snapshot` reste **immuable** — c'est la pièce du dossier, ce qui a

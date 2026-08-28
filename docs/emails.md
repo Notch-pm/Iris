@@ -266,6 +266,37 @@ y exige déjà le droit d'instruction), déclarées en base avec `request_attach
 puis relues côté serveur et jointes au message. Plafond **10 Mo** au total — limite pratique des
 relais, bien en deçà des 25 Mio que le bucket accepte par objet.
 
+### Avis de clôture (2026-08-28)
+
+Résoudre une demande prévient l'usager, sans que l'agent ait à rédiger quoi que ce soit.
+
+| | |
+|---|---|
+| Déclencheur | Transition vers `resolue_positive` ou `resolue_negative`, depuis la fiche |
+| Objets | « Votre demande a été résolue positivement » · « Nous ne pouvons répondre positivement à votre demande » (**figés**, décision PO) |
+| Composé par | Le **serveur** (`_shared/email/cloture.ts`) — le navigateur n'envoie que l'identifiant de la demande |
+| Droit exigé | **Clôture** (et non instruction) : celui qui vient d'autoriser la transition |
+| Enregistré | `request_emails`, comme tout échange — visible dans l'onglet Échanges |
+| Pièces jointes | Aucune : l'avis annonce une décision, il ne transmet pas de document |
+
+Le corps reprend la salutation, la référence et l'objet de la demande, la phrase d'annonce, puis
+**le commentaire de l'agent s'il en a écrit un** — celui-ci est FACULTATIF depuis cette vague
+(la garde SQL ne l'exige plus). Sans commentaire, le message se tient seul.
+
+**Ce qui ne sort pas** : le motif de clôture (`irrecevable`, `réorientation`, `doublon`…). Il
+classe le dossier pour le service et n'explique rien à un habitant. La règle absolue reste
+inchangée par ailleurs : le corps d'une note interne ne sort jamais.
+
+**Pourquoi la clôture et pas l'instruction.** Ouvrir `send-request-email` au droit de clôture
+serait dangereux si le navigateur composait le message : un agent qui peut clore pourrait écrire
+n'importe quoi à un habitant. C'est parce que le serveur compose TOUT — objet, phrases,
+signature — que l'ouverture est sans risque. Les deux décisions vont ensemble ; on ne peut pas
+en garder une seule.
+
+**Si l'envoi échoue**, la demande reste résolue : on n'annule pas une décision d'instruction
+parce qu'un serveur de mail tousse. L'écran le dit (« La demande est bien résolue…, mais l'avis
+n'a pas pu partir »), et l'absence d'adresse est annoncée comme un fait, pas comme une erreur.
+
 ## 5. Diagnostic
 
 | Symptôme | Cause la plus probable |

@@ -33,7 +33,10 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
 - **Workflow fixe à 7 statuts** (décision PO) : `a_traiter`, `en_instruction`, `en_attente`,
   `annulee`, `resolue_positive`, `resolue_negative`, `archivee`. Gardes de transition
   **serveur** (trigger), jamais UI seulement. « Résolue positivement » exige un passage par
-  l'instruction.
+  l'instruction — et, depuis le 2026-08-28, que toute pièce **obligatoire** ait été qualifiée
+  conforme (`t17_requests_require_pieces_conformes`). `en_attente` s'intitule « En attente
+  d'information » : c'est là que va une demande dont une pièce est déclarée non conforme.
+  Aucun 8ᵉ statut n'est à créer pour un nouveau besoin d'attente.
 - **Vocabulaire** : « catégorie » désigne exclusivement les catégories de **démarches** du
   Socle. La position d'une demande dans son cycle de vie est un **statut**.
 - **Iris ne gère aucune demande libre** (règle impérative PO, 2026-08-20) : toute nouvelle
@@ -61,7 +64,8 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
 - **Aucune suppression de demande** (pièce administrative) : pas de policy DELETE, FK
   `ON DELETE RESTRICT` depuis le tenant, purge RGPD par procédure `service_role` dédiée.
 - Les **notes internes ne quittent jamais Iris** (miroir de la règle `internal_notes` du
-  Socle) ; le texte de clôture destiné à l'usager est un objet distinct.
+  Socle) ; le texte de clôture destiné à l'usager est un objet distinct — **facultatif** depuis
+  le 2026-08-28, et repris dans l'avis de clôture envoyé à l'usager.
 - **Aucun mot de passe n'est généré ni affiché à un administrateur** : un compte s'ouvre par
   une **invitation** (lien d'activation à usage unique, mot de passe choisi par son titulaire)
   et se dépanne par un **lien de réinitialisation** envoyé au titulaire. Le **serveur d'envoi
@@ -164,7 +168,11 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   l'onglet Échanges (envoi SYNCHRONE, droit d'**instruction** revérifié en SQL, destinataire et
   chemins de pièces résolus côté serveur, marque = la collectivité seule). La doctrine « ce qui
   sort d'Iris » de `notifications.ts` vise les e-mails **aux agents** et ne s'y applique pas —
-  seul reste absolu : **le corps d'une note interne ne sort jamais**.
+  seul reste absolu : **le corps d'une note interne ne sort jamais**. Depuis le 2026-08-28,
+  `send-request-email` a un second mode : l'**avis de clôture** (`kind: "cloture"`), composé
+  intégralement par le serveur et exigeant le droit de **clôture** — c'est parce que le
+  navigateur ne compose rien que l'ouverture à ce droit est sans risque ; le motif de clôture,
+  lui, ne sort jamais.
   Détail : [`docs/emails.md`](docs/emails.md).
 - `src/types/database.types.ts` est **généré depuis le schéma live** (Supabase MCP
   `generate_typescript_types`) — ne jamais l'éditer à la main, régénérer après chaque migration.
@@ -211,7 +219,14 @@ les invariants ci-dessus restent la référence.
   brouillon local, demandes proches, **échanges avec l'usager** (onglet Échanges : e-mail avec
   ou sans modèle, variables résolues sur la demande, pièces jointes réelles — edge function
   `send-request-email`), edge function `create-request-from-procedure` et moteur
-  partagé `@fn/create-request-from-procedure/_shared/procedureForm.ts` →
+  partagé `@fn/create-request-from-procedure/_shared/procedureForm.ts`,
+  **qualification des pièces justificatives** (conforme / non conforme avec motif fermé ;
+  une pièce obligatoire non conforme ferme la seule résolution *positive*, une pièce non
+  conforme place la demande « En attente d'information », le retour en instruction est
+  proposé), **ajout d'une pièce** sur une exigence non conforme ou manquante (« la plus
+  récente fait foi » : la nouvelle remplace, les remplacées restent au dossier) et
+  **modification des réponses** au formulaire figé de la demande (jamais la définition de la
+  démarche, qui vit dans le Socle) →
   [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
 - **Contacts / Usagers** (`src/features/contacts`) : identification du demandeur via
   `socle-proxy` (homonymes cherchés automatiquement, création, sans rapprochement,
