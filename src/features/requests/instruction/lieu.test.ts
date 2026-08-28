@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { interventionLocation } from "./lieu";
+import { fitStreetParts, interventionLocation } from "./lieu";
 
 // Miroir du bloc « Lieu d'intervention » inséré par le Socle
 // (createLieuInterventionSection) : une section ordinaire, clés préfixées.
@@ -186,5 +186,87 @@ describe("interventionLocation", () => {
       ],
     });
     expect(interventionLocation({ id: "proc-1" }, { autre_champ: "x" })).toBeNull();
+  });
+});
+
+describe("bâtiment — reconnu quand le bloc le porte", () => {
+  const withBatiment = () => ({
+    ...lieuSection(),
+    fields: [
+      { id: "f1", key: "intervention_numero", label: "Numéro", type: "text" },
+      { id: "f3", key: "intervention_voie", label: "Voie", type: "text" },
+      { id: "f8", key: "intervention_batiment", label: "Bâtiment", type: "text" },
+      { id: "f6", key: "intervention_code_postal", label: "Code postal", type: "text" },
+      { id: "f7", key: "intervention_ville", label: "Ville", type: "text" },
+    ],
+  });
+  const data = {
+    intervention_numero: "6",
+    intervention_voie: "Rue de la République",
+    intervention_batiment: "C",
+    intervention_code_postal: "69001",
+    intervention_ville: "Lyon",
+  };
+
+  it("le range dans les précisions d'accès, JAMAIS dans l'adresse envoyée au GPS", () => {
+    const lieu = interventionLocation(snapshot([withBatiment()]), data)!;
+    expect(lieu.details).toEqual([{ label: "Bâtiment", value: "C" }]);
+    expect(lieu.query).toBe("6 Rue de la République, 69001 Lyon");
+    expect(lieu.lines).toEqual(["6 Rue de la République", "69001 Lyon"]);
+  });
+
+  it("le déclare parmi les clés couvertes — il ne réapparaît pas dans les informations saisies", () => {
+    const lieu = interventionLocation(snapshot([withBatiment()]), data)!;
+    expect(lieu.keys).toContain("intervention_batiment");
+  });
+
+  it("le reconnaît aussi par son libellé quand la clé a été renommée dans le Socle", () => {
+    const renamed = {
+      ...withBatiment(),
+      fields: withBatiment().fields.map((f) =>
+        f.key === "intervention_batiment" ? { ...f, key: "champ_libre_3", label: "Immeuble" } : f),
+    };
+    const lieu = interventionLocation(snapshot([renamed]), { ...data, champ_libre_3: "C" })!;
+    expect(lieu.details).toEqual([{ label: "Immeuble", value: "C" }]);
+    expect(lieu.query).toBe("6 Rue de la République, 69001 Lyon");
+  });
+});
+
+describe("fitStreetParts — écrire dans les champs que le bloc porte VRAIMENT", () => {
+  const all = () => true;
+  const listeBtq = (text: string) =>
+    ["bis", "ter", "quater"].includes(text.toLowerCase()) ? text.toLowerCase() : null;
+
+  it("répartit normalement quand tous les champs existent", () => {
+    expect(fitStreetParts({ numero: "6", btq: "bis", voie: "Rue Neuve" }, all, listeBtq))
+      .toEqual({ numero: "6", btq: "bis", voie: "Rue Neuve" });
+  });
+
+  it("replie le BTQ dans la voie quand la liste fermée ne sait pas le dire", () => {
+    expect(fitStreetParts({ numero: "2", btq: "A", voie: "Rue du Port" }, all, listeBtq))
+      .toEqual({ numero: "2", btq: "", voie: "A Rue du Port" });
+  });
+
+  it("replie le BTQ dans la voie quand le bloc n'a pas de champ BTQ", () => {
+    const sansBtq = (part: string) => part !== "btq";
+    expect(fitStreetParts({ numero: "6", btq: "bis", voie: "Rue Neuve" }, sansBtq, listeBtq))
+      .toEqual({ numero: "6", btq: "", voie: "bis Rue Neuve" });
+  });
+
+  it("replie le numéro dans la voie quand le bloc n'a pas de champ numéro — jamais de perte", () => {
+    const sansNumero = (part: string) => part !== "numero";
+    expect(fitStreetParts({ numero: "6", btq: "bis", voie: "Rue Neuve" }, sansNumero, listeBtq))
+      .toEqual({ numero: "", btq: "bis", voie: "6 Rue Neuve" });
+  });
+
+  it("garde l'ordre de lecture quand numéro ET BTQ se replient", () => {
+    const voieSeule = (part: string) => part === "voie";
+    expect(fitStreetParts({ numero: "2", btq: "A", voie: "Rue du Port" }, voieSeule, listeBtq))
+      .toEqual({ numero: "", btq: "", voie: "2 A Rue du Port" });
+  });
+
+  it("ne fabrique rien à partir de rien", () => {
+    expect(fitStreetParts({ numero: "", btq: "", voie: "" }, all, listeBtq))
+      .toEqual({ numero: "", btq: "", voie: "" });
   });
 });

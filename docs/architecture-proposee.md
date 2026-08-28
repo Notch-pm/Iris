@@ -702,7 +702,12 @@ Fiche usager complète et à jour · `POST /v1/contacts/match` (rapprochement) �
 (`/v1/contacts/create`) et **mise à jour** (`/v1/contacts/update` → `PATCH contacts-api
 /v1/contacts/{id}`, partiel : seuls les champs modifiés, `null` efface ; `contact_type` et
 `status` refusés) d'un usager · `form_schema` au moment de créer une demande dans Iris (puis figé) ·
-`documents/signed-url` · géométries de quartiers. La clé plateforme Socle vit uniquement en
+`documents/signed-url` · géométries de quartiers (route `/v1/quartiers/list` **livrée et
+vérifiée le 2026-08-28** pour la carte du champ d'adresse ; c'est la SEULE par laquelle la
+géométrie franchit la frontière — `sanitizeContact` continue de la retirer du quartier d'une
+fiche usager. Le contrat public-api exige `geometry=true` **et**, pour une clé plateforme,
+`organization_id` — sans quoi les quartiers reviennent sans polygone ; le champ s'appelle
+`geometry`, pas `geom`). La clé plateforme Socle vit uniquement en
 secret d'edge function ; le **`X-Organization-Id` est toujours dérivé côté serveur** (mapping
 tenant de l'utilisateur authentifié), **jamais accepté du navigateur** — c'est le risque n°1
 identifié (§8, R-C1).

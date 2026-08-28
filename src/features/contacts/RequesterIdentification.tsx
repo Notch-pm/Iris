@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { AddressField } from "@/components/address/AddressField";
 import { cn } from "@/lib/utils";
 import {
   allowsAnonymous,
@@ -405,6 +406,20 @@ export function RequesterIdentification({
                       <option value="madame">Madame</option>
                       <option value="monsieur">Monsieur</option>
                     </Select>
+                  ) : def.key === "adresse" ? (
+                    // Le `requester_config` du Socle n'a qu'UNE clé d'adresse,
+                    // en texte libre : on y écrit l'adresse normalisée par le
+                    // référentiel (`label`), code postal et ville compris.
+                    <AddressField
+                      id={`req-${def.key}`}
+                      label=""
+                      singleLine
+                      showMap={false}
+                      hint="Le référentiel propose : la ligne retenue est enregistrée telle quelle."
+                      value={{ line: declared[def.key] ?? "", postcode: "", city: "" }}
+                      onChange={(next, suggestion) =>
+                        setD(def.key, suggestion ? suggestion.label : next.line)}
+                    />
                   ) : (
                     <Input id={`req-${def.key}`} value={declared[def.key] ?? ""}
                       type={def.key === "courriel" ? "email" : "text"}
@@ -545,18 +560,19 @@ export function RequesterIdentification({
               <Input id="nc-landline" value={createForm.landlinePhone}
                 onChange={(e) => setC("landlinePhone", e.target.value)} />
             </Field>
-            <Field label="Adresse" htmlFor="nc-address">
-              <Input id="nc-address" value={createForm.addressLine1}
-                onChange={(e) => setC("addressLine1", e.target.value)} />
-            </Field>
-            <Field label="Code postal" htmlFor="nc-postal">
-              <Input id="nc-postal" value={createForm.postalCode}
-                onChange={(e) => setC("postalCode", e.target.value)} />
-            </Field>
-            <Field label="Ville" htmlFor="nc-city">
-              <Input id="nc-city" value={createForm.city}
-                onChange={(e) => setC("city", e.target.value)} />
-            </Field>
+            {/* Le contrat de création n'a ni complément ni pays : trois clés,
+                pas une de plus. La carte est coupée — cette étape est déjà dense. */}
+            <AddressField
+              id="nc-address"
+              className="md:col-span-2 xl:col-span-3"
+              showMap={false}
+              value={{ line: createForm.addressLine1, postcode: createForm.postalCode, city: createForm.city }}
+              onChange={(next) => {
+                setC("addressLine1", next.line);
+                setC("postalCode", next.postcode);
+                setC("city", next.city);
+              }}
+            />
           </div>
 
           {duplicates !== null && duplicates.length > 0 ? (

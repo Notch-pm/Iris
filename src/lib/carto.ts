@@ -7,12 +7,15 @@
 //    « © les contributeurs OpenStreetMap » (ODbL). La politique d'usage de
 //    l'OSMF réserve ses serveurs aux faibles volumes : `VITE_MAP_TILE_URL`
 //    permet de basculer sur un fournisseur de tuiles dédié sans toucher au code.
-//  - **géocodage** : Base Adresse Nationale (api-adresse.data.gouv.fr,
-//    Etalab/IGN), pensée pour les adresses françaises, substituable par
-//    `VITE_GEOCODE_URL` (le contrat de réponse attendu reste le GeoJSON BAN).
+//  - **géocodage** : Base Adresse Nationale, servie par la Géoplateforme (IGN)
+//    depuis le retrait d'`api-adresse.data.gouv.fr` (janvier 2026). Pensée pour
+//    les adresses françaises, substituable par `VITE_GEOCODE_URL` (le contrat de
+//    réponse attendu reste le GeoJSON BAN).
 //
-// Seule l'adresse du lieu d'intervention transite vers ces services : jamais
-// l'identité de l'usager, jamais la référence de la demande.
+// Ce qui transite vers ces services : une ADRESSE, et rien qui l'accompagne —
+// jamais un nom, jamais une référence de demande. Cela vaut pour l'adresse d'un
+// lieu d'intervention comme pour celle d'un usager qu'un agent est en train de
+// saisir (`src/lib/adresse.ts`) : le fragment part seul.
 
 import { buildCsv, parseCsv } from "./csv";
 
@@ -24,7 +27,11 @@ export interface CartoConfig {
 }
 
 export const DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
-export const DEFAULT_GEOCODE_URL = "https://api-adresse.data.gouv.fr/search/";
+// `api-adresse.data.gouv.fr` a été décommissionné fin janvier 2026 et ne
+// répond plus que par proxy : on vise directement la Géoplateforme. La forme
+// `<base>/csv/` que compose `batchGeocodeUrl` y fonctionne à l'identique
+// (vérifié) — l'endpoint `/geocodage/batch/`, lui, n'existe pas.
+export const DEFAULT_GEOCODE_URL = "https://data.geopf.fr/geocodage/search/";
 
 /** Configuration cartographique : défauts libres, surchargeables par l'environnement. */
 export function readCartoConfig(env: Record<string, unknown>): CartoConfig {
@@ -258,7 +265,7 @@ const PRECISION_BY_TYPE: Record<string, GeoPrecision> = {
 };
 
 /** Type de résultat du géocodeur → finesse annoncée (inconnu : la plus large). */
-function precisionOf(type: string | undefined): GeoPrecision {
+export function precisionOf(type: string | undefined): GeoPrecision {
   if (!type) return "commune";
   return PRECISION_BY_TYPE[type] ?? "commune";
 }

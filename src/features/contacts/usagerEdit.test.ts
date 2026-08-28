@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildContactPatch, editableFields, formFromContact, validateUsagerForm, type UsagerForm,
+  buildContactPatch, editableFields, formFromContact, isFranceCountry, validateUsagerForm,
+  type UsagerForm,
 } from "./usagerEdit";
 import type { SocleContact } from "./rapprochement";
 
@@ -110,5 +111,19 @@ describe("buildContactPatch", () => {
 
   it("rend un patch vide quand rien ne change", () => {
     expect(buildContactPatch(PERSON, PERSON, "personne")).toEqual({});
+  });
+});
+
+describe("isFranceCountry — l'assistance d'adresse ne couvre que la France", () => {
+  it("reconnaît la France quelle que soit l'écriture, et le pays encore vide", () => {
+    for (const value of ["France", "FRANCE", " france ", "fr", ""]) {
+      expect(isFranceCountry(value)).toBe(true);
+    }
+  });
+
+  it("se retire ailleurs : la BAN ne connaîtrait pas l'adresse", () => {
+    for (const value of ["Belgique", "Suisse", "Deutschland", "Canada"]) {
+      expect(isFranceCountry(value)).toBe(false);
+    }
   });
 });

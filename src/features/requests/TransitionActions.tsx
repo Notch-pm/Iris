@@ -1,13 +1,16 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/features/auth/AuthProvider";
-import { MOTIF_LABELS, type ClosureMotif, type RequestStatus, type TransitionSpec } from "./statuts";
+import {
+  MOTIF_LABELS, needsTransitionDialog,
+  type ClosureMotif, type RequestStatus, type TransitionSpec,
+} from "./statuts";
 import { CLOSURE_SUBJECTS } from "@fn/_shared/email/cloture";
 import { useApplyTransition, type TenantMember } from "./useRequests";
 
@@ -22,17 +25,26 @@ export interface TransitionInput {
   assigneeId?: string | null;
 }
 
-export interface TransitionRunner {
+/**
+ * Ce dont le DIALOGUE a besoin, et rien de plus. La fiche le fournit par
+ * `useTransitionRunner` (une demande, connue au montage) ; le tableau des
+ * demandes par `tableau/useBoardTransition` (la demande visée change à chaque
+ * glisser-déposer). Un seul dialogue pour les deux.
+ */
+export interface TransitionDialogRunner {
   /** Transition dont le dialogue (motif / texte / assigné) est ouvert. */
   active: TransitionSpec | null;
-  /** Lance la transition : dialogue si des informations manquent, sinon application directe. */
-  start: (spec: TransitionSpec) => void;
   run: (spec: TransitionSpec, input: TransitionInput) => Promise<void>;
   close: () => void;
   pending: boolean;
   error: string | null;
   /** Assigné proposé par défaut dans le dialogue (assigné courant, sinon l'agent connecté). */
   defaultAssignee: string;
+}
+
+export interface TransitionRunner extends TransitionDialogRunner {
+  /** Lance la transition : dialogue si des informations manquent, sinon application directe. */
+  start: (spec: TransitionSpec) => void;
 }
 
 export function useTransitionRunner(opts: {
@@ -60,12 +72,7 @@ export function useTransitionRunner(opts: {
 
   const start = React.useCallback((spec: TransitionSpec) => {
     setError(null);
-    const needsDialog = Boolean(
-      spec.asksClosureText
-      || (spec.motifChoices && spec.motifChoices.length > 0)
-      || (spec.needsAssignee && defaultAssignee === ""),
-    );
-    if (needsDialog) {
+    if (needsTransitionDialog(spec, defaultAssignee)) {
       setActive(spec);
       return;
     }
@@ -85,8 +92,10 @@ export function useTransitionRunner(opts: {
 }
 
 interface DialogProps {
-  runner: TransitionRunner;
+  runner: TransitionDialogRunner;
   members: TenantMember[];
+  /** Demande visée, quand l'écran en instruit plusieurs (tableau des demandes). */
+  subtitle?: React.ReactNode;
 }
 
 /**
@@ -103,7 +112,7 @@ const CLOSURE_NOTICE: Partial<Record<RequestStatus, string>> = {
 };
 
 /** Dialogue motif / commentaire / assigné — monté une seule fois par fiche. */
-export function TransitionDialog({ runner, members }: DialogProps) {
+export function TransitionDialog({ runner, members, subtitle }: DialogProps) {
   const { active } = runner;
   const [motif, setMotif] = React.useState<ClosureMotif | "">("");
   const [closureText, setClosureText] = React.useState("");
@@ -125,6 +134,7 @@ export function TransitionDialog({ runner, members }: DialogProps) {
           <>
             <DialogHeader>
               <DialogTitle>{active.label}</DialogTitle>
+              {subtitle ? <DialogDescription>{subtitle}</DialogDescription> : null}
             </DialogHeader>
             <form
               className="flex flex-col gap-4"

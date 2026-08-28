@@ -8,6 +8,8 @@ import {
   sanitizeMatches,
   sanitizeProcedureFull,
   sanitizeProcedureSummary,
+  sanitizeQuartier,
+  sanitizeQuartierList,
 } from "./sanitize";
 
 const rawContact = {
@@ -185,5 +187,45 @@ describe("filterContactListQuery", () => {
     expect(filterContactListQuery({ offset: -1 })).toMatchObject({ ok: false });
     expect(filterContactListQuery({ search: "x".repeat(201) })).toMatchObject({ ok: false });
     expect(filterContactListQuery("Dupont")).toMatchObject({ ok: false });
+  });
+});
+
+describe("sanitizeQuartier — la SEULE porte par laquelle `geom` passe", () => {
+  const raw = {
+    id: "q-1", name: "Trinquetaille", color: "#00D084",
+    geometry: { type: "Polygon", coordinates: [] },
+    organization_id: "org-socle", internal_notes: "NOTE INTERNE SOCLE", champ_futur: 42,
+  };
+
+  it("transmet la géométrie — c'est ce pour quoi la route existe", () => {
+    const q = sanitizeQuartier(raw)!;
+    expect(q.geometry).toEqual({ type: "Polygon", coordinates: [] });
+    expect(q).toEqual({ id: "q-1", name: "Trinquetaille", color: "#00D084", geometry: raw.geometry });
+  });
+
+  it("reste une whitelist stricte : rien d'autre ne franchit la frontière", () => {
+    const q = sanitizeQuartier(raw)!;
+    for (const forbidden of ["organization_id", "internal_notes", "champ_futur"]) {
+      expect(q).not.toHaveProperty(forbidden);
+    }
+  });
+
+  it("refuse une entrée sans identifiant", () => {
+    expect(sanitizeQuartier(null)).toBeNull();
+    expect(sanitizeQuartier({ name: "Sans id" })).toBeNull();
+  });
+
+  it("liste : écarte les entrées illisibles, ne rend jamais autre chose qu'un tableau", () => {
+    expect(sanitizeQuartierList([raw, null, { name: "x" }])).toHaveLength(1);
+    expect(sanitizeQuartierList(null)).toEqual([]);
+    expect(sanitizeQuartierList({ quartiers: [] })).toEqual([]);
+  });
+
+  it("le quartier d'une FICHE USAGER, lui, reste sans géométrie", () => {
+    const contact = sanitizeContact({
+      id: "c-9",
+      quartier: { id: "q-1", name: "Trinquetaille", color: "#00D084", geom: "SECRET" },
+    })!;
+    expect(contact.quartier).toEqual({ id: "q-1", name: "Trinquetaille", color: "#00D084" });
   });
 });

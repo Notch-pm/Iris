@@ -58,6 +58,14 @@ navigateur le 2026-08-20 dans le parcours de création.
     `gcTime: 0`/`staleTime: 0` : **aucune rétention**), les demandes viennent d'Iris
     (`useContactRequests`, bornées par le RLS — la fiche ne montre que le périmètre du
     lecteur, et c'est la règle).
+  - **Adresse assistée (2026-08-28)** : la section « Adresse » du dialogue est un champ
+    UNIQUE qui propose les adresses du référentiel, avec une carte de contrôle sous lui —
+    détail et pièges dans [`src/features/requests/CLAUDE.md`](../requests/CLAUDE.md),
+    § « Saisie d'adresse assistée ». Contacts-api n'ayant QU'UN complément (`address_line2`),
+    « Plus de champs » n'y montre que lui : ni bâtiment ni appartement séparés, qui seraient
+    un modèle que le Socle n'a pas. Le **pays reste hors du dépliant** — il est obligatoire,
+    et un champ obligatoire ne se replie pas ; c'est lui qui décide si l'assistance
+    s'applique, la BAN ne couvrant que la France (`isFranceCountry`).
   - **Modification (2026-08-23, `UsagerEditDialog` + `usagerEdit.ts` pur/testé)** : dialogue
     calqué sur `ContactFormDialog` de Clara (identité / coordonnées / adresse), restreint aux
     champs qu'Iris lit. L'écriture va **au Socle** (`socle-proxy /v1/contacts/update` →

@@ -5,7 +5,7 @@
 
 import * as React from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Download, Map, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Columns3, Download, Map, Plus } from "lucide-react";
 import { useWideLayout } from "@/components/layout/shellLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -174,6 +174,12 @@ export function RequestsListPage() {
           <Badge variant="muted">{total}</Badge>
         </div>
         <div className="flex items-center gap-2">
+          <Button asChild variant="outline">
+            <Link to="/demandes/tableau">
+              <Columns3 />
+              Tableau
+            </Link>
+          </Button>
           <Button asChild variant="outline">
             <Link to="/carte">
               <Map />

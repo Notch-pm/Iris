@@ -40,7 +40,14 @@ export function TileLayer({ view }: { view: MapView }) {
   );
 }
 
-/** Taille réelle du conteneur de carte (le rendu des tuiles en dépend). */
+/**
+ * Taille réelle du conteneur de carte (le rendu des tuiles en dépend).
+ *
+ * ⚠️ La mesure se fait au MONTAGE : l'élément doit exister au premier rendu du
+ * composant qui appelle ce hook. Un conteneur rendu conditionnellement plus
+ * tard ne sera jamais mesuré, et sa mosaïque restera vide — monter le composant
+ * entier quand la condition est vraie, plutôt que masquer le conteneur.
+ */
 export function useElementSize<T extends HTMLElement>() {
   const ref = React.useRef<T>(null);
   const [size, setSize] = React.useState({ width: 0, height: 0 });

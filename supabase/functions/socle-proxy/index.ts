@@ -25,6 +25,7 @@ import {
   sanitizeMatches,
   sanitizeProcedureFull,
   sanitizeProcedureSummary,
+  sanitizeQuartierList,
 } from "./_shared/sanitize.ts";
 
 const supabase = createClient(
@@ -219,6 +220,45 @@ Deno.serve(async (req) => {
       return fail(req, 404, "not_found", "Ressource introuvable.");
     }
     return json(req, 200, { procedure: sanitizeProcedureFull(proc) });
+  }
+
+  // Quartiers du territoire, AVEC leur géométrie — la carte d'un champ
+  // d'adresse les superpose pour que l'agent voie tout de suite si l'adresse
+  // saisie tombe où il croit. Ouverte à tout membre du tenant, comme
+  // /v1/procedures/* : une limite de quartier n'est pas une donnée
+  // personnelle, et le référentiel la calcule déjà pour chaque fiche.
+  //
+  // Le Socle peut ne pas (encore) exposer la route : 404 ⇒ « pas de couche »,
+  // pas une erreur. La carte s'affiche sans quartiers, tout le reste marche.
+  //
+  // DEUX paramètres obligatoires, appris à la mise en service (2026-08-28) :
+  //  - `geometry=true` — sans lui, public-api rend les quartiers SANS polygone
+  //    (le défaut : la plupart des consommateurs ne veulent que les libellés) ;
+  //  - `organization_id` — EXIGÉ des clés PLATEFORME (celle d'Iris) pour les
+  //    géométries ; le Socle en prend la racine, et les quartiers n'existent
+  //    que sur les organisations principales. `tenant.socleOrgId` EST cette
+  //    racine (vérifiée par `resolveTenant`), donc jamais une valeur du client.
+  if (path === "/v1/quartiers/list") {
+    const params = new URLSearchParams({
+      geometry: "true",
+      organization_id: tenant.socleOrgId,
+    });
+    const res = await socleFetch(
+      `${publicApiBase()}/v1/quartiers?${params}`,
+      { socleOrgId: tenant.socleOrgId },
+    );
+    if (res?.status === 404) return json(req, 200, { quartiers: [], available: false });
+    if (!res?.ok) return relaySocleError(req, res);
+    // deno-lint-ignore no-explicit-any
+    const all = await res.json().catch(() => null) as any;
+    const list = Array.isArray(all) ? all : Array.isArray(all?.quartiers) ? all.quartiers : [];
+    // Défense en profondeur : l'en-tête d'organisation borne déjà la réponse,
+    // mais un référentiel qui rendrait tout le monde ne doit pas passer.
+    const scoped = list.filter(
+      // deno-lint-ignore no-explicit-any
+      (q: any) => !q?.organization_id || q.organization_id === tenant.socleOrgId,
+    );
+    return json(req, 200, { quartiers: sanitizeQuartierList(scoped), available: true });
   }
 
   if (path === "/v1/contacts/search") {

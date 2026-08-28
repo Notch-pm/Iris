@@ -29,6 +29,38 @@ export function sanitizeContact(raw: any): Record<string, unknown> | null {
   return out;
 }
 
+/**
+ * Quartier du référentiel, AVEC sa géométrie — la seule porte par laquelle
+ * elle franchit la frontière.
+ *
+ * `sanitizeContact` continue de la retirer, et ce n'est pas une incohérence :
+ * un polygone par ligne d'annuaire (200 fiches) serait du poids pur, là où une
+ * carte a besoin des limites une fois. Une limite de quartier n'est pas une
+ * donnée personnelle ; l'architecture validée prévoit d'ailleurs sa lecture à
+ * la demande par ce proxy (« géométries de quartiers »).
+ *
+ * ⚠️ Le champ s'appelle `geometry` — c'est le nom du contrat public-api
+ * (`QuartierDto`), du GeoJSON rendu par `ST_AsGeoJSON`. `geom` est le nom de la
+ * COLONNE PostGIS, qui ne sort jamais telle quelle (binaire). Les confondre a
+ * coûté un aller-retour le 2026-08-28 : la route rendait `geom: null` sur des
+ * quartiers qui avaient pourtant tous leur polygone.
+ */
+const QUARTIER_FIELDS = ["id", "name", "color", "geometry"] as const;
+
+export function sanitizeQuartier(raw: any): Record<string, unknown> | null {
+  if (typeof raw !== "object" || raw === null || typeof raw.id !== "string") return null;
+  const out: Record<string, unknown> = {};
+  for (const key of QUARTIER_FIELDS) {
+    out[key] = raw[key] ?? null;
+  }
+  return out;
+}
+
+export function sanitizeQuartierList(raw: any): Record<string, unknown>[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(sanitizeQuartier).filter((q): q is Record<string, unknown> => q !== null);
+}
+
 export function sanitizeContactList(raw: any): Record<string, unknown>[] {
   if (!Array.isArray(raw)) return [];
   return raw.map(sanitizeContact).filter((c): c is Record<string, unknown> => c !== null);

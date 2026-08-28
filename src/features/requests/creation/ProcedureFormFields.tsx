@@ -13,13 +13,17 @@ import { cn } from "@/lib/utils";
 import {
   attachmentIsRequired,
   evaluateCondition,
+  flatFields,
   isSection,
   type Field as SchemaField,
   type FieldOption,
   type FormSchema,
   type FormValues,
+  type FlatField,
   type Section,
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
+import { interventionFields, type AddressPart } from "../instruction/lieu";
+import { InterventionAddress } from "./InterventionAddress";
 
 interface Props {
   schema: FormSchema;
@@ -312,10 +316,16 @@ function spansFullWidth(field: SchemaField): boolean {
   return field.type === "textarea" || field.type === "attachment" || field.type === "checkboxes";
 }
 
-function FieldGrid({ fields, values, ...rest }: { fields: SchemaField[] } & Omit<Props, "schema">) {
+function FieldGrid({ fields, values, hidden, ...rest }: {
+  fields: SchemaField[];
+  /** Ids déjà rendus autrement (bloc d'adresse) — à ne pas répéter en champs séparés. */
+  hidden?: Set<string>;
+} & Omit<Props, "schema">) {
+  const shown = fields.filter((field) => !hidden?.has(field.id));
+  if (shown.length === 0) return null;
   return (
     <div className="grid grid-cols-1 gap-x-4 gap-y-3.5 md:grid-cols-2">
-      {fields.map((field) =>
+      {shown.map((field) =>
         evaluateCondition(field.visibleIf, values) ? (
           <div key={field.id} className={cn(spansFullWidth(field) && "md:col-span-2")}>
             <FieldControl field={field} values={values} {...rest} />
@@ -335,6 +345,13 @@ export function ProcedureFormFields({
       </p>
     );
   }
+
+  // Bloc « Lieu d'intervention » : reconnu comme à la relecture d'une demande,
+  // puis rendu en UN champ d'adresse assisté plutôt qu'en sept champs séparés.
+  // On n'assiste que s'il tient dans une SECTION (la forme du bloc Socle) :
+  // éparpillé à la racine, le rendu ordinaire reste plus honnête que de
+  // regrouper des champs que la démarche n'a pas voulus ensemble.
+  const address = interventionBlock(schema);
 
   // Les champs racine consécutifs partagent une même grille ; chaque section
   // forme son propre groupe titré.
@@ -376,12 +393,35 @@ export function ProcedureFormFields({
             {section.description ? (
               <p className="-mt-1 text-sm text-muted-foreground">{section.description}</p>
             ) : null}
+            {address && address.section === section ? (
+              <InterventionAddress fields={address.fields} values={values}
+                onChange={onChange} errors={errors} />
+            ) : null}
             <FieldGrid fields={section.fields} values={values} onChange={onChange}
               files={files} onFilesChange={onFilesChange} errors={errors}
-              attachmentsReadOnly={attachmentsReadOnly} />
+              attachmentsReadOnly={attachmentsReadOnly}
+              hidden={address?.section === section ? address.ids : undefined} />
           </fieldset>
         );
       })}
     </div>
   );
+}
+
+interface InterventionBlock {
+  section: Section;
+  fields: Map<AddressPart, FlatField>;
+  ids: Set<string>;
+}
+
+/** Le bloc d'adresse de ce schéma, s'il en porte un et qu'il tient dans une section. */
+function interventionBlock(schema: FormSchema): InterventionBlock | null {
+  const fields = interventionFields(schema, flatFields(schema));
+  if (!fields) return null;
+  const section = [...fields.values()][0]?.section ?? null;
+  if (!section) return null;
+  // Un champ du bloc posé hors de sa section serait masqué sans être remplacé :
+  // dans ce cas on renonce à l'assistance plutôt que de perdre un champ.
+  if ([...fields.values()].some((entry) => entry.section !== section)) return null;
+  return { section, fields, ids: new Set([...fields.values()].map((entry) => entry.field.id)) };
 }

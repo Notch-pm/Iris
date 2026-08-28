@@ -1,6 +1,8 @@
 import * as React from "react";
-import { Link, NavLink, Outlet } from "react-router-dom";
-import { ChevronsUpDown, Inbox, LayoutDashboard, LogOut, Map, ShieldCheck, User, Users } from "lucide-react";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
+import {
+  ChevronsUpDown, Columns3, Inbox, LayoutDashboard, LogOut, Map, ShieldCheck, User, Users,
+} from "lucide-react";
 import parametresIcon from "@/assets/icons/parametres.svg";
 import notchLogo from "@/assets/logo-notch.svg";
 import { Badge } from "@/components/ui/badge";
@@ -11,6 +13,7 @@ import { useMyAvatarUrl } from "@/features/account/useAccount";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { isNavRouteActive, type NavRoute } from "./nav";
 import { ShellLayoutContext, type ShellWidth } from "./shellLayout";
 
 // Shell agent — réplique du shell de production Clara (AppHeader h-14, dont
@@ -18,16 +21,17 @@ import { ShellLayoutContext, type ShellWidth } from "./shellLayout";
 // premier item épinglé en haut, groupe restant centré verticalement). Design
 // system Notch/Ariane.
 
-interface NavItem {
-  to: string;
+interface NavItem extends NavRoute {
   label: string;
   icon: typeof LayoutDashboard;
-  end: boolean;
 }
 
 const BASE_NAV_ITEMS: NavItem[] = [
   { to: "/", label: "Tableau de bord", icon: LayoutDashboard, end: true },
-  { to: "/demandes", label: "Demandes", icon: Inbox, end: false },
+  { to: "/demandes/tableau", label: "Tableau des demandes", icon: Columns3, end: false },
+  // Le tableau a désormais son entrée : sans cette exception, les deux
+  // s'allumeraient sur `/demandes/tableau` (voir `nav.ts`).
+  { to: "/demandes", label: "Demandes", icon: Inbox, end: false, except: ["/demandes/tableau"] },
   { to: "/carte", label: "Carte des interventions", icon: Map, end: false },
 ];
 
@@ -38,27 +42,30 @@ const USAGERS_NAV_ITEM: NavItem = {
   to: "/usagers", label: "Usagers", icon: Users, end: false,
 };
 
+// L'activation vient de `isNavRouteActive`, pas de `NavLink` : deux entrées
+// partagent le préfixe `/demandes`, et `NavLink` les allumerait toutes les deux
+// (jusqu'à l'`aria-current`, qu'il ne laisse pas contredire de l'extérieur).
 function SidebarItem({ item }: { item: NavItem }) {
   const Icon = item.icon;
+  const { pathname } = useLocation();
+  const isActive = isNavRouteActive(item, pathname);
   return (
     <li>
-      <NavLink
+      <Link
         to={item.to}
-        end={item.end}
         title={item.label}
-        className={({ isActive }) =>
-          cn(
-            "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
-            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-primary",
-            isActive
-              ? "bg-primary-foreground/20 text-primary-foreground"
-              : "text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground",
-          )
-        }
+        aria-current={isActive ? "page" : undefined}
+        className={cn(
+          "flex h-9 w-9 items-center justify-center rounded-lg transition-colors",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-foreground focus-visible:ring-offset-2 focus-visible:ring-offset-primary",
+          isActive
+            ? "bg-primary-foreground/20 text-primary-foreground"
+            : "text-primary-foreground/70 hover:bg-primary-foreground/10 hover:text-primary-foreground",
+        )}
       >
         <Icon className="h-5 w-5" aria-hidden="true" />
         <span className="sr-only">{item.label}</span>
-      </NavLink>
+      </Link>
     </li>
   );
 }

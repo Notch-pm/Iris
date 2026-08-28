@@ -87,6 +87,17 @@ export function formFromContact(contact: SocleContact): UsagerForm {
   };
 }
 
+/**
+ * L'assistance d'adresse s'appuie sur la Base Adresse Nationale, qui ne couvre
+ * QUE la France : hors de France, la proposer serait promettre ce qu'elle ne
+ * peut pas tenir. Un pays vide vaut France — c'est la valeur par défaut d'une
+ * collectivité française, et le champ est de toute façon obligatoire.
+ */
+export function isFranceCountry(country: string): boolean {
+  const value = country.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  return value === "" || value === "france" || value === "fr";
+}
+
 export type FieldErrors = Partial<Record<keyof UsagerForm, string>>;
 
 const BIRTH_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

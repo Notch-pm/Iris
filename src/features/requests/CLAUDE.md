@@ -17,7 +17,10 @@ note interne → résolution avec texte de clôture → journal.
   exigé depuis le 2026-08-28, d'où `asksClosureText` et non `needs…` ; portes :
   réouverture superviseur+, archivage/désarchivage admin ; lecteur = rien). ⚠️ Ce module ne
   protège rien : il reflète ce que le trigger acceptera. Toute évolution de la matrice SQL se
-  répercute ICI et dans `statuts.test.ts`.
+  répercute ICI et dans `statuts.test.ts`. Le module porte aussi les deux partitions du
+  workflow — `OPEN_STATUSES` / `CLOSED_STATUSES` (la carte les re-publie, le tableau les
+  consomme) — et `needsTransitionDialog(spec, defaultAssignee)`, la règle « faut-il ouvrir le
+  dialogue ? » partagée par la fiche et le tableau.
 - **`facets.ts`** (pur, testé) : facettes destinataire/démarche/source déduites des demandes
   existantes du tenant — catalogue provisoire jusqu'à la sync du référentiel Socle.
 - **Parcours de création guidé** (`features/requests/creation/`, page `/demandes/nouvelle`,
@@ -85,7 +88,16 @@ note interne → résolution avec texte de clôture → journal.
   pages.
 - **Pages** : `RequestsListPage` (filtres statut/destinataire/démarche/priorité/source,
   pagination 20, filtre initial depuis `?status=`, bouton « Nouvelle demande » →
-  `/demandes/nouvelle`) et la **fiche d'instruction** ci-dessous.
+  `/demandes/nouvelle`), le **tableau des demandes** `/demandes/tableau` et la **fiche
+  d'instruction** ci-dessous. Les trois vues d'une même sélection — liste, tableau, carte —
+  ont chacune leur **entrée de rail** (le tableau juste au-dessus de la liste) et se
+  renvoient l'une à l'autre par des boutons d'en-tête.
+  ⚠️ Deux entrées partagent désormais le préfixe `/demandes` : l'activation du rail ne peut
+  plus venir de `NavLink` (qui allumerait les deux sur `/demandes/tableau`, `aria-current`
+  compris, sans laisser l'appelant le contredire). Elle vient de
+  `src/components/layout/nav.ts` — `isNavRouteActive`, pur et testé, avec la liste `except`
+  des sous-chemins qui ont leur propre entrée. **Toute future route sous une entrée
+  existante se déclare là.**
 - **Fiche d'instruction de la demande** (`RequestDetailPage` + `instruction/`, design Claude
   Design « Suivi demande » implémenté le 2026-08-22) : page pleine hauteur. **En-tête** : fil
   d'Ariane (Demandes / statut / référence mono), objet, statut (pastille à point), échéance
@@ -137,7 +149,9 @@ note interne → résolution avec texte de clôture → journal.
     sous-titre, identité, réponses, étapes, activité, vignettes) ; les composants affichent.
   - **`TransitionActions.tsx`** = `useTransitionRunner` (transition active, application
     directe ou dialogue, erreur) + `TransitionDialog` (motif / commentaire pour l'usager / assigné),
-    monté une fois par fiche. Les refus de la garde SQL sont affichés tels quels (bandeau
+    monté une fois par fiche. Le dialogue ne dépend que de `TransitionDialogRunner` — le
+    strict nécessaire — pour que le tableau des demandes, où la demande visée change à chaque
+    geste, monte LE MÊME dialogue avec son propre runner et un `subtitle` qui nomme la demande. Les refus de la garde SQL sont affichés tels quels (bandeau
     d'en-tête ou dialogue). `src/components/ui/dropdown.tsx` = menu flottant minimal (`ar-pop`).
 - RLS = source de vérité : l'UI ne masque les actions que par confort ; toute erreur de garde
   SQL est affichée telle quelle.
@@ -185,12 +199,143 @@ note interne → résolution avec texte de clôture → journal.
     Recadrage automatique à l'arrivée des points et à chaque changement de filtre.
   - **Filtres** : démarches en **multi-sélection** (menu à cases, volumes) et urgences en
     pastilles colorées — la légende EST le filtre, puisque la couleur porte l'urgence.
+  - **Quartiers** (2026-08-28) : le découpage du territoire se superpose aux épingles,
+    chaque quartier tracé et **nommé en son centre** à la couleur du référentiel
+    (`QuartierLayer`, brique partagée avec la carte du champ d'adresse). Bascule
+    « Afficher les quartiers » **active par défaut** — c'est une option d'AFFICHAGE, pas un
+    filtre : elle ne change pas la sélection de demandes, seulement ce qu'on voit dessous,
+    d'où sa place à droite de la barre, séparée des filtres. Absente quand le référentiel ne
+    publie aucun quartier. Le recadrage continue de suivre les DEMANDES, jamais les
+    quartiers : c'est la sélection filtrée qu'on vient regarder.
   - Vérifié en navigateur le 2026-08-23 : d'abord sur harnais jetable (mosaïque, épingles,
     écartement, fiche y compris bascule au bord, déplacement, zoom, recadrage, géocodage en
     masse réel), puis **sur l'application réelle** avec la demande DEM-2026-000005
     (10 avenue de Frémeur, 44000 Nantes) — épingle posée, fiche de survol complète, et le
     bloc « Lieu d'intervention » de la fiche d'instruction (carte, « Numéro localisé »,
     « Guider »).
+- **Tableau des demandes** (`features/requests/tableau/`, route `/demandes/tableau`, entrée
+  de rail au-dessus de « Demandes », design Claude Design « Kanban demandes » implémenté et
+  vérifié en navigateur le 2026-08-28) : les
+  demandes du tenant réparties par statut, **déplaçables d'une colonne à l'autre**. Page
+  pleine hauteur (`useFullBleedLayout`), le board défile horizontalement, chaque colonne
+  verticalement.
+  - **Une colonne = UN statut**, les 7, dans l'ordre du cycle de vie. Pas de colonne
+    « Clôturées » qui regrouperait résolution positive, négative et annulation : un dépôt
+    DEMANDE une transition précise, et une colonne composite ne saurait pas laquelle.
+  - **Le dépôt ne décide rien** : il appelle `transition.start(card, spec)`, donc le
+    **dialogue commun de la fiche** (`TransitionDialog`) dès qu'il manque une information
+    (motif, commentaire pour l'usager, assigné), et une application directe sinon
+    (« Prendre en charge » sur son propre nom, mise en attente, retour à qualifier). La garde
+    SQL reste seule juge : son refus s'affiche tel quel — dans le dialogue s'il est ouvert,
+    en **bandeau** sinon (une transition directe n'a pas d'autre endroit où le porter).
+  - **Pendant le déplacement, seules les colonnes acceptables s'ouvrent** : `dropTargets`
+    indexe `allowedTransitionsFor(statut, droits du couple)` par statut d'arrivée ; les
+    autres colonnes refusent le dépôt (pas de `preventDefault` → le curseur dit « interdit »)
+    et portent la raison en `title`. Une carte que rien ne laisserait bouger n'est même pas
+    `draggable`.
+  - **Le glisser-déposer n'est jamais le seul chemin** : chaque carte porte un menu
+    « Déplacer vers » avec les mêmes transitions — c'est la voie clavier et lecteur d'écran.
+    ⚠️ Ce menu vit dans une colonne défilante : il utilise le mode `portal` de
+    `src/components/ui/dropdown.tsx` (menu détaché dans le `body`, position fixe suivie au
+    défilement), sans quoi le débordement de la colonne le rognerait.
+  - **« Mes demandes »** (raccourci en tête de la barre de filtres, avec son volume) n'est
+    PAS un cinquième critère : c'est le filtre **agent** posé sur le seul utilisateur courant
+    (`toggleMine`), donc lisible et défaisable depuis le menu « Agent » comme n'importe quelle
+    sélection. Il ne s'allume que si la sélection d'agents est EXACTEMENT lui (`isMineOnly`) :
+    dès qu'un autre agent est coché, ce ne sont plus « mes demandes », et le bouton le dit.
+  - **`tableau.ts`** (pur, testé — 29 cas) porte tout : colonnes, `boardCard` (identité figée
+    au dépôt, urgence, agent, champ de recherche replié sans accents), filtres et facettes
+    croisés (agent dont « Non affectée », destinataire, démarche, urgence, recherche),
+    `boardContent` (répartition + tri par date de dépôt, dans les deux sens), et
+    `boardRightsResolver` — `rightsFor` + `isAdminOn` **mémoïsés par couple** (des centaines
+    de cartes, une poignée de couples). Une demande au statut inconnu n'est pas perdue :
+    `orphans` la signale.
+  - **`useBoardRequests.ts`** : DEUX requêtes. Les demandes **en cours** se chargent toutes
+    (plafond 400) — c'est le travail du service, il doit tenir entier sur le tableau ; les
+    **statuts finaux**, qui s'accumulent sans fin, sont bornés aux 30 derniers jours
+    (`closedSince`, stable sur la journée → clé de requête stable) et à 200 lignes. Les deux
+    troncatures sont AFFICHÉES. Clé `["requests", "kanban", …]` À DESSEIN : c'est le préfixe
+    qu'invalide `useApplyTransition`, donc le tableau se remet à jour après toute transition,
+    la sienne comme celle d'une autre page.
+- **Saisie d'adresse assistée** (2026-08-28, `src/lib/adresse.ts` pur/testé — 22 cas —,
+  `src/components/address/`) : les trois endroits où l'on écrit une adresse — bloc **lieu
+  d'intervention** du formulaire de démarche, **création d'usager**, **fiche usager** —
+  partagent un même champ. Jusqu'ici Iris n'aidait à saisir nulle part : `autocomplete=0`
+  était même forcé côté BAN, et la seule validation d'adresse du dépôt était « le pays ne peut
+  pas être vidé ». Une adresse fausse ne se voyait qu'après : pas d'épingle sur `/carte`,
+  « Guider » sans destination, et un **quartier recalculé faux** côté Socle.
+  - **Il propose, il ne garde pas la porte.** Retenir une proposition est TOUJOURS facultatif :
+    le texte libre est conservé, « Adresse introuvable ? » ouvre la saisie manuelle, une panne
+    du géocodeur se dit en une ligne discrète. La BAN ignore les adresses neuves et tout ce qui
+    n'est pas en France — d'où le retrait de l'assistance dès que le pays d'un contact n'est
+    pas la France (`isFranceCountry`).
+  - **Le clavier fait tout** : combobox ARIA (`aria-expanded`/`aria-controls`/
+    `aria-activedescendant`, `aria-live` annonçant le nombre de propositions), ↑ ↓ pour
+    parcourir, **Entrée choisit et NE SOUMET PAS**, Échap ferme — motif repris de
+    `MentionTextarea`. Jetons `autoComplete` corrects (`street-address`, `postal-code`,
+    `address-level2`) pour que l'autofill du navigateur fonctionne.
+  - **« Plus de champs » ne montre que ce que le contrat porte.** Le bloc d'intervention a
+    `complement`/`appartement` (+ `batiment` quand la démarche le pose) ; contacts-api n'a
+    qu'`address_line2`. Y écrire un bâtiment séparé inventerait un modèle que le Socle n'a
+    pas. Déplié d'office si l'un des champs est déjà rempli.
+  - **`batiment` est reconnu depuis le 2026-08-28** (`lieu.ts`, clé `intervention_batiment` +
+    libellés « bâtiment »/« immeuble ») et rejoint les précisions d'accès : **jamais dans la
+    requête envoyée au GPS**, comme complément et appartement.
+  - **La reconnaissance du bloc est UNE** : `interventionFields(schema, candidates)` sert la
+    LECTURE (`interventionLocation`, champs visibles) et la SAISIE (`ProcedureFormFields`, tout
+    le schéma). Sans quoi un bloc reconnu à l'écriture pourrait ne plus l'être à la relecture.
+  - **`fitStreetParts`** répartit la ligne sur les champs que le bloc porte VRAIMENT : un BTQ
+    que la liste fermée ne sait pas dire (« 2 A »), ou un numéro sans champ, rejoignent la
+    **voie** plutôt que d'être perdus.
+  - ⚠️ **Piège vécu (2026-08-28)** : la ligne affichée ne peut PAS être recomposée depuis les
+    champs séparés PENDANT la frappe. Le découpage normalise les espaces, si bien qu'un « 12 »
+    suivi d'une espace redevient « 12 » et que la lettre suivante se recolle — la saisie
+    donnait « 12 Bisruedeslilasarles ». `InterventionAddress` garde donc la ligne TAPÉE en
+    état local tant que l'agent tape, et ne rend la main aux champs qu'une fois une
+    proposition retenue. **Règle générale : un champ contrôlé ne se dérive jamais d'une
+    transformation à perte de ce qui vient d'être tapé.**
+  - **La carte** (`AddressMap`) réutilise `TileLayer` et le motif de `LieuIntervention` : le
+    point, la réserve du géocodeur (`PRECISION_LABELS` — même vocabulaire que la carte des
+    interventions), le zoom ±. Elle MONTRE, elle ne saisit pas : le point n'est pas
+    déplaçable, puisque Iris ne stocke aucune coordonnée — seule l'adresse est enregistrée.
+    ⚠️ **`useElementSize` mesure au MONTAGE** : `AddressMap` n'est monté qu'une fois le point
+    connu (un conteneur rendu conditionnellement plus tard n'est jamais mesuré, et sa mosaïque
+    reste vide — vécu le 2026-08-28).
+  - **Débit** : la Géoplateforme annonce 50 appels/IP/s, mais une collectivité sort par UNE
+    IP — debounce 300 ms, 3 caractères minimum, une requête en vol, `retry: false` (pendant la
+    frappe, un échec se remplace tout seul au caractère suivant).
+  - **Quartiers** (`src/lib/quartiers.ts` géométrie pure/testée, `src/features/socle/
+    quartiers.ts` contrat, route `socle-proxy /v1/quartiers/list`) : la carte superpose les
+    limites du territoire et nomme celui où l'adresse tombe. Livré et vérifié le 2026-08-28
+    sur ACCM (5 quartiers, `MultiPolygon`, couleurs `hsl(...)` du référentiel).
+  - ⚠️ **Le contrat public-api demande DEUX paramètres, sans quoi il ne rend rien d'utile**
+    (aller-retour du 2026-08-28) :
+    - **`geometry=true`** — par défaut `GET /v1/quartiers` rend les quartiers **sans
+      polygone** ; la plupart des consommateurs ne veulent que les libellés ;
+    - **`organization_id`** — **exigé des clés PLATEFORME** (celle d'Iris) pour les
+      géométries ; le Socle en prend la racine, et les quartiers n'existent que sur les
+      organisations principales. `tenant.socleOrgId` EST cette racine, vérifiée par
+      `resolveTenant` : jamais une valeur venue du client.
+    - Le champ s'appelle **`geometry`** (GeoJSON de `ST_AsGeoJSON`), **pas `geom`** — ça,
+      c'est le nom de la colonne PostGIS, binaire, qui ne sort jamais. Confondre les deux
+      faisait rendre `geom: null` sur des quartiers qui avaient tous leur polygone
+      (la colonne est `not null` côté Socle).
+  - **`quartierAt`** (lancer de rayon, pur/testé) répond à « quel quartier CONTIENT ce
+    point ? » — vérifié contre `ST_Contains` du Socle : même verdict. Ce n'est PAS forcément
+    le quartier affiché sur la fiche de l'usager : le Socle laisse **forcer** un rattachement
+    à la main (`quartier_auto = false`), et un contact sans coordonnées n'en a aucun de
+    calculé. Les deux peuvent donc légitimement différer — d'où « d'après les limites du
+    référentiel », qui dit d'où vient CE verdict-ci plutôt que de laisser croire à une
+    contradiction.
+  - La couche reste FACULTATIVE par construction : pas de géométrie exploitable ⇒ pas de
+    couche, et rien d'autre ne bouge. Le rendu vit dans `src/components/map/QuartierLayer.tsx`,
+    partagé avec la **carte des interventions** : remplissage léger (la carte doit rester
+    lisible dessous), trait appuyé (la question est « de quel côté de la limite suis-je ? »),
+    étiquettes au centre de gravité du plus grand anneau (`quartierLabelPoint`) — coupées sur
+    la vignette d'un champ d'adresse, où le nom du quartier est déjà écrit en toutes lettres.
+  - Vérifié en navigateur réel le 2026-08-28 : autocomplétion et sélection au clavier sur les
+    trois écrans, carte et tuiles réelles, « Plus de champs » limité aux champs de la démarche,
+    et le récapitulatif portant bien les clés `intervention_*` attendues.
 - **Mentions dans les notes internes** (2026-08-24, `instruction/mentions.ts` pur/testé —
   28 cas — + `MentionTextarea.tsx`) : « @ » ouvre un menu, ↑ ↓ pour parcourir, Entrée ou Tab
   pour choisir, Échap pour fermer. Tant que le menu est ouvert **Entrée choisit et ne soumet

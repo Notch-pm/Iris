@@ -16,6 +16,7 @@ import {
   flatFields,
   isSection,
   type FlatField,
+  type FormSchema,
   type FormValues,
   type Section,
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
@@ -23,7 +24,9 @@ import { displayFieldValue } from "../creation/model";
 import { normalizeSearch } from "../creation/procedureSearch";
 import { formSchemaFrom } from "./instruction";
 
-const PARTS = ["numero", "btq", "voie", "complement", "appartement", "code_postal", "ville"] as const;
+const PARTS = [
+  "numero", "btq", "voie", "batiment", "complement", "appartement", "code_postal", "ville",
+] as const;
 export type AddressPart = (typeof PARTS)[number];
 
 /** Clés machine posées par le bloc « Lieu d'intervention » du Socle. */
@@ -31,6 +34,10 @@ const KEY_BY_PART: Record<AddressPart, string> = {
   numero: "intervention_numero",
   btq: "intervention_btq",
   voie: "intervention_voie",
+  // Le bloc Socle se complète après insertion : `batiment` n'y est pas toujours,
+  // mais quand il y est on le reconnaît plutôt que de le laisser tomber dans
+  // les « Informations saisies ».
+  batiment: "intervention_batiment",
   complement: "intervention_complement",
   appartement: "intervention_appartement",
   code_postal: "intervention_code_postal",
@@ -46,6 +53,7 @@ const LABEL_BY_PART: Record<AddressPart, string> = {
   numero: "Numéro",
   btq: "BTQ",
   voie: "Voie",
+  batiment: "Bâtiment",
   complement: "Complément d'adresse",
   appartement: "Appartement",
   code_postal: "Code postal",
@@ -61,6 +69,9 @@ const PART_BY_LABEL = new Map<string, AddressPart>([
   ["voie", "voie"],
   ["rue", "voie"],
   ["nom de la voie", "voie"],
+  ["batiment", "batiment"],
+  ["bat", "batiment"],
+  ["immeuble", "batiment"],
   ["complement d adresse", "complement"],
   ["complement", "complement"],
   ["appartement", "appartement"],
@@ -121,35 +132,8 @@ export function interventionLocation(
     (entry) => entry.field.type !== "attachment" && fieldIsVisible(entry, byId),
   );
 
-  const found = new Map<AddressPart, FlatField>();
-  const used = new Set<string>();
-
-  // 1. Par clé machine, où que le champ se trouve dans le formulaire.
-  for (const entry of visible) {
-    const part = PART_BY_KEY.get(dataKey(entry.field));
-    if (part && !found.has(part)) {
-      found.set(part, entry);
-      used.add(entry.field.id);
-    }
-  }
-
-  // 2. Par section : celle des champs reconnus, sinon celle titrée « Lieu
-  //    d'intervention ». Ses champs comblent les parts manquantes par libellé
-  //    (clés renommées dans le Socle après insertion du bloc).
-  const section = sectionOf(found) ?? titledSection(schema.content, visible);
-  if (section) {
-    for (const entry of visible) {
-      if (entry.section !== section || used.has(entry.field.id)) continue;
-      const part = PART_BY_LABEL.get(normalize(entry.field.label));
-      if (part && !found.has(part)) {
-        found.set(part, entry);
-        used.add(entry.field.id);
-      }
-    }
-  }
-
-  // Ni voie ni commune : ce n'est pas une adresse — pas de bloc.
-  if (!found.has("voie") && !found.has("ville") && !found.has("code_postal")) return null;
+  const found = interventionFields(schema, visible);
+  if (!found) return null;
 
   const valueOf = (part: AddressPart): string => {
     const entry = found.get(part);
@@ -162,11 +146,99 @@ export function interventionLocation(
   };
 
   return build({
-    title: section?.title.trim() || "Lieu d'intervention",
+    title: sectionOf(found)?.title.trim() || "Lieu d'intervention",
     keys: PARTS.filter((part) => found.has(part)).map((part) => dataKey(found.get(part)!.field)),
     valueOf,
     labelOf,
   });
+}
+
+/**
+ * Reconnaissance du bloc parmi `candidates` — l'unique endroit où l'on décide
+ * « ce champ-là porte le numéro, celui-ci la voie ».
+ *
+ * Servie DEUX FOIS : à la LECTURE d'une demande (`interventionLocation`, sur
+ * les champs visibles compte tenu des réponses) et à la SAISIE (formulaire de
+ * création, sur tous les champs du schéma). Une seule reconnaissance, sans quoi
+ * un bloc reconnu à l'écriture pourrait ne plus l'être à la relecture.
+ *
+ * `null` quand rien ne ressemble à une adresse : ni voie, ni commune, ni code
+ * postal.
+ */
+export function interventionFields(
+  schema: FormSchema,
+  candidates: FlatField[],
+): Map<AddressPart, FlatField> | null {
+  const found = new Map<AddressPart, FlatField>();
+  const used = new Set<string>();
+
+  // 1. Par clé machine, où que le champ se trouve dans le formulaire.
+  for (const entry of candidates) {
+    const part = PART_BY_KEY.get(dataKey(entry.field));
+    if (part && !found.has(part)) {
+      found.set(part, entry);
+      used.add(entry.field.id);
+    }
+  }
+
+  // 2. Par section : celle des champs reconnus, sinon celle titrée « Lieu
+  //    d'intervention ». Ses champs comblent les parts manquantes par libellé
+  //    (clés renommées dans le Socle après insertion du bloc).
+  const section = sectionOf(found) ?? titledSection(schema.content, candidates);
+  if (section) {
+    for (const entry of candidates) {
+      if (entry.section !== section || used.has(entry.field.id)) continue;
+      const part = PART_BY_LABEL.get(normalize(entry.field.label));
+      if (part && !found.has(part)) {
+        found.set(part, entry);
+        used.add(entry.field.id);
+      }
+    }
+  }
+
+  // Ni voie ni commune : ce n'est pas une adresse — pas de bloc.
+  if (!found.has("voie") && !found.has("ville") && !found.has("code_postal")) return null;
+  return found;
+}
+
+export interface StreetParts {
+  numero: string;
+  btq: string;
+  voie: string;
+}
+
+/**
+ * Répartit une ligne de voie sur les champs QUE LE BLOC PORTE RÉELLEMENT.
+ *
+ * Le bloc du Socle se retaille après insertion : il peut n'avoir ni numéro ni
+ * BTQ, et son BTQ est souvent une liste fermée (bis / ter / quater) qui ne sait
+ * pas dire « A ». Ce qu'aucun champ ne peut porter rejoint la **voie** au lieu
+ * d'être perdu : une adresse un peu tassée reste une adresse, un numéro effacé
+ * n'en est plus une.
+ */
+export function fitStreetParts(
+  parts: StreetParts,
+  available: (part: AddressPart) => boolean,
+  coerceBtq: (text: string) => string | null,
+): StreetParts {
+  const head: string[] = [];
+  let numero = parts.numero.trim();
+  let btq = parts.btq.trim();
+
+  if (btq !== "") {
+    const option = available("btq") ? coerceBtq(btq) : null;
+    if (option === null) {
+      head.push(btq);
+      btq = "";
+    } else {
+      btq = option;
+    }
+  }
+  if (numero !== "" && !available("numero")) {
+    head.unshift(numero);
+    numero = "";
+  }
+  return { numero, btq, voie: [...head, parts.voie.trim()].filter((v) => v !== "").join(" ") };
 }
 
 /** Section portant les champs reconnus (la première rencontrée fait foi). */
@@ -223,7 +295,9 @@ function build(input: {
   const lines = [street, city].filter((v) => v !== "");
 
   const details: { label: string; value: string }[] = [];
-  for (const part of ["complement", "appartement"] as const) {
+  // Précisions d'accès : utiles à l'agent sur place, inutiles — voire nuisibles —
+  // au géocodeur, qui ne les comprend pas et dégraderait le point.
+  for (const part of ["batiment", "complement", "appartement"] as const) {
     const value = valueOf(part);
     if (value !== "") details.push({ label: input.labelOf(part), value });
   }

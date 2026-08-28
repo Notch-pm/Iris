@@ -14,9 +14,11 @@ import {
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { AddressField } from "@/components/address/AddressField";
+import { useQuartiers } from "@/features/socle/useQuartiers";
 import { contactTypeLabel } from "./usager";
 import {
-  buildContactPatch, formFromContact, isPerson, validateUsagerForm,
+  buildContactPatch, formFromContact, isFranceCountry, isPerson, validateUsagerForm,
   type FieldErrors, type UsagerForm,
 } from "./usagerEdit";
 import { useUpdateContact } from "./useContacts";
@@ -37,6 +39,9 @@ export function UsagerEditDialog({ open, onOpenChange, organizationId, contact, 
   const [errors, setErrors] = React.useState<FieldErrors>({});
   const [error, setError] = React.useState<string | null>(null);
   const update = useUpdateContact();
+  // Couche de confort : le Socle recalcule le quartier depuis l'adresse, la
+  // voir sur la carte permet de repérer une adresse tombée au mauvais endroit.
+  const quartiers = useQuartiers(organizationId);
 
   // Réouverture (ou fiche relue) : on repart de l'état du Socle.
   React.useEffect(() => {
@@ -165,23 +170,35 @@ export function UsagerEditDialog({ open, onOpenChange, organizationId, contact, 
             <p className="text-xs text-muted-foreground">
               Le quartier est recalculé par le Socle à partir de l'adresse — il ne se saisit pas ici.
             </p>
+            {/* Contacts-api ne porte QU'UN complément (`address_line2`) : ni
+                bâtiment ni appartement séparés. Les y écrire inventerait un
+                modèle que le Socle n'a pas. Le pays reste hors du dépliant —
+                il est obligatoire, et un champ obligatoire ne se replie pas. */}
+            <AddressField
+              id="ue-address"
+              quartiers={quartiers}
+              value={{ line: form.addressLine1, postcode: form.postalCode, city: form.city }}
+              assisted={isFranceCountry(form.country)}
+              onChange={(next) =>
+                setForm((f) => ({
+                  ...f,
+                  addressLine1: next.line,
+                  postalCode: next.postcode,
+                  city: next.city,
+                }))
+              }
+              extras={[
+                {
+                  key: "addressLine2",
+                  label: "Complément",
+                  value: form.addressLine2,
+                  maxLength: 300,
+                  hint: "Bâtiment, appartement, lieu-dit — tout ce que le facteur doit lire en plus.",
+                },
+              ]}
+              onExtraChange={(key, v) => setForm((f) => ({ ...f, [key]: v }))}
+            />
             <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2">
-              <Field label="Adresse" htmlFor="ue-line1" className="md:col-span-2">
-                <Input id="ue-line1" value={form.addressLine1} maxLength={300}
-                  onChange={(e) => set("addressLine1")(e.target.value)} />
-              </Field>
-              <Field label="Complément" htmlFor="ue-line2" className="md:col-span-2">
-                <Input id="ue-line2" value={form.addressLine2} maxLength={300}
-                  onChange={(e) => set("addressLine2")(e.target.value)} />
-              </Field>
-              <Field label="Code postal" htmlFor="ue-postal">
-                <Input id="ue-postal" value={form.postalCode} maxLength={20}
-                  onChange={(e) => set("postalCode")(e.target.value)} />
-              </Field>
-              <Field label="Ville" htmlFor="ue-city">
-                <Input id="ue-city" value={form.city} maxLength={200}
-                  onChange={(e) => set("city")(e.target.value)} />
-              </Field>
               <Field label="Pays" htmlFor="ue-country" required error={errors.country}>
                 <Input id="ue-country" value={form.country} maxLength={100}
                   onChange={(e) => set("country")(e.target.value)} />

@@ -64,6 +64,20 @@ export const IDENTITY_LABELS: Record<string, string> = {
 
 export const TERMINAL_STATUSES: RequestStatus[] = ["annulee", "resolue_positive", "resolue_negative"];
 
+/**
+ * « En cours » = ni close ni archivée. Les deux listes partitionnent les 7
+ * statuts du workflow et vivent ICI, avec la matrice de transitions, plutôt
+ * qu'au fil des écrans qui s'en servent (carte, tableau).
+ */
+export const OPEN_STATUSES: readonly RequestStatus[] = ["a_traiter", "en_instruction", "en_attente"];
+
+export const CLOSED_STATUSES: readonly RequestStatus[] = [
+  "resolue_positive",
+  "resolue_negative",
+  "annulee",
+  "archivee",
+];
+
 export function isFinal(status: RequestStatus): boolean {
   return TERMINAL_STATUSES.includes(status) || status === "archivee";
 }
@@ -246,6 +260,21 @@ export function canProcessWith(rr: RequestRights): boolean {
 /** RM-20 à RM-24 : administration sur l'organisation de la demande (paramètres, réouverture, archivage). */
 export function canAdminWith(rr: RequestRights): boolean {
   return rr.isAdmin;
+}
+
+/**
+ * Une transition demande-t-elle un dialogue avant d'être appliquée ? Vrai dès
+ * qu'il manque une information que seul l'agent peut donner : commentaire pour
+ * l'usager, motif de clôture, ou assigné quand aucun ne se déduit. Sinon le
+ * geste s'applique directement (« Prendre en charge » sur son propre nom).
+ *
+ * Partagé par la fiche (`useTransitionRunner`) et le tableau des demandes
+ * (`tableau/useBoardTransition`) : deux écrans, une seule règle.
+ */
+export function needsTransitionDialog(spec: TransitionSpec, defaultAssignee: string): boolean {
+  if (spec.asksClosureText) return true;
+  if (spec.motifChoices && spec.motifChoices.length > 0) return true;
+  return Boolean(spec.needsAssignee) && defaultAssignee === "";
 }
 
 /** Construit le payload de mise à jour d'une transition (les gardes SQL revalident tout). */

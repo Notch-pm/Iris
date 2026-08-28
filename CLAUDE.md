@@ -146,7 +146,12 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `/v1/contacts/match` (rapprochement/homonymes),
   `/v1/contacts/get`, `/v1/contacts/create`, `/v1/contacts/update` (via contacts-api Socle
   uniquement, whitelist d'entrée ; l'update est un **PATCH partiel** — `contact_type` et
-  `status` refusés, pays jamais vidé — et les refus du Socle sont relayés tels quels). Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
+  `status` refusés, pays jamais vidé — et les refus du Socle sont relayés tels quels),
+  **`/v1/quartiers/list`** (quartiers du territoire **avec leur géométrie**, pour la carte du
+  champ d'adresse — ouverte à tout membre comme `/v1/procedures/*` : une limite de quartier
+  n'est pas une donnée personnelle ; 404 du Socle ⇒ `available: false`, pas une erreur).
+  ⚠️ `geom` ne franchit la frontière que par CETTE route : `sanitizeContact` continue de le
+  retirer du quartier d'une fiche usager — un polygone par ligne d'annuaire serait du poids pur. Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
   `internal_notes`, consentements, relations, `external_references` ne sont **jamais**
   transmis au navigateur ; champs Socle inconnus tolérés (ignorés). `X-Organization-Id`
   toujours dérivé côté serveur.
@@ -215,7 +220,11 @@ les invariants ci-dessus restent la référence.
 
 - **Parcours agent** (`src/features/requests`, `src/features/tenant`) : liste, fiche
   (dont **lieu d'intervention** : adresse, carte, itinéraire), **carte des interventions**
-  (`carte/`, route `/carte`), transitions, **parcours de création guidé** (`creation/`),
+  (`carte/`, route `/carte`), **tableau des demandes** (`tableau/`, route
+  `/demandes/tableau`, entrée de rail — kanban : une colonne par statut du workflow, glisser-déposer ET
+  menu clavier, seules les colonnes que `requests_guard_write` accepterait s'ouvrent, le
+  dépôt DEMANDE la transition et passe par le dialogue commun de la fiche), transitions,
+  **parcours de création guidé** (`creation/`),
   brouillon local, demandes proches, **échanges avec l'usager** (onglet Échanges : e-mail avec
   ou sans modèle, variables résolues sur la demande, pièces jointes réelles — edge function
   `send-request-email`), edge function `create-request-from-procedure` et moteur
@@ -292,7 +301,9 @@ les invariants ci-dessus restent la référence.
   `h-14` (wordmark `src/assets/logo-notch.svg` en `h-6` + séparateur + tenant à gauche ;
   à droite, chip administrateur, superadmin, **accès aux Paramètres** — tuile `h-9 w-9`,
   active en `bg-primary/10 text-primary` — puis menu compte), **rail vert `bg-primary` 52px**
-  (tuiles 36px, icônes Lucide 20px, premier item épinglé, groupe centré). Le gabarit
+  (tuiles 36px, icônes Lucide 20px, premier item épinglé, groupe centré ; l'entrée active se
+  décide par `src/components/layout/nav.ts`, pur et testé, et non par `NavLink` — deux
+  entrées partagent le préfixe `/demandes`). Le gabarit
   horizontal de la zone de contenu est **demandé par la page** (`src/components/layout/
   shellLayout.tsx`) : `default` = colonne centrée 1240px (formulaires, réglages), `wide` =
   pleine largeur avec le padding du shell (`useWideLayout` — listes denses : demandes, usagers),
@@ -309,12 +320,22 @@ les invariants ci-dessus restent la référence.
 - **Cartographie libre** (`src/lib/carto.ts`, pur/testé ; rendu dans
   `src/components/map/TileLayer.tsx`) : tuiles **OpenStreetMap** (attribution ODbL
   obligatoire à l'affichage — elle est portée par la mosaïque, ne pas la retirer) et
-  géocodage **Base Adresse Nationale** (unitaire pour une fiche, **en masse par CSV** pour
-  une carte) — services publics sans clé ni compte, donc rien à cacher dans le bundle. Seule
-  l'**adresse du lieu d'intervention** y transite : jamais l'identité de l'usager, jamais la
-  référence de la demande, et aucun point n'est stocké côté Iris. Substituables sans toucher
-  au code par `VITE_MAP_TILE_URL` / `VITE_GEOCODE_URL` (fournisseur dédié le jour où le
-  volume l'exige).
+  géocodage **Base Adresse Nationale**, servie par la **Géoplateforme** (IGN) depuis le
+  retrait d'`api-adresse.data.gouv.fr` en janvier 2026 : unitaire pour une fiche, **en masse
+  par CSV** pour une carte, et **pendant la frappe** pour le champ d'adresse assisté
+  (`src/lib/adresse.ts`). Services publics sans clé ni compte, donc rien à cacher dans le
+  bundle. Ce qui transite, c'est une **ADRESSE et rien qui l'accompagne** — jamais un nom,
+  jamais la référence d'une demande : cela vaut pour le lieu d'intervention comme pour
+  l'adresse d'un usager qu'un agent saisit (le Socle re-géocode déjà cette même adresse pour
+  recalculer le quartier). **Aucun point n'est stocké côté Iris**, ni aucune géométrie de
+  quartier. Substituables sans toucher au code par `VITE_MAP_TILE_URL` / `VITE_GEOCODE_URL`
+  (fournisseur dédié le jour où le volume l'exige).
+- **Saisie d'adresse assistée** (`src/lib/adresse.ts` + `src/components/address/`) : une
+  **ligne unique** qui propose les adresses du référentiel (combobox ARIA, ↑ ↓ / Entrée /
+  Échap), un dépliant « Plus de champs » limité à ce que le contrat porte vraiment, une
+  **carte de contrôle** et « Utiliser ma position ». **Il propose, il ne garde pas la
+  porte** : retenir une proposition est toujours facultatif, la BAN ne couvre ni les adresses
+  neuves ni l'étranger, et une panne du service n'empêche jamais de saisir.
 - Textes et libellés **en français**. Formulaires en `Dialog`, confirmations destructives en
   `AlertDialog`, classes fusionnées avec `cn()`.
 - Documentation : un document = un public + une question ; toute évolution de surface de

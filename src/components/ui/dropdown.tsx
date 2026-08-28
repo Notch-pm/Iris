@@ -1,10 +1,15 @@
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
 
 // Menu flottant minimal (popover ancré sous son déclencheur) : fermeture au
 // clic extérieur et à Échap. Suffisant pour les sélecteurs de la fiche
 // d'instruction (urgence, affectation, actions secondaires) — motif `ar-pop`
 // du design system.
+//
+// `portal` détache le menu dans le `body`, en position fixe : un déclencheur
+// posé DANS une zone défilante (colonne du tableau des demandes) verrait sinon
+// son menu rogné par le débordement de cette zone.
 
 interface DropdownProps {
   open: boolean;
@@ -14,20 +19,31 @@ interface DropdownProps {
   align?: "left" | "right";
   /** Côté d'ouverture — `top` pour un déclencheur en bas d'une zone défilante. */
   side?: "bottom" | "top";
+  /** Menu détaché dans le `body` : indispensable en zone défilante, inutile ailleurs. */
+  portal?: boolean;
   className?: string;
   menuClassName?: string;
   children: React.ReactNode;
 }
 
+const MENU_BASE =
+  "flex min-w-[250px] max-w-[calc(100vw-24px)] flex-col gap-0.5 rounded-[13px] border border-border bg-popover p-[7px] shadow-airbnb-xl";
+
 export function Dropdown({
-  open, onOpenChange, trigger, align = "right", side = "bottom", className, menuClassName, children,
+  open, onOpenChange, trigger, align = "right", side = "bottom",
+  portal = false, className, menuClassName, children,
 }: DropdownProps) {
   const ref = React.useRef<HTMLDivElement>(null);
+  // Le menu détaché sort du conteneur : le clic extérieur doit l'épargner lui aussi.
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [anchor, setAnchor] = React.useState<React.CSSProperties | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
     const onDoc = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onOpenChange(false);
+      const target = e.target as Node;
+      if (ref.current?.contains(target) || menuRef.current?.contains(target)) return;
+      onOpenChange(false);
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onOpenChange(false);
@@ -40,22 +56,56 @@ export function Dropdown({
     };
   }, [open, onOpenChange]);
 
+  // Position du menu détaché : posée à l'ouverture, puis suivie au défilement
+  // (`capture` — la zone qui défile n'est pas la fenêtre) et au redimensionnement.
+  React.useEffect(() => {
+    if (!open || !portal) {
+      setAnchor(null);
+      return;
+    }
+    const place = () => {
+      const r = ref.current?.getBoundingClientRect();
+      if (!r) return;
+      setAnchor({
+        position: "fixed",
+        ...(side === "top" ? { bottom: window.innerHeight - r.top + 6 } : { top: r.bottom + 6 }),
+        ...(align === "right" ? { right: window.innerWidth - r.right } : { left: r.left }),
+      });
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, portal, align, side]);
+
+  const menu = open ? (
+    <div
+      ref={menuRef}
+      role="menu"
+      style={anchor ?? undefined}
+      className={cn(
+        MENU_BASE,
+        portal
+          ? "z-50"
+          : cn(
+              "absolute z-20",
+              side === "top" ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]",
+              align === "right" ? "right-0" : "left-0",
+            ),
+        menuClassName,
+      )}
+    >
+      {children}
+    </div>
+  ) : null;
+
   return (
     <div ref={ref} className={cn("relative", className)}>
       {trigger({ "aria-expanded": open, "aria-haspopup": "menu", onClick: () => onOpenChange(!open) })}
-      {open ? (
-        <div
-          role="menu"
-          className={cn(
-            "absolute z-20 flex min-w-[250px] max-w-[calc(100vw-24px)] flex-col gap-0.5 rounded-[13px] border border-border bg-popover p-[7px] shadow-airbnb-xl",
-            side === "top" ? "bottom-[calc(100%+6px)]" : "top-[calc(100%+6px)]",
-            align === "right" ? "right-0" : "left-0",
-            menuClassName,
-          )}
-        >
-          {children}
-        </div>
-      ) : null}
+      {portal ? (menu && anchor ? createPortal(menu, document.body) : null) : menu}
     </div>
   );
 }

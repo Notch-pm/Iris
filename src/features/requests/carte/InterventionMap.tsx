@@ -11,6 +11,8 @@ import { Link } from "react-router-dom";
 import { Crosshair, Minus, Plus, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TileLayer, useElementSize } from "@/components/map/TileLayer";
+import { QuartierLayer } from "@/components/map/QuartierLayer";
+import type { QuartierShape } from "@/lib/quartiers";
 import {
   clampZoom,
   fitBounds,
@@ -46,9 +48,12 @@ const OFF_SCREEN_MARGIN = 60;
 interface Props {
   markers: MapMarker[];
   nameOf: (userId: string | null) => string;
+  /** Découpage du territoire (référentiel Socle) — vide s'il n'en publie pas. */
+  quartiers?: QuartierShape[];
+  showQuartiers?: boolean;
 }
 
-export function InterventionMap({ markers, nameOf }: Props) {
+export function InterventionMap({ markers, nameOf, quartiers = [], showQuartiers = true }: Props) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [center, setCenter] = React.useState<{ lat: number; lon: number; zoom: number } | null>(null);
   const [active, setActive] = React.useState<string | null>(null);
@@ -152,6 +157,11 @@ export function InterventionMap({ markers, nameOf }: Props) {
       onPointerCancel={() => { drag.current = null; }}
     >
       {view ? <TileLayer view={view} /> : null}
+
+      {/* Sous les épingles : les quartiers situent les demandes, ils ne les
+          cachent pas. Le recadrage suit les DEMANDES, jamais les quartiers —
+          c'est la sélection filtrée qu'on vient regarder. */}
+      {view && showQuartiers ? <QuartierLayer quartiers={quartiers} view={view} /> : null}
 
       {placed.map(({ marker, left, top }) => {
         if (

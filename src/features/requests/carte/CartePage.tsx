@@ -9,11 +9,12 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Check, ChevronDown, List, MapPin } from "lucide-react";
+import { Check, ChevronDown, Columns3, Layers, List, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { useTenant } from "@/features/tenant/TenantProvider";
+import { useQuartiers } from "@/features/socle/useQuartiers";
 import { cn } from "@/lib/utils";
 import { memberName, PRIORITY_OPTIONS } from "../instruction/instruction";
 import { useTenantMembers } from "../useRequests";
@@ -42,6 +43,11 @@ export function CartePage() {
   const members = useTenantMembers(orgId);
   const [filters, setFilters] = React.useState<MapFilters>(EMPTY_MAP_FILTERS);
   const [procMenu, setProcMenu] = React.useState(false);
+  // Le découpage du territoire aide à lire la carte : affiché par défaut, et
+  // débrayable — sur une commune très découpée, les traits finissent par
+  // concurrencer les épingles.
+  const [showQuartiers, setShowQuartiers] = React.useState(true);
+  const quartiers = useQuartiers(orgId);
 
   const rows = requests.data?.rows ?? [];
   const { located, withoutAddress } = React.useMemo(() => locatableRequests(rows), [rows]);
@@ -85,9 +91,14 @@ export function CartePage() {
               {truncated ? ` · ${MAP_MAX_ROWS} demandes les plus récentes seulement` : ""}
             </p>
           </div>
-          <Button asChild variant="outline" size="sm">
-            <Link to="/demandes"><List aria-hidden="true" /> Voir la liste</Link>
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link to="/demandes/tableau"><Columns3 aria-hidden="true" /> Tableau</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link to="/demandes"><List aria-hidden="true" /> Voir la liste</Link>
+            </Button>
+          </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -192,6 +203,29 @@ export function CartePage() {
               Réinitialiser
             </Button>
           ) : null}
+
+          <div className="flex-1" />
+
+          {/* Option d'AFFICHAGE, pas un filtre : elle ne change pas la
+              sélection de demandes, seulement ce qu'on voit sous elles.
+              Absente quand le référentiel ne publie aucun quartier. */}
+          {quartiers.length > 0 ? (
+            <button
+              type="button"
+              aria-pressed={showQuartiers}
+              title="Superposer le découpage du territoire (référentiel Socle)"
+              onClick={() => setShowQuartiers((v) => !v)}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
+                showQuartiers
+                  ? "border-primary/30 bg-primary/[0.07] text-primary"
+                  : "border-border bg-background hover:bg-secondary",
+              )}
+            >
+              <Layers className="size-3.5" aria-hidden="true" />
+              Afficher les quartiers
+            </button>
+          ) : null}
         </div>
       </header>
 
@@ -207,7 +241,8 @@ export function CartePage() {
           </Notice>
         ) : (
           <>
-            <InterventionMap markers={markers} nameOf={nameOf} />
+            <InterventionMap markers={markers} nameOf={nameOf}
+              quartiers={quartiers} showQuartiers={showQuartiers} />
             {geocode.isLoading && markers.length === 0 ? (
               <Overlay>Localisation des adresses…</Overlay>
             ) : null}

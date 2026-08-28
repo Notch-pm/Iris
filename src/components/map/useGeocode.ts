@@ -1,7 +1,9 @@
-// Géocodage de l'adresse d'intervention (Base Adresse Nationale par défaut —
-// voir `src/lib/carto.ts` pour le service et sa substitution).
+// Géocodage d'une adresse écrite (Base Adresse Nationale par défaut — voir
+// `src/lib/carto.ts` pour le service et sa substitution). Brique partagée par
+// le bloc « Lieu d'intervention » d'une fiche et le champ d'adresse assisté,
+// d'où sa place à côté de `TileLayer`.
 //
-// Confort d'instruction, jamais une donnée de la demande : le point n'est ni
+// Confort d'affichage, jamais une donnée de la demande : le point n'est ni
 // stocké ni renvoyé au serveur Iris, seulement mis en cache le temps de la
 // session. Une panne du service laisse l'adresse et l'itinéraire intacts.
 

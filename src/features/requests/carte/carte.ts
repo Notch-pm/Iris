@@ -10,8 +10,9 @@ import type { BatchAddress, GeoPrecision } from "@/lib/carto";
 import { formatDayMonth, priorityOption, requesterIdentity } from "../instruction/instruction";
 import { interventionLocation, type InterventionLocation } from "../instruction/lieu";
 
-/** « En cours » = ni clôturée ni archivée (miroir des 7 statuts du workflow). */
-export const OPEN_STATUSES = ["a_traiter", "en_instruction", "en_attente"] as const;
+// « En cours » = ni clôturée ni archivée. La liste vit avec la matrice de
+// transitions (`../statuts`) ; on la re-publie ici pour les appelants de la carte.
+export { OPEN_STATUSES } from "../statuts";
 
 /** Plafond de demandes chargées : une carte au-delà n'est plus lisible. */
 export const MAP_MAX_ROWS = 500;

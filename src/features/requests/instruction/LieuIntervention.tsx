@@ -21,7 +21,7 @@ import {
   type GeoPoint,
 } from "@/lib/carto";
 import type { InterventionLocation } from "./lieu";
-import { useGeocode } from "./useGeocode";
+import { useGeocode } from "@/components/map/useGeocode";
 
 const MAP_HEIGHT = 220;
 

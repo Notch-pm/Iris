@@ -13,6 +13,7 @@ import { DashboardPage } from "@/pages/DashboardPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 import { RequestsListPage } from "@/features/requests/RequestsListPage";
 import { CartePage } from "@/features/requests/carte/CartePage";
+import { TableauPage } from "@/features/requests/tableau/TableauPage";
 import { RequestDetailPage } from "@/features/requests/RequestDetailPage";
 import { NewRequestPage } from "@/features/requests/creation/NewRequestPage";
 import { PermissionsPage } from "@/features/permissions/PermissionsPage";
@@ -53,6 +54,7 @@ export function App() {
             >
               <Route index element={<DashboardPage />} />
               <Route path="demandes" element={<RequestsListPage />} />
+              <Route path="demandes/tableau" element={<TableauPage />} />
               <Route path="carte" element={<CartePage />} />
               <Route path="demandes/nouvelle" element={<NewRequestPage />} />
               <Route path="demandes/:id" element={<RequestDetailPage />} />

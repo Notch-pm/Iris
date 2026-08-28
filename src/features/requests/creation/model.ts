@@ -40,6 +40,27 @@ export function displayFieldValue(field: SchemaField, value: unknown): string {
   return String(value);
 }
 
+function fold(value: string): string {
+  return value.trim().normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+}
+
+/**
+ * Valeur d'option correspondant à un texte libre — « bis » vers l'option `bis`
+ * du champ BTQ, quelle que soit la casse ou les accents. `null` quand le champ
+ * ne sait PAS représenter ce texte : l'appelant décide alors quoi en faire
+ * plutôt que d'écrire une valeur que la démarche refuserait.
+ *
+ * Un champ sans options accepte le texte tel quel.
+ */
+export function optionValueFor(field: SchemaField, text: string): string | null {
+  const value = text.trim();
+  if (value === "") return "";
+  if (field.type !== "select" && field.type !== "radio") return value;
+  const wanted = fold(value);
+  const match = field.options.find((o) => fold(o.value) === wanted || fold(o.label) === wanted);
+  return match ? match.value : null;
+}
+
 const DECLARED_LABELS: Record<string, string> = Object.fromEntries([
   ...AUDIENCES.flatMap((a) => a.fields.map((f) => [f.key, f.label] as const)),
   ["date_naissance", "Date de naissance"],
