@@ -54,7 +54,7 @@ describe("allowedTransitions — miroir de la garde SQL (rôles agent / administ
     const take = allowedTransitions("a_traiter", "agent").find((t) => t.to === "en_instruction")!;
     expect(take.needsAssignee).toBe(true);
     const resolve = allowedTransitions("en_instruction", "agent").find((t) => t.to === "resolue_positive")!;
-    expect(resolve.needsClosureText).toBe(true);
+    expect(resolve.asksClosureText).toBe(true);
     const cancel = allowedTransitions("en_instruction", "agent").find((t) => t.to === "annulee")!;
     expect(cancel.motifRequired).toBe(true);
     expect(cancel.motifChoices).toEqual(["abandon", "retrait_usager"]);
@@ -73,8 +73,17 @@ describe("buildTransitionUpdate", () => {
   const resolve = allowedTransitions("en_instruction", "agent").find((t) => t.to === "resolue_positive")!;
   const cancel = allowedTransitions("a_traiter", "agent").find((t) => t.to === "annulee")!;
 
-  it("refuse une résolution sans texte de clôture", () => {
-    expect(buildTransitionUpdate(resolve, {})).toMatchObject({ ok: false });
+  it("ACCEPTE une résolution sans commentaire — il est facultatif (PO 2026-08-28)", () => {
+    const sans = buildTransitionUpdate(resolve, {});
+    expect(sans).toMatchObject({ ok: true });
+    // Écrit explicitement à null : sur une demande rouverte puis reclose,
+    // omettre la colonne y laisserait le commentaire de la clôture précédente.
+    if (sans.ok) expect(sans.update).toEqual({ status: "resolue_positive", closure_text: null });
+    const vide = buildTransitionUpdate(resolve, { closureText: "   " });
+    if (vide.ok) expect(vide.update).toEqual({ status: "resolue_positive", closure_text: null });
+  });
+
+  it("normalise le commentaire quand l'agent en écrit un", () => {
     const ok = buildTransitionUpdate(resolve, { closureText: "  Travaux réalisés. " });
     expect(ok).toMatchObject({ ok: true });
     if (ok.ok) expect(ok.update).toEqual({ status: "resolue_positive", closure_text: "Travaux réalisés." });

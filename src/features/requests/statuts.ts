@@ -74,8 +74,13 @@ export interface TransitionSpec {
   label: string;
   /** Un agent assigné est exigé par la garde SQL. */
   needsAssignee?: boolean;
-  /** Le texte de clôture destiné à l'usager est exigé. */
-  needsClosureText?: boolean;
+  /**
+   * Le dialogue PROPOSE le texte de clôture destiné à l'usager.
+   * ⚠️ Il n'est plus OBLIGATOIRE depuis le 2026-08-28 (décision PO) : la garde
+   * SQL ne l'exige plus, et l'avis de clôture envoyé à l'usager se tient sans
+   * commentaire (`_shared/email/cloture.ts`). D'où `asks…` et non `needs…`.
+   */
+  asksClosureText?: boolean;
   /** Motifs acceptés par la garde SQL (undefined = pas de motif ; [] interdit). */
   motifChoices?: ClosureMotif[];
   /** Le motif est-il obligatoire ? */
@@ -86,7 +91,7 @@ const WRITER_ROLES: MemberRole[] = ["administrateur", "agent"];
 
 /**
  * Catalogue COMPLET des transitions envisageables pour ce statut, indépendant
- * de tout rôle ou droit — c'est la garde (assigné, texte de clôture, motifs)
+ * de tout rôle ou droit — c'est la garde (assigné, motifs)
  * qui varie par transition, jamais par qui la déclenche. `allowedTransitions`
  * et `allowedTransitionsFor` filtrent ce catalogue chacun à sa façon.
  * NB : le motif « doublon » exige une demande maître — non proposé par l'UI
@@ -100,7 +105,7 @@ function transitionCatalogFor(status: RequestStatus): TransitionSpec[] {
         {
           to: "resolue_negative",
           label: "Clore (irrecevable / réorientation)",
-          needsClosureText: true,
+          asksClosureText: true,
           motifChoices: ["irrecevable", "reorientation"],
           motifRequired: true,
         },
@@ -120,12 +125,12 @@ function transitionCatalogFor(status: RequestStatus): TransitionSpec[] {
         {
           to: "resolue_positive",
           label: "Résoudre positivement",
-          needsClosureText: true,
+          asksClosureText: true,
         },
         {
           to: "resolue_negative",
           label: "Résoudre négativement",
-          needsClosureText: true,
+          asksClosureText: true,
           motifChoices: ["irrecevable", "reorientation"],
         },
         {
@@ -253,11 +258,13 @@ export function buildTransitionUpdate(
     if (!input.assigneeId) return { ok: false, message: "Un agent assigné est obligatoire." };
     update.assigned_to = input.assigneeId;
   }
-  if (spec.needsClosureText) {
-    if (!input.closureText || input.closureText.trim() === "") {
-      return { ok: false, message: "Le texte de clôture destiné à l'usager est obligatoire." };
-    }
-    update.closure_text = input.closureText.trim();
+  if (spec.asksClosureText) {
+    // Facultatif (décision PO 2026-08-28). Écrit EXPLICITEMENT à null quand il
+    // est vide plutôt que laissé de côté : sur une demande rouverte puis
+    // reclose, omettre la colonne y laisserait le commentaire de la clôture
+    // précédente — que l'usager recevrait comme s'il venait d'être écrit.
+    const text = (input.closureText ?? "").trim();
+    update.closure_text = text === "" ? null : text;
   }
   if (spec.motifChoices && spec.motifChoices.length > 0) {
     if (input.motif && !spec.motifChoices.includes(input.motif)) {

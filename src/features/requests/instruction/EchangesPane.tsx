@@ -41,6 +41,12 @@ import {
   type StageEvent,
 } from "./instruction";
 
+/** Brouillon déposé dans le composeur par un autre bloc de la fiche. */
+export interface ComposerDraft {
+  subject: string;
+  body: string;
+}
+
 export interface SendEmailPayload {
   subject: string;
   body: string;
@@ -60,13 +66,21 @@ interface Props {
   canInstruct: boolean;
   archived: boolean;
   sending: boolean;
+  /**
+   * Texte pré-rempli venu d'ailleurs (aujourd'hui : le signalement de
+   * non-conformité de l'onglet Documents). Chaque nouvel OBJET est appliqué une
+   * fois, puis rendu au parent via `onDraftApplied` — sans quoi un rendu de
+   * plus écraserait ce que l'agent vient de corriger à la main.
+   */
+  draft?: ComposerDraft | null;
+  onDraftApplied?: () => void;
   onSend: (payload: SendEmailPayload) => Promise<void>;
   onDownload: (attachment: RequestAttachment) => void;
 }
 
 export function EchangesPane({
   request, identity, emails, attachments, members, events, tenantName,
-  canInstruct, archived, sending, onSend, onDownload,
+  canInstruct, archived, sending, draft, onDraftApplied, onSend, onDownload,
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
@@ -81,6 +95,18 @@ export function EchangesPane({
   const [files, setFiles] = React.useState<File[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
+
+  // Le brouillon remplace la saisie en cours : il arrive d'un geste explicite
+  // (« Signaler à l'usager »), jamais d'un rendu de fond.
+  React.useEffect(() => {
+    if (!draft) return;
+    setSubject(draft.subject);
+    setBody(draft.body);
+    setTemplateId("");
+    setSubmitted(false);
+    setError(null);
+    onDraftApplied?.();
+  }, [draft, onDraftApplied]);
 
   const values = React.useMemo(
     () => requestTemplateValues({ request, identity, events, members, tenantName }),

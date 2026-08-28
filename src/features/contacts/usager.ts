@@ -9,6 +9,7 @@
 
 import { isFinal, type RequestStatus } from "@/features/requests/statuts";
 import type { SocleContact } from "./rapprochement";
+import { civilityLabel } from "@fn/_shared/identity/declared";
 
 /** Ligne « libellé / valeur » d'un bloc d'informations. */
 export interface FieldRow {
@@ -31,11 +32,6 @@ const CONTACT_TYPE_LABELS: Record<string, string> = {
 const CONTACT_STATUS_LABELS: Record<string, string> = {
   active: "Actif",
   archived: "Archivé",
-};
-
-const CIVILITY_LABELS: Record<string, string> = {
-  madame: "Madame",
-  monsieur: "Monsieur",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
@@ -62,10 +58,11 @@ export function isInactive(status: string | null): boolean {
   return status !== null && status !== "" && status !== "active";
 }
 
-export function civilityLabel(civility: string | null): string | null {
-  if (!civility) return null;
-  return CIVILITY_LABELS[civility] ?? civility;
-}
+// Le catalogue des civilités vit dans `@fn/_shared/identity/declared` : les
+// courriels composés côté serveur en ont besoin aussi, et deux catalogues
+// auraient fini par diverger (l'écran disait « Monsieur », l'avis de clôture
+// « monsieur » — constaté en envoi réel le 2026-08-28).
+export { civilityLabel };
 
 export function channelLabel(channel: string | null): string | null {
   if (!channel) return null;

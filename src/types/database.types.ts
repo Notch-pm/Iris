@@ -778,6 +778,11 @@ export type Database = {
       request_attachments: {
         Row: {
           checksum: string | null
+          compliance: string | null
+          compliance_at: string | null
+          compliance_by: string | null
+          compliance_motif: string | null
+          compliance_note: string | null
           copy_status: string
           created_at: string
           document_type_label: string | null
@@ -792,10 +797,17 @@ export type Database = {
           organization_id: string
           request_id: string
           storage_path: string
+          superseded_at: string | null
+          superseded_by: string | null
           uploaded_by: string | null
         }
         Insert: {
           checksum?: string | null
+          compliance?: string | null
+          compliance_at?: string | null
+          compliance_by?: string | null
+          compliance_motif?: string | null
+          compliance_note?: string | null
           copy_status?: string
           created_at?: string
           document_type_label?: string | null
@@ -810,10 +822,17 @@ export type Database = {
           organization_id: string
           request_id: string
           storage_path: string
+          superseded_at?: string | null
+          superseded_by?: string | null
           uploaded_by?: string | null
         }
         Update: {
           checksum?: string | null
+          compliance?: string | null
+          compliance_at?: string | null
+          compliance_by?: string | null
+          compliance_motif?: string | null
+          compliance_note?: string | null
           copy_status?: string
           created_at?: string
           document_type_label?: string | null
@@ -828,9 +847,18 @@ export type Database = {
           organization_id?: string
           request_id?: string
           storage_path?: string
+          superseded_at?: string | null
+          superseded_by?: string | null
           uploaded_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "request_attachments_compliance_by_fkey"
+            columns: ["compliance_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "request_attachments_email_id_fkey"
             columns: ["email_id"]
@@ -843,6 +871,13 @@ export type Database = {
             columns: ["request_id"]
             isOneToOne: false
             referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_attachments_superseded_by_fkey"
+            columns: ["superseded_by"]
+            isOneToOne: false
+            referencedRelation: "request_attachments"
             referencedColumns: ["id"]
           },
           {
@@ -1486,6 +1521,18 @@ export type Database = {
         Args: { p_profile_id: string; p_user_id: string }
         Returns: Json
       }
+      attach_request_piece: {
+        Args: {
+          p_file_name: string
+          p_file_size?: number
+          p_form_field_key?: string
+          p_mime_type?: string
+          p_replaces_id?: string
+          p_request_id: string
+          p_storage_path: string
+        }
+        Returns: Json
+      }
       can_admin_request: { Args: { p_request_id: string }; Returns: boolean }
       can_manage_account: {
         Args: { p_actor_id: string; p_target_id: string }
@@ -1538,6 +1585,37 @@ export type Database = {
         Returns: string[]
       }
       email_template_variables: { Args: never; Returns: string[] }
+      form_attachment_required: {
+        Args: { p_field: Json; p_values: Json }
+        Returns: boolean
+      }
+      form_attachment_requirements: {
+        Args: { p_form_data: Json; p_form_schema: Json }
+        Returns: {
+          field_key: string
+          label: string
+          required: boolean
+        }[]
+      }
+      form_condition_met: {
+        Args: { p_condition: Json; p_values: Json }
+        Returns: boolean
+      }
+      form_condition_valid: { Args: { p_raw: Json }; Returns: boolean }
+      form_data_key: { Args: { p_field: Json }; Returns: string }
+      form_field_valid: { Args: { p_raw: Json }; Returns: boolean }
+      form_node_valid: { Args: { p_raw: Json }; Returns: boolean }
+      form_rule_equals: {
+        Args: { p_field: Json; p_target: string }
+        Returns: boolean
+      }
+      form_rule_includes: {
+        Args: { p_field: Json; p_target: string }
+        Returns: boolean
+      }
+      form_rule_target: { Args: { p_value: Json }; Returns: string }
+      form_schema_content: { Args: { p_form_schema: Json }; Returns: Json }
+      form_value_empty: { Args: { p_value: Json }; Returns: boolean }
       has_admin_scope: {
         Args: { p_org_id: string; p_socle_org_id: string }
         Returns: boolean
@@ -1657,12 +1735,25 @@ export type Database = {
         }
         Returns: undefined
       }
+      qualify_request_attachment: {
+        Args: {
+          p_attachment_id: string
+          p_compliance: string
+          p_motif?: string
+          p_note?: string
+        }
+        Returns: Json
+      }
       refresh_member_roles: { Args: { p_org_id: string }; Returns: undefined }
       refresh_request_scope_org: {
         Args: { p_org_id?: string }
         Returns: number
       }
       request_exists: { Args: { p_id: string }; Returns: boolean }
+      request_pieces_blocking: {
+        Args: { p_form_data: Json; p_form_schema: Json; p_request_id: string }
+        Returns: string[]
+      }
       request_right_for: {
         Args: {
           p_org_id: string

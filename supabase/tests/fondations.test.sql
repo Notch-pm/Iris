@@ -198,17 +198,21 @@ begin
   if v_int <> 1 then v_fail := v_fail || 'T5: historique d''affectation non alimenté'; end if;
 
   -- ----------------------------------------------------------------------
-  -- T6 — résolution : texte de clôture obligatoire
+  -- T6 — résolution : le commentaire pour l'usager est FACULTATIF
+  -- (décision PO 2026-08-28 — l'avis de clôture envoyé à l'usager se tient
+  -- sans commentaire ; la garde ne l'exige plus, elle l'accepte).
   -- ----------------------------------------------------------------------
-  begin
-    update public.requests set status = 'resolue_positive' where id = r1;
-    v_fail := v_fail || 'T6: résolution sans texte de clôture acceptée';
-  exception when others then null;
-  end;
-  update public.requests set status = 'resolue_positive',
-         closure_text = 'Votre signalement a été traité : rebouchage effectué.' where id = r1;
+  update public.requests set status = 'resolue_positive' where id = r1;
+  select count(*) into v_int from public.requests
+   where id = r1 and status = 'resolue_positive';
+  if v_int <> 1 then v_fail := v_fail || 'T6: résolution SANS commentaire refusée'; end if;
   select closed_at into v_ts from public.requests where id = r1;
   if v_ts is null then v_fail := v_fail || 'T6: closed_at non posée à la clôture'; end if;
+  -- Le commentaire reste écrivable, y compris après coup.
+  update public.requests
+     set closure_text = 'Votre signalement a été traité : rebouchage effectué.' where id = r1;
+  select count(*) into v_int from public.requests where id = r1 and closure_text is not null;
+  if v_int <> 1 then v_fail := v_fail || 'T6: commentaire de clôture non enregistré'; end if;
 
   -- ----------------------------------------------------------------------
   -- T7 — réouverture : refusée à l'agent (a la clôture via le défaut de son

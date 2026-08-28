@@ -20,10 +20,11 @@ import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
 import { UsagerEditDialog } from "@/features/contacts/UsagerEditDialog";
 import { isAdminOn, rightsFor } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
+import type { EdgeError } from "@/lib/edge";
 import { StatusBadge } from "./StatusBadge";
 import { TransitionDialog, useTransitionRunner } from "./TransitionActions";
 import {
-  allowedTransitionsFor, canAdminWith, canProcessWith, canWriteWith, STATUS_LABELS,
+  allowedTransitionsFor, canAdminWith, canProcessWith, canWriteWith, isFinal, STATUS_LABELS,
   type RequestRights, type RequestStatus, type TransitionSpec,
 } from "./statuts";
 import {
@@ -32,18 +33,29 @@ import {
   useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useUpdatePriority,
   type RequestAttachment, type TenantMember,
 } from "./useRequests";
-import { useSendRequestEmail } from "./instruction/useSendRequestEmail";
+import { useSendClosureEmail, useSendRequestEmail } from "./instruction/useSendRequestEmail";
 import { ActivityPane } from "./instruction/ActivityPane";
 import { DocumentsPane } from "./instruction/DocumentsPane";
-import { EchangesPane, type SendEmailPayload } from "./instruction/EchangesPane";
+import { EchangesPane, type ComposerDraft, type SendEmailPayload } from "./instruction/EchangesPane";
+import { QualificationDialog, type QualificationSubmit } from "./instruction/QualificationDialog";
+import { AjouterPieceDialog } from "./instruction/AjouterPieceDialog";
+import { FormulaireEditDialog } from "./instruction/FormulaireEditDialog";
+import { useQualifyAttachment } from "./instruction/useQualifyAttachment";
+import { useAttachRequestPiece, useUpdateRequestFormData } from "./instruction/useEditRequestForm";
+import {
+  blockingMessage, buildNonConformityEmail, motifLabel, pieceRequirements, readyToResume,
+  type PieceRequirement, type QualifiableAttachment,
+} from "./instruction/conformite";
 import { NotesPane } from "./instruction/NotesPane";
 import { ResumePane } from "./instruction/ResumePane";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
 import {
-  activityItems, attachmentFieldLabels, buildStages, dueView, formAnswers, formSchemaVersion,
+  activityItems, buildStages, dueView, formAnswers, formSchemaVersion,
   headerSubtitle, memberName, priorityOption, requesterView, splitTransitions,
 } from "./instruction/instruction";
 import { interventionLocation } from "./instruction/lieu";
+import { formSchemaFrom } from "./instruction/instruction";
+import { dataKey, flatFields } from "@fn/create-request-from-procedure/_shared/procedureForm";
 
 type TabKey = "resume" | "docs" | "echanges" | "notes" | "activite";
 
@@ -71,6 +83,10 @@ export function RequestDetailPage() {
   const mentionables = useMentionableUsers(id);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
   const sendEmail = useSendRequestEmail();
+  const sendClosure = useSendClosureEmail();
+  const qualify = useQualifyAttachment();
+  const attachPiece = useAttachRequestPiece();
+  const updateFormData = useUpdateRequestFormData();
   const r = request.data ?? null;
   const linkTargets = React.useMemo(
     () => (links.data ?? []).map((l) => l.target_request_id).filter((x): x is string => Boolean(x)),
@@ -95,6 +111,17 @@ export function RequestDetailPage() {
   const [tab, setTab] = React.useState<TabKey>("resume");
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [usagerEditOpen, setUsagerEditOpen] = React.useState(false);
+  // Qualification d'une pièce : la pièce visée et le libellé de l'exigence.
+  const [qualifying, setQualifying] =
+    React.useState<{ attachment: QualifiableAttachment; label: string | null } | null>(null);
+  const [qualifyError, setQualifyError] = React.useState<string | null>(null);
+  // Brouillon déposé dans le composeur de l'onglet Échanges (signalement).
+  const [composerDraft, setComposerDraft] = React.useState<ComposerDraft | null>(null);
+  // Dépôt d'une pièce sur une exigence, et édition des réponses du formulaire.
+  const [addingPiece, setAddingPiece] = React.useState<PieceRequirement | null>(null);
+  const [addPieceError, setAddPieceError] = React.useState<string | null>(null);
+  const [answersOpen, setAnswersOpen] = React.useState(false);
+  const [answersError, setAnswersError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   // Le texte est conservé pendant le fondu de sortie (visible=false).
   const [toast, setToast] = React.useState<{ text: string; visible: boolean }>({ text: "", visible: false });
@@ -113,9 +140,40 @@ export function RequestDetailPage() {
     toastTimer.current = window.setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2800);
   }, []);
 
+  /**
+   * Une résolution PRÉVIENT l'usager (décision PO 2026-08-28) : l'avis part
+   * juste après, composé par le serveur depuis l'état enregistré.
+   *
+   * ⚠️ L'envoi suit la transition, il ne la conditionne pas. La demande est
+   * résolue quoi qu'il arrive ; un échec s'affiche comme tel, sans laisser
+   * croire que la clôture a échoué. Le cas le plus courant — aucune adresse au
+   * dossier — n'est pas une erreur : c'est un fait qu'on énonce.
+   */
   const onTransitionDone = React.useCallback(
-    (spec: TransitionSpec) => flash(`Statut : ${STATUS_LABELS[spec.to]}`),
-    [flash],
+    (spec: TransitionSpec) => {
+      const done = `Statut : ${STATUS_LABELS[spec.to]}`;
+      if (spec.to !== "resolue_positive" && spec.to !== "resolue_negative") {
+        flash(done);
+        return;
+      }
+      flash(`${done} — envoi de l'avis à l'usager…`);
+      sendClosure
+        .mutateAsync({ requestId: id ?? "" })
+        .then(() => flash(`${done} — l'usager a été prévenu par courriel.`))
+        .catch((err: unknown) => {
+          const code = (err as EdgeError | null)?.code;
+          if (code === "no_recipient") {
+            flash(`${done} — aucun courriel : la demande ne porte pas d'adresse.`);
+            return;
+          }
+          flash(done);
+          setError(
+            `La demande est bien ${STATUS_LABELS[spec.to].toLowerCase()}, mais l'avis n'a pas pu partir : `
+              + (err instanceof Error ? err.message : "envoi impossible."),
+          );
+        });
+    },
+    [flash, id, sendClosure],
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
@@ -173,7 +231,6 @@ export function RequestDetailPage() {
   const lieuKeys = new Set(lieu?.keys ?? []);
   const answers = formAnswers(r.procedure_snapshot, r.form_data).filter((a) => !lieuKeys.has(a.key));
   const formVersion = formSchemaVersion(r.procedure_snapshot);
-  const fieldLabels = attachmentFieldLabels(r.procedure_snapshot);
   const due = dueView(r.due_at, now);
   const subtitle = headerSubtitle({
     // Pendant la relecture, aucun nom plutôt que celui du dépôt : le voir
@@ -186,13 +243,51 @@ export function RequestDetailPage() {
   const stages = buildStages({
     status, closureMotif: r.closure_motif, createdAt: r.created_at, events: events.data ?? [],
   });
+  const attachmentList = attachments.data ?? [];
+  // Exigences de pièces du formulaire, avec leur qualification — miroir de
+  // `form_attachment_requirements` / `request_pieces_blocking` (migration
+  // 20260828100000). L'autorité reste la garde SQL t17 : ici on explique.
+  const requirements = pieceRequirements(r.procedure_snapshot, r.form_data, attachmentList);
+  const piecesBlocking = blockingMessage(requirements);
+  const canResume = readyToResume(requirements);
+  // Le schéma FIGÉ de la demande — celui du dépôt, jamais la démarche du jour.
+  const formSchema = formSchemaFrom(r.procedure_snapshot);
+  // Un dossier clos ne se réécrit pas : l'écriture reste ouverte côté serveur
+  // pour une correction a posteriori, l'UI ne la propose simplement pas.
+  const editable = canInstruct && !archived && !isFinal(status);
+  // Pièces ACTIVES, déclarées telles quelles au moteur de validation : les
+  // conditions se rejouent exactement comme à l'écran.
+  const activeDeclarations = attachmentList
+    .filter((a) => !a.email_id && !a.superseded_by)
+    .map((a) => ({
+      form_field_key: a.form_field_key ?? "",
+      file_name: a.file_name,
+      storage_path: a.storage_path,
+    }));
+  /** Formats acceptés déclarés par la démarche pour l'exigence visée. */
+  const acceptedFormatsFor = (requirement: PieceRequirement | null): string[] => {
+    if (!requirement?.key || !formSchema) return [];
+    const entry = flatFields(formSchema).find(
+      (e) => e.field.type === "attachment" && dataKey(e.field) === requirement.key,
+    );
+    return entry && entry.field.type === "attachment" ? entry.field.acceptedFormats : [];
+  };
   const { primary, secondary } = splitTransitions(status, transitions);
+  /**
+   * Miroir EXACT de la garde t17 : seule `en_instruction → resolue_positive`
+   * est fermée par des pièces obligatoires non conformes. La mise en attente,
+   * l'annulation et la résolution négative restent ouvertes — on refuse
+   * souvent PARCE QU'une pièce manque.
+   */
+  const blockedBecauseOfPieces = (spec: TransitionSpec): string | null =>
+    spec.to === "resolue_positive" && status === "en_instruction" ? piecesBlocking : null;
   const fallbackLabel = !writer ? null
     : archived ? "Demande archivée"
     : primary === null && secondary.length === 0 ? "Demande clôturée"
     : null;
-  const activity = activityItems({ events: events.data ?? [], notes: messages.data ?? [], nameOf });
-  const attachmentList = attachments.data ?? [];
+  const activity = activityItems({
+    events: events.data ?? [], notes: messages.data ?? [], nameOf, motifLabel,
+  });
   const noteList = messages.data ?? [];
   const headerError = error ?? (runner.active ? null : runner.error);
 
@@ -225,6 +320,90 @@ export function RequestDetailPage() {
       return;
     }
     window.open(url, "_blank", "noopener");
+  }
+
+  async function submitQualification(input: QualificationSubmit) {
+    if (!qualifying) return;
+    setQualifyError(null);
+    try {
+      const result = await qualify.mutateAsync({
+        attachmentId: qualifying.attachment.id,
+        requestId: r!.id,
+        compliance: input.compliance,
+        motif: input.motif,
+        note: input.note,
+      });
+      setQualifying(null);
+      // La bascule en attente est décidée par le SERVEUR (elle est refusée par
+      // la matrice depuis « À traiter ») : on annonce ce qui s'est passé, pas
+      // ce qu'on espérait.
+      flash(result.status_changed
+        ? "Pièce non conforme — demande en attente d'information."
+        : input.compliance === "conforme" ? "Pièce déclarée conforme." : "Pièce déclarée non conforme.");
+    } catch (err) {
+      setQualifyError(err instanceof Error ? err.message : "Qualification refusée.");
+    }
+  }
+
+  /**
+   * Le signalement n'est PAS envoyé d'ici : il dépose un brouillon dans le
+   * composeur de l'onglet Échanges, que l'agent relit, amende et envoie
+   * lui-même. Ce texte parle au nom de la collectivité — personne ne le fait
+   * partir sans l'avoir lu.
+   */
+  function signalNonConformity() {
+    setComposerDraft(buildNonConformityEmail({
+      reference: r!.reference,
+      subject: r!.subject,
+      requirements,
+      recipient: {
+        civility: identity.civility,
+        // Même règle que les variables de modèle : `identity.name` retombe sur
+        // « Identité déclarée » quand rien n'est connu, et ce mot d'écran de
+        // gestion ne doit jamais atteindre un usager.
+        fullName: identity.known ? identity.name : null,
+      },
+      tenantName: current?.organizationName ?? "",
+    }));
+    setTab("echanges");
+  }
+
+  function resumeInstruction() {
+    const spec = transitions.find((t) => t.to === "en_instruction");
+    if (spec) runner.start(spec);
+  }
+
+  async function submitAddPiece(file: File) {
+    if (!addingPiece) return;
+    setAddPieceError(null);
+    try {
+      const result = await attachPiece.mutateAsync({
+        requestId: r!.id,
+        organizationId: r!.organization_id,
+        file,
+        formFieldKey: addingPiece.key,
+        // Sans exigence à laquelle se rattacher (pièce hors formulaire), le
+        // remplacement doit désigner sa cible nommément.
+        replacesAttachmentId: addingPiece.key ? null : addingPiece.attachments[0]?.id ?? null,
+      });
+      setAddingPiece(null);
+      flash(result.remplacees > 0
+        ? `Pièce ajoutée — ${result.remplacees} pièce${result.remplacees > 1 ? "s" : ""} remplacée${result.remplacees > 1 ? "s" : ""}. À qualifier.`
+        : "Pièce ajoutée. À qualifier.");
+    } catch (err) {
+      setAddPieceError(err instanceof Error ? err.message : "Dépôt refusé.");
+    }
+  }
+
+  async function submitAnswers(formData: Record<string, unknown>, changed: string[]) {
+    setAnswersError(null);
+    try {
+      await updateFormData.mutateAsync({ requestId: r!.id, formData });
+      setAnswersOpen(false);
+      flash(`${changed.length} réponse${changed.length > 1 ? "s" : ""} modifiée${changed.length > 1 ? "s" : ""}.`);
+    } catch (err) {
+      setAnswersError(err instanceof Error ? err.message : "Enregistrement refusé.");
+    }
   }
 
   function copyReference() {
@@ -276,7 +455,13 @@ export function RequestDetailPage() {
               <MessageSquare /> Écrire à l'usager
             </Button>
             {writer && primary ? (
-              <Button type="button" size="sm" disabled={runner.pending} onClick={() => runner.start(primary)}>
+              <Button
+                type="button"
+                size="sm"
+                disabled={runner.pending || Boolean(blockedBecauseOfPieces(primary))}
+                title={blockedBecauseOfPieces(primary) ?? undefined}
+                onClick={() => runner.start(primary)}
+              >
                 {primary.label}
               </Button>
             ) : null}
@@ -292,7 +477,7 @@ export function RequestDetailPage() {
               {secondary.map((spec) => (
                 <DropdownItem
                   key={spec.to + spec.label}
-                  disabled={runner.pending}
+                  disabled={runner.pending || Boolean(blockedBecauseOfPieces(spec))}
                   className={spec.to === "annulee" ? "text-destructive" : undefined}
                   onClick={() => { setMenuOpen(false); runner.start(spec); }}
                 >
@@ -356,12 +541,26 @@ export function RequestDetailPage() {
                   lieu={lieu}
                   links={links.data ?? []}
                   linkedSummaries={linkedSummaries.data ?? []}
+                  onEditAnswers={
+                    editable && formSchema && formSchema.content.length > 0
+                      ? () => { setAnswersError(null); setAnswersOpen(true); }
+                      : null
+                  }
                 />
               ) : null}
               {tab === "docs" ? (
                 <DocumentsPane
                   attachments={attachmentList}
-                  fieldLabels={fieldLabels}
+                  requirements={requirements}
+                  canInstruct={canInstruct}
+                  archived={archived}
+                  waiting={status === "en_attente"}
+                  readyToResume={canResume}
+                  resuming={runner.pending}
+                  onQualify={(attachment, label) => { setQualifyError(null); setQualifying({ attachment, label }); }}
+                  onAddPiece={(requirement) => { setAddPieceError(null); setAddingPiece(requirement); }}
+                  onSignal={signalNonConformity}
+                  onResume={resumeInstruction}
                   onOpen={(a) => void openAttachment(a, false)}
                   onDownload={(a) => void openAttachment(a, true)}
                 />
@@ -378,6 +577,8 @@ export function RequestDetailPage() {
                   canInstruct={canInstruct}
                   archived={archived}
                   sending={sendEmail.isPending}
+                  draft={composerDraft}
+                  onDraftApplied={() => setComposerDraft(null)}
                   onSend={(payload: SendEmailPayload) => sendEmail.mutateAsync({
                     requestId: r.id,
                     organizationId: r.organization_id,
@@ -445,6 +646,7 @@ export function RequestDetailPage() {
               stages={stages}
               primary={primary}
               fallbackLabel={fallbackLabel}
+              blockedReason={primary ? blockedBecauseOfPieces(primary) : null}
               showAction={writer}
               pending={runner.pending}
               onPrimary={() => { if (primary) runner.start(primary); }}
@@ -470,6 +672,42 @@ export function RequestDetailPage() {
       </div>
 
       <TransitionDialog runner={runner} members={eligibleMembers} />
+
+      {/* Qualification d'une pièce. L'écriture passe par la RPC
+          `qualify_request_attachment` — `request_attachments` n'a aucune policy
+          UPDATE cliente, et c'est le serveur qui met la demande en attente. */}
+      <QualificationDialog
+        attachment={qualifying?.attachment ?? null}
+        requirementLabel={qualifying?.label ?? null}
+        pending={qualify.isPending}
+        error={qualifyError}
+        onClose={() => { setQualifying(null); setQualifyError(null); }}
+        onSubmit={(input) => void submitQualification(input)}
+      />
+
+      {/* Dépôt d'une pièce sur une exigence non conforme ou manquante. Le
+          remplacement (« la plus récente fait foi ») est annoncé AVANT l'envoi. */}
+      <AjouterPieceDialog
+        requirement={addingPiece}
+        acceptedFormats={acceptedFormatsFor(addingPiece)}
+        pending={attachPiece.isPending}
+        error={addPieceError}
+        onClose={() => { setAddingPiece(null); setAddPieceError(null); }}
+        onSubmit={(file) => void submitAddPiece(file)}
+      />
+
+      {/* Correction des RÉPONSES au formulaire figé de la demande. La
+          définition de la démarche, elle, vit dans le Socle. */}
+      <FormulaireEditDialog
+        open={answersOpen}
+        schema={formSchema}
+        formData={r.form_data}
+        attachments={activeDeclarations}
+        pending={updateFormData.isPending}
+        error={answersError}
+        onClose={() => { setAnswersOpen(false); setAnswersError(null); }}
+        onSubmit={(formData, changed) => void submitAnswers(formData, changed)}
+      />
 
       {/* Correction de l'usager sans quitter la demande : l'écriture va au
           SOCLE (socle-proxy → contacts-api), la fiche est ensuite relue.

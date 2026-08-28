@@ -70,3 +70,33 @@ export function useSendRequestEmail() {
     },
   });
 }
+
+/**
+ * L'avis de clôture, envoyé à l'usager APRÈS une résolution.
+ *
+ * Le navigateur n'envoie QUE l'identifiant de la demande : objet, corps,
+ * salutation et signature sont composés par l'edge function à partir de l'état
+ * enregistré (statut, référence, objet, `closure_text`). C'est ce qui permet
+ * d'exiger ici le droit de **clôture** — celui qui vient d'autoriser la
+ * transition — sans faire d'Iris un relais ouvert : détenir la clôture ne donne
+ * pas le pouvoir d'écrire n'importe quoi à un habitant.
+ *
+ * ⚠️ L'envoi suit la transition, il ne la conditionne pas. Un échec (pas
+ * d'adresse, relais muet) laisse la demande résolue : on n'annule pas une
+ * décision d'instruction parce qu'un serveur de mail tousse. L'appelant
+ * l'annonce à l'agent, et l'onglet Échanges garde la trace « echec » quand
+ * l'échange a pu être ouvert.
+ */
+export function useSendClosureEmail() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { requestId: string }): Promise<SendRequestEmailResult> =>
+      await invokeEdge<SendRequestEmailResult>("send-request-email", {
+        request_id: input.requestId,
+        kind: "cloture",
+      }),
+    onSuccess: (_data, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ["request_emails", vars.requestId] });
+    },
+  });
+}

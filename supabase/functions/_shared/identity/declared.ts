@@ -56,6 +56,29 @@ export function pickDeclared(declared: unknown, field: DeclaredField): string | 
   return null;
 }
 
+/**
+ * Civilités telles que le Socle les STOCKE (minuscules) → telles qu'on les
+ * ÉCRIT. Vit ici, avec les autres cascades d'identité, parce que deux mondes en
+ * ont besoin : l'écran (fiche usager, `civilityLabel`) et les courriels composés
+ * côté serveur (`salutation`). Sans ce partage, un habitant lisait
+ * « monsieur Durand, » en tête d'un avis de clôture — constaté en envoi réel le
+ * 2026-08-28, l'écran affichant « Monsieur » au même instant.
+ *
+ * Une valeur inconnue passe TELLE QUELLE : mieux vaut une civilité exotique
+ * intacte qu'un nom effacé.
+ */
+const CIVILITY_LABELS: Record<string, string> = {
+  madame: "Madame",
+  monsieur: "Monsieur",
+};
+
+export function civilityLabel(civility: string | null | undefined): string | null {
+  if (!civility) return null;
+  const value = civility.trim();
+  if (value === "") return null;
+  return CIVILITY_LABELS[value.toLowerCase()] ?? value;
+}
+
 export type ContactType = "personne" | "entreprise" | "association";
 
 /**

@@ -181,12 +181,21 @@ interface AvancementProps {
   primary: TransitionSpec | null;
   /** Libellé inerte quand aucune action principale n'existe (archivée, clôturée…). */
   fallbackLabel: string | null;
+  /**
+   * Pourquoi l'action principale est fermée alors qu'elle existe — aujourd'hui :
+   * des pièces obligatoires ne sont pas conformes. Miroir de la garde SQL t17,
+   * qui reste l'autorité ; ici on explique, on ne protège pas. Un bouton grisé
+   * sans motif est le pire des deux mondes.
+   */
+  blockedReason?: string | null;
   showAction: boolean;
   pending: boolean;
   onPrimary: () => void;
 }
 
-export function AvancementCard({ reference, stages, primary, fallbackLabel, showAction, pending, onPrimary }: AvancementProps) {
+export function AvancementCard({
+  reference, stages, primary, fallbackLabel, blockedReason, showAction, pending, onPrimary,
+}: AvancementProps) {
   return (
     <Surface className="gap-[13px] px-4 py-[15px]">
       <div className="flex items-center justify-between gap-2">
@@ -228,9 +237,20 @@ export function AvancementCard({ reference, stages, primary, fallbackLabel, show
       </ol>
       {showAction ? (
         primary ? (
-          <Button type="button" className="w-full" disabled={pending} onClick={onPrimary}>
-            {pending ? "Application…" : primary.label}
-          </Button>
+          <div className="flex flex-col gap-1.5">
+            <Button
+              type="button"
+              className="w-full"
+              disabled={pending || Boolean(blockedReason)}
+              title={blockedReason ?? undefined}
+              onClick={onPrimary}
+            >
+              {pending ? "Application…" : primary.label}
+            </Button>
+            {blockedReason ? (
+              <p className="text-[11.5px] text-muted-foreground">{blockedReason}</p>
+            ) : null}
+          </div>
         ) : fallbackLabel ? (
           <Button type="button" className="w-full" disabled>{fallbackLabel}</Button>
         ) : null

@@ -30,6 +30,14 @@ interface Props {
   files: Record<string, File[]>;
   onFilesChange: (fieldId: string, files: File[]) => void;
   errors: Record<string, string>;
+  /**
+   * Les champs « pièce » sont RAPPELÉS mais non déposables (édition des
+   * réponses depuis la fiche d'instruction, 2026-08-28) : les pièces d'une
+   * demande existante se gèrent dans l'onglet Documents, où elles portent leur
+   * qualification et leur historique de remplacement. Une zone de dépôt ici
+   * ferait un second chemin d'ajout, sans verdict ni remplacement.
+   */
+  attachmentsReadOnly?: boolean;
 }
 
 function FieldLabel({ text, required, conditional }: { text: string; required: boolean; conditional: boolean }) {
@@ -167,13 +175,27 @@ function AttachmentControl({ field, values, files, onFilesChange, error }: {
   );
 }
 
-function FieldControl({ field, values, onChange, files, onFilesChange, errors }: {
+function FieldControl({ field, values, onChange, files, onFilesChange, errors, attachmentsReadOnly }: {
   field: SchemaField;
 } & Omit<Props, "schema">) {
   const value = values[field.id];
   const error = errors[field.id];
 
   if (field.type === "attachment") {
+    if (attachmentsReadOnly) {
+      return (
+        <Field
+          label={<FieldLabel text={field.label} required={attachmentIsRequired(field, values)}
+            conditional={Boolean(field.visibleIf || field.requiredIf)} />}
+          hint={field.help}
+        >
+          <p className="flex items-center gap-2 rounded-[10px] border border-dashed border-border bg-card px-3.5 py-2 text-[12.5px] text-muted-foreground">
+            <Paperclip className="size-4 shrink-0" aria-hidden="true" />
+            Les pièces se gèrent dans l'onglet Documents.
+          </p>
+        </Field>
+      );
+    }
     return (
       <AttachmentControl field={field} values={values} files={files}
         onFilesChange={onFilesChange} error={error} />
@@ -303,7 +325,9 @@ function FieldGrid({ fields, values, ...rest }: { fields: SchemaField[] } & Omit
   );
 }
 
-export function ProcedureFormFields({ schema, values, onChange, files, onFilesChange, errors }: Props) {
+export function ProcedureFormFields({
+  schema, values, onChange, files, onFilesChange, errors, attachmentsReadOnly,
+}: Props) {
   if (schema.content.length === 0) {
     return (
       <p className="text-sm text-muted-foreground">
@@ -331,7 +355,8 @@ export function ProcedureFormFields({ schema, values, onChange, files, onFilesCh
         if (group.kind === "fields") {
           return (
             <FieldGrid key={`fields-${i}`} fields={group.fields} values={values} onChange={onChange}
-              files={files} onFilesChange={onFilesChange} errors={errors} />
+              files={files} onFilesChange={onFilesChange} errors={errors}
+              attachmentsReadOnly={attachmentsReadOnly} />
           );
         }
         const section = group.section;
@@ -352,7 +377,8 @@ export function ProcedureFormFields({ schema, values, onChange, files, onFilesCh
               <p className="-mt-1 text-sm text-muted-foreground">{section.description}</p>
             ) : null}
             <FieldGrid fields={section.fields} values={values} onChange={onChange}
-              files={files} onFilesChange={onFilesChange} errors={errors} />
+              files={files} onFilesChange={onFilesChange} errors={errors}
+              attachmentsReadOnly={attachmentsReadOnly} />
           </fieldset>
         );
       })}

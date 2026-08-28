@@ -3,7 +3,6 @@ import { allowedTransitions } from "../statuts";
 import {
   activityItems,
   attachmentExt,
-  attachmentFieldLabels,
   buildStages,
   dueView,
   excerpt,
@@ -328,10 +327,63 @@ describe("formAnswers", () => {
     expect(rows.at(-1)).toEqual({ key: "champ_partenaire", label: "Champ partenaire", value: "a, b", full: false });
     expect(formAnswers(null, { x: 1, y: "" })).toEqual([{ key: "x", label: "X", value: "1", full: false }]);
   });
-  it("expose la version du formulaire et les libellés des pièces", () => {
+  it("nomme la qualification d'une pièce, motif compris", () => {
+    const events = [
+      { id: "e1", event_type: "piece_qualifiee", created_by: "u1", created_at: "2026-08-28T09:00:00Z",
+        payload: { file_name: "justif.pdf", compliance: "non_conforme", motif: "illisible" } },
+      { id: "e2", event_type: "piece_qualifiee", created_by: "u1", created_at: "2026-08-28T08:00:00Z",
+        payload: { file_name: "cni.pdf", compliance: "conforme" } },
+    ];
+    const nameOf = () => "Camille Martin";
+    const withCatalog = activityItems({
+      events, notes: [], nameOf, motifLabel: (c) => (c === "illisible" ? "Le document n'est pas lisible" : null),
+    });
+    expect(withCatalog[0]).toMatchObject({
+      label: "Pièce déclarée non conforme",
+      detail: "justif.pdf · Camille Martin · Le document n'est pas lisible",
+    });
+    expect(withCatalog[1]).toMatchObject({
+      label: "Pièce déclarée conforme",
+      detail: "cni.pdf · Camille Martin",
+    });
+    // Sans catalogue injecté, le code brut reste lisible plutôt que disparaître.
+    expect(activityItems({ events, notes: [], nameOf })[0].detail)
+      .toBe("justif.pdf · Camille Martin · illisible");
+  });
+
+  it("nomme l'ajout d'une pièce, et le distingue d'un remplacement", () => {
+    const nameOf = () => "Camille Martin";
+    const items = activityItems({
+      events: [
+        { id: "e1", event_type: "piece_ajoutee", created_by: "u1", created_at: "2026-08-28T10:00:00Z",
+          payload: { file_name: "net.pdf", remplacees: 2 } },
+        { id: "e2", event_type: "piece_ajoutee", created_by: "u1", created_at: "2026-08-28T09:00:00Z",
+          payload: { file_name: "rib.pdf", remplacees: 0 } },
+      ],
+      notes: [], nameOf,
+    });
+    expect(items[0]).toMatchObject({
+      label: "Pièce remplacée", detail: "net.pdf · Camille Martin · 2 pièces remplacées",
+    });
+    expect(items[1]).toMatchObject({ label: "Pièce ajoutée", detail: "rib.pdf · Camille Martin" });
+  });
+
+  it("nomme la modification des réponses, sans jamais citer les valeurs", () => {
+    const items = activityItems({
+      events: [{ id: "e1", event_type: "form_data_updated", created_by: "u1",
+                 created_at: "2026-08-28T10:00:00Z",
+                 payload: { keys: ["date_naissance", "prenom"], count: 2 } }],
+      notes: [], nameOf: () => "Camille Martin",
+    });
+    expect(items[0]).toMatchObject({
+      label: "Réponses du formulaire modifiées", detail: "Camille Martin · 2 réponses",
+    });
+    expect(items[0].detail).not.toContain("date_naissance");
+  });
+
+  it("expose la version du formulaire", () => {
     expect(formSchemaVersion(SNAPSHOT)).toBe(1);
     expect(formSchemaVersion(null)).toBeNull();
-    expect(attachmentFieldLabels(SNAPSHOT)).toEqual({ f5: "Justificatif" });
   });
 });
 

@@ -7,7 +7,8 @@ import { Field } from "@/components/ui/field";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/features/auth/AuthProvider";
-import { MOTIF_LABELS, type ClosureMotif, type TransitionSpec } from "./statuts";
+import { MOTIF_LABELS, type ClosureMotif, type RequestStatus, type TransitionSpec } from "./statuts";
+import { CLOSURE_SUBJECTS } from "@fn/_shared/email/cloture";
 import { useApplyTransition, type TenantMember } from "./useRequests";
 
 // Transitions de statut — reflet de la garde SQL, qui reste la seule autorité.
@@ -60,7 +61,7 @@ export function useTransitionRunner(opts: {
   const start = React.useCallback((spec: TransitionSpec) => {
     setError(null);
     const needsDialog = Boolean(
-      spec.needsClosureText
+      spec.asksClosureText
       || (spec.motifChoices && spec.motifChoices.length > 0)
       || (spec.needsAssignee && defaultAssignee === ""),
     );
@@ -88,7 +89,20 @@ interface DialogProps {
   members: TenantMember[];
 }
 
-/** Dialogue motif / texte de clôture / assigné — monté une seule fois par fiche. */
+/**
+ * Ce que l'agent doit savoir avant d'écrire : un courriel PARTIRA, avec son
+ * commentaire dedans s'il en met un. Les objets sont ceux, figés, que compose
+ * le serveur — on les cite plutôt que de les paraphraser, pour que l'agent
+ * reconnaisse le message dans l'onglet Échanges.
+ */
+const CLOSURE_NOTICE: Partial<Record<RequestStatus, string>> = {
+  resolue_positive:
+    `L'usager recevra « ${CLOSURE_SUBJECTS.resolue_positive} ». Votre commentaire y sera intégré.`,
+  resolue_negative:
+    `L'usager recevra « ${CLOSURE_SUBJECTS.resolue_negative} ». Votre commentaire y sera intégré.`,
+};
+
+/** Dialogue motif / commentaire / assigné — monté une seule fois par fiche. */
 export function TransitionDialog({ runner, members }: DialogProps) {
   const { active } = runner;
   const [motif, setMotif] = React.useState<ClosureMotif | "">("");
@@ -145,10 +159,13 @@ export function TransitionDialog({ runner, members }: DialogProps) {
                   </Select>
                 </Field>
               ) : null}
-              {active.needsClosureText ? (
-                <Field label="Texte de clôture (destiné à l'usager)" htmlFor="tr-closure" required
-                  hint="Jamais une note interne — ce texte pourra être transmis à l'usager.">
-                  <Textarea id="tr-closure" required value={closureText}
+              {active.asksClosureText ? (
+                <Field
+                  label="Commentaire pour l'usager (facultatif)"
+                  htmlFor="tr-closure"
+                  hint={CLOSURE_NOTICE[active.to] ?? "Jamais une note interne — ce texte part à l'usager."}
+                >
+                  <Textarea id="tr-closure" value={closureText}
                     onChange={(e) => setClosureText(e.target.value)} />
                 </Field>
               ) : null}

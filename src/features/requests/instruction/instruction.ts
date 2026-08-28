@@ -456,17 +456,6 @@ export function formAnswers(procedureSnapshot: unknown, formData: unknown): Answ
   return rows;
 }
 
-/** Libellé des champs « pièce » du snapshot, par clé de rattachement (`form_field_key`). */
-export function attachmentFieldLabels(procedureSnapshot: unknown): Record<string, string> {
-  const schema = formSchemaFrom(procedureSnapshot);
-  const out: Record<string, string> = {};
-  if (!schema) return out;
-  for (const entry of flatFields(schema)) {
-    if (entry.field.type === "attachment") out[dataKey(entry.field)] = entry.field.label;
-  }
-  return out;
-}
-
 // ---- Avancement (étapes du cycle de vie) -----------------------------------
 
 export type StageKey = "a_traiter" | "en_instruction" | "en_attente" | "cloturee" | "archivee";
@@ -629,13 +618,24 @@ export interface ActivityInput {
   events: ActivityEvent[];
   notes: ActivityNote[];
   nameOf: (userId: string | null) => string;
+  /**
+   * Libellé d'un motif de non-conformité (`piece_qualifiee`). INJECTÉ, comme
+   * `nameOf` : le catalogue vit dans `conformite.ts`, qui lit déjà d'ici
+   * (`formSchemaFrom`) — l'importer en retour ferait un cycle. Absent, le code
+   * brut du motif s'affiche, ce qui reste lisible.
+   */
+  motifLabel?: (code: string) => string | null;
 }
 
 function statusLabel(value: unknown): string {
   return typeof value === "string" ? STATUS_LABELS[value as RequestStatus] ?? value : "—";
 }
 
-function describeEvent(event: ActivityEvent, nameOf: ActivityInput["nameOf"]): { label: string; detail: string } {
+function describeEvent(
+  event: ActivityEvent,
+  nameOf: ActivityInput["nameOf"],
+  motifLabel: ActivityInput["motifLabel"],
+): { label: string; detail: string } {
   const p = isRecord(event.payload) ? event.payload : {};
   const who = nameOf(event.created_by);
   switch (event.event_type) {
@@ -669,6 +669,31 @@ function describeEvent(event: ActivityEvent, nameOf: ActivityInput["nameOf"]): {
         detail: `${from ? `${nameOf(from)} → ` : ""}${nameOf(to)} · par ${who}`,
       };
     }
+    case "piece_qualifiee": {
+      const conforme = p.compliance === "conforme";
+      const name = typeof p.file_name === "string" ? p.file_name : "Pièce";
+      const code = typeof p.motif === "string" ? p.motif : null;
+      const motif = code ? motifLabel?.(code) ?? code : null;
+      return {
+        label: conforme ? "Pièce déclarée conforme" : "Pièce déclarée non conforme",
+        detail: `${name} · ${who}${motif ? ` · ${motif}` : ""}`,
+      };
+    }
+    case "piece_ajoutee": {
+      const name = typeof p.file_name === "string" ? p.file_name : "Pièce";
+      const n = typeof p.remplacees === "number" ? p.remplacees : 0;
+      return {
+        label: n > 0 ? "Pièce remplacée" : "Pièce ajoutée",
+        detail: `${name} · ${who}${n > 0 ? ` · ${n} pièce${n > 1 ? "s" : ""} remplacée${n > 1 ? "s" : ""}` : ""}`,
+      };
+    }
+    case "form_data_updated": {
+      const n = typeof p.count === "number" ? p.count : 0;
+      return {
+        label: "Réponses du formulaire modifiées",
+        detail: `${who}${n > 0 ? ` · ${n} réponse${n > 1 ? "s" : ""}` : ""}`,
+      };
+    }
     default:
       return { label: humanizeKey(event.event_type), detail: who };
   }
@@ -677,7 +702,7 @@ function describeEvent(event: ActivityEvent, nameOf: ActivityInput["nameOf"]): {
 /** Journal fusionné (événements immuables + notes internes), du plus récent au plus ancien. */
 export function activityItems(input: ActivityInput): ActivityItem[] {
   const items: ActivityItem[] = input.events.map((event) => {
-    const { label, detail } = describeEvent(event, input.nameOf);
+    const { label, detail } = describeEvent(event, input.nameOf, input.motifLabel);
     return { id: `evt-${event.id}`, label, detail, at: event.created_at };
   });
   for (const note of input.notes) {

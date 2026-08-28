@@ -1,6 +1,21 @@
-// send-request-email — l'agent répond à l'usager, depuis la fiche demande.
+// send-request-email — ce qui part d'Iris vers l'usager, depuis la fiche.
 //
-// Habilitation : **droit d'INSTRUCTION** sur le couple de la demande
+// DEUX MODES, deux habilitations, et ce n'est pas un hasard :
+//
+//   . `kind` absent (défaut) — LE MESSAGE LIBRE. L'agent a rédigé l'objet et le
+//     corps, il les envoie. Droit exigé : **INSTRUCTION**.
+//
+//   . `kind: "cloture"` — L'AVIS DE CLÔTURE, composé ICI à partir du seul état
+//     enregistré de la demande (statut, référence, objet, `closure_text`). Le
+//     navigateur n'envoie QUE l'identifiant : ni objet, ni corps, ni pièce ne
+//     sont acceptés. Droit exigé : **CLÔTURE** — celui-là même qui vient
+//     d'autoriser la résolution.
+//     C'est cette composition serveur qui permet d'ouvrir la fonction à la
+//     clôture sans en faire un relais ouvert : détenir `cloture` ne donne pas
+//     le pouvoir d'écrire n'importe quoi à un habitant, seulement celui
+//     d'annoncer une décision qu'on vient de prendre.
+//
+// Habilitation du mode libre : **droit d'INSTRUCTION** sur le couple de la demande
 // (organisation porteuse Socle, démarche). La règle reste écrite en SQL —
 // `request_right_for(user, org, socle_org, procedure, 'instruction')`, le même
 // moteur `permission_pairs_of` que partout ailleurs : la fonction la consulte,
@@ -38,6 +53,8 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveSmtp, type SmtpConfig, type SmtpRow } from "../_shared/email/config.ts";
 import { sendBrandedEmail, type EmailAttachment } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
+import { closureEmail, isClosureOutcome } from "../_shared/email/cloture.ts";
+import { pickDeclared } from "../_shared/identity/declared.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -98,10 +115,10 @@ function contactsApiBase(): string {
  * adresse : c'est une réponse, pas une panne — on ne ressuscite pas une adresse
  * que l'usager a fait retirer du référentiel.
  */
-async function socleContactEmail(
+async function socleContactIdentity(
   socleContactId: string,
   socleRootId: string | null,
-): Promise<string | null | undefined> {
+): Promise<RecipientIdentity | undefined> {
   const base = contactsApiBase();
   const key = Deno.env.get("SOCLE_API_KEY");
   if (base === "" || !key || !socleRootId) return undefined;
@@ -119,8 +136,35 @@ async function socleContactEmail(
   }
   const contact = await res.json().catch(() => null);
   if (!isRecord(contact)) return undefined;
-  const email = contact.email;
-  return typeof email === "string" && email.trim() !== "" ? email.trim() : null;
+  return declaredIdentity(contact);
+}
+
+/**
+ * L'identité servie à la formule d'adresse. Mêmes cascades de synonymes que
+ * partout (`DECLARED_KEYS`) : une fiche contacts-api et un dépôt partenaire s'y
+ * lisent de la même façon, et personne ne recopie la table.
+ */
+interface RecipientIdentity {
+  email: string | null;
+  civility: string | null;
+  fullName: string | null;
+}
+
+function declaredIdentity(source: unknown): RecipientIdentity {
+  // Nom d'USAGE avant nom de naissance : c'est celui sous lequel la personne
+  // se reconnaît, et le seul qu'on doive lui écrire.
+  const first = pickDeclared(source, "firstName");
+  const last = pickDeclared(source, "usageName") ?? pickDeclared(source, "lastName");
+  const composed = [first, last].filter(Boolean).join(" ").trim();
+  return {
+    email: pickDeclared(source, "email"),
+    civility: pickDeclared(source, "civility"),
+    // Une raison sociale tient lieu de nom pour une entreprise ou une
+    // association : c'est ainsi qu'on s'adresse à elle.
+    fullName: pickDeclared(source, "displayName")
+      ?? (composed !== "" ? composed : null)
+      ?? pickDeclared(source, "legalName"),
+  };
 }
 
 /**
@@ -130,15 +174,12 @@ async function socleContactEmail(
  * `requesterIdentity()` côté écran (contacts-api, publics Iris, synonymes
  * partenaires) : l'agent doit envoyer à l'adresse qu'il voit.
  */
-function recipientEmail(snapshot: unknown, identityStatus: string): string | null {
-  if (identityStatus === "anonyme") return null;
+function recipientIdentity(snapshot: unknown, identityStatus: string): RecipientIdentity {
+  const anonymous: RecipientIdentity = { email: null, civility: null, fullName: null };
+  if (identityStatus === "anonyme") return anonymous;
   const declared = isRecord(snapshot) && isRecord(snapshot.declared) ? snapshot.declared : {};
-  if (declared.anonymous === true) return null;
-  for (const key of ["email", "courriel", "mail"]) {
-    const value = declared[key];
-    if (typeof value === "string" && value.trim() !== "") return value.trim();
-  }
-  return null;
+  if (declared.anonymous === true) return anonymous;
+  return declaredIdentity(declared);
 }
 
 interface DeclaredAttachment {
@@ -186,60 +227,112 @@ Deno.serve(async (req) => {
 
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const requestId = str(body?.request_id);
-  const subject = str(body?.subject);
-  const message = typeof body?.body === "string" ? body.body : "";
+  const kind = str(body?.kind) || "libre";
   if (requestId === "") return fail(req, 400, "invalid_request", "Demande manquante.");
-  if (subject === "") return fail(req, 400, "invalid_subject", "L'objet est obligatoire.");
-  if (message.trim() === "") return fail(req, 400, "invalid_body", "Le message est obligatoire.");
+  if (kind !== "libre" && kind !== "cloture") {
+    return fail(req, 400, "invalid_kind", "Type d'envoi inconnu.");
+  }
+  const closureMode = kind === "cloture";
 
-  // ---- La demande, et le droit d'instruction sur SON couple -----------------
+  // En mode clôture, RIEN du corps du payload n'est lu : l'objet et le message
+  // sont composés plus bas à partir de l'état enregistré de la demande.
+  let subject = closureMode ? "" : str(body?.subject);
+  let message = closureMode ? "" : (typeof body?.body === "string" ? body.body : "");
+  if (!closureMode) {
+    if (subject === "") return fail(req, 400, "invalid_subject", "L'objet est obligatoire.");
+    if (message.trim() === "") return fail(req, 400, "invalid_body", "Le message est obligatoire.");
+  }
+
+  // ---- La demande, et le droit exigé par CE mode ----------------------------
   const { data: request } = await supabase
     .from("requests")
     .select(
       "id, organization_id, socle_scope_org_id, socle_procedure_id, socle_contact_id, " +
-        "requester_snapshot, identity_status, reference",
+        "requester_snapshot, identity_status, reference, status, subject, closure_text",
     )
     .eq("id", requestId)
     .maybeSingle();
   if (!request) return fail(req, 404, "not_found", "Demande introuvable.");
 
+  // `outcome` porte le NARROWING : `request.status` est un `string` libre côté
+  // base (le workflow vit dans les gardes, pas dans un enum PostgreSQL).
+  const outcome = isClosureOutcome(request.status) ? request.status : null;
+  if (closureMode && outcome === null) {
+    return fail(req, 409, "not_closed",
+      "L'avis de clôture ne concerne qu'une demande résolue.");
+  }
+
+  // Le mode clôture exige la CLÔTURE — le droit qui vient d'autoriser la
+  // résolution. L'exiger « instruction » fermerait l'avis à l'agent qui a
+  // pourtant le pouvoir de clore ; l'ouvrir sans composition serveur ferait
+  // d'Iris un relais. Les deux vont ensemble.
+  const requiredRight = closureMode ? "cloture" : "instruction";
   const { data: allowed, error: rightError } = await supabase.rpc("request_right_for", {
     p_user_id: actorId,
     p_org_id: request.organization_id,
     p_socle_org_id: request.socle_scope_org_id,
     p_socle_procedure_id: request.socle_procedure_id,
-    p_right: "instruction",
+    p_right: requiredRight,
   });
   if (rightError) {
     console.error("send-request-email: request_right_for en échec", rightError);
     return fail(req, 500, "rights_unavailable", "Droits indisponibles — réessayez.");
   }
   if (allowed !== true) {
-    return fail(req, 403, "forbidden", "Écrire à l'usager exige le droit d'instruction sur cette demande.");
+    return fail(req, 403, "forbidden", closureMode
+      ? "Prévenir l'usager de la clôture exige le droit de clôture sur cette demande."
+      : "Écrire à l'usager exige le droit d'instruction sur cette demande.");
   }
 
   // ---- Le destinataire, résolu ici ------------------------------------------
   // Fiche Socle d'abord (source de vérité, corrections postérieures au dépôt
   // comprises), snapshot du dépôt en repli. Le navigateur ne propose rien.
-  const deposited = recipientEmail(request.requester_snapshot, request.identity_status);
-  let to = deposited;
+  let who = recipientIdentity(request.requester_snapshot, request.identity_status);
   if (request.socle_contact_id && request.identity_status !== "anonyme") {
     const { data: org } = await supabase
       .from("organizations")
       .select("socle_org_id")
       .eq("id", request.organization_id)
       .maybeSingle();
-    const live = await socleContactEmail(request.socle_contact_id, org?.socle_org_id ?? null);
+    const live = await socleContactIdentity(request.socle_contact_id, org?.socle_org_id ?? null);
     // `undefined` = référentiel muet : on garde le dépôt plutôt que de refuser.
-    if (live !== undefined) to = live;
+    // Une fiche LUE SANS adresse, elle, vaut réponse : on ne ressuscite pas une
+    // adresse que l'usager a fait retirer du référentiel.
+    if (live !== undefined) who = live;
   }
+  const to = who.email;
   if (!to) {
     return fail(req, 400, "no_recipient", "Cette demande ne porte aucune adresse de courriel.");
   }
 
+  // ---- Le relais, lu ICI : sa marque signe l'avis de clôture -----------------
+  // Lecture seule, remontée avant la composition parce que le nom de la
+  // collectivité entre dans le corps du message. Le REFUS pour relais manquant,
+  // lui, reste APRÈS l'ouverture de l'échange : un envoi impossible doit
+  // laisser une trace « echec » lisible, pas disparaître.
+  const { smtp, tenantName } = await smtpForOrg(request.organization_id);
+
+  // ---- L'avis de clôture, composé ICI ---------------------------------------
+  if (closureMode && outcome) {
+    const composed = closureEmail({
+      outcome,
+      reference: request.reference,
+      requestSubject: request.subject,
+      // Le commentaire de l'agent, s'il en a écrit un — il est FACULTATIF
+      // depuis le 2026-08-28 (la garde SQL ne l'exige plus).
+      closureText: request.closure_text,
+      recipient: { civility: who.civility, fullName: who.fullName },
+      tenantName,
+    });
+    subject = composed.subject;
+    message = composed.body;
+  }
+
   // ---- Les pièces : chemins vérifiés, poids borné ---------------------------
+  // Aucune pièce en mode clôture : l'avis annonce une décision, il ne transmet
+  // pas de document. Le payload n'en propose d'ailleurs pas.
   const prefix = `${request.organization_id}/${request.id}/`;
-  const declared: DeclaredAttachment[] = Array.isArray(body?.attachments)
+  const declared: DeclaredAttachment[] = !closureMode && Array.isArray(body?.attachments)
     ? (body.attachments as unknown[]).filter(isRecord).map((a) => ({
       storage_path: str(a.storage_path),
       file_name: str(a.file_name) || "piece-jointe",
@@ -265,8 +358,8 @@ Deno.serve(async (req) => {
     p_to_email: to,
     p_subject: subject,
     p_body: message,
-    p_template_id: str(body?.template_id) || null,
-    p_template_name: str(body?.template_name) || null,
+    p_template_id: closureMode ? null : (str(body?.template_id) || null),
+    p_template_name: closureMode ? null : (str(body?.template_name) || null),
     p_attachments: declared,
   });
   if (startError || typeof emailId !== "string") {
@@ -276,7 +369,6 @@ Deno.serve(async (req) => {
   }
 
   // ---- Relais, pièces, envoi -------------------------------------------------
-  const { smtp, tenantName } = await smtpForOrg(request.organization_id);
   if (!smtp) {
     await settle(emailId, false, "Aucun serveur d'envoi configuré pour cette collectivité.");
     return fail(

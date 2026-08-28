@@ -3,7 +3,7 @@
 // démarche pose la question) et demandes liées.
 
 import { Link } from "react-router-dom";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "../StatusBadge";
@@ -22,9 +22,17 @@ interface Props {
   lieu: InterventionLocation | null;
   links: RequestLink[];
   linkedSummaries: RequestSummary[];
+  /**
+   * Modifier les RÉPONSES de cette demande (jamais la définition de la
+   * démarche, qui vit dans le Socle). `null` = geste indisponible : sans droit
+   * d'instruction, sur une demande close, ou sans formulaire exploitable.
+   */
+  onEditAnswers: (() => void) | null;
 }
 
-export function ResumePane({ request: r, answers, formVersion, lieu, links, linkedSummaries }: Props) {
+export function ResumePane({
+  request: r, answers, formVersion, lieu, links, linkedSummaries, onEditAnswers,
+}: Props) {
   const channel = channelLabel(r.channel);
   const internalLinks = links.filter((l) => l.target_request_id);
   const externalLinks = links.filter((l) => !l.target_request_id);
@@ -48,11 +56,18 @@ export function ResumePane({ request: r, answers, formVersion, lieu, links, link
         <SurfaceHead
           title="Informations saisies"
           action={
-            formVersion !== null ? (
-              <Badge variant="outline" className="h-6 font-mono text-[11px]">formulaire v{formVersion}</Badge>
-            ) : (
-              <Badge variant="muted" className="h-6 text-[11px]">sans formulaire</Badge>
-            )
+            <span className="flex items-center gap-2">
+              {formVersion !== null ? (
+                <Badge variant="outline" className="h-6 font-mono text-[11px]">formulaire v{formVersion}</Badge>
+              ) : (
+                <Badge variant="muted" className="h-6 text-[11px]">sans formulaire</Badge>
+              )}
+              {onEditAnswers ? (
+                <Button type="button" variant="outline" size="sm" onClick={onEditAnswers}>
+                  <Pencil /> Modifier
+                </Button>
+              ) : null}
+            </span>
           }
         />
         <dl className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-x-5 gap-y-3">
