@@ -1,5 +1,5 @@
 import { NavLink, Link, Outlet } from "react-router-dom";
-import { ArrowLeft, Gauge, Landmark, LogOut, ShieldCheck, UserCog } from "lucide-react";
+import { ArrowLeft, Landmark, LogOut, ShieldCheck, UserCog } from "lucide-react";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -7,7 +7,6 @@ import { cn } from "@/lib/utils";
 const navItems = [
   { to: "/superadmin", label: "Organisations", icon: Landmark, end: true },
   { to: "/superadmin/utilisateurs", label: "Utilisateurs", icon: UserCog, end: false },
-  { to: "/superadmin/ia", label: "Plafonds IA", icon: Gauge, end: false },
 ];
 
 /** Zone superadmin — shell séparé (motif Socle/Clara : deux zones, deux menus). */

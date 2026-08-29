@@ -48,6 +48,27 @@ export function nextRenewalLabel(now: Date): string {
   return `1ᵉʳ ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
 }
 
+/**
+ * « 1ᵉʳ septembre 2026 » à partir d'une date ISO VENUE DU SOCLE.
+ *
+ * ⚠️ Depuis la centralisation (2026-08-29), la date de renouvellement n'est
+ * plus calculée par Iris : le Socle la possède, avec la période, et la rend
+ * dans `renews_at`. Iris ne fait plus que la METTRE EN FRANÇAIS. C'est la
+ * suppression du jumeau le plus dangereux du chantier — un calcul dupliqué
+ * qui dérive ne se voit pas, il fait simplement mentir le message.
+ *
+ * Une entrée qui n'est pas une date est rendue telle quelle : mieux vaut
+ * afficher ce que le serveur a dit qu'inventer un mois.
+ */
+export function renewalLabel(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const date = new Date(`${iso.slice(0, 10)}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return iso;
+  const day = date.getUTCDate();
+  const prefix = day === 1 ? "1ᵉʳ" : String(day);
+  return `${prefix} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
+}
+
 /** Le message de refus, mot pour mot — edge function et écran le partagent. */
 export function quotaExceededMessage(now: Date): string {
   return "Le plafond d'utilisation de l'assistant IA est atteint pour ce mois. " +

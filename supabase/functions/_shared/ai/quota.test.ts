@@ -6,6 +6,7 @@ import {
   periodKey,
   quotaExceededMessage,
   quotaView,
+  renewalLabel,
 } from "./quota";
 
 describe("periodKey", () => {
@@ -127,5 +128,28 @@ describe("formatTokens", () => {
   it("arrondit et ne descend jamais sous zéro", () => {
     expect(formatTokens(1234.7)).toBe("1 235");
     expect(formatTokens(-42)).toBe("0");
+  });
+});
+
+describe("renewalLabel — la date VIENT du Socle, Iris la met en français", () => {
+  it("écrit « 1ᵉʳ », jamais « 1 »", () => {
+    expect(renewalLabel("2026-09-01")).toBe("1ᵉʳ septembre 2026");
+    expect(renewalLabel("2027-01-01")).toBe("1ᵉʳ janvier 2027");
+  });
+
+  it("accepte un horodatage complet et reste en UTC", () => {
+    expect(renewalLabel("2026-09-01T00:00:00.000Z")).toBe("1ᵉʳ septembre 2026");
+  });
+
+  // Le renouvellement tombe toujours un premier, mais rien n'oblige le Socle à
+  // le garantir pour toujours : un autre jour doit rester lisible.
+  it("un autre jour du mois s'écrit sans l'exposant", () => {
+    expect(renewalLabel("2026-09-15")).toBe("15 septembre 2026");
+  });
+
+  it("rend l'entrée telle quelle si ce n'est pas une date, et rien si elle est absente", () => {
+    expect(renewalLabel("bientôt")).toBe("bientôt");
+    expect(renewalLabel(null)).toBe("");
+    expect(renewalLabel(undefined)).toBe("");
   });
 });

@@ -302,3 +302,87 @@ export function filterContactListQuery(
 
   return { ok: true, params, limit };
 }
+
+/**
+ * Consommation IA d'une collectivité, telle que la rend `ai-api /v1/usage`.
+ *
+ * ⚠️ LES NOMS DE CHAMPS SONT CEUX DU SOCLE, à la lettre — même règle que
+ * `knowledge.ts`, et pour la même raison : la sortie est un sous-ensemble
+ * strict de l'entrée, donc la sanitisation est IDEMPOTENTE. Renommer au
+ * passage ferait disparaître au second tour ce que le premier avait gardé
+ * (vécu le 2026-08-28).
+ *
+ * Ce qui est délibérément ÉCARTÉ :
+ *  - `organization_id` — c'est l'identifiant SOCLE de la collectivité, dérivé
+ *    côté serveur du tenant ; le navigateur n'en a aucun usage et n'a pas à
+ *    apprendre la correspondance.
+ *  - `unlimited` / `remaining_tokens` — DÉRIVÉS de (limit, used, reserved).
+ *    Iris les recalcule avec `quotaView`, qui dessine aussi la jauge : les
+ *    transmettre offrirait deux sources pour un même nombre, donc une
+ *    occasion de diverger. Le Socle possède les FAITS, Iris la présentation.
+ *
+ * Ce qui est délibérément CONSERVÉ : `renews_at`. La date de renouvellement
+ * appartient au Socle, qui possède la période — c'est tout l'objet de la
+ * centralisation, et la recomposer ici recréerait le jumeau supprimé.
+ */
+export interface AiUsageConsumerRow {
+  consumer: string;
+  feature: string | null;
+  calls: number;
+  tokens: number;
+}
+
+export interface AiUsageView {
+  period: string;
+  renews_at: string | null;
+  limit: number | null;
+  used_tokens: number;
+  reserved_tokens: number;
+  by_consumer: AiUsageConsumerRow[];
+}
+
+function count(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+export function sanitizeAiUsage(raw: any): AiUsageView {
+  const empty: AiUsageView = {
+    period: "",
+    renews_at: null,
+    limit: null,
+    used_tokens: 0,
+    reserved_tokens: 0,
+    by_consumer: [],
+  };
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return empty;
+
+  const rows: AiUsageConsumerRow[] = [];
+  if (Array.isArray(raw.by_consumer)) {
+    for (const entry of raw.by_consumer) {
+      if (typeof entry !== "object" || entry === null) continue;
+      const consumer = typeof entry.consumer === "string" ? entry.consumer.trim() : "";
+      // Sans nom d'application, la ligne n'apprend rien à un administrateur.
+      if (consumer === "") continue;
+      rows.push({
+        consumer,
+        feature: typeof entry.feature === "string" && entry.feature.trim() !== ""
+          ? entry.feature.trim()
+          : null,
+        calls: count(entry.calls),
+        tokens: count(entry.tokens),
+      });
+    }
+  }
+
+  return {
+    period: typeof raw.period === "string" ? raw.period : "",
+    renews_at: typeof raw.renews_at === "string" && raw.renews_at !== "" ? raw.renews_at : null,
+    // Un plafond nul ou négatif VAUT aucun plafond (`quotaView` en dit autant).
+    limit: typeof raw.limit === "number" && Number.isFinite(raw.limit) && raw.limit > 0
+      ? Math.floor(raw.limit)
+      : null,
+    used_tokens: count(raw.used_tokens),
+    reserved_tokens: count(raw.reserved_tokens),
+    by_consumer: rows,
+  };
+}

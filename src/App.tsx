@@ -6,7 +6,6 @@ import { AppShell } from "@/components/layout/AppShell";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminOrganisationsPage } from "@/features/superadmin/SuperAdminOrganisationsPage";
 import { SuperAdminUsersPage } from "@/features/superadmin/SuperAdminUsersPage";
-import { SuperAdminAiQuotasPage } from "@/features/superadmin/SuperAdminAiQuotasPage";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { ForgotPasswordPage } from "@/features/auth/ForgotPasswordPage";
 import { SetPasswordPage } from "@/features/auth/SetPasswordPage";
@@ -41,7 +40,6 @@ export function App() {
             <Route element={<SuperAdminLayout />}>
               <Route path="superadmin" index element={<SuperAdminOrganisationsPage />} />
               <Route path="superadmin/utilisateurs" element={<SuperAdminUsersPage />} />
-              <Route path="superadmin/ia" element={<SuperAdminAiQuotasPage />} />
             </Route>
           </Route>
 

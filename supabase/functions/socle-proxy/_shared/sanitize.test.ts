@@ -4,6 +4,7 @@ import {
   filterContactListQuery,
   filterContactUpdate,
   filterMatchRequest,
+  sanitizeAiUsage,
   sanitizeContact,
   sanitizeMatches,
   sanitizeProcedureFull,
@@ -256,5 +257,74 @@ describe("sanitizeQuartier — la SEULE porte par laquelle `geom` passe", () => 
       quartier: { id: "q-1", name: "Trinquetaille", color: "#00D084", geom: "SECRET" },
     })!;
     expect(contact.quartier).toEqual({ id: "q-1", name: "Trinquetaille", color: "#00D084" });
+  });
+});
+
+describe("sanitizeAiUsage", () => {
+  const raw = {
+    organization_id: "d5227d25-f327-493a-a9a2-278397531e33",
+    period: "2026-08",
+    renews_at: "2026-09-01",
+    unlimited: false,
+    limit: 2000000,
+    used_tokens: 1603,
+    reserved_tokens: 0,
+    remaining_tokens: 1998397,
+    by_consumer: [
+      { consumer: "iris", feature: "assistant-instruction", calls: 1, tokens: 1603 },
+    ],
+  };
+
+  it("retient les faits et la date, jamais l'identifiant Socle", () => {
+    const out = sanitizeAiUsage(raw);
+    expect(out.period).toBe("2026-08");
+    expect(out.renews_at).toBe("2026-09-01");
+    expect(out.limit).toBe(2000000);
+    expect(out.used_tokens).toBe(1603);
+    expect(out).not.toHaveProperty("organization_id");
+  });
+
+  // Deux nombres pour une même vérité, c'est une occasion de diverger : Iris
+  // les recalcule avec `quotaView`, qui dessine aussi la jauge.
+  it("n'emporte pas les valeurs dérivées du Socle", () => {
+    const out = sanitizeAiUsage(raw);
+    expect(out).not.toHaveProperty("unlimited");
+    expect(out).not.toHaveProperty("remaining_tokens");
+  });
+
+  // Même raison que pour la base de connaissances : le navigateur re-parse par
+  // défiance ce qu'il reçoit. Un renommage au passage viderait le second tour.
+  it("est idempotente", () => {
+    const once = sanitizeAiUsage(raw);
+    expect(sanitizeAiUsage(once)).toEqual(once);
+    expect(sanitizeAiUsage(JSON.parse(JSON.stringify(once)))).toEqual(once);
+  });
+
+  it("un plafond nul, négatif ou absent vaut aucun plafond", () => {
+    expect(sanitizeAiUsage({ ...raw, limit: 0 }).limit).toBeNull();
+    expect(sanitizeAiUsage({ ...raw, limit: -1 }).limit).toBeNull();
+    expect(sanitizeAiUsage({ ...raw, limit: null }).limit).toBeNull();
+  });
+
+  it("écarte les lignes sans application et normalise les compteurs", () => {
+    const out = sanitizeAiUsage({
+      ...raw,
+      by_consumer: [
+        { consumer: "  ", feature: "x", calls: 3, tokens: 9 },
+        { consumer: "clara", feature: "  ", calls: "2", tokens: -5 },
+      ],
+    });
+    expect(out.by_consumer).toEqual([
+      { consumer: "clara", feature: null, calls: 0, tokens: 0 },
+    ]);
+  });
+
+  it("rend une structure complète sur une entrée absurde", () => {
+    for (const bad of [null, undefined, 42, "texte", []]) {
+      const out = sanitizeAiUsage(bad);
+      expect(out.by_consumer).toEqual([]);
+      expect(out.used_tokens).toBe(0);
+      expect(out.limit).toBeNull();
+    }
   });
 });

@@ -16,6 +16,13 @@
 // La base de connaissances d'une démarche traverse ce proxy amputée de la
 // part destinée à l'assistant IA (_shared/knowledge.ts) : l'agent lit ses
 // consignes, le corpus de prompt reste au Socle.
+//
+// ⚠️ ATTENTION AUX GARDES QUAND UNE LECTURE DÉMÉNAGE ICI. Tant qu'un écran
+// lisait une table d'Iris, le RLS le gardait tout seul. Passé par ce proxy, la
+// lecture se fait en SERVICE ROLE : le RLS ne garde plus rien, et la règle
+// doit être RÉÉCRITE dans la fonction. C'est le cas de /v1/ai/usage, qui lisait
+// `ai_usage_*` sous la policy `is_org_admin_anywhere` avant que la
+// comptabilité ne parte au Socle (2026-08-29).
 // CORS : allowlist stricte (IRIS_APP_URL + localhost de dev).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -25,6 +32,7 @@ import {
   filterContactListQuery,
   filterContactUpdate,
   filterMatchRequest,
+  sanitizeAiUsage,
   sanitizeContact,
   sanitizeContactList,
   sanitizeMatches,
@@ -70,6 +78,10 @@ function contactsApiBase(): string {
   const explicit = Deno.env.get("SOCLE_CONTACTS_API_URL");
   if (explicit) return explicit.replace(/\/+$/, "");
   return publicApiBase().replace("public-api", "contacts-api");
+}
+/** Guichet IA du Socle — porteur du plafond et du journal depuis 2026-08-29. */
+function aiApiBase(): string {
+  return publicApiBase().replace("public-api", "ai-api");
 }
 
 async function socleFetch(
@@ -434,6 +446,48 @@ Deno.serve(async (req) => {
     const contact = sanitizeContact(await res.json().catch(() => null));
     if (!contact) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
     return json(req, 200, { contact });
+  }
+
+  // ── Consommation IA de la collectivité — Paramètres › Assistant IA.
+  //
+  // ⚠️ LA GARDE EST ICI, ET ELLE N'EST PAS UNE PRÉCAUTION : c'est la SEULE.
+  // Cet écran lisait `ai_usage_quotas` / `ai_usage_counters` sous la policy
+  // `is_platform_admin() or is_org_admin_anywhere(...)`. La comptabilité étant
+  // partie au Socle, la lecture passe par ce proxy — donc en service_role,
+  // pour qui le RLS ne s'applique pas. Sans la ligne ci-dessous, n'importe
+  // quel membre du tenant lirait le budget de sa collectivité.
+  //
+  // `is_org_admin_anywhere_for` est le jumeau SERVICE de la policy (elle
+  // couvre déjà l'admin plateforme) : la règle reste écrite UNE FOIS, en SQL.
+  if (path === "/v1/ai/usage") {
+    const { data: isAdmin, error: adminError } = await supabase.rpc(
+      "is_org_admin_anywhere_for",
+      { p_user_id: userId, p_org_id: tenant.organizationId },
+    );
+    if (adminError) {
+      console.error("socle-proxy is_org_admin_anywhere_for:", adminError);
+      return fail(req, 500, "internal_error", "Erreur lors de la vérification des droits.");
+    }
+    if (!isAdmin) {
+      return fail(req, 403, "forbidden",
+        "La consommation de l'assistant IA est réservée aux administrateurs de l'organisation.");
+    }
+
+    // Période : refusée si malformée, jamais corrigée en silence. Afficher un
+    // mois pour un autre est pire qu'une erreur — l'administrateur y lirait une
+    // consommation qu'il croirait celle du mois en cours.
+    const period = body.period;
+    if (period !== undefined && period !== null &&
+        (typeof period !== "string" || !/^\d{4}-\d{2}$/.test(period))) {
+      return fail(req, 400, "bad_request", "period : AAAA-MM attendu.");
+    }
+    const query = typeof period === "string" ? `?period=${period}` : "";
+
+    const res = await socleFetch(`${aiApiBase()}/v1/usage${query}`, {
+      socleOrgId: tenant.socleOrgId,
+    });
+    if (!res?.ok) return relaySocleError(req, res);
+    return json(req, 200, { usage: sanitizeAiUsage(await res.json().catch(() => null)) });
   }
 
   return fail(req, 404, "not_found", "Ressource introuvable.");
