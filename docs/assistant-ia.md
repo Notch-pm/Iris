@@ -8,6 +8,14 @@ l'instruction comme au guichet. Il répond à partir de la base de connaissances
 et du dossier ouvert. Il ne décide rien, n'écrit rien dans la demande, et n'envoie rien à
 personne.
 
+> ⚠️ **Depuis le 2026-08-29, Iris n'appelle plus Mistral directement.** La clé du fournisseur
+> et la comptabilité des jetons vivent dans le **Socle** (`ai-api`) : Iris compose le prompt et
+> le confie au guichet, qui réserve, appelle et solde. Ce qui part chez Mistral (§2) et le
+> prompt (§3) sont inchangés — c'est **le chemin** qui a changé, et avec lui le plafond, qui
+> est désormais **commun à toute la gamme pour une collectivité**. Les sections qui décrivent
+> encore les tables `ai_usage_*` d'Iris et l'écran superadmin d'Iris seront réécrites avec la
+> reprise complète (lot S9) ; d'ici là, **la référence est le Socle**.
+
 ---
 
 ## 1. Les cinq décisions PO (2026-08-28)

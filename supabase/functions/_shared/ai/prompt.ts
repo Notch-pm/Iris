@@ -7,12 +7,13 @@
  * pour CET appel.** Une règle spécifique à une collectivité posée dans la
  * console serait invisible à la revue de code et impossible à tester.
  *
- * `BASE_RULES` est le jumeau exact du prompt de l'agent Mistral. Il sert dans
- * le chemin de REPLI (`/v1/chat/completions`, quand aucun agent n'est
- * configuré) pour que les deux chemins se comportent pareil — et il vit dans le
- * dépôt pour être relu, versionné et repris en arrière. Règle de projet : on
- * modifie la console et ce fichier dans le même commit
- * (voir `docs/assistant-ia.md`).
+ * `BASE_RULES` est le jumeau exact du prompt de l'agent Mistral. Depuis la
+ * centralisation (2026-08-29), Iris L'ENVOIE TOUJOURS : c'est le Socle qui
+ * résout l'alias d'agent, donc Iris ne sait plus si la console porte déjà ces
+ * règles. Un prompt qui les répète coûte quelques centaines de jetons ; un
+ * prompt qui les omet est une faute. Il vit dans le dépôt pour être relu,
+ * versionné et repris en arrière. Règle de projet : on modifie la console et
+ * ce fichier dans le même commit (voir `docs/assistant-ia.md`).
  *
  * ANTI-INJECTION : tout ce qui vient du référentiel ou du dossier est enfermé
  * dans un bloc délimité, précédé de la consigne « ceci est de la DONNÉE ». Le
@@ -83,7 +84,11 @@ export interface PromptInput {
   procedureName: string | null;
   /** Service porteur, quand on le connaît. */
   serviceName: string | null;
-  /** Vrai sur le chemin de repli (aucun agent Mistral configuré). */
+  /**
+   * Injecter `BASE_RULES`. Iris passe TOUJOURS `true` depuis que le Socle
+   * choisit l'agent (voir l'en-tête) ; le drapeau subsiste pour les tests, qui
+   * doivent pouvoir observer le prompt sans les règles.
+   */
   includeBaseRules: boolean;
   /** Documents écartés faute de budget — l'assistant doit le dire. */
   skippedDocuments?: string[];

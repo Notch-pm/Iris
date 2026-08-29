@@ -28,13 +28,23 @@
 // qui se glisse dans une réponse libre. La promesse est bornée et écrite :
 // aucun champ d'identité CONNU ne sort ; un nom en texte libre peut passer.
 //
-// ⚠️ LE PLAFOND EST RÉSERVÉ AVANT L'APPEL, PAS APRÈS. `reserve_ai_usage` fait
-// un UPDATE conditionnel : refusé ⇒ 429, et Mistral n'est jamais appelé. Le
-// règlement corrige ensuite avec le `usage` réel. Un échec ne consomme rien.
+// ⚠️ IRIS N'APPELLE PLUS MISTRAL. Depuis la centralisation (2026-08-29), la
+// clé du fournisseur et la comptabilité vivent dans le SOCLE : Iris compose le
+// prompt et le confie à `ai-api`, qui réserve, appelle et solde. Il n'y a donc
+// plus ici ni clé fournisseur, ni réservation, ni pré-contrôle de plafond —
+// tout cela s'est rapproché de la dépense au lieu de s'en éloigner.
 //
-// Sans état chez le fournisseur non plus : `/v1/agents/completions` prend
-// `agent_id` + `messages` à chaque appel. `/v1/conversations` stockerait le fil
-// chez Mistral — ce serait persister là-bas ce qu'on refuse de garder ici.
+// La frontière tombe où il faut : IRIS DÉCIDE CE QUI EST DIT, LE SOCLE DÉCIDE
+// SI ÇA PEUT L'ÊTRE ET CE QUE ÇA A COÛTÉ. Le Socle ne sait rien de ce qu'est
+// une demande, et n'a pas à le savoir : il ne compose aucun prompt.
+//
+// ⚠️ CHAÎNE DE DÉLAIS, À NE PAS INVERSER : Mistral 55 s < Socle 60 s < Iris
+// 75 s. Inversée, Iris abandonne des appels que le Socle termine et facture —
+// et l'agent, en réessayant, paie deux fois.
+//
+// ⚠️ CONSÉQUENCE ASSUMÉE : un Socle injoignable ÉTEINT l'assistant, là où il
+// se contentait de le dégrader (réponse sans base de connaissances). Le
+// message le dit, et rappelle que l'instruction des demandes continue.
 //
 // CORS : allowlist stricte (IRIS_APP_URL + localhost de dev).
 
@@ -46,7 +56,7 @@ import { emptyAiKnowledge, parseAiKnowledge, type AiKnowledge } from "../_shared
 import { parseClientHistory, type ChatMessage } from "../_shared/ai/messages.ts";
 import { buildAssistantPrompt } from "../_shared/ai/prompt.ts";
 import { estimateCall, MAX_OUTPUT_TOKENS } from "../_shared/ai/tokens.ts";
-import { quotaExceededMessage } from "../_shared/ai/quota.ts";
+import { mapSocleFailure } from "../_shared/ai/socleErrors.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -59,11 +69,13 @@ const ALLOWED_ORIGINS = new Set(
 );
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-const PROVIDER = "mistral";
-const CHAT_URL = "https://api.mistral.ai/v1/chat/completions";
-const AGENTS_URL = "https://api.mistral.ai/v1/agents/completions";
-const CHAT_MODEL = "mistral-large-latest";
-const TEMPERATURE = 0.2;
+/** Alias logique de l'agent : le Socle le résout en identifiant réel. Iris ne
+ *  connaît ni le modèle, ni l'agent — c'est ce qui permet d'en changer sans
+ *  toucher une seule application. */
+const AGENT_ALIAS = "assistant-instruction";
+const FEATURE = "assistant-instruction";
+/** 75 s : le dernier maillon de la chaîne, plus long que le Socle (60 s). */
+const SOCLE_TIMEOUT_MS = 75_000;
 
 /** Clés acceptées dans le corps. Toute autre ⇒ 400 (motif create-request-from-procedure). */
 const ALLOWED_KEYS = new Set([
@@ -129,54 +141,81 @@ async function socleKnowledge(
   };
 }
 
-interface MistralReply {
-  answer: string;
-  totalTokens: number | null;
+type SocleOutcome =
+  | { ok: true; answer: string }
+  | { ok: false; status: number | null; body: unknown };
+
+/**
+ * Base de `ai-api`, dérivée de celle du référentiel — les edge functions d'un
+ * même projet ne diffèrent que par leur dernier segment.
+ */
+function aiApiBase(): string {
+  const base = publicApiBase();
+  return base === "" ? "" : base.replace(/public-api$/, "ai-api");
 }
 
-async function askMistral(system: string, messages: ChatMessage[]): Promise<MistralReply | null> {
-  const key = Deno.env.get("MISTRAL_API_KEY");
-  const agentId = Deno.env.get("MISTRAL_ASSISTANT_AGENT_ID");
-  const payload: Record<string, unknown> = {
-    messages: [{ role: "system", content: system }, ...messages],
-    max_tokens: MAX_OUTPUT_TOKENS,
-  };
-  // L'agent porte le ton et les règles générales (console Mistral, versionnées
-  // dans docs/assistant-ia.md). Sans agent configuré, le repli embarque les
-  // mêmes règles dans le prompt système — d'où `includeBaseRules` en amont.
-  if (agentId) payload.agent_id = agentId;
-  else {
-    payload.model = CHAT_MODEL;
-    payload.temperature = TEMPERATURE;
+/**
+ * L'appel au guichet IA du Socle.
+ *
+ * Ce qu'Iris envoie : le prompt système QU'IL A COMPOSÉ, la conversation, un
+ * alias d'agent, et des références opaques. Ce qu'il n'envoie pas : ni modèle,
+ * ni agent réel, ni imputation — l'imputation vient de la clé, et le Socle la
+ * refuserait dans le corps.
+ *
+ * `X-Organization-Id` est TOUJOURS dérivé côté serveur du tenant vérifié.
+ */
+async function askSocle(
+  system: string,
+  messages: ChatMessage[],
+  ctx: { socleOrgId: string; requestId: string | null; procedureId: string | null; userId: string },
+): Promise<SocleOutcome> {
+  const base = aiApiBase();
+  const key = Deno.env.get("SOCLE_API_KEY");
+  if (base === "" || !key) {
+    console.error("request-assistant: SOCLE_API_URL ou SOCLE_API_KEY absente");
+    return { ok: false, status: 503, body: null };
   }
 
-  const res = await fetch(agentId ? AGENTS_URL : CHAT_URL, {
+  const res = await fetch(`${base}/v1/completions`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(60_000),
+    headers: {
+      Authorization: `Bearer ${key}`,
+      "X-Organization-Id": ctx.socleOrgId,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      feature: FEATURE,
+      agent: AGENT_ALIAS,
+      system,
+      messages,
+      max_output_tokens: MAX_OUTPUT_TOKENS,
+      // Indication seulement : le Socle recalcule et retient le maximum.
+      estimated_tokens: estimateCall({ system, messages }),
+      reference: ctx.requestId
+        ? { kind: "request", id: ctx.requestId }
+        : ctx.procedureId ? { kind: "procedure", id: ctx.procedureId } : null,
+      actor_id: ctx.userId,
+    }),
+    signal: AbortSignal.timeout(SOCLE_TIMEOUT_MS),
   }).catch(() => null);
 
-  if (!res?.ok) {
-    // L'erreur brute du fournisseur n'est JAMAIS relayée (motif relaySocleError).
-    const detail = res ? `${res.status} ${(await res.text().catch(() => "")).slice(0, 200)}` : "réseau";
-    console.error(`request-assistant: Mistral en échec — ${detail}`);
-    return null;
-  }
-  const data = await res.json().catch(() => null);
-  const answer = isRecord(data) &&
-      Array.isArray((data as { choices?: unknown }).choices)
-    ? ((data as { choices: { message?: { content?: unknown } }[] }).choices[0]?.message?.content)
-    : null;
+  // Pas de réponse : réseau, délai dépassé, Socle à terre. `status: null` est
+  // le seul cas où l'agent apprend que le référentiel est en cause — parce que
+  // c'est actionnable pour lui.
+  if (!res) return { ok: false, status: null, body: null };
+
+  const body = await res.json().catch(() => null);
+  if (!res.ok) return { ok: false, status: res.status, body };
+
+  // Le `usage` et le `quota` de la réponse ne sont PAS relus ici : le journal
+  // et le compteur du Socle font foi, et une seconde comptabilité côté Iris ne
+  // pourrait que diverger. Seule la réponse nous intéresse.
+  const answer = isRecord(body) ? (body as { answer?: unknown }).answer : null;
   if (typeof answer !== "string" || answer.trim() === "") {
-    console.error("request-assistant: réponse Mistral vide ou inattendue");
-    return null;
+    console.error("request-assistant: réponse du guichet IA vide ou inattendue");
+    return { ok: false, status: 502, body: null };
   }
-  const usage = isRecord(data) && isRecord((data as { usage?: unknown }).usage)
-    ? (data as { usage: Record<string, unknown> }).usage
-    : null;
-  const total = usage && typeof usage.total_tokens === "number" ? usage.total_tokens : null;
-  return { answer: answer.trim(), totalTokens: total };
+  return { ok: true, answer: answer.trim() };
 }
 
 Deno.serve(async (req) => {
@@ -215,9 +254,12 @@ Deno.serve(async (req) => {
   }
 
   // Après la validation du corps : une requête malformée est malformée, que
-  // l'instance soit équipée d'un assistant ou non. Et avant tout travail en
+  // l'instance soit raccordée au guichet IA ou non. Et avant tout travail en
   // base : inutile de lire une demande pour finir en 503.
-  if (!Deno.env.get("MISTRAL_API_KEY")) {
+  //
+  // Ce n'est PAS la clé du fournisseur (Iris n'en a plus), c'est la clé Socle
+  // d'Iris — celle qui porte le scope « ai » et l'imputation.
+  if (aiApiBase() === "" || !Deno.env.get("SOCLE_API_KEY")) {
     return fail(req, 503, "not_configured", "L'assistant IA n'est pas configuré sur cette instance.");
   }
 
@@ -303,34 +345,9 @@ Deno.serve(async (req) => {
     if (!cached) return fail(req, 404, "not_found", "Démarche introuvable dans ce tenant.");
   }
 
-  // ---- Pré-contrôle consultatif du plafond ----------------------------------
-  // Une LECTURE, qui ne décide rien : deux appels concurrents peuvent la passer
-  // tous les deux. Elle évite seulement de composer un prompt et d'interroger
-  // le Socle quand le crédit est manifestement épuisé. La vraie porte est la
-  // réservation, plus bas.
-  const now = new Date();
-  {
-    const { data: quota } = await supabase
-      .from("ai_usage_quotas")
-      .select("monthly_limit_tokens, is_active, provider")
-      .eq("organization_id", organizationId)
-      .eq("is_active", true);
-    const limitRow = (quota ?? []).find((q) => q.provider === PROVIDER) ??
-      (quota ?? []).find((q) => q.provider === "__global__");
-    if (limitRow) {
-      const { data: counter } = await supabase
-        .from("ai_usage_counters")
-        .select("used_tokens, reserved_tokens")
-        .eq("organization_id", organizationId)
-        .eq("provider", limitRow.provider)
-        .eq("period", `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`)
-        .maybeSingle();
-      const engaged = (counter?.used_tokens ?? 0) + (counter?.reserved_tokens ?? 0);
-      if (engaged >= limitRow.monthly_limit_tokens) {
-        return fail(req, 429, "ai_quota_exceeded", quotaExceededMessage(now));
-      }
-    }
-  }
+  // ⚠️ AUCUN PRÉ-CONTRÔLE DE PLAFOND ICI. Iris ne tient plus de compteur : il
+  // n'a donc rien à consulter, et surtout rien qui puisse diverger du seul
+  // compteur qui fasse foi. Le refus arrive du Socle, en 429, avec sa date.
 
   // ---- Socle : la base de connaissances COMPLÈTE ----------------------------
   const { data: org } = await supabase
@@ -339,11 +356,20 @@ Deno.serve(async (req) => {
     .eq("id", organizationId)
     .maybeSingle();
 
+  // Sans rattachement au Socle, il n'y a ni collectivité à débiter ni base de
+  // connaissances à lire : le guichet refuserait, autant le dire ici.
+  const socleOrgId = org?.socle_org_id ?? null;
+  if (!socleOrgId) {
+    console.error(`request-assistant: tenant ${organizationId} sans socle_org_id`);
+    return fail(req, 503, "not_configured",
+      "L'assistant IA n'est pas disponible : cette organisation n'est pas raccordée au référentiel.");
+  }
+
   let knowledge: AiKnowledge = emptyAiKnowledge();
   let procedureName: string | null = null;
   let knowledgeUnavailable = false;
-  if (socleProcedureId && org?.socle_org_id) {
-    const read = await socleKnowledge(socleProcedureId, org.socle_org_id);
+  if (socleProcedureId) {
+    const read = await socleKnowledge(socleProcedureId, socleOrgId);
     if (read) {
       knowledge = read.kb;
       procedureName = read.name;
@@ -362,56 +388,37 @@ Deno.serve(async (req) => {
     knowledge: condensed.text,
     procedureName,
     serviceName,
-    includeBaseRules: !Deno.env.get("MISTRAL_ASSISTANT_AGENT_ID"),
+    // ⚠️ TOUJOURS VRAI depuis la centralisation. Iris ne sait plus si le Socle
+    // résoudra l'alias vers un agent Mistral (dont la console porterait déjà
+    // ces règles) ou vers un modèle nu. Lire cette configuration ici en
+    // recréerait un jumeau, qui dériverait le jour où le Socle changerait
+    // d'agent — et un prompt SANS règles est une faute, là où un prompt qui
+    // les répète ne coûte que quelques centaines de jetons.
+    includeBaseRules: true,
     skippedDocuments: condensed.skipped.map((s) => s.name),
     truncated: condensed.truncated,
     knowledgeUnavailable,
   });
 
-  // ---- Réservation : LA porte ----------------------------------------------
-  const estimate = estimateCall({ system, messages: history.messages });
-  const { data: reservation, error: reserveError } = await supabase.rpc("reserve_ai_usage", {
-    p_org_id: organizationId,
-    p_provider: PROVIDER,
-    p_resource_type: Deno.env.get("MISTRAL_ASSISTANT_AGENT_ID") ? "agent" : "chat",
-    p_estimated_tokens: estimate,
-    p_user_id: userId,
-    p_request_id: requestMode ? requestId : null,
-    p_socle_procedure_id: socleProcedureId,
+  // ---- L'appel : le Socle réserve, appelle et solde -----------------------
+  // Le cycle réserver → appeler → solder n'a pas disparu, il a DÉMÉNAGÉ : il
+  // vit désormais entier dans une seule fonction du Socle, sans franchir de
+  // frontière réseau. C'est plus court qu'avant, pas plus long.
+  const outcome = await askSocle(system, history.messages, {
+    socleOrgId,
+    requestId: requestMode ? requestId : null,
+    procedureId: socleProcedureId,
+    userId,
   });
-  if (reserveError) {
-    console.error("request-assistant: reserve_ai_usage en échec", reserveError);
-    return fail(req, 500, "quota_unavailable", "Le plafond d'utilisation est indisponible — réessayez.");
+  if (!outcome.ok) {
+    const mapped = mapSocleFailure(outcome.status, outcome.body);
+    console.error(
+      `request-assistant: guichet IA en échec (statut ${outcome.status ?? "aucun"}) → ${mapped.code}`,
+    );
+    return fail(req, mapped.status, mapped.code, mapped.message);
   }
-  const reserved = Array.isArray(reservation) ? reservation[0] : reservation;
-  if (!reserved?.allowed) {
-    return fail(req, 429, "ai_quota_exceeded", quotaExceededMessage(now));
-  }
-
-  // ---- L'appel --------------------------------------------------------------
-  const reply = await askMistral(system, history.messages);
-  if (!reply) {
-    // Règlement en échec : la réservation est libérée, `used_tokens` intact.
-    await supabase.rpc("settle_ai_usage", {
-      p_event_id: reserved.event_id, p_actual_tokens: null, p_status: "failed",
-    }).catch(() => undefined);
-    return fail(req, 502, "ai_unavailable",
-      "L'assistant est momentanément indisponible — réessayez dans un instant.");
-  }
-
-  const { error: settleError } = await supabase.rpc("settle_ai_usage", {
-    p_event_id: reserved.event_id,
-    p_actual_tokens: reply.totalTokens,
-    p_status: "completed",
-  });
-  if (settleError) {
-    // La réponse EST là : un règlement raté ne doit pas la faire disparaître.
-    // Le balayage cron rattrapera la réservation dans les 15 minutes.
-    console.error("request-assistant: settle_ai_usage en échec", settleError);
-  }
-
   return json(req, 200, {
-    answer: reply.answer,
+    answer: outcome.answer,
     context: {
       knowledge: condensed.text !== "",
       knowledgeUnavailable,
