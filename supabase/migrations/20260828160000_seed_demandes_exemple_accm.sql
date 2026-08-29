@@ -1,0 +1,117 @@
+-- ============================================================================
+-- JEU DE DÉMONSTRATION ACCM (2026-08-28) — 42 demandes, DEM-2026-000008 à 000049.
+--
+-- Motif : le référentiel Socle d'ACCM est passé de 2 à 15 démarches (synchro du
+-- 2026-08-28 à 14 h 21), avec des `form_schema` réellement écrits — sections,
+-- conditions `visibleIf`/`requiredIf`, blocs « Lieu d'intervention », pièces
+-- typées. En face, Iris ne portait que 7 demandes sur 2 démarches : le tableau
+-- kanban, la carte des interventions, les facettes de la liste et l'annuaire des
+-- usagers n'avaient rien à montrer.
+--
+-- Ce fichier est un MIROIR RÉSUMÉ (convention du dépôt, cf.
+-- 20260820150000_provision_tenants_socle.sql) : le SQL complet — ~50 Ko de
+-- snapshots recopiés du Socle — vit dans l'historique des migrations du projet
+-- distant `tqcoqlneybtbrrcvpkpk`, sous les six versions listées ci-dessous. Le
+-- redupliquer ici n'apporterait rien : ces données appartiennent au référentiel,
+-- pas au dépôt.
+--
+-- PURGE : `supabase/rollback/20260828_demandes_exemple_accm_purge.sql`.
+-- Une demande ne se supprime pas (aucune policy DELETE, cascade bloquée par
+-- `t01_request_events_immutable`) : ce jeu est DURABLE tant qu'on ne lance pas
+-- ce script sciemment. Jamais via `apply_migration` — même règle que le rollback
+-- des profils de droits.
+-- ============================================================================
+--
+-- SIX MIGRATIONS APPLIQUÉES, DANS CET ORDRE
+--
+-- 1. seed_accm_prepare
+--    Schéma jetable `seed_accm` (supprimé à l'étape 6) + 35 identités d'usagers
+--    aux 14 clés de `CONTACT_IDENTITY_KEYS`, valeurs vides omises — soit
+--    exactement ce que rend `contactIdentitySnapshot`. Contacts de démonstration
+--    du Socle (`@exemple.fr`) : 25 personnes, 6 associations, 4 entreprises.
+--    Aucun contact n'a été créé dans le Socle.
+--
+-- 2-4. seed_accm_snapshots_1 / _2 / _3
+--    Les 15 `procedure_snapshot`, aux 6 clés EXACTES de
+--    `whitelistProcedureSnapshot` (id, name, type, category_id, form_schema,
+--    requester_config), recopiés des lignes `procedures` du projet Socle
+--    `qhrokbkyxgcvkbpmbmna`.
+--
+--    POURQUOI RECOPIER PLUTÔT QU'APPELER : le snapshot se construit normalement
+--    côté serveur par `create-request-from-procedure`, qui relit la démarche
+--    dans le Socle. Une migration n'a ni JWT ni clé Socle (le Vault d'Iris n'en
+--    porte pas). La fidélité n'est donc pas supposée mais VÉRIFIÉE : l'empreinte
+--    md5 agrégée des 15 snapshots est identique des deux côtés
+--    (308de57814c347a143951669e82959b3), et celle des snapshots réellement
+--    portés par les 42 demandes l'est aussi (75048577e8d95bd786ab9fa2d0e87d51).
+--
+-- 5. seed_accm_demandes (40) puis seed_accm_demandes_internes (2)
+--    Toutes les demandes NAISSENT à `a_traiter`. `reference`,
+--    `socle_root_org_id`, `socle_scope_org_id` et les libellés démarche/catégorie
+--    ne sont jamais fournis : t16, t20 et t21 les posent.
+--    Les deux dernières portent la seule démarche `interne` du référentiel
+--    (« Demande d'intervention sur bâtiment communal »), dont les trois publics
+--    sont désactivés : il n'y a pas d'usager à rapprocher, le demandeur est un
+--    service nommé dans le formulaire, d'où `identity_status = 'anonyme'`.
+--
+-- 6. seed_accm_cycle_de_vie
+--    Le workflow est joué par de VRAIES transitions : la matrice de
+--    `requests_guard_write` et ses exigences de données s'appliquent même en
+--    contexte de service (seules les portes par DROIT sont contournées), et
+--    `t17_requests_require_pieces_conformes` reste seul juge de la résolution
+--    positive. Le journal `request_events` et les `request_assignments`
+--    s'écrivent donc tout seuls. Puis 8 notes internes, et l'antidatage.
+--
+-- ----------------------------------------------------------------------------
+-- CE QUE LE SEED A DÛ NEUTRALISER, ET POURQUOI
+--
+-- * `t40_requests_notify_insert` / `t40_requests_notify_update` — la boîte
+--   d'envoi des notifications est drainée par le cron `notifications-mailer`,
+--   qui passe TOUTES LES MINUTES : 42 demandes auraient produit autant de
+--   courriels réels aux agents du périmètre. Vérifié après coup : aucune
+--   notification créée, aucun `email_status = 'pending'`.
+-- * `t19_requests_touch` — sinon `updated_at` repartait à now() à chaque
+--   transition, et une demande reçue il y a six semaines aurait paru modifiée
+--   aujourd'hui. `updated_at` et `version` sont posés explicitement.
+-- * `t01_request_events_immutable` / `t01_request_assignments_immutable`, le
+--   temps d'antidater le journal : pour une demande reçue il y a A jours, la
+--   prise en charge tombe à 25 % de A, la transition suivante à 60 %,
+--   l'archivage à 85 %.
+--
+-- AUCUNE garde métier n'a été désactivée : t15 (source), t16 (démarche), t17
+-- (pièces conformes) et `requests_guard_write` ont tourné sur les 42 demandes.
+-- L'archivage est toujours le DERNIER geste sur une demande : au-delà,
+-- `requests_protect_immutable` gèle la ligne.
+--
+-- ----------------------------------------------------------------------------
+-- CE QUE LE JEU CONTIENT
+--
+--   42 demandes · 15 démarches · 8 organisations du sous-arbre · 8 semaines
+--   Statuts   : a_traiter 12 · en_instruction 14 · en_attente 4 ·
+--               resolue_positive 6 · resolue_negative 2 · annulee 2 · archivee 2
+--   Usagers   : 39 rapprochés · 3 sans usager (2 internes + 1 dépôt anonyme) ·
+--               1 « sans rapprochement » portant l'anomalie
+--               `usager_a_creer_dans_socle`
+--   Sources   : 39 `iris` (guichet, téléphone, courriel, web) · 3 `clara` avec
+--               `external_ref` (canal courrier)
+--   Satellites: 118 `request_events` · 29 `request_assignments` ·
+--               8 `request_messages` (notes internes)
+--   Carte     : 11 demandes ouvertes portant un bloc « Lieu d'intervention »,
+--               à des adresses réelles du territoire (Arles, Saint-Rémy,
+--               Fontvieille, Saint-Martin-de-Crau, Tarascon, Les Baux)
+--
+-- ----------------------------------------------------------------------------
+-- LIMITE ASSUMÉE : AUCUNE PIÈCE JOINTE
+--
+-- Le seed ne dépose aucun fichier (une migration n'a pas accès au stockage).
+-- Conséquence directe et voulue : 23 demandes portent une exigence de pièce
+-- obligatoire jamais honorée — l'onglet Documents les montre « manquantes » et
+-- `t17` ferme leur résolution POSITIVE, avec son motif écrit. C'est un état
+-- authentique du produit, pas un artefact.
+-- Corollaire : les 6 résolutions positives portent nécessairement sur les 4
+-- seules démarches sans pièce obligatoire inconditionnelle — voirie, éclairage
+-- public, encombrants, bâtiment communal. Ce n'est pas un choix éditorial.
+-- Levier si le besoin vient : téléverser de vrais fichiers dans le bucket
+-- `request-attachments` avec une clé de service, puis les qualifier via
+-- `qualify_request_attachment`.
+-- ============================================================================
