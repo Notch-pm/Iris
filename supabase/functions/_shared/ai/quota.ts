@@ -1,52 +1,27 @@
 /**
- * Plafond d'utilisation IA — la part qui se calcule, pas celle qui se garde.
+ * Plafond d'utilisation IA — ce qu'il en reste dans Iris : L'AFFICHAGE.
  *
- * Ce module est importé des DEUX côtés : par l'edge function (qui doit
- * composer le message de refus) et par le navigateur via l'alias `@fn` (qui
- * doit dessiner la jauge et annoncer la même date). Une seule vérité, motif
- * `procedureForm.ts` et `knowledge.ts`.
+ * ⚠️ CE MODULE NE CALCULE PLUS NI PÉRIODE NI DATE DE RENOUVELLEMENT. Depuis la
+ * centralisation (2026-08-29), le plafond, le compteur et la période vivent
+ * dans le Socle, qui rend `period` et `renews_at` à chaque lecture. Iris ne
+ * fait plus que **mettre en français** ce que le serveur a dit et **dessiner la
+ * jauge**.
  *
- * ⚠️ TOUT EST EN UTC, et ce n'est pas un détail. La période vit en base sous
- * la forme `to_char((now() at time zone 'utc'), 'YYYY-MM')` ; si le libellé
- * français était calculé en heure locale, un appel le 1ᵉʳ septembre à 01 h 00
- * à Paris (= 31 août 23 h UTC) annoncerait « renouvelé le 1ᵉʳ octobre » alors
- * que la période SQL est encore août. Le message mentirait d'un mois entier.
+ * C'était le jumeau le plus dangereux du chantier : deux calculs de période
+ * qui dérivent ne cassent rien de visible, ils font simplement MENTIR le
+ * message (« renouvelé le 1ᵉʳ octobre » quand la période SQL est encore août).
+ * `periodKey`, `nextRenewalDate`, `nextRenewalLabel` et `quotaExceededMessage`
+ * ont donc été supprimés le 2026-08-29 — ne pas les réintroduire : la réponse
+ * du Socle porte déjà l'information, et le message du 429 se relaie mot pour
+ * mot.
  *
  * Module PUR (aucun DOM, aucun réseau, aucune dépendance Deno), testé.
  */
-
-/** Période de comptage : `'2026-08'`, en UTC. Jumeau exact du SQL. */
-export function periodKey(now: Date): string {
-  const year = now.getUTCFullYear();
-  const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
-
-/**
- * Premier instant de la période suivante, en UTC — la date à laquelle le
- * crédit repart. Il n'y a pas de job de reset : le passage au mois suivant
- * crée simplement une nouvelle ligne de compteur.
- */
-export function nextRenewalDate(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
-}
 
 const MONTHS = [
   "janvier", "février", "mars", "avril", "mai", "juin",
   "juillet", "août", "septembre", "octobre", "novembre", "décembre",
 ] as const;
-
-/**
- * « 1ᵉʳ septembre 2026 ». Composé à la main plutôt que par
- * `Intl.DateTimeFormat` : le renouvellement tombe TOUJOURS un premier du
- * mois, qui s'écrit « 1ᵉʳ » en français et non « 1 » — et une sortie ICU
- * varie d'une version de runtime à l'autre, ce qui rendrait le test fragile
- * sans rien apporter.
- */
-export function nextRenewalLabel(now: Date): string {
-  const date = nextRenewalDate(now);
-  return `1ᵉʳ ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
-}
 
 /**
  * « 1ᵉʳ septembre 2026 » à partir d'une date ISO VENUE DU SOCLE.
@@ -67,12 +42,6 @@ export function renewalLabel(iso: string | null | undefined): string {
   const day = date.getUTCDate();
   const prefix = day === 1 ? "1ᵉʳ" : String(day);
   return `${prefix} ${MONTHS[date.getUTCMonth()]} ${date.getUTCFullYear()}`;
-}
-
-/** Le message de refus, mot pour mot — edge function et écran le partagent. */
-export function quotaExceededMessage(now: Date): string {
-  return "Le plafond d'utilisation de l'assistant IA est atteint pour ce mois. " +
-    `Le crédit sera renouvelé le ${nextRenewalLabel(now)}.`;
 }
 
 export type QuotaTone = "ok" | "warn" | "critical";

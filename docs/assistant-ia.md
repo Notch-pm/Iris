@@ -8,13 +8,16 @@ l'instruction comme au guichet. Il répond à partir de la base de connaissances
 et du dossier ouvert. Il ne décide rien, n'écrit rien dans la demande, et n'envoie rien à
 personne.
 
-> ⚠️ **Depuis le 2026-08-29, Iris n'appelle plus Mistral directement.** La clé du fournisseur
-> et la comptabilité des jetons vivent dans le **Socle** (`ai-api`) : Iris compose le prompt et
-> le confie au guichet, qui réserve, appelle et solde. Ce qui part chez Mistral (§2) et le
-> prompt (§3) sont inchangés — c'est **le chemin** qui a changé, et avec lui le plafond, qui
-> est désormais **commun à toute la gamme pour une collectivité**. Les sections qui décrivent
-> encore les tables `ai_usage_*` d'Iris et l'écran superadmin d'Iris seront réécrites avec la
-> reprise complète (lot S9) ; d'ici là, **la référence est le Socle**.
+> ⚠️ **Iris n'appelle pas Mistral.** Depuis le 2026-08-29, la clé du fournisseur et la
+> comptabilité des jetons vivent dans le **Socle** (`ai-api`) : Iris compose le prompt et le
+> confie au guichet, qui réserve, appelle et solde.
+>
+> **La frontière tombe là : Iris décide CE QUI EST DIT, le Socle décide SI ÇA PEUT L'ÊTRE et CE
+> QUE ÇA A COÛTÉ.** Le Socle ne sait pas ce qu'est une demande, et n'a pas à le savoir — d'où
+> le fait que tout ce document (ce qui part, le prompt, le budget de contexte) reste vrai et
+> reste la propriété d'Iris. Ce qui a changé, c'est le chemin, et le plafond : il est désormais
+> **celui de la collectivité, commun à toute la gamme**. Le détail du guichet vit dans le
+> dépôt Socle (`CLAUDE.md` § « guichet IA », `docs/integration.md`).
 
 ---
 
@@ -25,13 +28,13 @@ personne.
 | D1 | **Contexte métier sans identité.** Nom, courriel, téléphone, date de naissance retirés. Le lieu d'intervention reste. |
 | D2 | **Documents d'entraînement** : extraction et cache **côté serveur**. Rien n'est dupliqué durablement chez le fournisseur. |
 | D3 | **Conversation éphémère** : aucune table, aucune trace. Le fil disparaît au rechargement. |
-| D4 | **Agent Mistral** créé en console, identifiant dans un secret ; repli automatique sur `chat/completions`. |
+| D4 | **Agent Mistral** créé en console, identifiant dans un secret ; repli automatique sur `chat/completions`. **Révisée le 2026-08-29** : l'alias d'agent est désormais résolu **par le Socle** — voir §5. |
 | D5 | **Au guichet, mode « démarche seule »** : l'assistant ne connaît que la démarche, jamais la saisie en cours. |
 
-**Conséquence de D3 à garder en tête** : le grand livre (`ai_usage_events`) dit *qui* a
-demandé, *quand*, *sur quelle demande* — jamais *ce qui a été répondu*. Si une trace des
-réponses devient un besoin de conformité, c'est un **renversement de D3**, pas un ajustement :
-il faudra une table.
+**Conséquence de D3 à garder en tête** : le grand livre (`ai_usage_events`, **dans le Socle**)
+dit *qui* a demandé, *quand*, *sur quelle demande* — jamais *ce qui a été répondu*. Si une
+trace des réponses devient un besoin de conformité, c'est un **renversement de D3**, pas un
+ajustement : il faudra une table, et elle contredirait la promesse de passe-plat du guichet.
 
 ---
 
@@ -92,32 +95,45 @@ précédentes » écrit dans une réponse de formulaire ne sort plus de son bloc
 1. auth.getUser(jwt)                                     → 401 « Session invalide. »
 2. corps : whitelist stricte + parseClientHistory         → 400 (5 codes distincts)
    ⚠️ role:"system" REFUSÉ — le prompt système est composé par le serveur
-3. MISTRAL_API_KEY présente ?                             → 503 not_configured
+3. SOCLE_API_URL + SOCLE_API_KEY présentes ?              → 503 not_configured
+   (la clé SOCLE d'Iris, pas celle du fournisseur : Iris n'en a plus)
 4. mode demande : select REQUEST_CONTEXT_COLUMNS          → 404
    mode démarche : appartenance + cache des démarches     → 404
 5. droit : request_right_for(…, 'instruction')            → 403
    ou has_any_creation_right_for (guichet)                → 403
-6. pré-contrôle CONSULTATIF du compteur                   → 429 (évite un travail inutile)
+6. tenant rattaché au Socle (socle_org_id) ?              → 503 not_configured
 7. GET Socle /v1/procedures/{id}  →  parseAiKnowledge
    Socle muet ⇒ DÉGRADÉ, jamais un refus
 8. condenseKnowledge + buildAssistantPrompt
-9. reserve_ai_usage(estimateCall)                         → 429, FOURNISSEUR JAMAIS APPELÉ
-10. POST api.mistral.ai/v1/agents/completions (ou chat)   → 502 ai_unavailable
-11. settle_ai_usage(usage.total_tokens ?? estimation)
-12. 200 { answer, context }
+9. POST ai-api /v1/completions       ← le Socle réserve, appelle, solde
+10. mapSocleFailure si refus                              → 429 / 502 / 503 / 500
+11. 200 { answer, context }
 ```
 
-**Pourquoi le pré-contrôle en 6 ET la réservation en 9** : réserver avant de composer
-obligerait à réserver une borne haute fixe, donc à refuser une petite question qui tenait dans
-le reliquat. Le pré-contrôle ne décide rien (deux appels concurrents peuvent le passer tous
-les deux) ; la réservation reste **le dernier geste avant l'appel fournisseur**.
+**Ce qui a disparu du flux, et pourquoi c'est un gain** : le pré-contrôle consultatif du
+compteur, la réservation et le règlement. Iris ne tient plus de compteur, il n'a donc rien à
+consulter — et surtout rien qui puisse **diverger** du seul compteur qui fasse foi. Le cycle
+réserver → appeler → solder n'a pas été allongé, il a **déménagé** : il vit désormais entier
+dans une seule fonction du Socle, sans franchir de frontière réseau.
 
-**Pourquoi `/v1/agents/completions` et pas `/v1/conversations`** : le premier est **sans
-état** (`agent_id` + `messages` à chaque appel), le second stocke le fil chez Mistral — ce
-serait persister là-bas ce qu'on refuse de garder ici (D3).
+**⚠️ Chaîne de délais, à ne pas inverser : Mistral 55 s < Socle 60 s < Iris 75 s.** Inversée,
+Iris abandonne des appels que le Socle termine et **facture** — et l'agent, en réessayant, paie
+deux fois. Il n'y a pas de clé d'idempotence : elle exigerait de stocker la réponse, ce que D3
+interdit. C'est un coût assumé, inscrit à la dette.
 
-**L'erreur brute de Mistral n'est jamais relayée** (motif `relaySocleError`) : l'agent reçoit
-« L'assistant est momentanément indisponible ». Le détail va dans les logs.
+**Ce que `mapSocleFailure` (`_shared/ai/socleErrors.ts`, pur, 8 tests) retraduit** :
+
+| Réponse du Socle | Ce que l'agent voit | Pourquoi |
+|---|---|---|
+| aucune (réseau, délai) | 502 « le référentiel ne répond pas. L'instruction des demandes n'est pas affectée. » | Le seul cas actionnable pour l'agent : il peut continuer à instruire |
+| 429 | **le message du Socle, mot pour mot** | Seul le Socle connaît la date de renouvellement ; la recomposer recréerait le jumeau supprimé |
+| 401 / 403 | 502 « signaler à un administrateur » | Panne de configuration (clé sans scope `ai`, sans imputation), pas un problème de l'agent — jamais relayée brute |
+| 400 / 404 | 500 erreur interne | **Notre** bug : c'est Iris qui compose le payload |
+| 502 / 500 / autre | 502 « momentanément indisponible » | L'erreur brute du fournisseur ne remonte jamais |
+
+**⚠️ Conséquence assumée** : un Socle injoignable **éteint** l'assistant, là où il se contentait
+de le **dégrader** (répondre sans la base de connaissances). Le message le dit, et rappelle que
+l'instruction des demandes continue.
 
 ---
 
@@ -167,11 +183,14 @@ code et impossible à tester.
 
 | | |
 |---|---|
-| Nom | `iris-assistant-instruction-v1` |
-| Modèle | `mistral-large-latest` (Mistral Large 3 — 256K de contexte) |
-| Température | 0.2 |
-| `max_tokens` | **posé par Iris à chaque appel** (900) — le défaut d'une console ne doit jamais être l'autorité sur le coût |
-| Outils | **aucun** (voir plus bas) |
+| Alias envoyé par Iris | `assistant-instruction` — le Socle le résout via `MISTRAL_AGENT_ASSISTANT_INSTRUCTION` |
+| Modèle | choisi **par le Socle** ; à ce jour `mistral-large-latest` (Large 3, 256K de contexte) sur le chemin de repli |
+| `max_output_tokens` | **posé par Iris à chaque appel** (900), puis **borné par le Socle** — ni le défaut d'une console ni la demande d'un appelant ne sont l'autorité sur le coût |
+| Outils | **aucun**, refusés par le contrat du guichet (400) |
+
+⚠️ **Iris n'envoie ni `model` ni `agent_id`** : le guichet les refuse en 400. C'est ce qui
+permet de changer d'agent ou de modèle **sans toucher une seule application** — et ce qui
+interdit à une application de choisir un modèle plus cher que prévu.
 
 **Aucun outil en v1** — ni function calling, ni recherche web, ni bibliothèque documentaire
 Mistral. Chaque outil est un second chemin d'accès aux données, non audité, qui fait
@@ -182,8 +201,14 @@ modèle répondre depuis l'internet ouvert **avec le ton de la procédure de la 
 
 ⚠️ **Règle de projet : on modifie la console et ce bloc dans le MÊME commit.** Sans cela,
 personne ne peut relire ni revenir en arrière. Le jumeau exécutable est `BASE_RULES` dans
-`supabase/functions/_shared/ai/prompt.ts` — il sert sur le chemin de repli (aucun agent
-configuré) pour que les deux chemins se comportent pareil.
+`supabase/functions/_shared/ai/prompt.ts`.
+
+⚠️ **Depuis le 2026-08-29, Iris envoie TOUJOURS `BASE_RULES`.** C'est le Socle qui résout
+l'alias `assistant-instruction` — vers un agent de la console, ou vers un modèle nu — et Iris
+ne le sait plus. Lire cette configuration ici recréerait un jumeau, qui dériverait le jour où
+le Socle changerait d'agent. Un prompt qui répète les règles coûte quelques centaines de
+jetons ; un prompt qui les omet est une faute. **Si un agent est créé en console, sa consigne
+système doit donc rester VIDE** — ou porter uniquement le modèle et ses réglages.
 
 ```
 Tu es l'assistant d'instruction d'Iris, destiné aux AGENTS d'une collectivité française.
@@ -222,13 +247,16 @@ versionné).
 
 ## 6. Secrets
 
+⚠️ **IRIS NE DÉTIENT AUCUN SECRET DU FOURNISSEUR.** `MISTRAL_API_KEY` et
+`MISTRAL_ASSISTANT_AGENT_ID` ont été retirés le 2026-08-29 : ils vivent dans le Socle. Une
+application compromise ne compromet donc pas la clé — c'est le premier bénéfice de la
+centralisation, et il serait annulé par le premier secret fournisseur reposé ici.
+
 | Secret | Rôle |
 |---|---|
-| `MISTRAL_API_KEY` | **Obligatoire.** Sans elle, la fonction répond 503 `not_configured` — l'onglet reste utilisable, il refuse poliment. |
-| `MISTRAL_ASSISTANT_AGENT_ID` | Facultatif. Présent ⇒ `/v1/agents/completions` ; absent ⇒ repli `/v1/chat/completions` + `BASE_RULES`. |
-
-Réutilisés : `SOCLE_API_URL`, `SOCLE_API_KEY` (lecture de la base de connaissances complète),
-`IRIS_APP_URL` (CORS).
+| `SOCLE_API_KEY` | **Obligatoire.** La clé Socle d'Iris, qui doit porter le scope **`ai`** ET une **application imputable** (`consumer = iris`). Sans elle : 503 `not_configured`. Sans le scope ou l'imputation, le Socle renvoie 403 — retraduit en « signaler à un administrateur », jamais relayé brut. |
+| `SOCLE_API_URL` | Base du référentiel ; `ai-api` en est dérivée (dernier segment). Sert aussi à lire la base de connaissances complète. |
+| `IRIS_APP_URL` | Allowlist CORS. |
 
 ---
 
@@ -241,9 +269,13 @@ Réutilisés : `SOCLE_API_URL`, `SOCLE_API_KEY` (lecture de la base de connaissa
   d'identité : c'est une **autre** question de confidentialité, qui mérite sa propre décision.
 - **L'assistant qui écrit dans le composeur de l'onglet Échanges.** Tentant, et exactement le
   chemin par lequel un délai halluciné atteindrait un habitant.
-- **Un plafond par utilisateur ou par jour.** Le plafond est mensuel et par tenant : un agent
-  peut brûler le mois en un après-midi. Le correctif tient en une condition dans
-  `reserve_ai_usage`.
+- **Un plafond par utilisateur, par jour ou par heure.** Le plafond est mensuel et par
+  **collectivité** : un agent peut brûler le mois en un après-midi, et une boucle folle en
+  quelques minutes. Un plafond mensuel n'est pas un rate-limit. La parade tient en une seconde
+  ligne de compteur à période horaire, **côté Socle** — inscrite à la feuille de route.
+- **Une clé d'idempotence** contre la double facturation d'un appel expiré côté Iris mais
+  abouti côté Socle : elle exigerait de stocker la réponse, ce que D3 interdit. Voir la chaîne
+  de délais au §3.
 - **Aucune trace des réponses** (conséquence de D3, voir §1).
 
 ---
@@ -253,7 +285,9 @@ Réutilisés : `SOCLE_API_URL`, `SOCLE_API_KEY` (lecture de la base de connaissa
 | | |
 |---|---|
 | Edge function | `supabase/functions/request-assistant/index.ts` |
-| Modules purs | `supabase/functions/_shared/ai/` — `knowledge` · `context` · `redact` · `condense` · `prompt` · `messages` · `tokens` · `quota` |
+| Modules purs | `supabase/functions/_shared/ai/` — `knowledge` · `context` · `redact` · `condense` · `prompt` · `messages` · `tokens` · **`socleErrors`** · `quota` (réduit à l'affichage) |
 | Front | `src/features/requests/assistant/` — `thread.ts` (pur) · `AssistantThreadProvider` · `AssistantPane` · `useAssistant` |
 | Panneau hôte | `src/features/requests/procedure/ProcedurePane.tsx` |
-| Plafond | [`data-model.md`](data-model.md), § « Plafond d'utilisation IA » |
+| Consommation (écran) | `src/features/ai/` — `AiUsagePanel` · `useAiUsage`, servi par `socle-proxy /v1/ai/usage` |
+| **Le guichet lui-même** | Dépôt **Socle** : `supabase/functions/ai-api/`, `CLAUDE.md` § « guichet IA », `docs/integration.md`, contrat sur `/api-doc-ia` |
+| Plafond (schéma) | Dépôt **Socle**, `docs/data-model.md` § « Plafond et journal d'utilisation IA ». Côté Iris : [`data-model.md`](data-model.md) § « Plafond d'utilisation IA — RETIRÉ » |

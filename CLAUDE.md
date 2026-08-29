@@ -152,6 +152,9 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `/v1/contacts/get`, `/v1/contacts/create`, `/v1/contacts/update` (via contacts-api Socle
   uniquement, whitelist d'entrée ; l'update est un **PATCH partiel** — `contact_type` et
   `status` refusés, pays jamais vidé — et les refus du Socle sont relayés tels quels),
+  **`/v1/ai/usage`** (consommation IA de la collectivité, relayée du guichet `ai-api` —
+  ⚠️ **réservée aux administrateurs, garde réécrite DANS la fonction** : la lecture se fait en
+  service role, le RLS qui gardait autrefois les tables ne s'applique plus),
   **`/v1/quartiers/list`** (quartiers du territoire **avec leur géométrie**, pour la carte du
   champ d'adresse — ouverte à tout membre comme `/v1/procedures/*` : une limite de quartier
   n'est pas une donnée personnelle ; 404 du Socle ⇒ `available: false`, pas une erreur).
@@ -287,7 +290,8 @@ les invariants ci-dessus restent la référence.
   (D7, Q8) →
   [`src/features/templates/CLAUDE.md`](src/features/templates/CLAUDE.md).
 - **Zone superadmin** (`src/features/superadmin`) : organisations (consultation),
-  utilisateurs, **plafonds IA** (`/superadmin/ia`), edge function `admin-users` →
+  utilisateurs, edge function `admin-users` (les plafonds IA ont quitté Iris le 2026-08-29 :
+  ils se règlent dans le Socle, seul à voir la dépense de toute la gamme) →
   [`src/features/superadmin/CLAUDE.md`](src/features/superadmin/CLAUDE.md).
 - **Ce qui sort d'Iris vers un fournisseur IA** (assistant, 2026-08-29) : le contexte métier
   d'une demande **SANS l'identité de l'usager** — la première défense est le `select`
@@ -299,22 +303,35 @@ les invariants ci-dessus restent la référence.
   connaissances sont composés **côté serveur** — jamais acceptés du navigateur, dont
   l'historique de conversation est une entrée non fiable. Détail :
   [`docs/assistant-ia.md`](docs/assistant-ia.md).
-- **Plafond d'utilisation IA** (`src/features/ai`, 3 tables `ai_usage_*`, migrations
-  `20260828170000`–`20260828170200`) : nombre de **jetons** (jamais d'euros) qu'un tenant
-  peut consommer par mois. **Défini par l'admin plateforme, consulté en lecture seule par
-  l'administrateur du tenant** (Paramètres › Assistant IA) — c'est le levier de maîtrise des
-  coûts côté éditeur, pas un paramètre métier délégué. Cycle **réserver → appeler → solder**
-  (`reserve_ai_usage` : UN `UPDATE` conditionnel, 0 ligne ⇒ refus **sans jamais appeler le
-  fournisseur** ; un échec ne consomme rien). Aucun plafond configuré ⇒ illimité. Les trois
-  tables n'ont **aucune policy d'écriture cliente** : les RPC sont l'unique porte →
-  [`docs/data-model.md`](docs/data-model.md), § « Plafond d'utilisation IA ».
+- **Plafond d'utilisation IA — DANS LE SOCLE, plus dans Iris** (2026-08-29) : la clé du
+  fournisseur LLM et la comptabilité des jetons ont été centralisées dans le référentiel
+  (`ai-api`). Le plafond est celui de la **collectivité**, **commun à toute la gamme** — Iris et
+  Clara puisent au même seau —, défini par l'admin plateforme dans le Socle et **consulté en
+  lecture seule** par l'administrateur du tenant (Paramètres › Assistant IA). Les trois tables
+  `ai_usage_*` d'Iris ont été **supprimées** (`20260829120000`) : les laisser n'aurait pas
+  laissé du code mort mais un **second compteur**, qui aurait affiché zéro à qui l'aurait lu.
+  ⚠️ La lecture passe par **`socle-proxy /v1/ai/usage`**, donc en service role : le RLS ne garde
+  plus rien et la garde administrateur est **réécrite dans la fonction**
+  (`is_org_admin_anywhere_for`). Détail : [`docs/assistant-ia.md`](docs/assistant-ia.md), et
+  côté Socle `CLAUDE.md` § « guichet IA ».
 - **Assistant IA d'instruction** (`src/features/requests/assistant`, edge `request-assistant`,
-  modules purs `supabase/functions/_shared/ai/`) : conversation avec un assistant Mistral,
-  dans le sous-onglet « Assistant » du panneau Procédure — à l'instruction (contexte de la
-  demande) comme au guichet (**démarche seule**, aucune saisie en cours). **Conversation
-  ÉPHÉMÈRE** : aucune table, le fil disparaît au rechargement. Droit exigé : **instruction**
-  sur le couple, ou un droit de création au guichet. Consomme le plafond (réserver → appeler →
-  solder). Agent Mistral en console, identifiant en secret, repli sur `chat/completions` →
+  modules purs `supabase/functions/_shared/ai/`) : conversation avec un assistant Mistral, dans
+  le sous-onglet « Assistant » du panneau Procédure — à l'instruction (contexte de la demande)
+  comme au guichet (**démarche seule**, aucune saisie en cours). **Conversation ÉPHÉMÈRE** :
+  aucune table, le fil disparaît au rechargement. Droit exigé : **instruction** sur le couple,
+  ou un droit de création au guichet.
+  ⚠️ **Iris n'appelle pas Mistral** : il compose le prompt — ce qu'il est seul à savoir faire,
+  le Socle ignorant ce qu'est une demande — et le confie au guichet `ai-api`, qui réserve,
+  appelle et solde. **Iris décide ce qui est dit, le Socle décide si ça peut l'être et ce que ça
+  a coûté.** Aucun secret du fournisseur ne vit ici ; la clé Socle d'Iris porte le scope `ai` et
+  l'imputation `consumer = iris`. Les refus du guichet sont retraduits par
+  `_shared/ai/socleErrors.ts` (pur, testé) : une erreur d'authentification n'est **jamais**
+  relayée, un 400 est **notre** bug, et le 429 relaie le message du Socle **mot pour mot** —
+  seul lui connaît la date de renouvellement.
+  ⚠️ **Chaîne de délais à ne pas inverser : Mistral 55 s < Socle 60 s < Iris 75 s.** Inversée,
+  Iris abandonne des appels que le Socle termine et **facture**.
+  ⚠️ Un Socle injoignable **éteint** l'assistant (il le dégradait avant) — assumé, et le message
+  rappelle que l'instruction des demandes continue →
   [`docs/assistant-ia.md`](docs/assistant-ia.md).
 
 ## Conventions

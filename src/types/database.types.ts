@@ -12,195 +12,8 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
-      ai_usage_counters: {
-        Row: {
-          id: string
-          organization_id: string
-          period: string
-          provider: string
-          reserved_tokens: number
-          updated_at: string
-          used_tokens: number
-        }
-        Insert: {
-          id?: string
-          organization_id: string
-          period: string
-          provider?: string
-          reserved_tokens?: number
-          updated_at?: string
-          used_tokens?: number
-        }
-        Update: {
-          id?: string
-          organization_id?: string
-          period?: string
-          provider?: string
-          reserved_tokens?: number
-          updated_at?: string
-          used_tokens?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_usage_counters_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ai_usage_events: {
-        Row: {
-          actual_tokens: number | null
-          counter_provider: string | null
-          created_at: string
-          created_by: string | null
-          estimated_tokens: number
-          id: string
-          organization_id: string
-          period: string
-          provider: string
-          request_id: string | null
-          resource_type: string
-          settled_at: string | null
-          socle_procedure_id: string | null
-          status: string
-        }
-        Insert: {
-          actual_tokens?: number | null
-          counter_provider?: string | null
-          created_at?: string
-          created_by?: string | null
-          estimated_tokens: number
-          id?: string
-          organization_id: string
-          period: string
-          provider: string
-          request_id?: string | null
-          resource_type: string
-          settled_at?: string | null
-          socle_procedure_id?: string | null
-          status?: string
-        }
-        Update: {
-          actual_tokens?: number | null
-          counter_provider?: string | null
-          created_at?: string
-          created_by?: string | null
-          estimated_tokens?: number
-          id?: string
-          organization_id?: string
-          period?: string
-          provider?: string
-          request_id?: string | null
-          resource_type?: string
-          settled_at?: string | null
-          socle_procedure_id?: string | null
-          status?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_usage_events_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_usage_events_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_usage_events_request_id_fkey"
-            columns: ["request_id"]
-            isOneToOne: false
-            referencedRelation: "requests"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      ai_usage_quotas: {
-        Row: {
-          created_at: string
-          id: string
-          is_active: boolean
-          monthly_limit_tokens: number
-          organization_id: string
-          period_unit: string
-          provider: string
-          updated_at: string
-          updated_by: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          monthly_limit_tokens: number
-          organization_id: string
-          period_unit?: string
-          provider?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          is_active?: boolean
-          monthly_limit_tokens?: number
-          organization_id?: string
-          period_unit?: string
-          provider?: string
-          updated_at?: string
-          updated_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "ai_usage_quotas_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "ai_usage_quotas_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       email_template_organizations: {
         Row: {
           created_at: string
@@ -1755,10 +1568,6 @@ export type Database = {
         }[]
       }
       create_request_from_procedure: { Args: { p: Json }; Returns: Json }
-      delete_ai_usage_quota: {
-        Args: { p_org_id: string; p_provider?: string }
-        Returns: Json
-      }
       delete_permission_profile: {
         Args: { p_expected_version: number; p_profile_id: string }
         Returns: Json
@@ -1940,10 +1749,6 @@ export type Database = {
         Args: { p_org_id?: string }
         Returns: number
       }
-      release_stale_ai_reservations: {
-        Args: { p_max_age_minutes?: number }
-        Returns: number
-      }
       request_exists: { Args: { p_id: string }; Returns: boolean }
       request_pieces_blocking: {
         Args: { p_form_data: Json; p_form_schema: Json; p_request_id: string }
@@ -1963,25 +1768,6 @@ export type Database = {
         Args: { p_org_id: string; p_socle_org_id: string }
         Returns: string
       }
-      reserve_ai_usage: {
-        Args: {
-          p_estimated_tokens: number
-          p_org_id: string
-          p_provider: string
-          p_request_id?: string
-          p_resource_type: string
-          p_socle_procedure_id?: string
-          p_user_id: string
-        }
-        Returns: {
-          allowed: boolean
-          event_id: string
-          limit_tokens: number
-          reason: string
-          reserved_tokens: number
-          used_tokens: number
-        }[]
-      }
       revoke_permission_profile: {
         Args: { p_profile_id: string; p_user_id: string }
         Returns: Json
@@ -1996,15 +1782,6 @@ export type Database = {
         Returns: Json
       }
       save_permission_profile: { Args: { p: Json }; Returns: Json }
-      set_ai_usage_quota: {
-        Args: {
-          p_is_active?: boolean
-          p_monthly_limit_tokens: number
-          p_org_id: string
-          p_provider?: string
-        }
-        Returns: Json
-      }
       set_permission_profile_status: {
         Args: {
           p_expected_version: number
@@ -2012,10 +1789,6 @@ export type Database = {
           p_status: string
         }
         Returns: Json
-      }
-      settle_ai_usage: {
-        Args: { p_actual_tokens: number; p_event_id: string; p_status: string }
-        Returns: undefined
       }
       settle_notification_email: {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
@@ -2216,9 +1989,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },

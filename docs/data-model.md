@@ -491,61 +491,34 @@ après trois gardes — la démarche appartient au tenant, le chemin demandé es
 préfixe d'organisation. Sans la deuxième, la route serait un lecteur libre du bucket dans
 tout le périmètre de la clé, documents d'entraînement IA compris.
 
-### Plafond d'utilisation IA (`20260828170000` à `20260828170200`)
+### Plafond d'utilisation IA — RETIRÉ le 2026-08-29 (`20260829120000`)
 
-Trois tables, un seul métier : borner ce que l'assistant IA coûte, par tenant et par mois.
-**`ai_usage_quotas`** (le plafond), **`ai_usage_counters`** (consommé + réservé par
-organisation, fournisseur et période `'YYYY-MM'`), **`ai_usage_events`** (le grand livre —
-une ligne par appel, de la réservation au règlement, **sans aucun texte de prompt ni de
-réponse**).
+**Ces trois tables n'existent plus dans Iris.** Créées le 2026-08-28
+(`20260828170000` à `20260828170200`), elles ont vécu vingt-quatre heures : le lendemain, la
+clé du fournisseur LLM et la comptabilité des jetons ont été centralisées dans le **Socle**
+(`ai-api`). Le plafond est désormais celui de la **collectivité**, commun à toute la gamme —
+Iris n'en voit qu'une part et ne peut donc plus en être le comptable.
 
-**Le cycle d'un appel : réserver → appeler → solder.**
-`reserve_ai_usage` fait **UN SEUL `UPDATE` conditionnel**
-(`where used + reserved + estimation <= plafond`) : Postgres prend le verrou de ligne dès
-l'évaluation du `WHERE`, donc deux appels concurrents se sérialisent d'eux-mêmes (MVCC
-standard, dès `READ COMMITTED` — ni `SERIALIZABLE` ni verrou consultatif). **0 ligne
-affectée = plafond atteint** : refus sans incrément, et **le fournisseur n'est jamais
-appelé**. `settle_ai_usage` est idempotent (ne transitionne que depuis `reserved`) :
-`completed` corrige la réservation par la consommation réelle, `failed`/`timeout` libère la
-réservation et **ne touche jamais `used_tokens`** — un appel qui n'a pas abouti n'est pas
-facturé. `release_stale_ai_reservations(15)` (job cron **SQL pur**, toutes les 5 minutes,
-sans secret Vault) rattrape les réservations orphelines d'une edge function morte en route.
+⚠️ **Ce qu'on aurait laissé en les gardant n'est pas du code mort, c'est un SECOND COMPTEUR.**
+Un jour, quelqu'un aurait lu `ai_usage_counters` d'Iris, y aurait vu zéro, et en aurait conclu
+que la collectivité ne consomme rien — alors qu'elle aurait dépensé son mois. Un chiffre faux
+est pire qu'un chiffre absent : on ne se méfie pas d'un tableau qui s'affiche.
 
-**Aucun plafond configuré ⇒ illimité** : un tenant sans ligne n'est pas cassé par l'arrivée
-de l'assistant. `counter_provider` vaut alors `NULL` sur l'événement, pour dire que rien n'a
-été décompté.
+Le retrait est une **migration** et non un rollback (`supabase/migrations/`, pas
+`supabase/rollback/`) : la suppression est le geste voulu, et un lecteur futur doit voir la
+création **puis** le retrait. Il porte son propre garde-fou — refus si `ai_usage_events`
+contient la moindre ligne, une consommation enregistrée étant une pièce comptable à reprendre
+dans le Socle, jamais à effacer au passage. Au moment de l'exécution, la table était vide :
+Iris n'a jamais appelé le fournisseur directement en production.
 
-**Périmètre de lecture** : administration du tenant ou admin plateforme. Une consommation est
-un chiffre de gestion ; l'agent, lui, apprend le dépassement par le 429 de l'edge function.
-Comme pour `permission_audit_log`, l'administrateur d'un **sous-arbre** voit le tenant entier
-(risque résiduel assumé, [`droits.md`](droits.md)).
+`pg_cron` reste installé (`sync-socle-referentiel`, `notifications-mailer`) ; seul le job
+`release-stale-ai-reservations` a été déprogrammé.
 
-**Trois divergences délibérées avec Clara**, dont ce lot est le portage :
-
-1. **La sentinelle `'__global__'` est là dès la première migration.** Clara écrivait
-   `provider = NULL` pour « tous fournisseurs » et a dû migrer (`20260617090000`) : deux
-   `NULL` ne sont jamais égaux pour un `UNIQUE`, donc `ON CONFLICT` ne rattrapait rien et
-   empilait les lignes. Épinglé par le cas Q7 du test.
-2. **Aucune policy d'écriture cliente, sur aucune des trois tables.** Chez Clara, le
-   navigateur du superadmin fait lui-même l'`UPSERT` sous une policy RLS. Ici
-   `set_ai_usage_quota` / `delete_ai_usage_quota` sont l'unique porte, avec la garde
-   `is_platform_admin()` **dans** la fonction (motif `smtp_settings` et `permission_*`).
-   ⚠️ Jamais `is_service_context()` dans ces fonctions : en `SECURITY DEFINER`, il vaut
-   toujours vrai.
-3. **Aucune policy `service_role` non plus** : l'écriture vient de RPC `SECURITY DEFINER`,
-   qui s'exécutent comme le propriétaire et sortent du RLS. (`smtp_settings`, `notifications`
-   et `email_templates` en portent une parce qu'elles sont écrites par le *client* service,
-   pas par une RPC definer — la différence n'est pas un oubli.)
-
-L'unité est le **jeton, jamais l'euro** : le prix au jeton est une donnée commerciale qui
-bouge sans préavis, un montant affiché serait faux le jour du changement de tarif.
-
-Test : `supabase/tests/plafond-ia.test.sql` (24 assertions, transactionnel annulé — cycle,
-idempotence, filet, régression Clara, étanchéité cross- et intra-tenant, portes fermées).
-Vérifié en navigateur réel le 2026-08-28 : depuis une session d'administrateur de tenant,
-la RPC répond `403 « Le plafond d'utilisation IA se règle depuis la zone superadmin. »`,
-l'`INSERT` direct `403 permission denied for table ai_usage_quotas`, et `reserve_ai_usage`
-`403 permission denied for function`.
+**Où lire la consommation aujourd'hui** : Paramètres › Assistant IA, servi par
+`socle-proxy /v1/ai/usage`. ⚠️ Cette lecture se fait en **service role**, donc **hors RLS** :
+la garde administrateur est réécrite dans la fonction (`is_org_admin_anywhere_for`), jumeau
+service de la policy qui gardait autrefois les tables. Le schéma détaillé vit désormais dans
+`docs/data-model.md` du **Socle**, § « Plafond et journal d'utilisation IA ».
 
 ### Profils de droits (`20260822100000` à `20260822100900`)
 

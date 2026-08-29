@@ -1,7 +1,7 @@
 # Dette technique — backlog
 
 > **Public** : équipe Iris · **Question traitée** : qu'est-ce qui est assumé comme dette, et
-> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-08-26
+> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-08-29
 
 Ce document ne recopie rien : il ne porte que la dette **sans autre domicile** (outillage,
 conventions, transverse). La dette de modèle de données et d'API vit là où elle se constate :
@@ -124,3 +124,27 @@ depuis zéro ne reproduit pas la base.
 **Piste** : relire la définition appliquée (`supabase_migrations.schema_migrations`) et écrire
 le miroir manquant. Antérieure aux travaux du 26 août au soir ; repérée en ajoutant les deux
 migrations de cette vague.
+
+## O6 — L'assistant IA peut être facturé deux fois, et rien ne borne son débit
+
+**Constat (2026-08-29)**, deux coûts assumés à la centralisation de l'IA dans le Socle.
+
+**a) Double facturation possible.** Iris confie l'appel au guichet du Socle, qui réserve,
+appelle le fournisseur et solde. Si Iris **expire pendant que le Socle réussit**, l'agent voit
+un échec, réessaie, et la collectivité paie deux fois. La parade habituelle — une clé
+d'idempotence — **exige de stocker la réponse**, ce que la décision PO n°1 (passe-plat, rien
+n'est persisté) interdit. Il n'y a donc pas de correctif, seulement une atténuation : la
+**chaîne de délais Mistral 55 s < Socle 60 s < Iris 75 s**, qui rend le cas rare en rendant
+l'abandon d'Iris plus tardif que la fin du Socle.
+
+⚠️ **Ce qui doit être surveillé** : toute modification d'un de ces trois délais. Les inverser
+transforme un cas rare en cas courant, sans qu'aucun test ne le voie.
+
+**b) Aucun garde-fou de DÉBIT, nulle part.** Un plafond mensuel n'est pas un rate-limit : une
+boucle accidentelle (un `useEffect` mal gardé, un agent qui laisse un onglet ouvert sur une
+relance) brûle le mois en quelques minutes, et le refus n'arrive qu'une fois l'argent dépensé.
+
+**Piste** : une seconde ligne de compteur à période **horaire** dans `ai_usage_counters`, côté
+**Socle** — le mécanisme de réservation existe déjà, il ne manque qu'une seconde borne à
+vérifier dans `reserve_ai_usage`. À arbitrer avec le PO : un plafond horaire trop bas gêne une
+journée d'instruction chargée.
