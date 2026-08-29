@@ -62,7 +62,7 @@ export function CreationRail({
   return (
     <aside
       aria-label="Fiche de la demande et procédure"
-      className="hidden w-[352px] shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-card px-[18px] pb-[22px] pt-[18px] lg:flex"
+      className="hidden w-[352px] shrink-0 flex-col gap-4 overflow-hidden border-l border-border bg-card px-[18px] pb-[22px] pt-[18px] lg:flex"
     >
       <RailTabs value={tab} onChange={setTab} hasKnowledge={hasKnowledge} />
 
@@ -82,7 +82,7 @@ export function CreationRail({
         />
       ) : null}
 
-      <div className={cn("flex flex-col gap-4", tab !== "demande" && "hidden")}>
+      <div className={cn("flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto", tab !== "demande" && "hidden")}>
       <section className="flex flex-col gap-3 rounded-[14px] border border-border bg-background p-3.5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-xs font-bold tracking-wide">Fiche de la demande</h2>

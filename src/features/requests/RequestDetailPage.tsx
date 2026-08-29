@@ -541,9 +541,17 @@ export function RequestDetailPage() {
         ) : null}
       </div>
 
-      <div className="min-h-0 flex-1 overflow-auto px-5 pb-7 pt-[18px]">
-        <div className="flex flex-wrap items-start gap-[18px]">
-          <div className="flex min-w-0 flex-[1_1_540px] flex-col gap-4">
+      {/* ⚠️ DEUX COLONNES, DEUX DÉFILEMENTS — motif du parcours de création
+          (`NewRequestPage`). Avant, un seul conteneur défilait pour les deux :
+          le rail de droite suivait le dossier de gauche, sa hauteur était
+          celle de son contenu, et il fallait redescendre tout le résumé pour
+          revenir à « Prise en charge ».
+          Sous `lg`, les colonnes s'empilent : c'est alors la page qui défile,
+          et c'est le bon comportement — deux zones de défilement côte à côte
+          sur un écran étroit n'auraient plus de place pour rien. */}
+      <div className="min-h-0 flex-1 overflow-auto px-5 pb-7 pt-[18px] lg:overflow-hidden">
+        <div className="flex flex-wrap items-start gap-[18px] lg:h-full lg:flex-nowrap lg:items-stretch">
+          <div className="flex min-w-0 flex-[1_1_540px] flex-col gap-4 lg:min-h-0 lg:overflow-y-auto">
             <div role="tablist" aria-label="Sections de la fiche" className="flex gap-1 overflow-x-auto border-b border-border">
               {tabs.map((t) => {
                 const on = t.key === tab;
@@ -665,7 +673,7 @@ export function RequestDetailPage() {
             </div>
           </div>
 
-          <div className="flex min-w-0 max-w-[372px] flex-[1_1_320px] flex-col gap-3.5">
+          <div className="flex min-w-0 max-w-[372px] flex-[1_1_320px] flex-col gap-3.5 lg:min-h-0">
             <RailTabs
               value={railTab}
               onChange={setRailTab}
@@ -693,7 +701,7 @@ export function RequestDetailPage() {
               />
             ) : null}
 
-            <div className={cn("flex flex-col gap-3.5", railTab !== "demande" && "hidden")}>
+            <div className={cn("flex flex-col gap-3.5 lg:min-h-0 lg:overflow-y-auto", railTab !== "demande" && "hidden")}>
             <PriseEnChargeCard
               priority={r.priority}
               assignedTo={r.assigned_to}

@@ -107,8 +107,16 @@ export function ProcedurePane({
     : null;
 
   return (
-    <div className="flex flex-col gap-3">
-      <div role="tablist" aria-label="Aide à la démarche" className="flex items-center gap-3.5">
+    // ⚠️ `min-h-0 flex-1` : ce panneau TRANSMET la hauteur que le rail lui
+    // donne, au lieu de grandir avec son contenu. C'est ce qui permet au
+    // sous-onglet Assistant d'épingler sa zone de saisie — et aux fiches de
+    // défiler sans entraîner toute la colonne.
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <div
+        role="tablist"
+        aria-label="Aide à la démarche"
+        className="flex shrink-0 items-center gap-3.5"
+      >
         {(["fiches", "assistant"] as const).map((tab) => (
           <button
             key={tab}
@@ -133,7 +141,7 @@ export function ProcedurePane({
       </div>
 
       {context ? (
-        <p className="text-[11.5px] leading-relaxed text-muted-foreground">{context}</p>
+        <p className="shrink-0 text-[11.5px] leading-relaxed text-muted-foreground">{context}</p>
       ) : null}
 
       {sub === "assistant" ? assistant ?? null : null}
@@ -167,7 +175,7 @@ export function ProcedurePane({
       ) : null}
 
       {sub === "fiches" && state === "ready" && counts.blocks > 0 ? (
-        <div className="flex flex-col gap-2.5">
+        <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto">
           {counts.guardrails > 0 ? (
             <Card title="Points de vigilance" badge="Garde-fous" badgeTone="pending">
               <ul className="flex flex-col gap-1.5">
