@@ -4,8 +4,9 @@
 // via l'edge function create-request-from-procedure (revalidation + écriture
 // atomique côté serveur — le navigateur ne fournit jamais de snapshot).
 // Autour : brouillon local continu, détection best-effort des demandes proches
-// avec liaison explicite, récépissé imprimable. La base de connaissances
-// (onglet « Procédure » du rail) viendra dans un second temps.
+// avec liaison explicite, récépissé imprimable, et l'onglet « Procédure » du
+// rail : la base de connaissances que le Socle destine à l'agent, lue à côté
+// de la saisie plutôt que dans un autre outil.
 //
 // Entrée « depuis la fiche usager » (`?usager=<id Socle>`) : l'usager est
 // IMPOSÉ — relu depuis le Socle, appliqué dès que la démarche est choisie,
@@ -52,6 +53,12 @@ import {
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../statuts";
 import { useLinkRequests } from "../useRequests";
+import { useProcedureDocumentUrl } from "../procedure/useProcedureKnowledge";
+import { AssistantThreadProvider } from "../assistant/AssistantThreadProvider";
+import {
+  parseAgentKnowledge,
+  type KnowledgeDocument,
+} from "@fn/socle-proxy/_shared/knowledge";
 import { CreationRail, type FicheLine, type NearbyState } from "./CreationRail";
 import { CreationStepper, type StepDef } from "./CreationStepper";
 import { ProcedureFormFields } from "./ProcedureFormFields";
@@ -116,6 +123,7 @@ export function NewRequestPage() {
   const create = useCreateFromProcedure();
   const linkRequests = useLinkRequests();
   const getContact = useGetContact();
+  const documentUrl = useProcedureDocumentUrl();
   const draft = useCreationDraft(orgId, userId);
 
   // Usager imposé (création depuis sa fiche) : relu depuis le Socle, jamais
@@ -142,6 +150,7 @@ export function NewRequestPage() {
   const [dupDismissed, setDupDismissed] = React.useState(false);
   const [created, setCreated] = React.useState<{ id: string; reference: string; at: Date } | null>(null);
   const [linkError, setLinkError] = React.useState<string | null>(null);
+  const [documentError, setDocumentError] = React.useState<string | null>(null);
   // Le texte est conservé pendant le fondu de sortie (visible=false) pour que
   // la bulle ne se vide pas avant de disparaître.
   const [toast, setToast] = React.useState<{ text: string; visible: boolean }>({ text: "", visible: false });
@@ -563,6 +572,37 @@ export function NewRequestPage() {
   }
 
   // ---- Vue ---------------------------------------------------------------------
+
+  // Base de connaissances de la démarche : elle est arrivée AVEC elle
+  // (socle-proxy l'ajoute à la lecture complète), donc aucun appel de plus.
+  // Le service affiché est le DESTINATAIRE retenu — le même sous-titre qu'à
+  // l'instruction —, avec repli sur l'organisation qui porte la démarche dans
+  // le Socle tant que le destinataire n'est pas arrêté.
+  const knowledge = React.useMemo(
+    () => (procedure ? parseAgentKnowledge(procedure.snapshot.knowledge_base) : null),
+    [procedure],
+  );
+  const procedureService = destinationLabel
+    ?? (procedure?.snapshot.organization_id
+      ? (orgCatalog.data ?? []).find((o) => o.value === procedure.snapshot.organization_id)?.label ?? null
+      : null);
+  const railProcedure = procedure && knowledge
+    ? { name: procedure.snapshot.name, serviceLabel: procedureService, knowledge }
+    : null;
+
+  async function openKnowledgeDocument(doc: KnowledgeDocument) {
+    if (!procedureId) return;
+    setDocumentError(null);
+    try {
+      const url = await documentUrl.mutateAsync({
+        organizationId: orgId, socleProcedureId: procedureId, path: doc.path,
+      });
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      setDocumentError(err instanceof Error ? err.message : "Document indisponible.");
+    }
+  }
+
   const requesterName = requesterShortName(resolution);
   const steps: StepDef[] = [
     { num: 1, label: "Démarche", hint: procedure ? procedure.snapshot.name : "à choisir" },
@@ -635,6 +675,14 @@ export function NewRequestPage() {
     : null;
 
   return (
+    // Fournisseur au-dessus du rail : le fil doit survivre au démontage du
+    // panneau Procédure. Au guichet, la cible est la DÉMARCHE seule — aucune
+    // saisie en cours ne part chez le fournisseur (décision PO).
+    <AssistantThreadProvider
+      target={procedureId && orgId
+        ? { kind: "procedure", organizationId: orgId, socleProcedureId: procedureId }
+        : null}
+    >
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="px-6 pt-4">
         <div className="flex items-start justify-between gap-4">
@@ -824,6 +872,10 @@ export function NewRequestPage() {
           linked={linked}
           onToggleLink={toggleLink}
           now={now}
+          procedure={railProcedure}
+          onOpenDocument={(doc) => void openKnowledgeDocument(doc)}
+          openingDocument={documentUrl.isPending ? documentUrl.variables?.path ?? null : null}
+          documentError={documentError}
         />
 
         <div
@@ -890,5 +942,6 @@ export function NewRequestPage() {
         </DialogContent>
       </Dialog>
     </div>
+    </AssistantThreadProvider>
   );
 }

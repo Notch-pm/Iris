@@ -76,6 +76,14 @@ export interface ProcedureSnapshot {
   category_id: string | null;
   form_schema: unknown;
   requester_config: unknown;
+  /**
+   * Base de connaissances — la PART AGENT, whitelistée par le proxy
+   * (`socle-proxy/_shared/knowledge.ts`). Elle voyage avec la démarche pour
+   * que le rail du parcours de création n'ait pas à la redemander, mais elle
+   * n'entre JAMAIS dans le `procedure_snapshot` figé sur la demande : le
+   * serveur reconstruit ce snapshot et l'exclut (`snapshots.ts`).
+   */
+  knowledge_base?: unknown;
 }
 
 /**

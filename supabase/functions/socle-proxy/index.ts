@@ -12,9 +12,14 @@
 // Iris ne maintient AUCUN miroir d'usagers : tout passe par contacts-api, et
 // les réponses sont SANITISÉES (_shared/sanitize.ts — internal_notes,
 // consentements, relations : jamais transmis au navigateur).
+//
+// La base de connaissances d'une démarche traverse ce proxy amputée de la
+// part destinée à l'assistant IA (_shared/knowledge.ts) : l'agent lit ses
+// consignes, le corpus de prompt reste au Socle.
 // CORS : allowlist stricte (IRIS_APP_URL + localhost de dev).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { allowsAgentDocument, parseAgentKnowledge } from "./_shared/knowledge.ts";
 import {
   filterContactCreate,
   filterContactListQuery,
@@ -220,6 +225,50 @@ Deno.serve(async (req) => {
       return fail(req, 404, "not_found", "Ressource introuvable.");
     }
     return json(req, 200, { procedure: sanitizeProcedureFull(proc) });
+  }
+
+  // Document d'AIDE AGENT de la base de connaissances : URL signée, courte,
+  // produite par le Socle (le bucket `procedure-documents` est le sien).
+  //
+  // Trois gardes, dans cet ordre, et aucune n'est superflue :
+  //  1. la démarche appartient bien au tenant (comme /v1/procedures/get) ;
+  //  2. le chemin demandé est l'un des `agentDocuments` de CETTE démarche —
+  //     sans cela, la route serait un lecteur libre du bucket dans tout le
+  //     périmètre de la clé Socle, documents d'entraînement IA compris ;
+  //  3. le Socle revérifie de son côté que le préfixe d'organisation du chemin
+  //     est dans le périmètre de la clé.
+  // Le chemin ne vient donc JAMAIS du navigateur seul : il est confronté à la
+  // démarche rechargée à l'instant.
+  if (path === "/v1/procedures/document-url") {
+    const procedureId = typeof body.socle_procedure_id === "string" ? body.socle_procedure_id : "";
+    if (!UUID_RE.test(procedureId)) {
+      return fail(req, 400, "bad_request", "socle_procedure_id : UUID requis.");
+    }
+    const docPath = typeof body.path === "string" ? body.path : "";
+    if (docPath === "") return fail(req, 400, "bad_request", "path : chemin du document requis.");
+
+    const procRes = await socleFetch(`${publicApiBase()}/v1/procedures/${procedureId}`);
+    if (!procRes?.ok) return relaySocleError(req, procRes);
+    // deno-lint-ignore no-explicit-any
+    const procedure = await procRes.json().catch(() => null) as any;
+    if (!procedure || procedure.organization_id !== tenant.socleOrgId) {
+      return fail(req, 404, "not_found", "Ressource introuvable.");
+    }
+    if (!allowsAgentDocument(parseAgentKnowledge(procedure.knowledge_base), docPath)) {
+      return fail(req, 404, "not_found", "Ressource introuvable.");
+    }
+
+    const res = await socleFetch(
+      `${publicApiBase()}/v1/documents/signed-url?path=${encodeURIComponent(docPath)}`,
+      { socleOrgId: tenant.socleOrgId },
+    );
+    if (!res?.ok) return relaySocleError(req, res);
+    // deno-lint-ignore no-explicit-any
+    const signed = await res.json().catch(() => null) as any;
+    if (typeof signed?.url !== "string") {
+      return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+    }
+    return json(req, 200, { url: signed.url, expires_at: signed.expires_at ?? null });
   }
 
   // Quartiers du territoire, AVEC leur géométrie — la carte d'un champ

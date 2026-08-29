@@ -43,6 +43,11 @@ verify_jwt = false
 [functions.sync-socle-referentiel]
 verify_jwt = false
 
+# Assistant IA : JWT de l'agent vérifié EN CODE (préflights OPTIONS), droits
+# revérifiés en SQL (request_right_for / has_any_creation_right_for).
+[functions.request-assistant]
+verify_jwt = false
+
 # Facteur de la boîte d'envoi des notifications : appelée UNIQUEMENT par
 # pg_cron (en-tête x-cron-secret, sans JWT). Jamais depuis un navigateur, donc
 # aucun CORS non plus.

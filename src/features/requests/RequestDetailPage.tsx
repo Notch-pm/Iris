@@ -1,7 +1,9 @@
 // Fiche d'instruction de la demande — design Claude Design « Suivi demande »
 // (2026-08-22) : en-tête (fil d'Ariane, statut, échéance, action principale et
 // menu des actions secondaires), onglets (résumé, documents, échanges, notes
-// internes, activité) et rail (prise en charge, avancement, usager). Page
+// internes, activité) et rail en deux onglets — « Demande » (prise en charge,
+// avancement, usager) et « Procédure » (base de connaissances de la démarche,
+// relue dans le Socle à chaque visite). Page
 // pleine hauteur comme le parcours de création. Les fonctionnalités non
 // livrées restent visibles mais grisées (`SOON`). Le RLS et la garde SQL
 // restent l'autorité : l'UI reflète, et affiche tout refus tel quel.
@@ -49,6 +51,12 @@ import {
 import { NotesPane } from "./instruction/NotesPane";
 import { ResumePane } from "./instruction/ResumePane";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
+import { ProcedurePane } from "./procedure/ProcedurePane";
+import { RailTabs, type RailTab } from "./procedure/RailTabs";
+import { useProcedureDocumentUrl, useProcedureKnowledge } from "./procedure/useProcedureKnowledge";
+import { AssistantPane } from "./assistant/AssistantPane";
+import { AssistantThreadProvider } from "./assistant/AssistantThreadProvider";
+import { emptyKnowledge, isKnowledgeEmpty, type KnowledgeDocument } from "@fn/socle-proxy/_shared/knowledge";
 import {
   activityItems, buildStages, dueView, formAnswers, formSchemaVersion,
   headerSubtitle, memberName, priorityOption, requesterView, splitTransitions,
@@ -102,6 +110,12 @@ export function RequestDetailPage() {
   // (création dans le tenant) ; sans lui, la fiche retombe sur le dépôt.
   const canBrowseUsagers = useCanBrowseUsagers();
   const socleContact = useSocleContact(orgId, canBrowseUsagers ? r?.socle_contact_id ?? null : null);
+  // Base de connaissances : RELUE dans le Socle, jamais tirée du snapshot —
+  // le snapshot fige le formulaire du dépôt, pas les consignes du service.
+  // Les demandes historiques sans démarche n'en ont pas : la requête reste
+  // désactivée et l'onglet explique pourquoi.
+  const knowledgeQuery = useProcedureKnowledge(orgId, r?.socle_procedure_id ?? null);
+  const knowledgeDocUrl = useProcedureDocumentUrl();
 
   const assignRequest = useAssignRequest();
   const updatePriority = useUpdatePriority();
@@ -111,6 +125,8 @@ export function RequestDetailPage() {
   const [tab, setTab] = React.useState<TabKey>("resume");
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [usagerEditOpen, setUsagerEditOpen] = React.useState(false);
+  const [railTab, setRailTab] = React.useState<RailTab>("demande");
+  const [knowledgeDocError, setKnowledgeDocError] = React.useState<string | null>(null);
   // Qualification d'une pièce : la pièce visée et le libellé de l'exigence.
   const [qualifying, setQualifying] =
     React.useState<{ attachment: QualifiableAttachment; label: string | null } | null>(null);
@@ -322,6 +338,26 @@ export function RequestDetailPage() {
     window.open(url, "_blank", "noopener");
   }
 
+  /**
+   * Document d'aide agent de la base de connaissances : l'URL signée est
+   * produite par le SOCLE (le bucket est le sien), et le proxy vérifie que le
+   * chemin est bien cité par la démarche — le navigateur ne désigne rien.
+   */
+  async function openKnowledgeDocument(doc: KnowledgeDocument) {
+    if (!r?.socle_procedure_id) return;
+    setKnowledgeDocError(null);
+    try {
+      const url = await knowledgeDocUrl.mutateAsync({
+        organizationId: r.organization_id,
+        socleProcedureId: r.socle_procedure_id,
+        path: doc.path,
+      });
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      setKnowledgeDocError(err instanceof Error ? err.message : "Document indisponible.");
+    }
+  }
+
   async function submitQualification(input: QualificationSubmit) {
     if (!qualifying) return;
     setQualifyError(null);
@@ -413,6 +449,12 @@ export function RequestDetailPage() {
 
   // ---- Vue ---------------------------------------------------------------------------
   return (
+    // Le fournisseur est monté ICI, au-dessus du rail : `ProcedurePane` est
+    // démonté au changement d'onglet, un fil qui vivrait dedans disparaîtrait
+    // à chaque aller-retour « Demande » ↔ « Procédure ».
+    <AssistantThreadProvider
+      target={r.socle_procedure_id ? { kind: "request", requestId: r.id } : null}
+    >
     <div className="flex min-h-0 flex-1 flex-col">
       <div className="flex flex-col gap-3.5 px-5 pt-4">
         <nav aria-label="Fil d'Ariane" className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -624,6 +666,34 @@ export function RequestDetailPage() {
           </div>
 
           <div className="flex min-w-0 max-w-[372px] flex-[1_1_320px] flex-col gap-3.5">
+            <RailTabs
+              value={railTab}
+              onChange={setRailTab}
+              hasKnowledge={Boolean(knowledgeQuery.data) && !isKnowledgeEmpty(knowledgeQuery.data!)}
+            />
+
+            {railTab === "procedure" ? (
+              <ProcedurePane
+                procedureName={r.socle_procedure_label}
+                serviceLabel={r.socle_organization_label}
+                state={
+                  !r.socle_procedure_id ? "no-procedure"
+                    : knowledgeQuery.isLoading ? "loading"
+                    : knowledgeQuery.isError ? "error"
+                    : "ready"
+                }
+                knowledge={knowledgeQuery.data ?? emptyKnowledge()}
+                emptyHint="Cette demande est antérieure à l'obligation de démarche : elle n'est rattachée à aucune fiche du référentiel, il n'y a donc pas de base de connaissances à lire."
+                onOpenDocument={(doc) => void openKnowledgeDocument(doc)}
+                openingPath={knowledgeDocUrl.isPending ? knowledgeDocUrl.variables?.path ?? null : null}
+                documentError={knowledgeDocError}
+                assistant={
+                  <AssistantPane emptyHint="Cette demande n'est rattachée à aucune démarche du référentiel : l'assistant n'a pas de base sur laquelle se fonder." />
+                }
+              />
+            ) : null}
+
+            <div className={cn("flex flex-col gap-3.5", railTab !== "demande" && "hidden")}>
             <PriseEnChargeCard
               priority={r.priority}
               assignedTo={r.assigned_to}
@@ -667,6 +737,7 @@ export function RequestDetailPage() {
               canEdit={canBrowseUsagers && Boolean(r.socle_contact_id)}
               onEdit={() => setUsagerEditOpen(true)}
             />
+            </div>
           </div>
         </div>
       </div>
@@ -733,5 +804,6 @@ export function RequestDetailPage() {
         <span className="text-[13px] font-semibold">{toast.text}</span>
       </div>
     </div>
+    </AssistantThreadProvider>
   );
 }

@@ -5,6 +5,8 @@
 
 // deno-lint-ignore-file no-explicit-any
 
+import { type AgentKnowledge, parseAgentKnowledge } from "./knowledge.ts";
+
 /** Champs d'une fiche usager transmis aux agents Iris. */
 const CONTACT_FIELDS = [
   "id", "contact_type", "status", "display_name",
@@ -98,8 +100,16 @@ export function sanitizeProcedureSummary(raw: any): Record<string, unknown> | nu
 }
 
 /**
- * Démarche complète pour le dépôt : + descriptions et formulaire.
- * knowledge_base volontairement exclue (aide agent Socle, hors besoin Iris).
+ * Démarche complète pour le dépôt et l'instruction : + descriptions,
+ * formulaire, et la **part agent** de la base de connaissances.
+ *
+ * `knowledge_base` a longtemps été exclue par principe (« hors besoin Iris ») ;
+ * elle ne l'est plus, parce que le besoin a un nom : l'agent qui saisit ou
+ * instruit doit lire les consignes du service sans quitter la demande. Ce qui
+ * reste exclu, c'est la matière de l'assistant IA — `trainingDocuments`,
+ * `aiSources` —, retirée par `parseAgentKnowledge` : un corpus de prompt n'a
+ * rien à faire dans un navigateur, et le jour où l'assistant existera il le
+ * lira côté serveur. Voir `_shared/knowledge.ts`.
  */
 export function sanitizeProcedureFull(raw: any): Record<string, unknown> | null {
   const base = sanitizeProcedureSummary(raw);
@@ -110,6 +120,7 @@ export function sanitizeProcedureFull(raw: any): Record<string, unknown> | null 
     agent_description: raw.agent_description ?? null,
     form_schema: raw.form_schema ?? null,
     requester_config: raw.requester_config ?? null,
+    knowledge_base: parseAgentKnowledge(raw.knowledge_base) satisfies AgentKnowledge,
   };
 }
 

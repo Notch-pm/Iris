@@ -1,14 +1,26 @@
-// Rail latéral du parcours : fiche de la demande en cours (progression,
-// complétude) et demandes proches de l'usager désigné (détection best-effort,
-// liaison explicite par l'agent). L'onglet « Procédure » (base de connaissances)
-// viendra dans un second temps.
+// Rail latéral du parcours, en deux onglets :
+//  - « Demande » — fiche en cours (progression, complétude) et demandes
+//    proches de l'usager désigné (détection best-effort, liaison explicite) ;
+//  - « Procédure » — la base de connaissances de la démarche choisie, telle
+//    que le Socle la destine à l'agent. Elle arrive AVEC la démarche
+//    (`fetchProcedureSnapshot`) : aucun appel supplémentaire au guichet.
 
+import * as React from "react";
 import { Link } from "react-router-dom";
 import { ExternalLink, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
+import { AssistantPane } from "../assistant/AssistantPane";
+import { ProcedurePane } from "../procedure/ProcedurePane";
+import { RailTabs, type RailTab } from "../procedure/RailTabs";
 import type { LinkedRequests } from "./model";
 import { depositLabel, scoreTone, type NearbyScored } from "./proches";
+import {
+  emptyKnowledge,
+  isKnowledgeEmpty,
+  type AgentKnowledge,
+  type KnowledgeDocument,
+} from "@fn/socle-proxy/_shared/knowledge";
 
 export interface FicheLine {
   key: string;
@@ -26,18 +38,51 @@ interface Props {
   linked: LinkedRequests;
   onToggleLink: (id: string, reference: string) => void;
   now: Date;
+  /** Démarche choisie et sa base de connaissances — null tant qu'aucune ne l'est. */
+  procedure: { name: string; serviceLabel: string | null; knowledge: AgentKnowledge } | null;
+  onOpenDocument: (doc: KnowledgeDocument) => void;
+  openingDocument: string | null;
+  documentError: string | null;
 }
 
 const TONE_TEXT = { haute: "text-destructive", moyenne: "text-secondary-foreground", faible: "text-muted-foreground" } as const;
 
-export function CreationRail({ reference, progress, lines, nearby, linked, onToggleLink, now }: Props) {
+// Structure vide stable : le panneau attend toujours une base complète, même
+// quand aucune démarche n'est choisie (il n'affiche alors que l'explication).
+const EMPTY_KNOWLEDGE = emptyKnowledge();
+
+export function CreationRail({
+  reference, progress, lines, nearby, linked, onToggleLink, now,
+  procedure, onOpenDocument, openingDocument, documentError,
+}: Props) {
   const duplicates = nearby.items.filter((i) => i.likelyDuplicate).length;
+  const [tab, setTab] = React.useState<RailTab>("demande");
+  const hasKnowledge = procedure !== null && !isKnowledgeEmpty(procedure.knowledge);
 
   return (
     <aside
-      aria-label="Fiche de la demande"
+      aria-label="Fiche de la demande et procédure"
       className="hidden w-[352px] shrink-0 flex-col gap-4 overflow-auto border-l border-border bg-card px-[18px] pb-[22px] pt-[18px] lg:flex"
     >
+      <RailTabs value={tab} onChange={setTab} hasKnowledge={hasKnowledge} />
+
+      {tab === "procedure" ? (
+        <ProcedurePane
+          procedureName={procedure?.name ?? null}
+          serviceLabel={procedure?.serviceLabel ?? null}
+          state={procedure ? "ready" : "no-procedure"}
+          knowledge={procedure?.knowledge ?? EMPTY_KNOWLEDGE}
+          emptyHint="Choisissez une démarche à l'étape 1 : ses consignes, documents et garde-fous s'afficheront ici, pendant la saisie."
+          onOpenDocument={onOpenDocument}
+          openingPath={openingDocument}
+          documentError={documentError}
+          assistant={
+            <AssistantPane emptyHint="Choisissez une démarche à l'étape 1 : l'assistant répondra alors sur ses consignes, ses pièces et ses délais." />
+          }
+        />
+      ) : null}
+
+      <div className={cn("flex flex-col gap-4", tab !== "demande" && "hidden")}>
       <section className="flex flex-col gap-3 rounded-[14px] border border-border bg-background p-3.5">
         <div className="flex items-center justify-between gap-2">
           <h2 className="text-xs font-bold tracking-wide">Fiche de la demande</h2>
@@ -162,6 +207,7 @@ export function CreationRail({ reference, progress, lines, nearby, linked, onTog
           );
         })}
       </section>
+      </div>
     </aside>
   );
 }

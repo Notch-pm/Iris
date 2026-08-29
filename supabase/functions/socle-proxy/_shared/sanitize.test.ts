@@ -75,7 +75,15 @@ describe("sanitizeProcedure*", () => {
     id: "p-1", organization_id: "root", category_id: "cat", name: "Acte de naissance",
     type: "externe", short_description: "…", user_description: "u", agent_description: "a",
     input_duration_minutes: 5, form_schema: { version: 1, content: [] },
-    requester_config: { citoyen: {} }, knowledge_base: { agent_help: "SOCLE" },
+    requester_config: { citoyen: {} },
+    knowledge_base: {
+      agentHelpText: "Consigne agent", proceduresText: "Étapes",
+      agentDocuments: [{ path: "o/p/agent/guide.pdf", name: "Guide.pdf" }],
+      trainingDocuments: [{ path: "o/p/training/corpus.md", name: "corpus.md" }],
+      agentLinks: [{ url: "https://x", description: "d" }],
+      aiSources: [{ url: "https://llm", description: "corpus IA" }],
+      faq: [{ question: "q", answer: "r" }], guardrails: ["g"],
+    },
     translations: {}, order_index: 1, keywords: ["acte"],
   };
 
@@ -86,12 +94,33 @@ describe("sanitizeProcedure*", () => {
     expect(s).not.toHaveProperty("knowledge_base");
   });
 
-  it("la lecture complète porte le formulaire mais jamais knowledge_base", () => {
+  it("la lecture complète porte le formulaire et la part AGENT de la base de connaissances", () => {
     const f = sanitizeProcedureFull(rawProc)!;
     expect(f.form_schema).toEqual({ version: 1, content: [] });
     expect(f.requester_config).toEqual({ citoyen: {} });
-    expect(f).not.toHaveProperty("knowledge_base");
     expect(f).not.toHaveProperty("translations");
+    expect(f.knowledge_base).toEqual({
+      agentHelpText: "Consigne agent",
+      proceduresText: "Étapes",
+      agentDocuments: [{ path: "o/p/agent/guide.pdf", name: "Guide.pdf" }],
+      agentLinks: [{ url: "https://x", description: "d" }],
+      faq: [{ question: "q", answer: "r" }],
+      guardrails: ["g"],
+    });
+  });
+
+  it("la matière de l'assistant IA ne franchit jamais la frontière", () => {
+    const f = sanitizeProcedureFull(rawProc)!;
+    const serialized = JSON.stringify(f);
+    expect(serialized).not.toContain("corpus");
+    expect(serialized).not.toContain("llm");
+  });
+
+  it("une démarche sans base de connaissances rend une structure vide, jamais null", () => {
+    const f = sanitizeProcedureFull({ ...rawProc, knowledge_base: null })!;
+    expect(f.knowledge_base).toEqual({
+      agentHelpText: "", proceduresText: "", agentDocuments: [], agentLinks: [], faq: [], guardrails: [],
+    });
   });
 });
 

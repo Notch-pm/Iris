@@ -7,7 +7,7 @@
 import * as React from "react";
 import {
   AlertTriangle, ArrowLeft, Building2, ClipboardList, Copy, KeyRound, Layers, Mail, Pencil,
-  Plus, Power, RefreshCw, Settings, Trash2, UserPlus, Users, X,
+  Plus, Power, RefreshCw, Settings, Sparkles, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import {
   AlertDialog, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -32,6 +32,7 @@ import type { ProfileDraft } from "./profileValidation";
 import { ProfileDialog } from "./ProfileDialog";
 import { EmailTemplatesPanel } from "@/features/templates/EmailTemplatesPanel";
 import { OrganisationsPanel } from "@/features/templates/OrganisationsPanel";
+import { AiUsagePanel } from "@/features/ai/AiUsagePanel";
 import { useInviteMember, useSendMemberPasswordReset } from "./useComptes";
 import {
   useAllProcedureRows, useAssignProfile, useAuditLog, useCoverageReport, useDeleteProfile,
@@ -40,7 +41,7 @@ import {
 } from "./usePermissions";
 
 type SectionId =
-  | "profils" | "utilisateurs" | "couverture" | "modeles" | "referentiel" | "journal";
+  | "profils" | "utilisateurs" | "couverture" | "modeles" | "referentiel" | "journal" | "ia";
 type Section = "menu" | SectionId;
 
 // Motif Clara (`SettingsPage`) : une page d'accueil « Paramètres » faite de blocs
@@ -81,6 +82,12 @@ const SECTIONS: { id: SectionId; title: string; description: string; icon: typeo
     title: "Journal des modifications",
     description: "Historique des créations, modifications et attributions de profils.",
     icon: ClipboardList,
+  },
+  {
+    id: "ia",
+    title: "Assistant IA",
+    description: "Consommation de jetons du mois et plafond fixé par l'éditeur.",
+    icon: Sparkles,
   },
 ];
 
@@ -650,6 +657,8 @@ export function PermissionsPage() {
       ) : null}
 
       {section === "modeles" ? <EmailTemplatesPanel orgId={orgId} /> : null}
+
+      {section === "ia" ? <AiUsagePanel orgId={orgId} /> : null}
 
       {section === "referentiel" ? (
         <OrganisationsPanel orgId={orgId} sync={sync} onOpenCoverage={() => setSection("couverture")} />
