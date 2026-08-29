@@ -434,15 +434,118 @@ Vérifié le 2026-08-20 : matrice HTTP 10/10 (auth, périmètre, snapshot impos�
 anonymat gouverné par la démarche, champs demandeur obligatoires, options de formulaire,
 destinataire hors sous-arbre, création atomique avec conditions, 409) + parcours navigateur
 complet. Données de test purgées. Re-vérifié le 2026-08-21 avec le parcours redessiné
-(4 étapes, brouillon local, demandes proches, liaison `liee_a`) : deux demandes de test
-ACCM (DEM-2026-000001 / 000002, contact de démo, liées entre elles) **restent à purger**
-lors de la prochaine campagne de nettoyage.
+(4 étapes, brouillon local, demandes proches, liaison `liee_a`).
+
+**Jeu de démonstration ACCM (2026-08-28)** : le tenant porte 42 demandes de démonstration,
+`DEM-2026-000008` à `DEM-2026-000049`, posées après l'enrichissement du référentiel Socle
+(15 démarches, 8 organisations). Elles exercent les 15 démarches, les 8 organisations du
+sous-arbre et les 7 statuts, sur 8 semaines, avec un journal antidaté. Elles ne portent
+**aucune pièce jointe** : 23 d'entre elles ont donc une exigence obligatoire « manquante »
+et leur résolution *positive* est fermée par `t17` — état authentique, pas artefact.
+Détail, gardes neutralisées et justification de la recopie des snapshots :
+[`supabase/migrations/20260828160000_seed_demandes_exemple_accm.sql`](../supabase/migrations/20260828160000_seed_demandes_exemple_accm.sql).
+Purge (jamais via `apply_migration`) :
+[`supabase/rollback/20260828_demandes_exemple_accm_purge.sql`](../supabase/rollback/20260828_demandes_exemple_accm_purge.sql).
+Les 7 demandes antérieures (`DEM-2026-000001` à `000007`) subsistent à côté.
 
 Le **brouillon de saisie** n'existe pas côté serveur : il vit dans le localStorage du poste
 (un par tenant et utilisateur), ne transporte que des identifiants et des saisies (usager
 rapproché = `socle_contact_id` seul, relu via `socle-proxy /v1/contacts/get` à la reprise ;
 démarche rechargée ; pièces à redéposer) et le `request_id` du brouillon sert d'idempotence
 à la création (rejeu → 409).
+
+### Base de connaissances des démarches (2026-08-28) — lue, jamais stockée
+
+Le Socle attache à chaque démarche une **base de connaissances** (`procedures.knowledge_base`)
+qui s'adresse à **deux destinataires** : l'agent (consignes, procédures internes, documents
+d'aide, liens utiles, FAQ, garde-fous) et l'assistant IA (documents d'entraînement, sources
+de connaissance). Iris affiche **la part agent**, dans l'onglet « Procédure » du rail — au
+guichet comme à l'instruction.
+
+Ce lot n'ajoute **aucune table, aucune colonne, aucune migration** : la base de connaissances
+est lue à la demande par `socle-proxy /v1/procedures/get` et n'est ni mise en cache côté
+serveur, ni copiée dans une table, ni versée au `procedure_snapshot`. Trois raisons, dans cet
+ordre :
+
+1. **La fraîcheur est le service rendu.** Une consigne corrigée ce matin doit être celle que
+   l'agent lit cet après-midi. Le snapshot fige le *formulaire du dépôt* — ce que l'usager a
+   rempli, qui ne doit plus bouger. Une consigne d'instruction est l'inverse : elle doit
+   suivre le service.
+2. Le cache des démarches exclut déjà `form_schema`, `requester_config` et `knowledge_base`
+   ([`architecture-proposee.md`](architecture-proposee.md) §D) — rien n'est changé à cette
+   ligne.
+3. Le volume est celui d'un document de service (textes Markdown, FAQ) : le recopier par
+   demande coûterait bien plus que `procedure_snapshot`, pour une donnée qui n'a aucune
+   valeur probante.
+
+**Ce qui ne franchit pas la frontière** : `trainingDocuments` et `aiSources`, retirés par la
+whitelist `parseAgentKnowledge` (`supabase/functions/socle-proxy/_shared/knowledge.ts`, pur,
+testé). Un corpus de prompt n'a rien à faire dans un navigateur ; le jour où l'assistant
+existera, il le lira côté serveur. Les **garde-fous**, eux, s'adressent explicitement « à
+l'agent ET à l'IA » (libellé du Socle) : ils sont affichés.
+
+**Documents d'aide agent** : ils vivent dans le bucket **Socle** `procedure-documents`. Iris
+n'en copie aucun : `socle-proxy /v1/procedures/document-url` relaie l'URL signée du Socle,
+après trois gardes — la démarche appartient au tenant, le chemin demandé est cité par les
+`agentDocuments` de **cette** démarche (rechargée à l'instant), et le Socle revérifie le
+préfixe d'organisation. Sans la deuxième, la route serait un lecteur libre du bucket dans
+tout le périmètre de la clé, documents d'entraînement IA compris.
+
+### Plafond d'utilisation IA (`20260828170000` à `20260828170200`)
+
+Trois tables, un seul métier : borner ce que l'assistant IA coûte, par tenant et par mois.
+**`ai_usage_quotas`** (le plafond), **`ai_usage_counters`** (consommé + réservé par
+organisation, fournisseur et période `'YYYY-MM'`), **`ai_usage_events`** (le grand livre —
+une ligne par appel, de la réservation au règlement, **sans aucun texte de prompt ni de
+réponse**).
+
+**Le cycle d'un appel : réserver → appeler → solder.**
+`reserve_ai_usage` fait **UN SEUL `UPDATE` conditionnel**
+(`where used + reserved + estimation <= plafond`) : Postgres prend le verrou de ligne dès
+l'évaluation du `WHERE`, donc deux appels concurrents se sérialisent d'eux-mêmes (MVCC
+standard, dès `READ COMMITTED` — ni `SERIALIZABLE` ni verrou consultatif). **0 ligne
+affectée = plafond atteint** : refus sans incrément, et **le fournisseur n'est jamais
+appelé**. `settle_ai_usage` est idempotent (ne transitionne que depuis `reserved`) :
+`completed` corrige la réservation par la consommation réelle, `failed`/`timeout` libère la
+réservation et **ne touche jamais `used_tokens`** — un appel qui n'a pas abouti n'est pas
+facturé. `release_stale_ai_reservations(15)` (job cron **SQL pur**, toutes les 5 minutes,
+sans secret Vault) rattrape les réservations orphelines d'une edge function morte en route.
+
+**Aucun plafond configuré ⇒ illimité** : un tenant sans ligne n'est pas cassé par l'arrivée
+de l'assistant. `counter_provider` vaut alors `NULL` sur l'événement, pour dire que rien n'a
+été décompté.
+
+**Périmètre de lecture** : administration du tenant ou admin plateforme. Une consommation est
+un chiffre de gestion ; l'agent, lui, apprend le dépassement par le 429 de l'edge function.
+Comme pour `permission_audit_log`, l'administrateur d'un **sous-arbre** voit le tenant entier
+(risque résiduel assumé, [`droits.md`](droits.md)).
+
+**Trois divergences délibérées avec Clara**, dont ce lot est le portage :
+
+1. **La sentinelle `'__global__'` est là dès la première migration.** Clara écrivait
+   `provider = NULL` pour « tous fournisseurs » et a dû migrer (`20260617090000`) : deux
+   `NULL` ne sont jamais égaux pour un `UNIQUE`, donc `ON CONFLICT` ne rattrapait rien et
+   empilait les lignes. Épinglé par le cas Q7 du test.
+2. **Aucune policy d'écriture cliente, sur aucune des trois tables.** Chez Clara, le
+   navigateur du superadmin fait lui-même l'`UPSERT` sous une policy RLS. Ici
+   `set_ai_usage_quota` / `delete_ai_usage_quota` sont l'unique porte, avec la garde
+   `is_platform_admin()` **dans** la fonction (motif `smtp_settings` et `permission_*`).
+   ⚠️ Jamais `is_service_context()` dans ces fonctions : en `SECURITY DEFINER`, il vaut
+   toujours vrai.
+3. **Aucune policy `service_role` non plus** : l'écriture vient de RPC `SECURITY DEFINER`,
+   qui s'exécutent comme le propriétaire et sortent du RLS. (`smtp_settings`, `notifications`
+   et `email_templates` en portent une parce qu'elles sont écrites par le *client* service,
+   pas par une RPC definer — la différence n'est pas un oubli.)
+
+L'unité est le **jeton, jamais l'euro** : le prix au jeton est une donnée commerciale qui
+bouge sans préavis, un montant affiché serait faux le jour du changement de tarif.
+
+Test : `supabase/tests/plafond-ia.test.sql` (24 assertions, transactionnel annulé — cycle,
+idempotence, filet, régression Clara, étanchéité cross- et intra-tenant, portes fermées).
+Vérifié en navigateur réel le 2026-08-28 : depuis une session d'administrateur de tenant,
+la RPC répond `403 « Le plafond d'utilisation IA se règle depuis la zone superadmin. »`,
+l'`INSERT` direct `403 permission denied for table ai_usage_quotas`, et `reserve_ai_usage`
+`403 permission denied for function`.
 
 ### Profils de droits (`20260822100000` à `20260822100900`)
 

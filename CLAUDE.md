@@ -140,8 +140,13 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
 - **`socle-proxy`** (edge, JWT vérifié en code + périmètre : membre du tenant demandé ET
   racine Socle du tenant dans le périmètre **réel** de la clé Socle — introspection
   `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches actives du
-  tenant), `/v1/procedures/get` (fiche complète : `form_schema`, `requester_config` — jamais
-  `knowledge_base`), `/v1/contacts/search`, `/v1/contacts/list` (annuaire paginé de la page
+  tenant), `/v1/procedures/get` (fiche complète : `form_schema`, `requester_config`, et —
+  depuis le 2026-08-28 — la **part agent** de la `knowledge_base` : consignes, procédures,
+  documents d'aide, liens, FAQ, garde-fous ; `trainingDocuments` et `aiSources`, matière de
+  l'assistant IA, ne franchissent PAS la frontière),
+  **`/v1/procedures/document-url`** (URL signée d'un document d'aide agent, relayée du Socle
+  après vérification que le chemin est cité par CETTE démarche — sans quoi la route serait un
+  lecteur libre du bucket `procedure-documents`), `/v1/contacts/search`, `/v1/contacts/list` (annuaire paginé de la page
   « Usagers » : `offset`, et seule route qui sait montrer les fiches archivées),
   `/v1/contacts/match` (rapprochement/homonymes),
   `/v1/contacts/get`, `/v1/contacts/create`, `/v1/contacts/update` (via contacts-api Socle
@@ -229,6 +234,10 @@ les invariants ci-dessus restent la référence.
   ou sans modèle, variables résolues sur la demande, pièces jointes réelles — edge function
   `send-request-email`), edge function `create-request-from-procedure` et moteur
   partagé `@fn/create-request-from-procedure/_shared/procedureForm.ts`,
+  **base de connaissances de la démarche** (onglet « Procédure » du rail, au guichet comme à
+  l'instruction : ce que le Socle destine à l'agent, RELU à chaque visite — jamais stocké,
+  jamais versé au snapshot ; l'assistant IA est un chantier distinct, son onglet est posé et
+  grisé),
   **qualification des pièces justificatives** (conforme / non conforme avec motif fermé ;
   une pièce obligatoire non conforme ferme la seule résolution *positive*, une pièce non
   conforme place la demande « En attente d'information », le retour en instruction est
@@ -278,8 +287,35 @@ les invariants ci-dessus restent la référence.
   (D7, Q8) →
   [`src/features/templates/CLAUDE.md`](src/features/templates/CLAUDE.md).
 - **Zone superadmin** (`src/features/superadmin`) : organisations (consultation),
-  utilisateurs, edge function `admin-users` →
+  utilisateurs, **plafonds IA** (`/superadmin/ia`), edge function `admin-users` →
   [`src/features/superadmin/CLAUDE.md`](src/features/superadmin/CLAUDE.md).
+- **Ce qui sort d'Iris vers un fournisseur IA** (assistant, 2026-08-29) : le contexte métier
+  d'une demande **SANS l'identité de l'usager** — la première défense est le `select`
+  (`REQUEST_CONTEXT_COLUMNS` ne demande ni `requester_snapshot`, ni `socle_contact_id`, ni
+  `identity_status`), la seconde le retrait des clés du catalogue `DECLARED_KEYS` dans
+  `form_data`. La promesse est BORNÉE et écrite partout, jusque dans l'UI : *aucun champ
+  d'identité connu ne sort ; un nom en texte libre peut passer*. Le **lieu d'intervention
+  reste** (un lieu n'est pas une personne). Le prompt système, le contexte et la base de
+  connaissances sont composés **côté serveur** — jamais acceptés du navigateur, dont
+  l'historique de conversation est une entrée non fiable. Détail :
+  [`docs/assistant-ia.md`](docs/assistant-ia.md).
+- **Plafond d'utilisation IA** (`src/features/ai`, 3 tables `ai_usage_*`, migrations
+  `20260828170000`–`20260828170200`) : nombre de **jetons** (jamais d'euros) qu'un tenant
+  peut consommer par mois. **Défini par l'admin plateforme, consulté en lecture seule par
+  l'administrateur du tenant** (Paramètres › Assistant IA) — c'est le levier de maîtrise des
+  coûts côté éditeur, pas un paramètre métier délégué. Cycle **réserver → appeler → solder**
+  (`reserve_ai_usage` : UN `UPDATE` conditionnel, 0 ligne ⇒ refus **sans jamais appeler le
+  fournisseur** ; un échec ne consomme rien). Aucun plafond configuré ⇒ illimité. Les trois
+  tables n'ont **aucune policy d'écriture cliente** : les RPC sont l'unique porte →
+  [`docs/data-model.md`](docs/data-model.md), § « Plafond d'utilisation IA ».
+- **Assistant IA d'instruction** (`src/features/requests/assistant`, edge `request-assistant`,
+  modules purs `supabase/functions/_shared/ai/`) : conversation avec un assistant Mistral,
+  dans le sous-onglet « Assistant » du panneau Procédure — à l'instruction (contexte de la
+  demande) comme au guichet (**démarche seule**, aucune saisie en cours). **Conversation
+  ÉPHÉMÈRE** : aucune table, le fil disparaît au rechargement. Droit exigé : **instruction**
+  sur le couple, ou un droit de création au guichet. Consomme le plafond (réserver → appeler →
+  solder). Agent Mistral en console, identifiant en secret, repli sur `chat/completions` →
+  [`docs/assistant-ia.md`](docs/assistant-ia.md).
 
 ## Conventions
 

@@ -279,6 +279,13 @@ initial) · historique d'affectation dédié (capturé par `demande_events`) · 
 automatique (délégué à `contacts-api /match`, décision humaine) · signature d'actes (question
 ouverte Q8) · antivirus des PJ (décision à acter, §8).
 
+> **⚠️ Exclusion levée le 2026-08-29 (décision PO) : « pipeline OCR/analyse LLM ».** Iris
+> porte désormais un **plafond d'utilisation de jetons** (superadmin) et un **assistant IA
+> d'instruction** (Mistral). Ce que le MVP excluait reste vrai pour le reste : aucune analyse
+> automatique de demande, aucune décision prise par le modèle, aucune écriture de l'assistant
+> dans la demande. Le périmètre exact, ce qui part chez le fournisseur et ce qui n'en part
+> pas : [`assistant-ia.md`](assistant-ia.md).
+
 ### 1.4 Numérotation chrono
 
 Trigger `BEFORE INSERT` sur `demandes` : `INSERT … ON CONFLICT DO UPDATE … RETURNING` sur

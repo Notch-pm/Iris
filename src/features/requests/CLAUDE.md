@@ -62,8 +62,11 @@ note interne → résolution avec texte de clôture → journal.
     bloquant). Décision humaine, aucune clôture automatique.
   - Score de rapprochement Socle = **classement relatif** à la réponse (contrat
     contacts-api) : affiché en barre relative au meilleur candidat, jamais en « % ».
-  - Onglet « Procédure » du rail (base de connaissances / assistant) : **différé** (second
-    temps, décision PO 2026-08-21).
+  - **Onglet « Procédure » du rail** (livré le 2026-08-28, différé depuis le 2026-08-21) :
+    la base de connaissances de la démarche choisie, telle que le Socle la destine à
+    l'agent. Elle arrive **avec la démarche** (`fetchProcedureSnapshot` — le proxy l'ajoute
+    à la lecture complète), donc aucun appel supplémentaire au guichet. Voir la section
+    « Base de connaissances » plus bas : le panneau est le MÊME qu'à l'instruction.
   - **Moteur partagé** `@fn/create-request-from-procedure/_shared/procedureForm.ts` (pur,
     testé, miroir EXACT du contrat Socle formSchema v1/conditions/requesterFields) : rendu et
     validation de confort côté client, validation d'AUTORITÉ côté serveur sur la démarche
@@ -137,6 +140,40 @@ note interne → résolution avec texte de clôture → journal.
     l'adresse — pas sur les coordonnées, donc valable même sans géocodage). Le géocodage
     (BAN) est un confort mis en cache par TanStack Query, jamais stocké : panne, adresse
     introuvable ou tuiles muettes laissent l'adresse et « Guider » intacts.
+  - **Base de connaissances de la démarche** (`procedure/`, 2026-08-28) : le rail bascule
+    entre deux onglets — « Demande » (prise en charge, avancement, usager) et
+    « Procédure » —, par `RailTabs` (pastille tant que l'onglet n'a pas été ouvert et que
+    la démarche a quelque chose à dire). Le panneau `ProcedurePane` est **partagé avec le
+    parcours de création** : mêmes cartes, même vocabulaire, deux moments.
+    - **Ce qui est affiché** : points de vigilance (garde-fous, en tête — ce sont eux qui
+      changent une décision), consignes pour l'agent, procédure de traitement, questions
+      fréquentes (dépliables), documents d'aide, liens utiles. Les deux textes sont du
+      **Markdown** rendu par `src/lib/markdown.ts` (pur, testé) + `components/ui/markdown.tsx` :
+      aucune dépendance, **aucun HTML injecté** — un champ du référentiel ne devient jamais
+      exécutable, et un lien `javascript:` retombe en texte.
+    - **Ce qui n'est PAS affiché** : `trainingDocuments` et `aiSources` — la matière de
+      l'assistant IA, retirée par la whitelist serveur `parseAgentKnowledge`. Elle est lue
+      côté serveur seulement, par `@fn/_shared/ai/knowledge.ts` (`parseAiKnowledge`), que
+      `socle-proxy` n'importe JAMAIS — un test lit son source pour le vérifier.
+    - **L'onglet « Assistant »** (livré le 2026-08-29, `assistant/`) : conversation avec
+      l'assistant Mistral. Le fil est **hissé dans la PAGE** (`AssistantThreadProvider`) et
+      non dans le panneau, qui est démonté à chaque bascule d'onglet du rail — sans cela
+      l'agent perdrait sa conversation en consultant l'avancement. Il disparaît au
+      rechargement, **par décision** (conversation éphémère), et le panneau le dit.
+      ⚠️ `useAssistant` est une `useMutation` SANS `queryKey` : ranger le fil dans le cache
+      TanStack « pour qu'il survive » serait une porte dérobée de persistance.
+      ⚠️ `trimForSend` ne renvoie **jamais** un tour en erreur — sinon le modèle relit « Le
+      plafond est atteint » comme sa propre réponse et enchaîne dessus.
+    - **Rien n'est stocké** : `useProcedureKnowledge` relit le Socle à chaque visite
+      (`socle-proxy /v1/procedures/get`, 5 min de fraîcheur). La base de connaissances
+      n'entre pas dans le `procedure_snapshot` — le snapshot fige le *formulaire du dépôt*,
+      une consigne d'instruction doit au contraire suivre son service.
+    - **Documents** : le bucket est celui du **Socle**. `useProcedureDocumentUrl` demande
+      une URL signée à `socle-proxy /v1/procedures/document-url`, qui vérifie que le chemin
+      est cité par les `agentDocuments` de la démarche rechargée. Le navigateur ne désigne
+      rien qu'il ait inventé.
+    - Une démarche non documentée, un Socle muet ou une demande historique **sans démarche**
+      ont chacun leur état expliqué : le panneau est une aide, jamais une condition.
   - **Fonctionnalités à venir, visibles mais grisées** (`SOON` dans
     `src/components/ui/surface.tsx`, décision PO 2026-08-22) : contacter, demander une pièce,
     pièces d'instruction, courriers, exporter le journal, changer le service instructeur,

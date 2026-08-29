@@ -52,6 +52,8 @@ implémentée (plan de livraison : `architecture-proposee.md` §9).
 | `IRIS_APP_URL` | Origine de l'app Iris (CORS de `socle-proxy` et `admin-users`, et **base des liens d'activation / de réinitialisation** envoyés par mail) | `http://localhost:5174` en dev ; l'URL de prod quand elle existera | 1 |
 | `AUTH_HOOK_SECRET` | Secret du hook « Send Email » de GoTrue (`v1,whsec_…`, généré par le dashboard) | À poser en même temps que l'activation du hook — §4 bis | 1 |
 | `IRIS_SMTP_*` | Relais d'envoi **de plateforme**, repli quand le Socle ne déclare pas de serveur pour le tenant (`HOST`, `FROM_EMAIL` obligatoires ; `PORT`, `USERNAME`, `PASSWORD`, `FROM_NAME`, `USE_TLS` facultatifs) | Facultatif — sans lui, seuls les tenants dont le Socle déclare un serveur d'envoi reçoivent des mails | 1 |
+| `MISTRAL_API_KEY` | Clé API Mistral (La Plateforme) — assistant IA d'instruction et, plus tard, OCR des documents d'entraînement | **À poser.** Sans elle, `request-assistant` répond `503 not_configured` : l'onglet Assistant reste utilisable et refuse poliment, tout le reste d'Iris fonctionne | 5 |
+| `MISTRAL_ASSISTANT_AGENT_ID` | Identifiant de l'agent créé dans la console Mistral (`iris-assistant-instruction-v1`) | **Facultatif.** Absent ⇒ repli automatique sur `chat/completions` + `mistral-large-latest`, avec les mêmes règles (`BASE_RULES`). Voir [`assistant-ia.md`](assistant-ia.md) § 5 | 5 |
 | `CLARA_WEBHOOK_URL` | URL de l'edge function `iris-webhook` de Clara | Équipe Clara | 4 |
 | `IRIS_WEBHOOK_SECRET` | Secret HMAC du webhook Iris→Clara (partagé avec Clara) | Généré, échangé hors bande | 4 |
 
