@@ -38,6 +38,29 @@ export function sanitizeContact(raw: any): Record<string, unknown> | null {
 }
 
 /**
+ * Organisation PRINCIPALE du tenant — whitelist MINIMALE : de quoi ancrer une
+ * carte sur le siège de la collectivité, et rien de plus.
+ *
+ * ⚠️ `phone` et `email`, que le contrat Socle sert pourtant sur la même fiche,
+ * ne franchissent PAS : aucun écran n'en a l'usage aujourd'hui, et une
+ * whitelist ne se justifie que champ par champ. Le jour où un écran en aura
+ * besoin, on l'ajoutera pour ce besoin-là.
+ *
+ * L'adresse d'une mairie est publique — c'est ce qui permet à la route qui
+ * l'expose d'être ouverte à tout membre, comme celle des quartiers.
+ */
+const ORGANIZATION_FIELDS = ["id", "name", "address"] as const;
+
+export function sanitizeOrganization(raw: any): Record<string, unknown> | null {
+  if (typeof raw !== "object" || raw === null || typeof raw.id !== "string") return null;
+  const out: Record<string, unknown> = {};
+  for (const key of ORGANIZATION_FIELDS) {
+    out[key] = raw[key] ?? null;
+  }
+  return out;
+}
+
+/**
  * Quartier du référentiel, AVEC sa géométrie — la seule porte par laquelle
  * elle franchit la frontière.
  *

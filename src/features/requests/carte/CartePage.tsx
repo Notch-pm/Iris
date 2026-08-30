@@ -15,6 +15,7 @@ import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/compon
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { useQuartiers } from "@/features/socle/useQuartiers";
+import { useOrganisationAnchor } from "@/features/socle/useOrganisationAnchor";
 import { cn } from "@/lib/utils";
 import { memberName, PRIORITY_OPTIONS } from "../instruction/instruction";
 import { useTenantMembers } from "../useRequests";
@@ -48,6 +49,9 @@ export function CartePage() {
   // concurrencer les épingles.
   const [showQuartiers, setShowQuartiers] = React.useState(true);
   const quartiers = useQuartiers(orgId);
+  // Siège de la collectivité : la carte s'y ancre plutôt que sur le barycentre
+  // de ses épingles. `null` = pas d'adresse au Socle → recadrage d'avant.
+  const anchor = useOrganisationAnchor(orgId);
 
   const rows = requests.data?.rows ?? [];
   const { located, withoutAddress } = React.useMemo(() => locatableRequests(rows), [rows]);
@@ -242,7 +246,7 @@ export function CartePage() {
         ) : (
           <>
             <InterventionMap markers={markers} nameOf={nameOf}
-              quartiers={quartiers} showQuartiers={showQuartiers} />
+              quartiers={quartiers} showQuartiers={showQuartiers} anchor={anchor} />
             {geocode.isLoading && markers.length === 0 ? (
               <Overlay>Localisation des adresses…</Overlay>
             ) : null}

@@ -5,6 +5,7 @@ import {
   clampZoom,
   DEFAULT_GEOCODE_URL,
   DEFAULT_TILE_URL,
+  fitAround,
   fitBounds,
   geocodeUrl,
   googleMapsDirectionsUrl,
@@ -232,6 +233,54 @@ describe("fitBounds", () => {
   });
   it("retombe sur la France au zoom le plus large sans point", () => {
     expect(fitBounds([], width, height)).toEqual({ lat: 46.6, lon: 2.5, zoom: MIN_ZOOM });
+  });
+});
+
+describe("fitAround", () => {
+  const width = 800;
+  const height = 400;
+  // Siège d'ACCM (Arles), tel que la BAN le résout.
+  const siege = { lat: 43.673879, lon: 4.638792 };
+
+  it("garde le centre imposé, quels que soient les points", () => {
+    const fitted = fitAround(siege, [
+      { lat: 43.63, lon: 4.72 },   // Saint-Martin-de-Crau
+      { lat: 43.79, lon: 4.83 },   // Saint-Rémy-de-Provence
+    ], width, height);
+    expect(fitted.lat).toBeCloseTo(siege.lat, 6);
+    expect(fitted.lon).toBeCloseTo(siege.lon, 6);
+  });
+
+  it("cadre tous les points AUTOUR de ce centre", () => {
+    const points = [
+      { lat: 43.63, lon: 4.72 },
+      { lat: 43.72, lon: 4.55 },
+    ];
+    const view = { ...fitAround(siege, points, width, height), width, height };
+    for (const point of points) {
+      const { left, top } = markerPosition(point, view);
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(left).toBeLessThanOrEqual(width);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(top).toBeLessThanOrEqual(height);
+    }
+  });
+
+  it("reste chez elle quand un point est trop loin pour tenir", () => {
+    // Une demande à Nantes : à MIN_ZOOM rien ne peut cadrer les deux. La carte
+    // s'ancre sur la collectivité plutôt que sur un barycentre en Corrèze.
+    const fitted = fitAround(siege, [siege, { lat: 47.218, lon: -1.554 }], width, height);
+    expect(fitted).toEqual({ ...siege, zoom: MIN_ZOOM });
+  });
+
+  it("montre le territoire, pas un trottoir, quand il n'y a aucun point", () => {
+    expect(fitAround(siege, [], width, height)).toEqual({ ...siege, zoom: MIN_ZOOM });
+  });
+
+  it("ne serre JAMAIS plus que le zoom de lecture", () => {
+    // Une unique demande au siège même : sans borne, on tomberait au zoom max.
+    const fitted = fitAround(siege, [siege], width, height);
+    expect(fitted.zoom).toBe(17);
   });
 });
 

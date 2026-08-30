@@ -9,6 +9,7 @@ import {
   sanitizeMatches,
   sanitizeProcedureFull,
   sanitizeProcedureSummary,
+  sanitizeOrganization,
   sanitizeQuartier,
   sanitizeQuartierList,
 } from "./sanitize";
@@ -248,6 +249,40 @@ describe("filterContactListQuery", () => {
     expect(filterContactListQuery({ offset: -1 })).toMatchObject({ ok: false });
     expect(filterContactListQuery({ search: "x".repeat(201) })).toMatchObject({ ok: false });
     expect(filterContactListQuery("Dupont")).toMatchObject({ ok: false });
+  });
+});
+
+describe("sanitizeOrganization — le siège de la collectivité, rien de plus", () => {
+  const raw = {
+    id: "org-socle", name: "ACCM", slug: "accm", type: "epci", status: "active",
+    address: "5 Rue Yvan Audouard, 13200 Arles",
+    phone: "0490000000", email: "contact@accm.fr",
+    logo_url: "https://accm.fr/logo.png", metadata: { interne: true },
+    email_sender_name: "ACCM", champ_futur: 42,
+  };
+
+  it("ne laisse passer que l'identité et l'adresse", () => {
+    expect(sanitizeOrganization(raw)).toEqual({
+      id: "org-socle", name: "ACCM", address: "5 Rue Yvan Audouard, 13200 Arles",
+    });
+  });
+
+  it("retient le téléphone, le courriel et le reste — aucun écran n'en a l'usage", () => {
+    const org = sanitizeOrganization(raw)!;
+    expect(org.phone).toBeUndefined();
+    expect(org.email).toBeUndefined();
+    expect(org.metadata).toBeUndefined();
+    expect(org.email_sender_name).toBeUndefined();
+    expect(org.champ_futur).toBeUndefined();
+  });
+
+  it("rend null sur une réponse informe, et une adresse absente vaut null", () => {
+    expect(sanitizeOrganization(null)).toBeNull();
+    expect(sanitizeOrganization({ name: "sans id" })).toBeNull();
+    expect(sanitizeOrganization("texte")).toBeNull();
+    expect(sanitizeOrganization({ id: "o1", name: "X" })).toEqual({
+      id: "o1", name: "X", address: null,
+    });
   });
 });
 

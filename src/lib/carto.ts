@@ -214,6 +214,61 @@ export function fitBounds(
   return { ...center, zoom: usable.length === 1 ? DEFAULT_ZOOM : zoom };
 }
 
+/**
+ * Même travail que `fitBounds`, mais le CENTRE EST IMPOSÉ : on ne cherche que
+ * le zoom, le plus serré qui laisse tous les points visibles AUTOUR de ce
+ * centre. Sert à ancrer une carte sur un lieu qui a un sens — le siège de la
+ * collectivité — plutôt que sur le barycentre de ce qu'elle affiche.
+ *
+ * ⚠️ Pourquoi ne pas simplement remplacer le centre calculé par `fitBounds` :
+ * son zoom est calculé POUR SON centre. Le déplacer sans retoucher le zoom
+ * pousse hors cadre les points du côté opposé. Ici l'étendue est mesurée en
+ * symétrique autour du centre imposé, donc rien ne sort par construction —
+ * au prix d'un zoom plus large quand un point est loin.
+ *
+ * Aucun point → le centre au zoom le PLUS LARGE (`MIN_ZOOM`) : on montre le
+ * territoire, pas un trottoir. Rien ne rentre, même au plus large → `MIN_ZOOM` :
+ * la carte reste chez elle, et les épingles lointaines s'atteignent par
+ * « Recadrer ».
+ *
+ * ⚠️ Le zoom est BORNÉ au zoom de lecture (`DEFAULT_ZOOM`), jamais plus serré :
+ * sans cela, une unique demande située au siège même de la collectivité
+ * amènerait la carte au zoom maximal, sur un trottoir. Contrairement au cas
+ * `fitBounds`, on ne peut PAS traiter « un seul point » en le posant au zoom de
+ * lecture sans le vérifier : ici le centre n'est pas ce point, et une demande à
+ * trente kilomètres sortirait du cadre.
+ */
+export function fitAround(
+  center: LatLon,
+  points: LatLon[],
+  width: number,
+  height: number,
+  padding = 56,
+): { lat: number; lon: number; zoom: number } {
+  const anchor = { lat: center.lat, lon: center.lon };
+  const usable = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
+  if (usable.length === 0) return { ...anchor, zoom: MIN_ZOOM };
+
+  // Demi-fenêtre : l'étendue est mesurée de part et d'autre du centre.
+  const halfWidth = Math.max(16, (width - 2 * padding) / 2);
+  const halfHeight = Math.max(16, (height - 2 * padding) / 2);
+
+  let zoom = MIN_ZOOM;
+  for (let candidate = MAX_ZOOM; candidate >= MIN_ZOOM; candidate--) {
+    const c = worldPixel(anchor.lat, anchor.lon, candidate);
+    const fits = usable.every((p) => {
+      const q = worldPixel(p.lat, p.lon, candidate);
+      return Math.abs(q.x - c.x) <= halfWidth && Math.abs(q.y - c.y) <= halfHeight;
+    });
+    if (fits) {
+      zoom = candidate;
+      break;
+    }
+    zoom = candidate;
+  }
+  return { ...anchor, zoom: Math.min(zoom, DEFAULT_ZOOM) };
+}
+
 /** Carte OpenStreetMap complète (marqueur + zoom), pour « ouvrir en grand ». */
 export function openStreetMapUrl(lat: number, lon: number, zoom: number): string {
   const z = clampZoom(zoom);

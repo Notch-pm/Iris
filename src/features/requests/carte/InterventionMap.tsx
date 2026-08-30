@@ -15,6 +15,7 @@ import { QuartierLayer } from "@/components/map/QuartierLayer";
 import type { QuartierShape } from "@/lib/quartiers";
 import {
   clampZoom,
+  fitAround,
   fitBounds,
   markerPosition,
   panView,
@@ -51,9 +52,18 @@ interface Props {
   /** Découpage du territoire (référentiel Socle) — vide s'il n'en publie pas. */
   quartiers?: QuartierShape[];
   showQuartiers?: boolean;
+  /**
+   * Siège de la collectivité (Socle, géocodé) : la carte s'y ancre au lieu de
+   * se poser sur le barycentre de ses épingles. `null` = pas d'adresse connue,
+   * référentiel muet ou géocodeur en panne → comportement d'avant, à
+   * l'identique.
+   */
+  anchor?: GeoPoint | null;
 }
 
-export function InterventionMap({ markers, nameOf, quartiers = [], showQuartiers = true }: Props) {
+export function InterventionMap({
+  markers, nameOf, quartiers = [], showQuartiers = true, anchor = null,
+}: Props) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [center, setCenter] = React.useState<{ lat: number; lon: number; zoom: number } | null>(null);
   const [active, setActive] = React.useState<string | null>(null);
@@ -62,12 +72,22 @@ export function InterventionMap({ markers, nameOf, quartiers = [], showQuartiers
   const drag = React.useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
   const signature = markers.map((m) => m.item.row.id).join(",");
+  const anchorKey = anchor ? `${anchor.lat},${anchor.lon}` : "";
   const recenter = React.useCallback(() => {
     if (width === 0 || height === 0) return;
-    setCenter(fitBounds(markers.map((m) => m.point), width, height));
-    // `markers` suit `signature` : recadrer sur la sélection affichée.
+    const points = markers.map((m) => m.point);
+    // Avec un siège connu, le centre est IMPOSÉ et seul le zoom s'ajuste : une
+    // demande isolée à l'autre bout du pays ne déplace plus la carte, elle
+    // l'élargit (et si même le zoom le plus large n'y suffit pas, la carte
+    // reste sur le territoire — c'est « Recadrer » qui existe pour le reste).
+    setCenter(
+      anchor
+        ? fitAround(anchor, points, width, height)
+        : fitBounds(points, width, height),
+    );
+    // `markers` suit `signature`, `anchor` suit `anchorKey`.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, width, height]);
+  }, [signature, anchorKey, width, height]);
 
   // Recadrage automatique à l'arrivée des points et à chaque changement de
   // filtre ; ensuite l'agent est maître de sa vue (bouton « Recadrer »).

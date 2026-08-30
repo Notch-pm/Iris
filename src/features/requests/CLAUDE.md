@@ -259,6 +259,22 @@ note interne → résolution avec texte de clôture → journal.
   dédiée + bouton « Carte » de la liste, 2026-08-23) : les demandes **en cours**
   (`OPEN_STATUSES` = `a_traiter`/`en_instruction`/`en_attente`) dont la démarche porte un lieu
   d'intervention, posées sur une carte OpenStreetMap.
+  - **Ancrage sur le siège de la collectivité** (2026-08-30) : la carte se recadrait sur le
+    **barycentre** de ses épingles (`fitBounds`). Une seule demande à l'autre bout du pays
+    suffisait à planter le centre au milieu de nulle part — une demande à Nantes et le reste
+    autour d'Arles donnent la **Corrèze**, où à `MIN_ZOOM` (12) on ne voit même pas les
+    épingles qui ont produit ce centre. Le centre vient donc désormais de l'**adresse de
+    l'organisation principale** (Socle, via `socle-proxy /v1/organizations/root`, géocodée à la
+    BAN — `useOrganisationAnchor`), et seul le ZOOM s'ajuste : `fitAround` (pur, testé) mesure
+    l'étendue **en symétrique autour du centre imposé**, donc rien ne sort du cadre par
+    construction. ⚠️ Ne PAS se contenter de remplacer le centre rendu par `fitBounds` : son
+    zoom est calculé pour SON centre, le déplacer pousse hors cadre les points d'en face. Le
+    zoom est borné au zoom de lecture (une unique demande au siège même n'amène pas la carte
+    sur un trottoir), et si même `MIN_ZOOM` ne suffit pas à tout cadrer, la carte **reste sur
+    le territoire** — les épingles lointaines s'atteignent par « Recadrer ».
+    ⚠️ **Un confort, jamais une dépendance** : pas d'adresse au Socle, référentiel muet ou
+    géocodeur en panne ⇒ `null`, et la carte reprend `fitBounds` à l'identique. Iris ne stocke
+    ni l'adresse ni le point.
   - **`carte.ts`** (pur, testé) : `locatableRequests` (réutilise `instruction/lieu.ts` — même
     reconnaissance du bloc Socle), `distinctAddresses` (une adresse = un géocodage, quelles
     que soient les demandes qui la partagent), `filterRequests` / `procedureFacets` /

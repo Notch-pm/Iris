@@ -173,6 +173,11 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   **`/v1/ai/usage`** (consommation IA de la collectivité, relayée du guichet `ai-api` —
   ⚠️ **réservée aux administrateurs, garde réécrite DANS la fonction** : la lecture se fait en
   service role, le RLS qui gardait autrefois les tables ne s'applique plus),
+  **`/v1/organizations/root`** (fiche de l'organisation **principale** du tenant — `id`, `name`,
+  `address`, whitelist stricte : ni téléphone, ni courriel, aucun écran n'en ayant l'usage. La
+  route ne prend **aucun identifiant du navigateur** : c'est `tenant.socleOrgId`, sinon elle
+  serait un lecteur libre du référentiel d'organisations. Ouverte à tout membre — l'adresse
+  d'une mairie est publique. Sert à **ancrer la carte des interventions** sur le siège),
   **`/v1/quartiers/list`** (quartiers du territoire **avec leur géométrie**, pour la carte du
   champ d'adresse — ouverte à tout membre comme `/v1/procedures/*` : une limite de quartier
   n'est pas une donnée personnelle ; 404 du Socle ⇒ `available: false`, pas une erreur).

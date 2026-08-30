@@ -42,6 +42,7 @@ import {
   sanitizeContact,
   sanitizeContactList,
   sanitizeMatches,
+  sanitizeOrganization,
   sanitizeProcedureFull,
   sanitizeProcedureSummary,
   sanitizeQuartierList,
@@ -319,6 +320,25 @@ Deno.serve(async (req) => {
   //    géométries ; le Socle en prend la racine, et les quartiers n'existent
   //    que sur les organisations principales. `tenant.socleOrgId` EST cette
   //    racine (vérifiée par `resolveTenant`), donc jamais une valeur du client.
+  // ---- Organisation PRINCIPALE du tenant ------------------------------------
+  // Sa fiche, et elle seule. La route ne prend AUCUN identifiant du navigateur :
+  // `tenant.socleOrgId` est la racine Socle vérifiée par `resolveTenant`. C'est
+  // ce qui l'empêche de devenir un lecteur libre du référentiel d'organisations
+  // — un `POST {organization_id}` relayé tel quel en aurait fait un.
+  //
+  // Ouverte à tout membre, comme `/v1/quartiers/*` : l'adresse d'une mairie est
+  // publique, et la whitelist (`id`, `name`, `address`) ne laisse rien d'autre
+  // passer.
+  //
+  // Usage actuel : ancrer la carte des interventions sur le siège de la
+  // collectivité plutôt que sur le barycentre de ses demandes.
+  if (path === "/v1/organizations/root") {
+    const res = await socleFetch(`${publicApiBase()}/v1/organizations/${tenant.socleOrgId}`);
+    if (!res?.ok) return relaySocleError(req, res);
+    const raw = await res.json().catch(() => null);
+    return json(req, 200, { organization: sanitizeOrganization(raw) });
+  }
+
   if (path === "/v1/quartiers/list") {
     const params = new URLSearchParams({
       geometry: "true",
