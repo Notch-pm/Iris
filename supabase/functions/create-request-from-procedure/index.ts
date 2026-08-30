@@ -159,19 +159,29 @@ Deno.serve(async (req) => {
   }
   const procedureRaw = await procRes.json().catch(() => null);
 
+  // ⚠️ ORDRE : la garde STRUCTURELLE d'abord, la garde MÉTIER ensuite.
+  // `whitelistProcedureSnapshot` rend `null` sur tout ce qui n'est pas un objet
+  // exploitable — 200 au corps illisible, tableau, chaîne, page d'erreur d'une
+  // passerelle. `parseProcedureStatus` est *fail closed* : il rendrait
+  // « brouillon » pour ces mêmes réponses, et l'agent lirait « terminez le
+  // paramétrage » sur une démarche parfaitement en production, pendant que la
+  // vraie cause — une réponse malformée du Socle — resterait invisible.
+  const procedureSnapshot = whitelistProcedureSnapshot(procedureRaw);
+  if (!procedureSnapshot) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+
   // Démarche EN PRODUCTION uniquement : un brouillon est un paramétrage en
   // cours d'écriture, que le Socle dit ne proposer nulle part. Le sélecteur ne
   // les montre pas — mais la garde vit ICI, sur la démarche rechargée à
   // l'instant, jamais dans l'UI seule (et jamais sur le cache, qui peut dater).
+  // Le statut se lit sur la réponse BRUTE : il n'entre pas dans le snapshot, et
+  // n'a rien à y faire — celui-ci fige le formulaire du dépôt, pas l'état du
+  // paramétrage un jour donné.
   // Les demandes DÉJÀ déposées sur une démarche repassée en brouillon restent
   // lisibles et instruisables : cette garde ne concerne que la création.
-  if (parseProcedureStatus(procedureRaw?.status) !== "production") {
+  if (parseProcedureStatus(procedureRaw.status) !== "production") {
     return fail(req, 400, "bad_request",
       "Cette démarche est en brouillon dans le Socle : son paramétrage doit être terminé avant qu'une demande puisse être consignée.");
   }
-
-  const procedureSnapshot = whitelistProcedureSnapshot(procedureRaw);
-  if (!procedureSnapshot) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
 
   const schema = parseFormSchema(procedureSnapshot.form_schema);
   const requesterConfig = procedureSnapshot.requester_config;
