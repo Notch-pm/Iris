@@ -16,9 +16,19 @@ est déployée ([`docs/api-ingestion.md`](docs/api-ingestion.md)) ; l'interface 
 liste et la fiche des demandes, leur cycle de vie, et le **parcours de création guidé**
 (démarche Socle obligatoire → usager rapproché au Socle → formulaire paramétré →
 récapitulatif, avec brouillon local, détection des demandes proches et récépissé) ; une zone
-superadmin gère organisations et utilisateurs. Restent à venir : visibilité par sous-arbre
-d'organisation, copie asynchrone des pièces ingérées, webhooks sortants, purge RGPD et la base
-de connaissances des procédures. L'architecture validée est décrite dans
+superadmin gère organisations et utilisateurs.
+
+Depuis, le parcours agent s'est étoffé : **profils de droits** par couple (organisation
+porteuse, démarche), **tableau des demandes** (kanban) et **carte des interventions**,
+**annuaire et fiche usager**, **qualification des pièces**, **échanges avec l'usager** (réponse
+et avis de clôture, aux couleurs de la collectivité), **notifications** in-app et e-mail,
+**modèles d'e-mail**, **base de connaissances des démarches** et **assistant IA d'instruction**
+adossé au guichet du Socle.
+
+Restent à venir : copie asynchrone des pièces ingérées, webhooks sortants et purge RGPD. Ce
+qui est demandé mais pas encore arbitré vit dans [`docs/backlog.md`](docs/backlog.md) ; ce qui
+est assumé comme dette, dans [`docs/dette-technique.md`](docs/dette-technique.md).
+L'architecture validée est décrite dans
 [`docs/architecture-proposee.md`](docs/architecture-proposee.md).
 
 ## Démarrer
@@ -56,5 +66,10 @@ npm test         # vitest run ; npm run test:watch en veille
   policies RLS, storage, tests d'étanchéité.
 - [`docs/api-ingestion.md`](docs/api-ingestion.md) — API d'ingestion multi-source : comment
   un connecteur Clara, un portail citoyen ou un tiers s'authentifie et crée des demandes.
+- [`docs/emails.md`](docs/emails.md) — par où partent les mails, avec quel gabarit, et la
+  charte graphique de la collectivité sur les messages à l'usager.
+- [`docs/backlog.md`](docs/backlog.md) — demandes produit en attente d'arbitrage.
+- [`docs/dette-technique.md`](docs/dette-technique.md) — ce qui est assumé comme dette, et
+  comment le solder.
 - [`docs/demarrage.md`](docs/demarrage.md) — mise en route et actions manuelles.
 - Socle : `../Socle/docs/integration.md` — guide des équipes consommatrices des API Socle.

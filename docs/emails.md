@@ -4,16 +4,27 @@
 > service · **Question traitée** : par où partent les mails d'Iris, avec quel gabarit, et que
 > faut-il configurer pour qu'ils partent ? · **Dernière mise à jour** : 2026-08-30
 
-Iris envoie aujourd'hui **deux messages**, tous deux liés au compte agent :
+Iris envoie aujourd'hui **deux familles de messages** — et la distinction commande tout le
+reste de ce document, jusqu'à l'habillage :
+
+**Aux AGENTS** — des messages du logiciel à ses utilisateurs, à la marque d'Iris :
 
 | Message | Déclencheur | Chemin d'envoi |
 |---|---|---|
 | **Réinitialisation de mot de passe** | l'agent depuis `/mot-de-passe-oublie` (self-service) | GoTrue → hook `auth-email-hook` |
 | **Réinitialisation de mot de passe** | un administrateur ayant autorité sur le compte, bouton « lien de réinitialisation » | edge function `admin-users` (`send_password_reset`) |
 | **Activation de compte (invitation)** | un administrateur qui invite un agent | edge function `admin-users` (`invite_user`) |
+| **Notification métier** (affectation, retrait, changement de statut, note interne, nouvelle demande) | la BASE, par trigger — jamais le client | boîte d'envoi drainée sur cron par `notifications-mailer` |
 
-Les notifications métier (affectation, changement de statut…) viendront ensuite : elles
-réutiliseront le gabarit et le serveur d'envoi décrits ici.
+**À l'USAGER** — des messages de la collectivité à ses habitants, à la marque et **aux
+couleurs de la collectivité** (§ 4, « Charte graphique de la collectivité ») :
+
+| Message | Déclencheur | Chemin d'envoi |
+|---|---|---|
+| **Réponse à l'usager** | un agent, depuis l'onglet Échanges de la fiche | edge function `send-request-email` (synchrone) |
+| **Avis de clôture** | la résolution d'une demande, composée par le serveur | edge function `send-request-email` (`kind: "cloture"`) |
+
+Tous partagent le gabarit et le serveur d'envoi décrits ci-dessous.
 
 ## 1. Le gabarit
 
