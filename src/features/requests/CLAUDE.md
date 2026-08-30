@@ -48,6 +48,51 @@ note interne → résolution avec texte de clôture → journal.
     moi-même » retire le paramètre (parcours normal, saisie conservée) plutôt que de laisser
     une impasse. Pas de reprise de brouillon proposée dans ce mode (il porterait un autre
     usager) ; le verrou tient au point d'entrée, pas au brouillon.
+  - **Ce que le sélecteur propose, et ce qu'il en dit** (2026-08-30) : la liste ne contient
+    que les démarches **externes**, dont le paramétrage est **en production** dans le Socle, et
+    qui sont **dans leur période de publication** (`useSocleProcedureRows` : les deux premières
+    en SQL, la période en JS via `isPublishedOn`). Le brouillon est une règle de fond — le Socle
+    dit qu'une démarche en cours d'écriture n'est proposée nulle part —, doublée d'une **garde
+    serveur** dans `create-request-from-procedure`, sur la démarche RECHARGÉE (jamais sur le
+    cache, qui peut dater). L'exclusion des démarches **internes** est au contraire une décision
+    d'affichage TEMPORAIRE (PO : « elles seront affichées ultérieurement ») : deux `.eq(…)` à
+    retirer le jour venu, aucune garde à défaire.
+    - ⚠️ **La période MASQUE, elle ne REFUSE pas** : pas de garde serveur, délibérément. Le
+      brouillon est une règle que le Socle énonce ; la période décrit où et quand proposer **au
+      public**. Un agent qui consigne un formulaire papier reçu pendant la période, deux jours
+      après sa fin, doit pouvoir le faire — et la reprise d'un brouillon local portant une
+      démarche sortie de période marche pour la même raison (`/v1/procedures/get` n'est pas
+      filtrée).
+    - **Le jour de référence est celui de l'AGENT** (`isoDay(new Date())`), et il entre dans la
+      clé de requête — motif `closedSince` du tableau : stable toute la journée, il fait
+      repartir la lecture au changement de date sur un onglet resté ouvert. Côté serveur c'est
+      le jour de **Paris** (`FRANCE_TIME_ZONE`), le runtime des edge functions étant en UTC.
+      Les bornes sont **incluses**, la comparaison **textuelle** (`AAAA-MM-JJ` : lexicographique
+      = chronologique).
+    - **Chaque carte ne dit de la publication que ce qui mérite d'être dit** : la pastille
+      « Non visible portail » ne s'affiche que sur les démarches qui n'y sont PAS (décision PO
+      2026-08-30 — `portalAbsenceLabel` rend `null` sinon : y être est la valeur par défaut du
+      contrat, donc le cas ordinaire, et l'écrire sur chaque carte noierait l'exception), et la
+      période seulement s'il y en a une (« Publiée du 01/01/2027 au 03/05/2027 », « à partir
+      du », « jusqu'au » — bornes **incluses**). Une carte sans rien à signaler n'a donc pas de
+      ligne du tout. Ce n'est pas un détail de gestion : une démarche absente du portail
+      n'arrive au service que par le guichet, et une période close explique qu'un usager n'ait
+      pas pu la déposer lui-même.
+    - **Les règles du contrat sont lues UNE fois, à la frontière** — module pur
+      `@fn/_shared/procedures/publication.ts`, partagé par la synchro, `socle-proxy` et
+      l'écran : `communication_config` absent = valeurs par DÉFAUT (visible, sans période),
+      et les dates que le Socle conserve quand le commutateur de période est éteint ne
+      s'appliquent pas, donc ne s'affichent pas. Le cache porte la publication **effective**
+      (`portal_visible`, `publication_start`, `publication_end`), pas le bloc brut.
+    - ⚠️ **Le cache, lui, garde TOUT** (brouillons et démarches internes) : il est l'autorité
+      de périmètre du tenant. Les facettes de la liste, du tableau et de la fiche usager, comme
+      la matrice des profils de droits, continuent de les voir — elles décrivent ce qui EXISTE,
+      pas ce qu'on peut créer.
+    - ⚠️ **`status` vaut `brouillon` par défaut en base** (*fail closed*) : après la migration
+      `20260830100000`, le sélecteur est vide tant qu'une synchro n'a pas déclaré des
+      démarches en production. L'état vide le DIT et renvoie au référentiel, plutôt que de
+      laisser croire à une panne. Détail : [`docs/data-model.md`](../../../docs/data-model.md)
+      § « Publication des démarches ».
   - **Brouillon local** (`draft.ts` pur/testé, `useCreationDraft`) : localStorage, un par
     tenant et utilisateur, enregistré en différé à chaque saisie ; ne transporte que des
     identifiants et saisies (usager rapproché = id seul, **relu via `socle-proxy

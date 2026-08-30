@@ -1,7 +1,7 @@
 # Dette technique — backlog
 
 > **Public** : équipe Iris · **Question traitée** : qu'est-ce qui est assumé comme dette, et
-> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-08-29
+> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-08-30
 
 Ce document ne recopie rien : il ne porte que la dette **sans autre domicile** (outillage,
 conventions, transverse). La dette de modèle de données et d'API vit là où elle se constate :
@@ -148,3 +148,22 @@ relance) brûle le mois en quelques minutes, et le refus n'arrive qu'une fois l'
 **Socle** — le mécanisme de réservation existe déjà, il ne manque qu'une seconde borne à
 vérifier dans `reserve_ai_usage`. À arbitrer avec le PO : un plafond horaire trop bas gêne une
 journée d'instruction chargée.
+
+## O7 — Les démarches internes sont masquées, et rien ne le rappellera
+
+**Constat (2026-08-30)** : le sélecteur de démarche ne propose que les démarches
+`type = 'externe'` (`useSocleProcedureRows`, et le même filtre dans `socle-proxy
+/v1/procedures/list`). Ce n'est **pas** une règle métier — c'est une décision d'affichage
+explicitement temporaire du PO (« les démarches internes seront affichées ultérieurement »).
+
+**Pourquoi c'est de la dette** : la restriction est invisible depuis l'écran. Une démarche
+interne paramétrée en production dans le Socle n'apparaît nulle part et **rien ne dit
+pourquoi** — l'état vide du sélecteur mentionne le cas, mais un tenant qui a par ailleurs des
+démarches externes ne verra jamais ce message. Le risque est d'oublier la ligne et de croire à
+une panne de synchronisation.
+
+**Ce qu'il faudra faire** : retirer les deux `.eq("type", "externe")` (hook + proxy) et décider
+ce que le sélecteur en dit — vraisemblablement une facette « externe / interne » plutôt qu'un
+mélange muet, puisque les deux publics ne se déposent pas de la même façon. **Aucune garde
+serveur n'est à défaire** : elle n'a volontairement jamais été posée sur le type, contrairement
+au statut `brouillon`.

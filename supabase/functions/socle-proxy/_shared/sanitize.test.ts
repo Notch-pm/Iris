@@ -86,6 +86,15 @@ describe("sanitizeProcedure*", () => {
       faq: [{ question: "q", answer: "r" }], guardrails: ["g"],
     },
     translations: {}, order_index: 1, keywords: ["acte"],
+    status: "production",
+    communication_config: {
+      visibility: {
+        portalVisible: false,
+        publicationPeriodEnabled: true,
+        publicationStart: "2027-01-01",
+        publicationEnd: "2027-05-03",
+      },
+    },
   };
 
   it("le résumé n'embarque ni formulaire ni base de connaissances", () => {
@@ -93,6 +102,28 @@ describe("sanitizeProcedure*", () => {
     expect(s.name).toBe("Acte de naissance");
     expect(s).not.toHaveProperty("form_schema");
     expect(s).not.toHaveProperty("knowledge_base");
+  });
+
+  // Le bloc de communication BRUT ne traverse pas : c'est sa lecture effective
+  // qui traverse, défauts et commutateur de période déjà appliqués.
+  it("transmet le statut et la publication effective, jamais communication_config", () => {
+    const s = sanitizeProcedureSummary(rawProc)!;
+    expect(s.status).toBe("production");
+    expect(s.publication).toEqual({
+      portalVisible: false,
+      publicationStart: "2027-01-01",
+      publicationEnd: "2027-05-03",
+    });
+    expect(s).not.toHaveProperty("communication_config");
+    expect(sanitizeProcedureFull(rawProc)!).not.toHaveProperty("communication_config");
+  });
+
+  it("démarche sans statut ni communication : brouillon, portail visible", () => {
+    const s = sanitizeProcedureSummary({ id: "p-2", name: "Brute" })!;
+    expect(s.status).toBe("brouillon");
+    expect(s.publication).toEqual({
+      portalVisible: true, publicationStart: null, publicationEnd: null,
+    });
   });
 
   it("la lecture complète porte le formulaire et la part AGENT de la base de connaissances", () => {

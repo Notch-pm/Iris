@@ -18,6 +18,7 @@ import {
   validateRequesterSubmission,
 } from "./_shared/procedureForm.ts";
 import { whitelistProcedureSnapshot } from "./_shared/snapshots.ts";
+import { parseProcedureStatus } from "../_shared/procedures/publication.ts";
 import { contactIdentitySnapshot } from "../_shared/identity/declared.ts";
 import { parsePayload } from "./_shared/payload.ts";
 
@@ -156,7 +157,20 @@ Deno.serve(async (req) => {
   if (!procRes?.ok) {
     return fail(req, 502, "socle_unavailable", "Le Socle est injoignable — réessayez dans un instant.");
   }
-  const procedureSnapshot = whitelistProcedureSnapshot(await procRes.json().catch(() => null));
+  const procedureRaw = await procRes.json().catch(() => null);
+
+  // Démarche EN PRODUCTION uniquement : un brouillon est un paramétrage en
+  // cours d'écriture, que le Socle dit ne proposer nulle part. Le sélecteur ne
+  // les montre pas — mais la garde vit ICI, sur la démarche rechargée à
+  // l'instant, jamais dans l'UI seule (et jamais sur le cache, qui peut dater).
+  // Les demandes DÉJÀ déposées sur une démarche repassée en brouillon restent
+  // lisibles et instruisables : cette garde ne concerne que la création.
+  if (parseProcedureStatus(procedureRaw?.status) !== "production") {
+    return fail(req, 400, "bad_request",
+      "Cette démarche est en brouillon dans le Socle : son paramétrage doit être terminé avant qu'une demande puisse être consignée.");
+  }
+
+  const procedureSnapshot = whitelistProcedureSnapshot(procedureRaw);
   if (!procedureSnapshot) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
 
   const schema = parseFormSchema(procedureSnapshot.form_schema);

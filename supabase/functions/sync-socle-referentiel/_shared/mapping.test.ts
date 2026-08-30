@@ -29,7 +29,22 @@ describe("buildSyncPlan", () => {
   const tenants = [{ organizationId: "iris-a", socleOrgId: "root-a" }];
   const categories = [{ id: "cat-1", name: "Voirie" }];
   const procedures = [
-    { id: "p-1", organization_id: "root-a", category_id: "cat-1", name: "Signalement", type: "externe" },
+    {
+      id: "p-1",
+      organization_id: "root-a",
+      category_id: "cat-1",
+      name: "Signalement",
+      type: "externe",
+      status: "production",
+      communication_config: {
+        visibility: {
+          portalVisible: true,
+          publicationPeriodEnabled: true,
+          publicationStart: "2027-01-01",
+          publicationEnd: "2027-05-03",
+        },
+      },
+    },
     { id: "p-2", organization_id: "root-b", category_id: null, name: "Autre client", type: null },
   ];
 
@@ -49,6 +64,40 @@ describe("buildSyncPlan", () => {
       organization_id: "iris-a",
       category_name: "Voirie",
     });
+  });
+
+  it("miroite la publication effective de la démarche", () => {
+    const plan = buildSyncPlan(tenants, orgs, categories, procedures);
+    expect(plan.procRows[0]).toMatchObject({
+      status: "production",
+      portal_visible: true,
+      publication_start: "2027-01-01",
+      publication_end: "2027-05-03",
+    });
+  });
+
+  // Une démarche que le Socle n'a jamais paramétrée arrive sans `status` ni
+  // `communication_config` : brouillon (fail closed) et défauts du contrat.
+  it("démarche non paramétrée : brouillon, portail visible, sans période", () => {
+    const brute = [{ id: "p-3", organization_id: "root-a", category_id: null, name: "Brute", type: "externe" }];
+    const plan = buildSyncPlan(tenants, orgs, categories, brute);
+    expect(plan.procRows[0]).toMatchObject({
+      status: "brouillon",
+      portal_visible: true,
+      publication_start: null,
+      publication_end: null,
+    });
+  });
+
+  // Le cache est l'autorité de périmètre du tenant : il garde les brouillons et
+  // les démarches internes, que le sélecteur écartera lui-même.
+  it("met en cache brouillons et démarches internes sans les écarter", () => {
+    const mixtes = [
+      { id: "p-4", organization_id: "root-a", category_id: null, name: "Brouillon", type: "externe", status: "brouillon" },
+      { id: "p-5", organization_id: "root-a", category_id: null, name: "Interne", type: "interne", status: "production" },
+    ];
+    const plan = buildSyncPlan(tenants, orgs, categories, mixtes);
+    expect(plan.procRows.map((r) => r.socle_id).sort()).toEqual(["p-4", "p-5"]);
   });
 
   it("rafraîchit le nom d'affichage du tenant depuis la racine Socle", () => {

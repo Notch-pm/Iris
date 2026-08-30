@@ -1398,8 +1398,12 @@ export type Database = {
           name: string
           obsoleted_at: string | null
           organization_id: string
+          portal_visible: boolean
+          publication_end: string | null
+          publication_start: string | null
           socle_id: string
           socle_root_org_id: string
+          status: string
           synced_at: string
           type: string | null
         }
@@ -1409,8 +1413,12 @@ export type Database = {
           name: string
           obsoleted_at?: string | null
           organization_id: string
+          portal_visible?: boolean
+          publication_end?: string | null
+          publication_start?: string | null
           socle_id: string
           socle_root_org_id: string
+          status?: string
           synced_at?: string
           type?: string | null
         }
@@ -1420,8 +1428,12 @@ export type Database = {
           name?: string
           obsoleted_at?: string | null
           organization_id?: string
+          portal_visible?: boolean
+          publication_end?: string | null
+          publication_start?: string | null
           socle_id?: string
           socle_root_org_id?: string
+          status?: string
           synced_at?: string
           type?: string | null
         }

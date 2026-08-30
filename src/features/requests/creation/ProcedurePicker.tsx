@@ -1,12 +1,24 @@
 // Étape 1 — choix de la démarche Socle : recherche, filtre par catégorie de
 // démarche, cartes. La démarche est obligatoire (aucune demande libre) et vient
 // exclusivement du cache du tenant.
+//
+// Chaque carte dit la PUBLICATION de la démarche, mais SEULEMENT quand il y a
+// quelque chose à en dire : la pastille ne signale que l'ABSENCE du portail
+// (décision PO 2026-08-30 — y être est la valeur par défaut du contrat, donc le
+// cas ordinaire), et la période ne s'affiche que s'il y en a une. Ce n'est pas
+// un détail de gestion : une démarche absente du portail n'arrive au service que
+// par le guichet, et une période affichée dit à l'agent jusqu'à quand la
+// démarche restera ouverte — une démarche HORS de sa période n'est plus dans la
+// liste du tout.
+// La liste, elle, ne contient que des démarches PROPOSABLES : ni brouillon, ni
+// interne (`useSocleProcedureRows`).
 
 import * as React from "react";
-import { Loader2, Search } from "lucide-react";
+import { CalendarRange, EyeOff, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { SocleProcedureRow } from "@/features/socle/useSocleCatalog";
+import { portalAbsenceLabel, publicationPeriodLabel } from "@fn/_shared/procedures/publication";
 import {
   ALL_CATEGORIES,
   filterProcedures,
@@ -84,8 +96,10 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
 
       {!loading && rows.length === 0 ? (
         <div className="rounded-[14px] border border-dashed border-border p-5 text-sm text-muted-foreground">
-          Aucune démarche active pour ce tenant — le référentiel Socle doit être synchronisé
-          avant de pouvoir consigner une demande.
+          Aucune démarche proposable pour ce tenant. Seules les démarches <strong>externes</strong>,
+          dont le paramétrage est <strong>en production</strong> dans le Socle et qui sont
+          <strong> dans leur période de publication</strong>, sont proposées ici — vérifiez leur
+          état dans le référentiel, puis synchronisez-le.
         </div>
       ) : null}
 
@@ -101,6 +115,8 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
           const isLoading = row.socle_id === loadingId;
           const meta = [row.category_name, procedureTypeLabel(row.type)].filter(Boolean);
           const volume = volumeLabel(counts ? (counts[row.socle_id] ?? 0) : undefined);
+          const horsPortail = portalAbsenceLabel(row.publication);
+          const periode = publicationPeriodLabel(row.publication);
           return (
             <button
               key={row.socle_id}
@@ -134,6 +150,22 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
               ) : (
                 <span className="text-xs text-muted-foreground">Sans catégorie</span>
               )}
+              {horsPortail || periode ? (
+                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                  {horsPortail ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-bold text-muted-foreground">
+                      <EyeOff className="size-3" aria-hidden="true" />
+                      {horsPortail}
+                    </span>
+                  ) : null}
+                  {periode ? (
+                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                      <CalendarRange className="size-3" aria-hidden="true" />
+                      {periode}
+                    </span>
+                  ) : null}
+                </span>
+              ) : null}
               {volume ? (
                 <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
                   <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />

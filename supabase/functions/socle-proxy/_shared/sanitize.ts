@@ -6,6 +6,12 @@
 // deno-lint-ignore-file no-explicit-any
 
 import { type AgentKnowledge, parseAgentKnowledge } from "./knowledge.ts";
+import {
+  parseProcedureStatus,
+  parsePublication,
+  type ProcedurePublication,
+  type ProcedureStatus,
+} from "../../_shared/procedures/publication.ts";
 
 /** Champs d'une fiche usager transmis aux agents Iris. */
 const CONTACT_FIELDS = [
@@ -85,7 +91,16 @@ export function sanitizeMatches(raw: any): Record<string, unknown>[] {
   return out;
 }
 
-/** Résumé d'une démarche pour les listes/sélecteurs. */
+/**
+ * Résumé d'une démarche pour les listes/sélecteurs.
+ *
+ * `status` et `publication` traversent la frontière : l'agent doit voir si la
+ * démarche est proposée aux usagers sur le portail, et entre quelles dates. Le
+ * bloc `communication_config` BRUT, lui, ne passe pas — c'est sa lecture
+ * effective qui passe (`_shared/procedures/publication.ts`), pour qu'aucun
+ * écran n'ait à réappliquer les défauts du contrat ni le commutateur de
+ * période.
+ */
 export function sanitizeProcedureSummary(raw: any): Record<string, unknown> | null {
   if (typeof raw !== "object" || raw === null || typeof raw.id !== "string") return null;
   return {
@@ -94,6 +109,8 @@ export function sanitizeProcedureSummary(raw: any): Record<string, unknown> | nu
     category_id: raw.category_id ?? null,
     name: raw.name ?? null,
     type: raw.type ?? null,
+    status: parseProcedureStatus(raw.status) satisfies ProcedureStatus,
+    publication: parsePublication(raw.communication_config) satisfies ProcedurePublication,
     short_description: raw.short_description ?? null,
     input_duration_minutes: raw.input_duration_minutes ?? null,
   };

@@ -44,7 +44,18 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   `procedure_snapshot`), gardé par le trigger `t16_requests_require_procedure` — service_role
   compris. Le **snapshot de démarche est construit côté serveur** depuis Socle (edge
   functions) : jamais accepté comme vérité d'un navigateur ou d'un partenaire. Les demandes
-  historiques sans démarche restent lisibles et transitionnables.
+  historiques sans démarche restent lisibles et transitionnables. **Une démarche en
+  `brouillon` n'est proposée nulle part dans Iris** (2026-08-30) : le paramétrage n'est pas
+  fini, le Socle dit de ne la servir à personne — garde serveur sur la démarche rechargée dans
+  `create-request-from-procedure`, pas seulement un filtre d'écran. Les démarches **internes**,
+  elles, sont masquées TEMPORAIREMENT (décision PO : elles seront affichées ultérieurement).
+  Une démarche **hors de sa période de publication** disparaît elle aussi du sélecteur (bornes
+  incluses) — mais elle MASQUE seulement : aucune garde serveur, pour qu'un formulaire papier
+  reçu pendant la période reste consignable après sa fin. Le sélecteur signale en revanche ce
+  qui, dans la **publication** d'une démarche, mérite de l'être : la pastille « Non visible
+  portail » **uniquement** sur celles qui n'y sont pas (y être est le défaut du contrat), et la
+  période quand il y en a une. Détail :
+  [`docs/data-model.md`](docs/data-model.md) § « Publication des démarches ».
 - **Aucun miroir local d'usagers** : les contacts vivent dans le Socle (contacts-api), Iris
   les lit/rapproche/crée/**corrige** via `socle-proxy`. **Une identité sans correspondance est
   une nouvelle personne : on la CRÉE dans le Socle** (décision PO 2026-08-26) — parcours agent
@@ -139,8 +150,11 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   Socle et par démarche : livrée le 2026-08-22 par les profils de droits (bullet ci-dessous).
 - **`socle-proxy`** (edge, JWT vérifié en code + périmètre : membre du tenant demandé ET
   racine Socle du tenant dans le périmètre **réel** de la clé Socle — introspection
-  `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches actives du
-  tenant), `/v1/procedures/get` (fiche complète : `form_schema`, `requester_config`, et —
+  `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches PROPOSABLES du
+  tenant : ni brouillon, ni interne, ni hors période de publication),
+  `/v1/procedures/get` (fiche complète, et **aucun de ces filtres** — une demande déjà déposée
+  doit rester lisible si sa démarche repasse en brouillon ou sort de période :
+  `form_schema`, `requester_config`, et —
   depuis le 2026-08-28 — la **part agent** de la `knowledge_base` : consignes, procédures,
   documents d'aide, liens, FAQ, garde-fous ; `trainingDocuments` et `aiSources`, matière de
   l'assistant IA, ne franchissent PAS la frontière),

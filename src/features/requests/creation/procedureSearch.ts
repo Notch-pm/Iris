@@ -49,8 +49,12 @@ export interface ProcedureFilter {
   category: string;
 }
 
-/** Filtre par catégorie puis par texte (nom, catégorie, type), tri par nom. */
-export function filterProcedures(rows: ProcedureCacheRow[], filter: ProcedureFilter): ProcedureCacheRow[] {
+/**
+ * Filtre par catégorie puis par texte (nom, catégorie, type), tri par nom.
+ * Générique : la ligne rendue est CELLE reçue — le sélecteur y lit ensuite des
+ * champs que ce module n'a pas à connaître (publication, volumétrie…).
+ */
+export function filterProcedures<T extends ProcedureCacheRow>(rows: T[], filter: ProcedureFilter): T[] {
   const q = normalizeSearch(filter.query);
   return rows
     .filter((row) => {

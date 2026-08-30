@@ -491,6 +491,75 @@ après trois gardes — la démarche appartient au tenant, le chemin demandé es
 préfixe d'organisation. Sans la deuxième, la route serait un lecteur libre du bucket dans
 tout le périmètre de la clé, documents d'entraînement IA compris.
 
+### Publication des démarches (2026-08-30, `20260830100000`)
+
+Le Socle a gagné deux notions que le sélecteur de démarche doit connaître, et qu'il ne faut
+jamais confondre — son OpenAPI le dit noir sur blanc :
+
+- **`procedures.status`** (`brouillon` | `production`) : le **paramétrage** est-il fini ? Une
+  démarche en brouillon est une configuration en cours d'écriture ; elle n'est proposée
+  **nulle part**, quelle que soit sa visibilité.
+- **`procedures.communication_config.visibility`** : **où et quand** proposer une démarche
+  déjà prête — `portalVisible` (proposée aux usagers sur le portail en ligne),
+  `publicationPeriodEnabled` + `publicationStart` / `publicationEnd` (bornes **incluses**,
+  chacune facultative et nullable, au format `AAAA-MM-JJ`).
+
+**Quatre colonnes s'ajoutent à `socle_procedure_cache`** — `status`, `portal_visible`,
+`publication_start`, `publication_end` —, et pas une de plus : le cache reste léger, et le bloc
+`communication_config` **brut** n'y entre pas. Ce qui est miroité est la publication
+**EFFECTIVE**, parce que le contrat Socle porte deux règles qu'il vaut mieux appliquer une
+fois, à la frontière, que redécouvrir dans chaque écran :
+
+1. `communication_config` absent ou `null` = « jamais paramétrée », et se lit comme les
+   **valeurs par défaut : visible sur le portail, publication non bornée**. Surtout pas
+   l'inverse, qui retirerait du portail toute démarche qu'on n'a pas encore touchée.
+2. les dates sont **conservées** par le Socle quand `publicationPeriodEnabled` est faux
+   (« le commutateur gouverne l'usage, pas la donnée ») : dans ce cas la fenêtre effective est
+   vide, et `publication_start` / `publication_end` valent `NULL`.
+
+L'interprétation vit dans le module pur `supabase/functions/_shared/procedures/publication.ts`
+(testé), partagé par la synchro, `socle-proxy` et le navigateur (`@fn/`).
+
+**Le cache continue de tout miroiter** — brouillons et démarches internes compris. C'est
+l'autorité de périmètre du tenant (`t16_requests_require_procedure`, ingestion, matrice des
+droits, libellés des demandes déjà déposées) : l'amputer ferait disparaître des demandes de
+leurs propres filtres et des couples de la matrice des profils. **Ce sont les surfaces d'OFFRE
+qui filtrent** :
+
+| Surface | Filtre | Pourquoi |
+| --- | --- | --- |
+| Sélecteur de démarche (`useSocleProcedureRows`) | `status = 'production'`, `type = 'externe'`, **et dans sa période** | ce qu'on propose de consigner |
+| `socle-proxy /v1/procedures/list` | idem | même liste, servie du Socle |
+| `create-request-from-procedure` | `status = 'production'` sur la démarche **rechargée** | la garde serveur, jamais l'UI seule |
+| `socle-proxy /v1/procedures/get` | **aucun** | une demande déjà déposée reste lisible si sa démarche repasse en brouillon ou sort de période |
+| Facettes de la liste / du tableau / de la fiche usager | **aucun** | elles décrivent ce qui EXISTE, pas ce qu'on peut créer |
+| Matrice des profils de droits | **aucun** | un droit se pose aussi sur une démarche pas encore ouverte |
+
+**La période de publication masque, elle ne refuse pas** (décision PO, 2026-08-30). Une
+démarche hors de ses bornes disparaît du sélecteur, mais `create-request-from-procedure` ne la
+refuse pas, et c'est délibéré : le `brouillon` est une règle que le Socle énonce (« n'est
+proposée nulle part »), la période décrit **où et quand proposer au public**. Un agent qui
+saisit un formulaire papier reçu pendant la période, deux jours après sa fin, doit pouvoir le
+consigner — un refus serveur transformerait une règle de vitrine en perte de dossier. La
+reprise d'un **brouillon local** portant une démarche sortie de période fonctionne pour la même
+raison (le snapshot se recharge par `/v1/procedures/get`, non filtré).
+
+Le jour de référence est celui de **l'agent** côté navigateur, et celui de **Paris** côté
+serveur (`isoDay(new Date(), FRANCE_TIME_ZONE)` — le runtime des edge functions est en UTC :
+sans cela, une période s'ouvrant aujourd'hui s'ouvrirait avec deux heures de retard). Les deux
+bornes sont **incluses** et indépendantes ; la comparaison est **textuelle**, l'ordre
+lexicographique de `AAAA-MM-JJ` étant l'ordre chronologique (`isPublishedOn`, testé).
+
+`status` vaut **`brouillon` par défaut** en base : les lignes déjà en cache le prennent, et une
+démarche n'est donc proposée qu'après une synchronisation qui l'a déclarée en production
+(*fail closed*). Conséquence assumée, à savoir avant de s'étonner d'un sélecteur vide : **tant
+qu'aucune démarche du Socle n'est passée en production, le parcours de création n'en propose
+aucune** — l'écran le dit en toutes lettres, et renvoie au référentiel.
+
+L'exclusion des démarches **internes** est, elle, une décision d'affichage **temporaire**
+(PO, 2026-08-30 : « elles seront affichées ultérieurement ») — d'où son absence de garde
+serveur : la lever, ce sera retirer deux `.eq(…)`, pas défaire une règle.
+
 ### Plafond d'utilisation IA — RETIRÉ le 2026-08-29 (`20260829120000`)
 
 **Ces trois tables n'existent plus dans Iris.** Créées le 2026-08-28

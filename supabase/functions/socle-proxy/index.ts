@@ -28,6 +28,12 @@
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { allowsAgentDocument, parseAgentKnowledge } from "./_shared/knowledge.ts";
 import {
+  FRANCE_TIME_ZONE,
+  isoDay,
+  isPublishedOn,
+  parsePublication,
+} from "../_shared/procedures/publication.ts";
+import {
   filterContactCreate,
   filterContactListQuery,
   filterContactUpdate,
@@ -212,13 +218,27 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Démarches PROPOSABLES du tenant. Trois exclusions, et une seule est
+  // définitive :
+  //  · `brouillon` — le paramétrage n'est pas fini, le Socle dit qu'une telle
+  //    démarche n'est proposée nulle part. Règle de fond.
+  //  · `interne` — décision PO du 2026-08-30 : les démarches internes seront
+  //    montrées plus tard. Restriction d'affichage, temporaire.
+  //  · hors de sa PÉRIODE de publication (décision PO du 2026-08-30) — bornes
+  //    incluses, chacune facultative ; le jour de référence est celui de PARIS,
+  //    le serveur tournant en UTC.
+  // Aucune ne s'applique à /v1/procedures/get : une demande déjà déposée doit
+  // rester lisible même si sa démarche repasse en brouillon ou sort de période.
   if (path === "/v1/procedures/list") {
     const res = await socleFetch(`${publicApiBase()}/v1/procedures`);
     if (!res?.ok) return relaySocleError(req, res);
     // deno-lint-ignore no-explicit-any
     const all = await res.json().catch(() => null) as any[] | null;
+    const today = isoDay(new Date(), FRANCE_TIME_ZONE);
     const procedures = (Array.isArray(all) ? all : [])
       .filter((p) => p?.organization_id === tenant.socleOrgId)
+      .filter((p) => p?.status === "production" && p?.type === "externe")
+      .filter((p) => isPublishedOn(parsePublication(p?.communication_config), today))
       .map(sanitizeProcedureSummary)
       .filter((p) => p !== null);
     return json(req, 200, { procedures });

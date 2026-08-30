@@ -1,5 +1,18 @@
 // Correspondance référentiel Socle → miroir Iris. Logique pure, testée par
 // vitest. Un tenant Iris = une racine Socle ; on n'extrait que SON sous-arbre.
+//
+// Le cache des démarches retient aussi, depuis le 2026-08-30, la PUBLICATION :
+// statut du paramétrage (brouillon/production) et publication effective
+// (portail, période). L'interprétation du contrat Socle — défauts quand rien
+// n'est paramétré, dates conservées mais inappliquées quand le commutateur de
+// période est éteint — se fait ICI, une fois, via le module pur
+// `_shared/procedures/publication.ts`.
+
+import {
+  parseProcedureStatus,
+  parsePublication,
+  type ProcedureStatus,
+} from "../../_shared/procedures/publication.ts";
 
 export interface SocleOrg {
   id: string;
@@ -19,6 +32,10 @@ export interface SocleProcedure {
   category_id: string | null;
   name: string;
   type: string | null;
+  /** `brouillon` | `production` — cycle de vie du paramétrage côté Socle. */
+  status?: unknown;
+  /** Bloc de communication possédé par le Socle (dont `visibility`). */
+  communication_config?: unknown;
 }
 
 export interface TenantRef {
@@ -42,6 +59,11 @@ export interface ProcCacheRow {
   category_socle_id: string | null;
   category_name: string | null;
   type: string | null;
+  status: ProcedureStatus;
+  /** Publication EFFECTIVE (défauts du contrat déjà appliqués). */
+  portal_visible: boolean;
+  publication_start: string | null;
+  publication_end: string | null;
 }
 
 /** Sous-arbre d'une racine (racine incluse), protégé des cycles. */
@@ -106,6 +128,11 @@ export function buildSyncPlan(
     }
     for (const proc of procedures) {
       if (proc.organization_id !== tenant.socleOrgId) continue;
+      // Le cache miroite TOUTES les démarches de la racine, brouillons et
+      // démarches internes comprises : c'est l'autorité de périmètre du tenant
+      // (ingestion, droits, libellés des demandes déjà déposées). C'est le
+      // SÉLECTEUR de démarche qui décide ensuite ce qu'il propose.
+      const publication = parsePublication(proc.communication_config);
       procRows.push({
         socle_id: proc.id,
         organization_id: tenant.organizationId,
@@ -114,6 +141,10 @@ export function buildSyncPlan(
         category_socle_id: proc.category_id,
         category_name: proc.category_id ? (categoryNames.get(proc.category_id) ?? null) : null,
         type: proc.type,
+        status: parseProcedureStatus(proc.status),
+        portal_visible: publication.portalVisible,
+        publication_start: publication.publicationStart,
+        publication_end: publication.publicationEnd,
       });
     }
   }
