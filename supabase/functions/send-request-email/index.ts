@@ -53,6 +53,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveSmtp, type SmtpConfig, type SmtpRow } from "../_shared/email/config.ts";
 import { sendBrandedEmail, type EmailAttachment } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
+import { charteFromSocle, type EmailCharte, type SocleBrandingDto } from "../_shared/email/charte.ts";
 import { closureEmail, isClosureOutcome } from "../_shared/email/cloture.ts";
 import { pickDeclared } from "../_shared/identity/declared.ts";
 
@@ -104,7 +105,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function contactsApiBase(): string {
   const explicit = Deno.env.get("SOCLE_CONTACTS_API_URL");
   if (explicit) return explicit.replace(/\/+$/, "");
-  return (Deno.env.get("SOCLE_API_URL") ?? "").replace(/\/+$/, "").replace("public-api", "contacts-api");
+  return publicApiBase().replace("public-api", "contacts-api");
 }
 
 /**
@@ -180,6 +181,62 @@ function recipientIdentity(snapshot: unknown, identityStatus: string): Recipient
   const declared = isRecord(snapshot) && isRecord(snapshot.declared) ? snapshot.declared : {};
   if (declared.anonymous === true) return anonymous;
   return declaredIdentity(declared);
+}
+
+// ---- Socle (public-api) : la charte graphique de la collectivité -----------
+// Le bandeau et le bouton d'un message à l'usager portent SES couleurs et SON
+// logo. La source est le Socle, et rien d'autre :
+// `GET /v1/organizations/{id}/branding` sur l'organisation PORTEUSE de la
+// demande (`socle_scope_org_id`). La route RÉSOUT l'héritage elle-même — « le
+// logo de l'organisme concerné, ou à défaut celui de son organisation parente »
+// est donc déjà répondu quand Iris lit, sans remonter aucun arbre.
+//
+// ⚠️ Ne JAMAIS reconstituer la charte depuis `/v1/organizations/{id}` : les
+// colonnes brutes d'une organisation qui hérite sont nulles.
+//
+// ⚠️ DÉCORATIF, DONC JAMAIS BLOQUANT. Délai court et échec silencieux : un
+// Socle lent ou muet fait partir le message en habillage Iris, il ne l'empêche
+// pas de partir. C'est l'inverse exact du relais d'envoi, dont l'absence est,
+// elle, un refus — sans relais il n'y a pas de message ; sans charte il y a un
+// message sobre.
+//
+// Cache court en mémoire du worker (5 min, motif `getKeyRoots` de socle-proxy).
+// Une charte graphique change deux fois par décennie, et le Socle demande de ne
+// pas recopier durablement son référentiel : ni table, ni miroir, ni migration.
+const BRANDING_TTL_MS = 300_000;
+const charteCache = new Map<string, { charte: EmailCharte | null; at: number }>();
+
+function publicApiBase(): string {
+  return (Deno.env.get("SOCLE_API_URL") ?? "").replace(/\/+$/, "");
+}
+
+async function charteFor(socleOrgId: string | null): Promise<EmailCharte | null> {
+  const base = publicApiBase();
+  const key = Deno.env.get("SOCLE_API_KEY");
+  if (base === "" || !key || !socleOrgId) return null;
+
+  const hit = charteCache.get(socleOrgId);
+  if (hit && Date.now() - hit.at < BRANDING_TTL_MS) return hit.charte;
+
+  const res = await fetch(`${base}/v1/organizations/${socleOrgId}/branding`, {
+    headers: { Authorization: `Bearer ${key}` },
+    signal: AbortSignal.timeout(5_000),
+  }).catch(() => null);
+  if (!res?.ok) {
+    // 404 = hors du périmètre de la clé Socle (le Socle ne révèle pas
+    // l'existence de ce qu'on n'a pas le droit de voir) ; le reste est une
+    // panne. Dans les deux cas : habillage Iris, une ligne de journal, et
+    // surtout PAS de mise en cache — une panne d'une seconde ne doit pas
+    // dépeindre les messages des cinq minutes suivantes.
+    console.error(
+      `send-request-email: charte de ${socleOrgId} illisible (${res?.status ?? "réseau"})`,
+    );
+    return null;
+  }
+  const dto = (await res.json().catch(() => null)) as SocleBrandingDto | null;
+  const charte = charteFromSocle(dto);
+  charteCache.set(socleOrgId, { charte, at: Date.now() });
+  return charte;
 }
 
 interface DeclaredAttachment {
@@ -310,7 +367,17 @@ Deno.serve(async (req) => {
   // collectivité entre dans le corps du message. Le REFUS pour relais manquant,
   // lui, reste APRÈS l'ouverture de l'échange : un envoi impossible doit
   // laisser une trace « echec » lisible, pas disparaître.
-  const { smtp, tenantName } = await smtpForOrg(request.organization_id);
+  //
+  // La charte graphique se lit EN MÊME TEMPS : deux lectures indépendantes,
+  // l'une en base, l'autre chez le Socle — les enchaîner ajouterait sa latence
+  // à un envoi que l'agent attend. Elle est demandée pour l'organisation
+  // PORTEUSE de la demande, pas pour la racine du tenant : c'est le service qui
+  // a reçu et traité la demande qui signe le message (le Socle remonte au
+  // parent tout seul si ce service n'a pas de charte propre).
+  const [{ smtp, tenantName }, charte] = await Promise.all([
+    smtpForOrg(request.organization_id),
+    charteFor(request.socle_scope_org_id),
+  ]);
 
   // ---- L'avis de clôture, composé ICI ---------------------------------------
   if (closureMode && outcome) {
@@ -399,7 +466,7 @@ Deno.serve(async (req) => {
       smtp,
       to,
       usagerEmailContent(subject, message),
-      usagerBrand(tenantName),
+      usagerBrand(tenantName, charte),
       attachments,
     );
   } catch (err) {

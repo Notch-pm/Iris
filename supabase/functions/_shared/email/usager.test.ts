@@ -81,3 +81,25 @@ describe("le message rendu", () => {
     expect(renderEmailHtml(signed, brand)).toContain("Le service<br />Mairie");
   });
 });
+
+describe("la charte de la collectivité dans un message à l'usager", () => {
+  const charte = {
+    primary: "#1f8a5b", onPrimary: "#FFFFFF",
+    logoUrl: "https://accm.fr/logo-blanc.svg", logoPlate: false,
+  };
+  const content = usagerEmailContent("Votre demande", "Bonjour,\n\nC'est noté.");
+
+  it("habille le bandeau aux couleurs et au logo de la collectivité", () => {
+    const html = renderEmailHtml(content, usagerBrand("Ville de Saint-Aubin", charte));
+    expect(html).toContain("background-color:#1f8a5b;padding:20px 32px;");
+    expect(html).toContain('src="https://accm.fr/logo-blanc.svg"');
+    // Et toujours pas un mot d'Iris à l'habitant.
+    expect(html).not.toContain("Iris");
+  });
+
+  it("garde l'habillage Iris quand la collectivité n'a pas de charte", () => {
+    const sans = renderEmailHtml(content, usagerBrand("Ville de Saint-Aubin", null));
+    expect(sans).toBe(renderEmailHtml(content, usagerBrand("Ville de Saint-Aubin")));
+    expect(sans).not.toContain("<img");
+  });
+});

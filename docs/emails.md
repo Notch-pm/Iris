@@ -2,7 +2,7 @@
 
 > **Public** : développeuses et développeurs, et l'administrateur qui met un tenant en
 > service · **Question traitée** : par où partent les mails d'Iris, avec quel gabarit, et que
-> faut-il configurer pour qu'ils partent ? · **Dernière mise à jour** : 2026-08-23
+> faut-il configurer pour qu'ils partent ? · **Dernière mise à jour** : 2026-08-30
 
 Iris envoie aujourd'hui **deux messages**, tous deux liés au compte agent :
 
@@ -24,10 +24,11 @@ dépend d'aucun runtime), plus un module d'envoi qui, lui, dépend de Deno :
 |---|---|
 | `template.ts` | Rend le HTML et la version texte. Carte centrée 520 px, bandeau de marque, bouton, lien de repli, pied — **reprise du gabarit Clara**, rhabillée aux tokens du DS Ariane. |
 | `messages.ts` | Catalogue des textes, en français, un objet par type d'email. |
+| `charte.ts` | Charte graphique de la collectivité (Socle) → couleur du bandeau, encre lisible dessus, logo à afficher. |
 | `config.ts` | Résolution du serveur d'envoi : tenant d'abord, relais de plateforme en repli. |
 | `transport.ts` | `nodemailer` — la seule brique qui parle au réseau. |
 
-Trois règles portées par le gabarit :
+Quatre règles portées par le gabarit :
 
 - **Couleurs en hexadécimal, styles inline.** Un client de messagerie ne lit ni `hsl()`, ni
   les variables CSS, ni un `<style>` externe. Les valeurs de `EMAIL_COLORS` sont les tokens de
@@ -35,6 +36,9 @@ Trois règles portées par le gabarit :
 - **Tout est échappé.** Le nom du tenant vient du Socle, le nom du destinataire de la base :
   ce sont des données, jamais du HTML. Une URL d'action non `http(s)` est neutralisée en `#`.
 - **Toujours une version `text/plain`.** Un message sans partie texte part au spam.
+- **La charte de la collectivité habille les messages à l'usager** — et elle seule : les
+  messages aux **agents** gardent le vert d'Iris (voir « Charte graphique de la collectivité »
+  au §4). Le gabarit n'a qu'**un** chemin de rendu : sans charte, il peint `EMAIL_COLORS`.
 
 Différence assumée avec Clara : la vérification du certificat TLS du relais **n'est pas
 désactivée**. Clara pose `rejectUnauthorized: false`, ce qui fait du TLS une décoration. Ici
@@ -297,6 +301,78 @@ en garder une seule.
 parce qu'un serveur de mail tousse. L'écran le dit (« La demande est bien résolue…, mais l'avis
 n'a pas pu partir »), et l'absence d'adresse est annoncée comme un fait, pas comme une erreur.
 
+### Charte graphique de la collectivité (2026-08-30)
+
+Les messages qui vont **à l'usager** — la réponse libre et l'avis de clôture — portent
+désormais la **couleur principale** et le **logo** de la collectivité qui a reçu et traité la
+demande. Les messages qui vont **aux agents** (invitation, mot de passe, notifications) gardent
+le vert d'Iris : ce sont des messages du logiciel à ses utilisateurs, pas de la collectivité à
+ses habitants.
+
+**La source est le Socle, et lui seul** : `GET /v1/organizations/{id}/branding` (public-api
+1.5.0, scope `read` — la charte n'est pas un secret, contrairement au relais d'envoi).
+
+**Quelle organisation ?** Celle qui **porte** la demande — `requests.socle_scope_org_id`, le
+service destinataire —, jamais la racine du tenant. Iris n'a **aucun arbre à remonter** : la
+route sert la charte *applicable*, c'est-à-dire celle de l'organisation ou, à défaut, celle de
+l'ancêtre le plus proche dont elle hérite. « Le logo de l'organisme concerné, ou à défaut celui
+de son organisation parente » est une règle du référentiel, résolue là où elle est définie.
+
+> ⚠️ **Ne jamais reconstituer la charte depuis `GET /v1/organizations/{id}`.** Les colonnes
+> brutes d'une organisation qui hérite sont **nulles**, et les couleurs n'y sont de toute façon
+> pas servies : on peindrait du vide en croyant peindre les couleurs de la collectivité.
+
+**Ce que `charte.ts` décide**, et que le gabarit n'a donc pas à savoir :
+
+| Décision | Règle |
+|---|---|
+| Couleur du bandeau et du bouton | `primary_color`, le vert du DS à défaut |
+| Couleur du **texte** sur ce fond | **calculée** par contraste WCAG — jamais devinée |
+| Lequel des deux logos | le **blanc** sur un fond sombre, le **couleur** sinon |
+| Faut-il une **pastille** claire sous le logo | oui dès qu'on affiche le logo **couleur** |
+
+**Pourquoi calculer l'encre.** Une charte peut être un jaune vif sur lequel du blanc est
+illisible. Le critère retenu est « le blanc **suffit-il** » (≥ 3:1, seuil AA grand texte — le
+bandeau est en 17 px gras), et non « le blanc est-il le **plus** contrasté » : sur le vert du DS
+(`#089b59`) l'encre sombre contraste davantage que le blanc (≈ 4,5 contre ≈ 3,6), et un critère
+de maximum repeindrait donc en sombre le bandeau de **tous** les e-mails d'Iris, contre la
+prescription du DS Ariane.
+
+**Pourquoi jamais le logo blanc sur un fond clair** : il y disparaîtrait. Une collectivité qui
+ne fournit *que* la version blanche et choisit une couleur claire n'a donc pas de logo dans son
+bandeau — mieux vaut pas de logo qu'un rectangle vide.
+
+**Pourquoi la pastille.** Le logo **couleur** d'une collectivité est dessiné pour du papier et
+des fonds blancs, encre foncée comprise ; posé à même un bandeau sombre il est illisible. Or
+c'est le cas **ordinaire** : beaucoup de collectivités déclarent un logo, très peu en déclarent
+une version blanche — au 2026-08-30, ACCM porte un `logo_url` et aucun `logo_white_url`, et
+toutes ses sous-organisations en héritent. Le logo couleur est donc posé sur un aplat clair, qui
+se lit comme un parti pris et non comme un défaut ; sur un bandeau déjà clair la pastille ne se
+voit pas, et ne gêne pas. Le logo **blanc**, lui, est fait pour ce fond : il s'y pose nu.
+
+**`alt=""` sur le logo, délibérément.** Le nom de la collectivité est écrit juste à côté, dans
+le même bandeau. Beaucoup de clients bloquent les images distantes par défaut ; un `alt`
+porteur afficherait alors ce nom **deux fois**. Le logo est ici la redite visuelle d'un texte
+présent, pas une information de plus.
+
+**Seul du `http(s)` entre dans un `src`.** Une charte vient du référentiel, mais une URL
+`javascript:` ou `data:` reste un vecteur ; une URL invalide vaut mieux tue qu'affichée cassée.
+Le HTML, lui, est échappé comme partout ailleurs dans le gabarit.
+
+**Décoratif, donc jamais bloquant.** Délai court (5 s) et échec silencieux : un Socle lent, muet
+ou hors périmètre fait partir le message en habillage Iris, il ne l'empêche pas de partir —
+l'inverse exact du relais d'envoi, dont l'absence est, elle, un refus. Un échec est journalisé
+et **n'est pas mis en cache** : une panne d'une seconde ne doit pas dépeindre les messages des
+cinq minutes suivantes.
+
+**Ni table, ni miroir, ni migration.** Cache court en mémoire du worker (5 min, motif
+`getKeyRoots` de `socle-proxy`). Une charte change deux fois par décennie, et le Socle demande
+de ne pas recopier durablement son référentiel — c'est ce qui distingue la charte du relais
+d'envoi, dont Iris tient un miroir parce qu'il faut pouvoir expédier même quand le Socle dort.
+
+**Si rien n'est rempli côté Socle** (`configured: false`, ou charte vide) : habillage Iris. Ce
+n'est pas une erreur, seulement une collectivité qui n'a pas encore rempli sa charte.
+
 ## 5. Diagnostic
 
 | Symptôme | Cause la plus probable |
@@ -326,6 +402,13 @@ de passe**, nulle part.
   d'envoi, **corps des e-mails de notification** (`notifications.test.ts`, 22 cas : permalien
   présent en HTML et en texte brut, URL non http neutralisée, objet de la demande échappé, et
   le corps de la note interne absent) — vitest, `npm test`.
+- `supabase/functions/_shared/email/charte.test.ts` — 16 cas sur la charte de la collectivité :
+  normalisation des couleurs, refus de toute URL de logo qui n'est pas du http(s), **le vert du
+  DS garde son encre blanche** (garde anti-régression du critère de contraste), bascule en encre
+  sombre sur une charte claire, choix logo blanc / logo couleur, et **le logo blanc jamais
+  servi sur un fond clair**. Le rendu correspondant est couvert dans `template.test.ts` et
+  `usager.test.ts` (sans charte, le message rendu est identique à celui d'avant, au caractère
+  près).
 - `supabase/tests/notifications-email.test.sql` — préférences par canal et boîte d'envoi
   (10 scénarios, transactionnel annulé).
 - `supabase/functions/sync-socle-referentiel/_shared/smtp.test.ts` — recopie de la déclaration

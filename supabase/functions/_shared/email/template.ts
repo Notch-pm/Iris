@@ -13,6 +13,10 @@
 // ⚠️ Tout ce qui vient de la base (nom du tenant, nom du destinataire) est
 // échappé : un nom d'organisation est une donnée du Socle, pas du HTML.
 
+// ⚠️ Import de TYPE uniquement : `charte.ts` importe `EMAIL_COLORS` d'ici. Un
+// import de valeur formerait un cycle qui casserait à l'évaluation du module.
+import type { EmailCharte } from "./charte.ts";
+
 /** Nom du produit — il appartient à la MARQUE, donc au gabarit : le catalogue
  *  des messages d'authentification n'a pas à le posséder. */
 export const PRODUCT_NAME = "Iris";
@@ -39,6 +43,12 @@ export interface EmailBrand {
   productName: string;
   /** Tenant destinataire, quand il est connu (bandeau + pied). */
   tenantName?: string | null;
+  /**
+   * Charte graphique de la collectivité, résolue par le Socle et préparée par
+   * `charte.ts` (couleur du bandeau, encre lisible dessus, logo). Absente ⇒
+   * habillage Iris — c'est le cas de tous les messages qui vont aux AGENTS.
+   */
+  charte?: EmailCharte | null;
 }
 
 export interface EmailContent {
@@ -93,15 +103,66 @@ function paragraphHtml(text: string): string {
   return `<p style="margin:0 0 16px;font-size:15px;line-height:1.65;color:${EMAIL_COLORS.ink};">${html}</p>`;
 }
 
-function ctaHtml(label: string, url: string): string {
+function ctaHtml(label: string, url: string, charte: EmailCharte): string {
   const href = safeUrl(url);
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px auto 8px;">
             <tr>
-              <td style="background-color:${EMAIL_COLORS.primary};border-radius:10px;">
-                <a href="${escapeHtml(href)}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 30px;color:${EMAIL_COLORS.onPrimary};font-family:${EMAIL_FONT};font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;">${escapeHtml(label)}</a>
+              <td style="background-color:${charte.primary};border-radius:10px;">
+                <a href="${escapeHtml(href)}" target="_blank" rel="noopener" style="display:inline-block;padding:14px 30px;color:${charte.onPrimary};font-family:${EMAIL_FONT};font-size:15px;font-weight:700;text-decoration:none;border-radius:10px;">${escapeHtml(label)}</a>
               </td>
             </tr>
           </table>`;
+}
+
+/** L'habillage Iris — le gabarit n'a ainsi qu'UN chemin de rendu, charte ou pas. */
+const IRIS_CHARTE: EmailCharte = {
+  primary: EMAIL_COLORS.primary,
+  onPrimary: EMAIL_COLORS.onPrimary,
+  logoUrl: null,
+  logoPlate: false,
+};
+
+/**
+ * Le bandeau — la seule surface où la marque se voit. Il porte la couleur
+ * principale de la collectivité et, quand elle en fournit un, son logo.
+ *
+ * ⚠️ `alt=""` sur le logo, DÉLIBÉRÉMENT : le nom de la collectivité est écrit
+ * juste à côté, dans le même bandeau. Beaucoup de clients bloquent les images
+ * distantes par défaut ; un `alt` porteur afficherait alors ce nom DEUX FOIS.
+ * Le logo est ici la redite visuelle d'un texte présent, pas une information
+ * de plus — et c'est exactement le cas où la règle d'accessibilité demande un
+ * `alt` vide.
+ *
+ * ⚠️ LA PASTILLE (`charte.logoPlate`) n'est pas une coquetterie. Le logo
+ * COULEUR d'une collectivité est dessiné pour du papier et des fonds blancs,
+ * encre foncée comprise ; posé à même un bandeau sombre il est illisible. Or
+ * c'est le cas ORDINAIRE : beaucoup de collectivités déclarent un logo, très
+ * peu en déclarent une version blanche. On le pose donc sur un aplat clair,
+ * qui se lit comme un parti pris et non comme un défaut. Sur un bandeau déjà
+ * clair, la pastille ne se voit pas — et ne gêne pas.
+ *
+ * La hauteur est posée en attribut ET en style : Outlook ignore le style, les
+ * clients modernes ignorent parfois l'attribut. La largeur reste `auto` — on ne
+ * connaît pas les proportions du logo d'une collectivité, on ne les impose pas.
+ *
+ * `line` arrive DÉJÀ échappée (elle l'est une fois pour le bandeau et le pied) ;
+ * l'URL du logo, elle, est échappée ici — elle n'entre nulle part ailleurs.
+ */
+function bannerHtml(line: string, charte: EmailCharte): string {
+  const label =
+    `<p style="margin:0;font-size:17px;font-weight:800;letter-spacing:0.2px;color:${charte.onPrimary};">${line}</p>`;
+  if (!charte.logoUrl) return label;
+  const plate = charte.logoPlate
+    ? `background-color:${EMAIL_COLORS.surface};border-radius:8px;padding:7px 10px;`
+    : "";
+  return `<table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td valign="middle" style="padding-right:14px;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="${plate}"><img src="${escapeHtml(charte.logoUrl)}" alt="" height="36" style="display:block;height:36px;width:auto;max-width:160px;border:0;outline:none;text-decoration:none;" /></td></tr></table>
+                  </td>
+                  <td valign="middle">${label}</td>
+                </tr>
+              </table>`;
 }
 
 function codeHtml(code: string): string {
@@ -114,12 +175,13 @@ function codeHtml(code: string): string {
  */
 export function renderEmailHtml(content: EmailContent, brand: EmailBrand): string {
   const line = escapeHtml(brandLine(brand));
+  const charte = brand.charte ?? IRIS_CHARTE;
   const preheader = escapeHtml(content.paragraphs.find((p) => p.trim().length > 0) ?? content.heading);
 
   const action = content.code
     ? codeHtml(content.code)
     : content.cta
-      ? ctaHtml(content.cta.label, content.cta.url)
+      ? ctaHtml(content.cta.label, content.cta.url, charte)
       : "";
 
   // Un code se recopie, il n'y a pas de lien à replier.
@@ -145,8 +207,8 @@ export function renderEmailHtml(content: EmailContent, brand: EmailBrand): strin
       <td align="center">
         <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%;background-color:${EMAIL_COLORS.surface};border:1px solid ${EMAIL_COLORS.border};border-radius:14px;overflow:hidden;">
           <tr>
-            <td style="background-color:${EMAIL_COLORS.primary};padding:20px 32px;">
-              <p style="margin:0;font-size:17px;font-weight:800;letter-spacing:0.2px;color:${EMAIL_COLORS.onPrimary};">${line}</p>
+            <td style="background-color:${charte.primary};padding:20px 32px;">
+              ${bannerHtml(line, charte)}
             </td>
           </tr>
           <tr>

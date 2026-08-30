@@ -200,6 +200,19 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   intégralement par le serveur et exigeant le droit de **clôture** — c'est parce que le
   navigateur ne compose rien que l'ouverture à ce droit est sans risque ; le motif de clôture,
   lui, ne sort jamais.
+  Depuis le 2026-08-30, ces deux messages à l'usager portent la **charte graphique de la
+  collectivité** — couleur principale du bandeau et du bouton, logo — lue chez le Socle
+  (`GET /v1/organizations/{id}/branding`, scope `read`) pour l'organisation **porteuse de la
+  demande** (`socle_scope_org_id`) : la route RÉSOUT l'héritage, donc « à défaut, celle de
+  l'organisation parente » est déjà répondu et Iris ne remonte aucun arbre. ⚠️ **Jamais depuis
+  `/v1/organizations/{id}`** : les colonnes brutes d'une organisation qui hérite sont nulles.
+  L'encre posée sur cette couleur est **calculée** par contraste (`_shared/email/charte.ts`,
+  pur, testé) — le blanc tant qu'il suffit, sinon l'encre sombre —, le logo blanc n'est
+  jamais servi sur un fond clair, et le logo **couleur** est posé sur une pastille claire (il
+  est dessiné pour du papier : à même un bandeau sombre il serait illisible — cas ordinaire,
+  peu de collectivités déclarant une version blanche). **Ni table, ni miroir** (cache court en mémoire, 5 min) et
+  **jamais bloquant** : Socle muet ⇒ habillage Iris, pas un refus — l'inverse du relais
+  d'envoi. Les messages aux **agents** gardent le vert d'Iris.
   Détail : [`docs/emails.md`](docs/emails.md).
 - `src/types/database.types.ts` est **généré depuis le schéma live** (Supabase MCP
   `generate_typescript_types`) — ne jamais l'éditer à la main, régénérer après chaque migration.

@@ -125,3 +125,66 @@ describe("renderEmailText", () => {
     expect(t).toContain("Code : 482913");
   });
 });
+
+describe("le gabarit habillé de la charte d'une collectivité", () => {
+  const sombre = {
+    primary: "#1f8a5b", onPrimary: "#FFFFFF",
+    logoUrl: "https://accm.fr/logo-blanc.svg", logoPlate: false,
+  };
+  const clair = { primary: "#ffd166", onPrimary: "#1C2220", logoUrl: null, logoPlate: false };
+
+  it("peint le bandeau ET le bouton de la couleur principale", () => {
+    const html = renderEmailHtml(content, { ...brand, charte: sombre });
+    expect(html).toContain("background-color:#1f8a5b;padding:20px 32px;");
+    expect(html).toContain("background-color:#1f8a5b;border-radius:10px;");
+    // Le vert d'Iris n'a plus rien à peindre dans ce message.
+    expect(html).not.toContain("#089B59");
+  });
+
+  it("porte l'encre CALCULÉE, pas du blanc d'office", () => {
+    expect(renderEmailHtml(content, { ...brand, charte: clair })).toContain("color:#1C2220;");
+    expect(renderEmailHtml(content, { ...brand, charte: sombre })).toContain("color:#FFFFFF;");
+  });
+
+  it("affiche le logo, avec un alt VIDE — le nom est déjà écrit à côté", () => {
+    const html = renderEmailHtml(content, { ...brand, charte: sombre });
+    expect(html).toContain('src="https://accm.fr/logo-blanc.svg"');
+    expect(html).toContain('alt=""');
+    // Images bloquées : le nom reste lisible, et le logo n'en ajoute PAS une
+    // occurrence de plus — c'est tout l'objet de l'alt vide.
+    const sansLogo = renderEmailHtml(content, brand);
+    expect((html.match(/Iris · Ville de Test/g) ?? []).length)
+      .toBe((sansLogo.match(/Iris · Ville de Test/g) ?? []).length);
+  });
+
+  it("échappe l'URL du logo — un guillemet ne sort pas de l'attribut", () => {
+    const html = renderEmailHtml(content, {
+      ...brand,
+      charte: { ...sombre, logoUrl: 'https://accm.fr/l.png" onerror="alert(1)' },
+    });
+    expect(html).not.toContain('onerror="alert(1)"');
+    expect(html).toContain("&quot; onerror=&quot;alert(1)");
+  });
+
+  it("pose le logo COULEUR sur une pastille claire — sur un bandeau sombre il serait illisible", () => {
+    const couleur = { ...sombre, logoUrl: "https://accm.fr/logo.png", logoPlate: true };
+    const html = renderEmailHtml(content, { ...brand, charte: couleur });
+    expect(html).toContain("background-color:#FFFFFF;border-radius:8px;padding:7px 10px;");
+    expect(html).toContain('src="https://accm.fr/logo.png"');
+    // Le logo BLANC, lui, est fait pour ce fond : pas de pastille.
+    expect(renderEmailHtml(content, { ...brand, charte: sombre }))
+      .not.toContain("border-radius:8px;padding:7px 10px;");
+  });
+
+  it("sans charte, rend EXACTEMENT le message d'avant", () => {
+    expect(renderEmailHtml(content, { ...brand, charte: null })).toBe(renderEmailHtml(content, brand));
+    expect(renderEmailHtml(content, brand)).toContain(
+      `background-color:${"#089B59"};padding:20px 32px;`,
+    );
+    expect(renderEmailHtml(content, brand)).not.toContain("<img");
+  });
+
+  it("ne change rien à la version texte — une charte, ça ne s'écrit pas", () => {
+    expect(renderEmailText(content, { ...brand, charte: sombre })).toBe(renderEmailText(content, brand));
+  });
+});

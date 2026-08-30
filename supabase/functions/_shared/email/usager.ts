@@ -18,6 +18,7 @@
 // « … — message automatique, merci de ne pas y répondre. »
 
 import { PRODUCT_NAME, type EmailBrand, type EmailContent } from "./template.ts";
+import type { EmailCharte } from "./charte.ts";
 
 /**
  * La marque d'un message à l'usager, c'est la COLLECTIVITÉ — pas Iris.
@@ -30,10 +31,26 @@ import { PRODUCT_NAME, type EmailBrand, type EmailContent } from "./template.ts"
  *
  * Repli sur `PRODUCT_NAME` si le tenant n'a pas de nom lisible — un bandeau
  * vide serait pire.
+ *
+ * ⚠️ ET C'EST AUSSI SA CHARTE. Depuis le 2026-08-30, le bandeau prend la
+ * couleur principale de la collectivité et porte son logo — celui de
+ * l'organisation PORTEUSE de la demande, ou de son ancêtre, l'héritage étant
+ * résolu par le Socle (`charte.ts`). Un habitant reconnaît sa mairie ; il n'a
+ * toujours aucune raison de connaître le nom du logiciel de sa mairie.
+ *
+ * `charte` absente ou nulle ⇒ habillage Iris : une collectivité qui n'a pas
+ * rempli sa charte reçoit un message correct, pas un message cassé.
  */
-export function usagerBrand(tenantName?: string | null): EmailBrand {
+export function usagerBrand(
+  tenantName?: string | null,
+  charte?: EmailCharte | null,
+): EmailBrand {
   const name = (tenantName ?? "").trim();
-  return { productName: name !== "" ? name : PRODUCT_NAME, tenantName: null };
+  return {
+    productName: name !== "" ? name : PRODUCT_NAME,
+    tenantName: null,
+    charte: charte ?? null,
+  };
 }
 
 /**
