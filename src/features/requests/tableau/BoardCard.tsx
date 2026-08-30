@@ -7,7 +7,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { ChevronsUpDown, ExternalLink, GripVertical } from "lucide-react";
+import { Building2, ChevronsUpDown, ExternalLink, GripVertical } from "lucide-react";
 import { Dropdown, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { Avatar } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
@@ -148,6 +148,21 @@ export function BoardCard({
         >
           {card.subject}
         </Link>
+
+        {/* L'ORGANISME qui traite la demande — l'information de routage, donc sa
+            place est sous l'objet, avant la démarche et la date. Sur sa propre
+            ligne et non dans la rangée de pastilles : une colonne fait 286 px,
+            un troisième élément y passerait à la ligne la plupart du temps.
+            Le `title` sert aux libellés tronqués, fréquents à cette largeur.
+            « Sans organisme » s'affiche AUSSI — c'est l'anomalie
+            `destinataire_inconnu`, elle mérite d'être vue, pas masquée. */}
+        <span
+          title={`Organisme : ${card.destinataireLabel}`}
+          className="flex min-w-0 items-center gap-1.5 text-[11.5px] font-semibold text-muted-foreground"
+        >
+          <Building2 className="size-3 shrink-0" aria-hidden="true" />
+          <span className="truncate">{card.destinataireLabel}</span>
+        </span>
 
         <div className="flex flex-wrap items-center gap-2">
           {card.showProcedure ? (

@@ -62,7 +62,7 @@ export type GroupKey = (typeof GROUP_KEYS)[number];
 
 export const GROUP_LABELS: Record<GroupKey, string> = {
   status: "Statut",
-  destinataire: "Destinataire",
+  destinataire: "Organisme",
   procedure: "Démarche",
   priority: "Priorité",
   source: "Source",
@@ -100,7 +100,7 @@ export function groupLabelOf(item: RequestListItem, key: GroupKey): string {
     case "status":
       return STATUS_LABELS[item.status as keyof typeof STATUS_LABELS] ?? item.status;
     case "destinataire":
-      return item.socle_organization_label ?? "Sans destinataire";
+      return item.socle_organization_label ?? "Sans organisme";
     case "procedure":
       return item.socle_procedure_label ?? "Sans démarche";
     case "priority":
@@ -146,7 +146,7 @@ export function requestCsvColumns(nameOf: (userId: string | null) => string): Cs
     { header: "Objet", accessor: (r) => r.subject },
     { header: "Statut", accessor: (r) => STATUS_LABELS[r.status as keyof typeof STATUS_LABELS] ?? r.status },
     { header: "Priorité", accessor: (r) => PRIORITY_LABELS[r.priority] ?? r.priority },
-    { header: "Destinataire", accessor: (r) => r.socle_organization_label ?? "" },
+    { header: "Organisme", accessor: (r) => r.socle_organization_label ?? "" },
     { header: "Démarche", accessor: (r) => r.socle_procedure_label ?? "" },
     { header: "Source", accessor: (r) => r.source },
     { header: "Assignée à", accessor: (r) => (r.assigned_to ? nameOf(r.assigned_to) : "") },

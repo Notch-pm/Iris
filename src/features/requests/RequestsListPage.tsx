@@ -38,7 +38,7 @@ const COLUMNS: { key: SortKey | null; title: string; align?: "right" }[] = [
   { key: "reference", title: "Référence" },
   { key: "subject", title: "Objet" },
   { key: "status", title: "Statut" },
-  { key: "destinataire", title: "Destinataire" },
+  { key: "destinataire", title: "Organisme" },
   { key: "procedure", title: "Démarche" },
   { key: null, title: "Priorité" },
   { key: "source", title: "Source" },
@@ -204,8 +204,8 @@ export function RequestsListPage() {
             <option key={value} value={value}>{label}</option>
           ))}
         </Select>
-        <Select aria-label="Filtrer par destinataire" value={filters.destinataire} onChange={setFilter("destinataire")}>
-          <option value="">Tous les destinataires</option>
+        <Select aria-label="Filtrer par organisme" value={filters.destinataire} onChange={setFilter("destinataire")}>
+          <option value="">Tous les organismes</option>
           {destinataireOptions.map((o) => (
             <option key={o.value} value={o.value}>{o.label}</option>
           ))}

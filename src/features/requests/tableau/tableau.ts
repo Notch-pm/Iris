@@ -91,7 +91,9 @@ export interface BoardRow {
 
 // ---- Cartes -----------------------------------------------------------------
 
-/** Valeurs de facette des demandes sans agent, sans démarche, sans destinataire. */
+/** Valeurs de facette des demandes sans agent, sans démarche, sans organisme.
+ *  ⚠️ Les CLÉS gardent « destinataire » : elles ne sont pas affichées, elles
+ *  circulent (état, URL de la liste). Seuls les LIBELLÉS disent « Organisme ». */
 export const NO_AGENT = "__non_affectee__";
 export const NO_PROCEDURE = "__sans_demarche__";
 export const NO_DESTINATAIRE = "__sans_destinataire__";
@@ -142,7 +144,7 @@ function fold(value: string): string {
 export function boardCard(row: BoardRow, agentName: string | null): BoardCardView {
   const identity = requesterIdentity(row.requester_snapshot, row.identity_status);
   const procedureLabel = row.socle_procedure_label ?? "Sans démarche";
-  const destinataireLabel = row.socle_organization_label ?? "Sans destinataire";
+  const destinataireLabel = row.socle_organization_label ?? "Sans organisme";
   const agentLabel = row.assigned_to ? (agentName ?? "Utilisateur") : "Non affectée";
   return {
     id: row.id,

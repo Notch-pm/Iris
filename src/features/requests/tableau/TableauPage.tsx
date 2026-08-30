@@ -208,8 +208,8 @@ export function TableauPage() {
             onClear={() => setFilters((f) => ({ ...f, agents: [] }))}
           />
           <FacetFilter
-            label="Destinataire"
-            noun="destinataire"
+            label="Organisme"
+            noun="organisme"
             options={destinataireFacets}
             selected={filters.destinataires}
             onToggle={(v) => setFilters((f) => ({ ...f, destinataires: toggleValue(f.destinataires, v) }))}

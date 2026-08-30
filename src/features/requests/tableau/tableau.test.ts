@@ -54,7 +54,7 @@ describe("closedSince", () => {
 });
 
 describe("boardCard", () => {
-  it("porte l'identité FIGÉE AU DÉPÔT, la démarche et le destinataire", () => {
+  it("porte l'identité FIGÉE AU DÉPÔT, la démarche et l'organisme", () => {
     const card = boardCard(row(), null);
     expect(card.usager).toBe("Marie Durand");
     expect(card.usagerInitials).toBe("MD");
@@ -79,14 +79,14 @@ describe("boardCard", () => {
     expect(card.agentInitials).toBe("CL");
   });
 
-  it("replie une demande historique sans démarche ni destinataire", () => {
+  it("replie une demande historique sans démarche ni organisme", () => {
     const card = boardCard(
       row({ socle_procedure_id: null, socle_procedure_label: null, socle_organization_id: null, socle_organization_label: null }),
       null,
     );
     expect(card.procedureId).toBe(NO_PROCEDURE);
     expect(card.procedureLabel).toBe("Sans démarche");
-    expect(card.destinataireLabel).toBe("Sans destinataire");
+    expect(card.destinataireLabel).toBe("Sans organisme");
   });
 
   it("indexe la recherche sans accents et en minuscules", () => {
@@ -106,7 +106,7 @@ describe("filtres", () => {
     () => "Claire Lemoine",
   );
 
-  it("croise agent, démarche, destinataire et urgence", () => {
+  it("croise agent, démarche, organisme et urgence", () => {
     expect(filterCards(cards, { ...EMPTY_BOARD_FILTERS, agents: ["u1"] }).map((c) => c.id)).toEqual(["a", "c"]);
     expect(filterCards(cards, { ...EMPTY_BOARD_FILTERS, agents: [NO_AGENT] }).map((c) => c.id)).toEqual(["b"]);
     expect(filterCards(cards, { ...EMPTY_BOARD_FILTERS, procedures: ["proc-2"] }).map((c) => c.id)).toEqual(["b"]);
@@ -118,8 +118,8 @@ describe("filtres", () => {
   });
 
   it("cherche sans tenir compte des accents ni de la casse, sur tout ce que porte la carte", () => {
-    // « b » par sa démarche, « c » par son destinataire : la recherche couvre
-    // référence, objet, démarche, destinataire, usager et agent.
+    // « b » par sa démarche, « c » par son organisme : la recherche couvre
+    // référence, objet, démarche, organisme, usager et agent.
     expect(filterCards(cards, { ...EMPTY_BOARD_FILTERS, query: "ETAT civil" }).map((c) => c.id)).toEqual(["b", "c"]);
     expect(filterCards(cards, { ...EMPTY_BOARD_FILTERS, query: "acte de naissance" }).map((c) => c.id)).toEqual(["b"]);
     expect(filterCards(cards, { ...EMPTY_BOARD_FILTERS, query: "  " }).length).toBe(3);

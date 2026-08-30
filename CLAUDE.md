@@ -38,7 +38,11 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   d'information » : c'est là que va une demande dont une pièce est déclarée non conforme.
   Aucun 8ᵉ statut n'est à créer pour un nouveau besoin d'attente.
 - **Vocabulaire** : « catégorie » désigne exclusivement les catégories de **démarches** du
-  Socle. La position d'une demande dans son cycle de vie est un **statut**.
+  Socle. La position d'une demande dans son cycle de vie est un **statut**. L'organisation
+  Socle qui reçoit et traite une demande s'appelle **organisme** partout où un agent la lit
+  (liste et tableau des demandes) — les clés de code, elles, restent `destinataire` :
+  elles circulent (état d'écran, `?destinataire=`) et la variable d'e-mail
+  `{{demande.destinataire}}` appartient à un catalogue FIGÉ.
 - **Iris ne gère aucune demande libre** (règle impérative PO, 2026-08-20) : toute nouvelle
   demande est **fondée sur une démarche Socle active du tenant** (`socle_procedure_id` +
   `procedure_snapshot`), gardé par le trigger `t16_requests_require_procedure` — service_role

@@ -134,7 +134,16 @@ note interne → résolution avec texte de clôture → journal.
   satellites, membres du tenant) + mutations (transition via `buildTransitionUpdate`,
   affectation, notes, liaison `useLinkRequests`). Pas d'appel `supabase` direct dans les
   pages.
-- **Pages** : `RequestsListPage` (filtres statut/destinataire/démarche/priorité/source,
+- ⚠️ **Vocabulaire d'écran : « Organisme »** (décision du 2026-08-30). L'organisation Socle
+  qui a reçu et traite la demande s'appelle **Organisme** partout où un agent la lit sur la
+  liste et sur le tableau — filtre, colonne, regroupement, export CSV, carte du tableau, et
+  la valeur de repli « Sans organisme ». Les **clés** de code restent `destinataire` /
+  `destinataires` / `NO_DESTINATAIRE` : elles ne s'affichent pas, elles circulent (état
+  d'écran, `?destinataire=` de la liste), et les renommer casserait les liens existants. Un
+  test de `listing.test.ts` fige le libellé. ⚠️ La variable d'e-mail
+  `{{demande.destinataire}}` ne se renomme PAS non plus : son catalogue est FIGÉ, avec
+  jumeau SQL et garde serveur `t03`.
+- **Pages** : `RequestsListPage` (filtres statut/organisme/démarche/priorité/source,
   pagination 20, filtre initial depuis `?status=`, bouton « Nouvelle demande » →
   `/demandes/nouvelle`), le **tableau des demandes** `/demandes/tableau` et la **fiche
   d'instruction** ci-dessous. Les trois vues d'une même sélection — liste, tableau, carte —
@@ -304,6 +313,13 @@ note interne → résolution avec texte de clôture → journal.
   - **Une colonne = UN statut**, les 7, dans l'ordre du cycle de vie. Pas de colonne
     « Clôturées » qui regrouperait résolution positive, négative et annulation : un dépôt
     DEMANDE une transition précise, et une colonne composite ne saurait pas laquelle.
+  - **Ce que porte une carte** : référence, pastille d'urgence, objet, **l'organisme qui
+    traite la demande** (icône `Building2`, sous l'objet — c'est l'information de ROUTAGE,
+    elle passe donc avant la démarche et la date ; sur sa propre ligne, une colonne de 286 px
+    ne tenant pas un troisième élément dans la rangée de pastilles, et avec un `title` pour
+    les libellés tronqués), la démarche (pastille **masquée quand son libellé répète l'objet**
+    — `showProcedure`), la date de dépôt, l'usager et l'agent affecté. « Sans organisme »
+    s'affiche AUSSI : c'est l'anomalie `destinataire_inconnu`, elle mérite d'être vue.
   - **Le dépôt ne décide rien** : il appelle `transition.start(card, spec)`, donc le
     **dialogue commun de la fiche** (`TransitionDialog`) dès qu'il manque une information
     (motif, commentaire pour l'usager, assigné), et une application directe sinon
@@ -327,7 +343,7 @@ note interne → résolution avec texte de clôture → journal.
     dès qu'un autre agent est coché, ce ne sont plus « mes demandes », et le bouton le dit.
   - **`tableau.ts`** (pur, testé — 29 cas) porte tout : colonnes, `boardCard` (identité figée
     au dépôt, urgence, agent, champ de recherche replié sans accents), filtres et facettes
-    croisés (agent dont « Non affectée », destinataire, démarche, urgence, recherche),
+    croisés (agent dont « Non affectée », organisme, démarche, urgence, recherche),
     `boardContent` (répartition + tri par date de dépôt, dans les deux sens), et
     `boardRightsResolver` — `rightsFor` + `isAdminOn` **mémoïsés par couple** (des centaines
     de cartes, une poignée de couples). Une demande au statut inconnu n'est pas perdue :
@@ -670,7 +686,7 @@ note interne → résolution avec texte de clôture → journal.
 - **Liste : tri, regroupement, export** (2026-08-22, motif des listes Clara) — logique pure
   `listing.ts` (testée) : **tri serveur** par colonne (référence = année puis numéro ; dates du
   plus récent d'abord ; jamais de retour à « non trié » ; la priorité n'est pas triable —
-  ordre alphabétique trompeur), **« Grouper par »** statut / destinataire / démarche /
+  ordre alphabétique trompeur), **« Grouper par »** statut / organisme / démarche /
   priorité / source (regroupement client de la page courante, avec pré-tri serveur sur la
   clé de groupe pour des groupes contigus entre pages ; groupes repliables), **export CSV**
   de TOUTE la sélection filtrée dans l'ordre affiché (`fetchRequestsForExport`, lots de 1000,

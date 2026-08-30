@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_SORT, exportFilename, groupRows, orderClauses, requestCsvColumns, toggleSort,
+  DEFAULT_SORT, exportFilename, GROUP_LABELS, groupLabelOf, groupRows, orderClauses,
+  requestCsvColumns, toggleSort,
 } from "./listing";
 import type { RequestListItem } from "./useRequests";
 
@@ -37,6 +38,18 @@ describe("tri", () => {
   });
 });
 
+describe("vocabulaire", () => {
+  // Décision du 2026-08-30 : ce que l'agent lit, c'est « Organisme » — sur le
+  // tableau comme sur la liste. Les CLÉS, elles, restent `destinataire` : elles
+  // circulent (état d'écran, URL de la liste) et les renommer casserait les
+  // liens existants. Ce test fige le libellé, pas la clé.
+  it("le regroupement par organisation s'intitule « Organisme »", () => {
+    expect(GROUP_LABELS.destinataire).toBe("Organisme");
+    expect(groupLabelOf(item({ socle_organization_label: null }), "destinataire"))
+      .toBe("Sans organisme");
+  });
+});
+
 describe("regroupement", () => {
   it("regroupe dans l'ordre d'apparition avec libellés FR et valeurs vides nommées", () => {
     const rows = [
@@ -49,7 +62,7 @@ describe("regroupement", () => {
       ["En cours d'instruction", 2], ["À traiter", 1],
     ]);
     const byDest = groupRows(rows, "destinataire");
-    expect(byDest.map((g) => g.label)).toEqual(["Voirie", "Sans destinataire"]);
+    expect(byDest.map((g) => g.label)).toEqual(["Voirie", "Sans organisme"]);
   });
 
   it("sans clé : un seul groupe sans libellé", () => {
@@ -68,7 +81,7 @@ describe("export", () => {
     expect(values["Priorité"]).toBe("Haute");
     expect(values["Assignée à"]).toBe("Camille Durand");
     expect(values["Échéance"]).toMatch(/^\d{2}\/\d{2}\/2026$/);
-    expect(values["Destinataire"]).toBe("");
+    expect(values["Organisme"]).toBe("");
   });
 
   it("nom de fichier épuré et daté", () => {
