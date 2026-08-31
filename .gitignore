@@ -1,6 +1,11 @@
 # Dépendances et build
 node_modules/
 dist/
+# Cache incrémental de `tsc -b` : un artefact de build, régénéré à chaque
+# compilation. Versionné jusqu'au 2026-08-31 — il se salissait à chaque
+# `npm run lint` et se retrouvait committé au hasard ; pire, la CI repartait
+# du cache d'un autre poste au lieu de tout revérifier.
+*.tsbuildinfo
 
 # Environnement local — jamais versionné
 .env
