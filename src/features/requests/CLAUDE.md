@@ -27,17 +27,106 @@ note interne → résolution avec texte de clôture → journal.
   design Claude Design « Écran création demande citoyens » implémenté et vérifié en
   navigateur le 2026-08-21) : l'ancien dialogue générique est SUPPRIMÉ — plus aucun INSERT
   direct de demande depuis le navigateur. Page **pleine hauteur** (`useFullBleedLayout`,
-  contexte `ShellLayoutContext` d'`AppShell`) : en-tête + stepper 4 étapes, zone de saisie,
+  contexte `ShellLayoutContext` d'`AppShell`) : en-tête + stepper 4 étapes — 5 pour qui
+  peut créer pour plusieurs organismes, cf. « Organisme d'abord » ci-dessous —, zone de
+  saisie,
   **rail latéral** (fiche de la demande : progression/complétude ; demandes proches), pied
   d'actions. Étapes : **démarche** Socle active (`ProcedurePicker` : recherche, chips de
   catégories de démarches, cartes avec volume du mois ; obligatoire, cache du tenant) →
   **usager** (feature `contacts`) → **formulaire** (objet/priorité/description +
   `form_schema` : sections, choix, conditions visibleIf/requiredIf avec pastille
   « conditionnel », pièces en zone de dépôt avec formats/cardinalités ; `requester_config`
-  respecté) → **récapitulatif** (groupes relisibles avec « Modifier », **organisation
-  destinataire** en sélecteur inline pré-rempli par la démarche, bannière de doublon
+  respecté) → **récapitulatif** (groupes relisibles avec « Modifier », **organisme**
+  en sélecteur inline, bannière de doublon
   probable) → **edge function `create-request-from-procedure`** → écran « Demande créée »
   (ouvrir la fiche, **récépissé imprimable** `.print-receipt`, nouvelle saisie).
+  - **Organisme d'abord** (étape 0, décision PO du 2026-08-31 — backlog B4 ; modules purs
+    `creation/organismes.ts`, `rights.creationOrganizations` / `creatableProceduresOn`,
+    écran `OrganismePicker`) : quand l'agent détient le droit de **création sur plusieurs
+    organisations**, le parcours s'ouvre par « Pour quel organisme créez-vous cette
+    demande ? ». L'organisme retenu BORNE ensuite les démarches proposées — les droits
+    étant des couples (organisation, démarche), l'ordre inverse offrirait des démarches
+    refusées au bout du parcours (`user_has_request_right`, revérifié par
+    `create-request-from-procedure`).
+    - **QUATRE règles, et elles se cumulent** (spécification PO du 2026-08-31). Une
+      démarche n'est proposée pour un organisme que si elle est **activée pour lui**
+      dans le Socle, **en production**, **dans sa période de publication**, et **dans les
+      droits** de l'agent. Les deux premières sont des règles de fond (gardes serveur), les
+      deux autres non : la période ne fait que masquer, et les droits sont rejoués par le
+      RLS. Le croisement vit dans un seul module — `creation/proposables.ts`
+      (`creatableByOrganisation`) —, consommé par l'étape 0 comme par l'étape 1, pour que
+      « quels organismes ? » et « quelles démarches ? » ne puissent pas diverger.
+    - **L'activation par organisation** (`Socle.organization_procedures`, onglet
+      « Démarches » de l'éditeur d'organisation) est miroitée dans
+      `socle_procedure_organizations` et gardée par
+      `t18_requests_require_procedure_active`. C'est un **OPT-IN STRICT** : une
+      organisation absente du miroir n'a AUCUNE démarche, surtout pas « toutes ». Une
+      organisation qui n'en propose aucune **disparaît de l'étape 0** — on ne propose pas
+      un organisme pour lequel il n'y aurait rien à consigner.
+      - ⚠️ **Le DTO Socle ne rend pas cette information en lecture.** La seule porte est
+        le FILTRE `GET /v1/procedures?enabled_for=<org>`, **non récursif** : la synchro
+        fait donc un appel par organisation du sous-arbre (8 pour ACCM). La route inverse
+        `GET /v1/organization-procedures` a son sérialiseur écrit côté Socle mais n'est
+        branchée sur aucun endpoint — le jour où elle le sera, c'est `OrgActivation`
+        qu'elle remplira en un appel, et rien d'autre ne bougera.
+      - ⚠️ **`procedures.is_active_global` est mort fonctionnellement** côté Socle : ne
+        jamais le miroiter ni s'y fier.
+      - ⚠️ **Une lecture d'activation manquée ne périme RIEN** : « aucune activation ici »
+        et « le Socle n'a pas répondu » sont indiscernables, et comme t18 refuse ce qui
+        n'est pas au miroir, périmer sur un silence fermerait le guichet. La synchro le
+        signale en avertissement dans `sync_runs.counters`.
+      - ⚠️ **Ordre de déploiement** : la table et la synchro d'abord, la garde ensuite
+        (deux migrations distinctes, `20260831100000` puis `20260831100100`). Appliquer
+        la garde sur un miroir vide interdit toute création. Rollback dédié dans
+        `supabase/rollback/`.
+    - **Le bornage n'est PAS un rattachement de la démarche à une commune** : dans le
+      référentiel, une démarche appartient à **UNE** organisation — la **racine** —, et
+      Iris ne miroite qu'elles (`buildSyncPlan` saute tout ce qui n'est pas
+      `proc.organization_id === tenant.socleOrgId`). Ce qui varie d'un organisme à l'autre,
+      c'est l'ACTIVATION, pas la propriété. Le libellé du sélecteur le dit :
+      « Démarches disponibles · celles que vos droits vous ouvrent pour X », jamais
+      « Démarches de X ».
+    - **Les entrées vers la création croisent la même règle** (tableau de bord, bouton de
+      la liste) : sans cela, elles ouvriraient un parcours vide.
+    - ⚠️ **Le pré-remplissage par `snapshot.organization_id` est SUPPRIMÉ.** Ce n'était pas
+      une commodité : les démarches d'une communauté d'agglomération pendent typiquement
+      de la **racine**, si bien que le champ, enfoui dans le récapitulatif, retenait
+      « ACCM » pour des demandes qui étaient celles d'une commune — et personne ne le
+      lisait. Rien n'est pré-sélectionné quand la question se pose : un défaut se valide
+      sans être lu.
+    - **La question ne se pose que s'il y en a une** : un seul organisme admissible est
+      retenu d'office (`soleOrganization`) et l'étape ne s'affiche pas — un agent de
+      commune unique garde le parcours à quatre étapes qu'il connaît. Le numéro AFFICHÉ
+      dans le stepper est le **rang**, pas l'identifiant d'étape (`CreationStepper`) : sans
+      cela, un parcours sans organisme serait numéroté 2, 3, 4, 5.
+    - **La page n'ouvre pas avant de connaître ce périmètre** (`perimeterReady`) : ouvrir
+      avant, ce serait afficher un stepper qui se renumérote sous les yeux de l'agent.
+      ⚠️ Corollaire à ne pas défaire : **le `useMemo` de la base de connaissances doit
+      rester au-dessus des sorties anticipées** — sous elles, il n'était évalué que sur
+      certains rendus (« Rendered more hooks than during the previous render », constaté en
+      navigateur le 2026-08-31).
+    - **Changer d'organisme peut RETIRER la démarche** déjà choisie (`chooseOrganisme`) :
+      une démarche créable à Arles ne l'est pas forcément à Fontvieille. On la relâche
+      franchement, avec un message, plutôt que de laisser courir une saisie refusée au bout.
+      Même raison à la reprise d'un brouillon : l'organisme enregistré est **revérifié**, et
+      s'il n'est plus admissible la reprise revient à l'étape 0 — un brouillon n'est pas un
+      droit acquis.
+    - **Choisir un organisme ENCHAÎNE sur la démarche** (2026-08-31), comme choisir une
+      démarche enchaîne sur l'usager (`selectProcedure`) et désigner un usager sur le
+      formulaire (`onResolve`). Désigner, c'est avoir répondu : cette étape était la seule
+      à réclamer un « Continuer » derrière.
+    - **Vocabulaire** : l'écran dit **« Organisme »** (décision du 2026-08-30), au guichet
+      comme sur la liste, le tableau, la fiche (`ResumePane`) et le récépissé. Les clés de
+      code restent `destinataire` / `destinationId`.
+  - **Puces du stepper franchissables** (2026-08-31, `reachableSteps` dans `model.ts`, pur
+    et testé) : la puce SUIVANTE s'ouvre exactement quand le bouton « Continuer » s'ouvre.
+    Le voisinage se lit dans l'ORDRE DU TABLEAU d'étapes, jamais en arithmétique sur les
+    numéros — l'étape « Organisme » (0) n'existe pas pour tout le monde.
+    ⚠️ **Franchir depuis la puce appelle `next()`**, le geste du bouton : même validation du
+    formulaire (`nextFromForm`), même suivi de `maxReached`. Deux chemins vers l'étape
+    suivante, dont un sans contrôle, serait la porte à côté de la serrure. Concrètement, au
+    Formulaire, cliquer « Récapitulatif » avec un champ obligatoire vide affiche les erreurs
+    et ne bouge pas — exactement comme le bouton.
   - **Usager imposé** (`/demandes/nouvelle?usager=<id Socle>`, entrée « Nouvelle demande »
     de la fiche usager, 2026-08-23) : l'usager est relu depuis le Socle (`useSocleContact`),
     appliqué DÈS que la démarche est choisie, et l'étape 2 est **verrouillée**

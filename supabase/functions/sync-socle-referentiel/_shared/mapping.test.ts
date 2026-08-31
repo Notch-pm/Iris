@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { buildSyncPlan, subtreeOf, type SocleOrg } from "./mapping";
+import {
+  buildActivationRows,
+  buildSyncPlan,
+  subtreeOf,
+  type OrgActivation,
+  type OrgMirrorRow,
+  type ProcCacheRow,
+  type SocleOrg,
+} from "./mapping";
 
 const orgs: SocleOrg[] = [
   { id: "root-a", parent_id: null, name: "ACCM", status: "active" },
@@ -104,5 +112,74 @@ describe("buildSyncPlan", () => {
     const plan = buildSyncPlan(tenants, orgs, categories, procedures);
     expect(plan.tenantNames).toEqual([{ organizationId: "iris-a", name: "ACCM" }]);
     expect(plan.counters).toEqual({ tenants: 1, organizations: 3, procedures: 1 });
+  });
+});
+
+// Activation par organisation (Socle `organization_procedures`) — OPT-IN
+// STRICT : le miroir ne porte QUE ce que `?enabled_for=` a rendu, et son
+// absence vaut « non activée ». La garde t18 s'appuie dessus, donc une ligne de
+// trop y ouvrirait une création que le référentiel n'autorise pas.
+describe("buildActivationRows", () => {
+  const orgRows = [
+    { organization_id: "iris-a", socle_id: "root-a" },
+    { organization_id: "iris-a", socle_id: "child-a1" },
+    { organization_id: "iris-b", socle_id: "root-b" },
+  ] as OrgMirrorRow[];
+  const procRows = [
+    { organization_id: "iris-a", socle_id: "p1" },
+    { organization_id: "iris-a", socle_id: "p2" },
+    { organization_id: "iris-b", socle_id: "p9" },
+  ] as ProcCacheRow[];
+
+  it("rend une ligne par couple (organisation, démarche) activé, rattaché au bon tenant", () => {
+    const activations: OrgActivation[] = [
+      { socleOrgId: "root-a", procedureIds: ["p1", "p2"] },
+      { socleOrgId: "child-a1", procedureIds: ["p1"] },
+    ];
+    expect(buildActivationRows(orgRows, procRows, activations)).toEqual([
+      { organization_id: "iris-a", socle_procedure_id: "p1", socle_org_id: "root-a" },
+      { organization_id: "iris-a", socle_procedure_id: "p2", socle_org_id: "root-a" },
+      { organization_id: "iris-a", socle_procedure_id: "p1", socle_org_id: "child-a1" },
+    ]);
+  });
+
+  it("une organisation sans activation ne produit RIEN (opt-in strict, pas de repli)", () => {
+    const rows = buildActivationRows(orgRows, procRows, [
+      { socleOrgId: "child-a1", procedureIds: [] },
+    ]);
+    expect(rows).toEqual([]);
+  });
+
+  it("ignore une organisation hors du miroir — elle n'appartient à aucun tenant connu", () => {
+    const rows = buildActivationRows(orgRows, procRows, [
+      { socleOrgId: "inconnue", procedureIds: ["p1"] },
+    ]);
+    expect(rows).toEqual([]);
+  });
+
+  it("ignore une démarche hors du cache du tenant (t16 la refuserait de toute façon)", () => {
+    const rows = buildActivationRows(orgRows, procRows, [
+      { socleOrgId: "root-a", procedureIds: ["p1", "p9", "inconnue"] },
+    ]);
+    expect(rows).toEqual([
+      { organization_id: "iris-a", socle_procedure_id: "p1", socle_org_id: "root-a" },
+    ]);
+  });
+
+  it("ne croise jamais deux tenants : p9 n'est activable que chez iris-b", () => {
+    const rows = buildActivationRows(orgRows, procRows, [
+      { socleOrgId: "root-b", procedureIds: ["p9", "p1"] },
+    ]);
+    expect(rows).toEqual([
+      { organization_id: "iris-b", socle_procedure_id: "p9", socle_org_id: "root-b" },
+    ]);
+  });
+
+  it("déduplique un relevé répété (une organisation interrogée deux fois)", () => {
+    const rows = buildActivationRows(orgRows, procRows, [
+      { socleOrgId: "root-a", procedureIds: ["p1", "p1"] },
+      { socleOrgId: "root-a", procedureIds: ["p1"] },
+    ]);
+    expect(rows).toHaveLength(1);
   });
 });

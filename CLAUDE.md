@@ -55,7 +55,15 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   elles, sont masquées TEMPORAIREMENT (décision PO : elles seront affichées ultérieurement).
   Une démarche **hors de sa période de publication** disparaît elle aussi du sélecteur (bornes
   incluses) — mais elle MASQUE seulement : aucune garde serveur, pour qu'un formulaire papier
-  reçu pendant la période reste consignable après sa fin. Le sélecteur signale en revanche ce
+  reçu pendant la période reste consignable après sa fin.
+  Depuis le 2026-08-31, une quatrième règle s'ajoute, et elle **masque ET refuse** :
+  **une démarche doit être ACTIVÉE pour l'organisme** qui portera la demande
+  (`Socle.organization_procedures`, miroitée dans `socle_procedure_organizations`, gardée par
+  `t18_requests_require_procedure_active` — service_role et ingestion partenaire compris).
+  **Opt-in strict** : absente du miroir = non activée. Le Socle ne rend cette information que
+  par le filtre `GET /v1/procedures?enabled_for=<org>`, non récursif, d'où un appel par
+  organisation du sous-arbre à la synchro. ⚠️ `procedures.is_active_global` du Socle est mort :
+  ne jamais s'y fier. Le sélecteur signale en revanche ce
   qui, dans la **publication** d'une démarche, mérite de l'être : la pastille « Non visible
   portail » **uniquement** sur celles qui n'y sont pas (y être est le défaut du contrat), et la
   période quand il y en a une. Détail :

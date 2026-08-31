@@ -217,6 +217,7 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
 | `t10_requests_before_insert_guard` (INVOKER) | BEFORE INSERT | Naissance en `a_traiter` obligatoire (sauf contexte de service) ; **RM-16 (2026-08-22)** : si `assigned_to` est fourni dès la création, l'agent affecté doit détenir l'**instruction** sur le couple — sinon une demande peut naître déjà orpheline ; `version := 1` |
 | `t15_requests_check_source` (DEFINER) | BEFORE INSERT | Toute source non-`iris` doit être une `integration_sources` **active du tenant**, service_role compris |
 | `t16_requests_require_procedure` (DEFINER) | BEFORE INSERT | **Règle impérative** : `socle_procedure_id` obligatoire, présent dans `socle_procedure_cache` du tenant et non obsolète ; `procedure_snapshot` objet non vide dont l'`id` correspond ; libellés démarche/catégorie **réécrits depuis le cache** (vérité serveur). S'applique à tout le monde, service_role compris |
+| `t18_requests_require_procedure_active` (DEFINER) | BEFORE INSERT | **Activation par organisation (2026-08-31)** : le couple (organisme, démarche) doit exister dans `socle_procedure_organizations`, non obsolète. L'organisme vérifié est `coalesce(socle_organization_id, socle_root_org_id)` — l'ingestion partenaire ayant le droit d'omettre le destinataire. S'applique à tout le monde, service_role compris. ⚠️ **Opt-in strict** : absent du miroir = refusé ; la migration ne doit être appliquée qu'après une synchro ayant peuplé le miroir (rollback dédié) |
 | `t20_requests_set_reference` (DEFINER) | BEFORE INSERT | Numérotation atomique + `socle_root_org_id` dérivée du tenant |
 | `t21_requests_set_scope_org` (DEFINER) | BEFORE INSERT | Calcule `socle_scope_org_id` + anomalie `destinataire_inconnu`, **après** `t20` (dépend de `socle_root_org_id`) |
 | `t09_requests_set_scope_org` (DEFINER) | BEFORE UPDATE | Même calcul, **inconditionnel** à chaque UPDATE (pas seulement `OF socle_organization_id` — correctif de sécurité 2026-08-22 : un client omettant cette colonne de son `SET` ne pouvait sinon pas en survivre l'ancienne valeur) ; repart toujours de `old.anomalies`, jamais de `new.anomalies` (même motif) ; **avant** `t10`/`t11` |
@@ -503,6 +504,31 @@ jamais confondre — son OpenAPI le dit noir sur blanc :
   déjà prête — `portalVisible` (proposée aux usagers sur le portail en ligne),
   `publicationPeriodEnabled` + `publicationStart` / `publicationEnd` (bornes **incluses**,
   chacune facultative et nullable, au format `AAAA-MM-JJ`).
+
+### `socle_procedure_organizations` — activation d'une démarche par organisation
+
+Miroir de `Socle.organization_procedures` (`is_enabled = true`) : **quelles organisations du
+sous-arbre proposent quelle démarche**. PK `(organization_id, socle_procedure_id,
+socle_org_id)`, soft-delete `obsoleted_at`, lecture RLS par membre du tenant, écriture
+`service_role` seule (synchro).
+
+⚠️ **Opt-in strict** — une démarche est active pour une organisation *si et seulement si* une
+ligne existe. L'absence vaut « non activée » : le défaut `true` de la colonne Socle ne joue
+que sur une ligne déjà créée. Le miroir suit la même règle, et la garde `t18` avec lui.
+
+⚠️ **Le DTO `Procedure` du Socle n'expose pas cette information en lecture** : la seule porte
+est le filtre `GET /v1/procedures?enabled_for=<org>`, qui n'est **pas récursif**. La synchro
+fait donc un appel par organisation du sous-arbre (8 pour ACCM) — voir `fetchActivations` et
+`buildActivationRows`. Une lecture manquée **ne périme rien** pour ce tenant : « rien d'activé »
+et « pas de réponse » seraient indiscernables, et périmer sur un silence fermerait le guichet.
+
+⚠️ `procedures.is_active_global` du Socle est **mort fonctionnellement** (aucune lecture, exclu
+du DTO public) : ne jamais le miroiter.
+
+**Trois notions voisines qui se cumulent**, aucune ne remplace l'autre : `status` dit si le
+paramétrage est **fini** (brouillon = ne rien servir, `t16`) · l'activation dit **qui** propose
+(`t18`) · `communication_config` dit **où et quand** (portail, période — masque seulement,
+jamais de garde).
 
 **Quatre colonnes s'ajoutent à `socle_procedure_cache`** — `status`, `portal_visible`,
 `publication_start`, `publication_end` —, et pas une de plus : le cache reste léger, et le bloc

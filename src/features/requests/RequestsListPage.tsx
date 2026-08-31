@@ -14,9 +14,14 @@ import { ariaSort, SortableHeader } from "@/components/ui/sortable-header";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import {
   useSocleOrganizationsCatalog,
+  useSocleProcedureActivations,
   useSocleProceduresCatalog,
 } from "@/features/socle/useSocleCatalog";
-import { canCreateProcedure, canViewProcedure } from "@/features/rights/rights";
+import { canViewProcedure } from "@/features/rights/rights";
+import {
+  activationsByOrganisation,
+  creatableByOrganisation,
+} from "@/features/requests/creation/proposables";
 import { buildCsv, downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
@@ -86,6 +91,7 @@ export function RequestsListPage() {
   const members = useTenantMembers(orgId);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
   const procCatalog = useSocleProceduresCatalog(orgId);
+  const activations = useSocleProcedureActivations(orgId);
   // Catalogues Socle synchronisés quand disponibles, facettes observées sinon.
   // Restreint au périmètre (union des scope_organization_ids des profils actifs) —
   // admin plateforme : aucune restriction.
@@ -105,11 +111,17 @@ export function RequestsListPage() {
     (procCatalog.data?.length ?? 0) > 0
       ? procCatalog.data!.filter((o) => rights.is_platform_admin || canViewProcedure(rights, o.value))
       : (facets.data?.procedures ?? []);
-  // « Nouvelle demande » : au moins une démarche du cache créable (RM-58) — reflet
-  // de confort, le serveur (create-request-from-procedure) revalide le couple.
+  // « Nouvelle demande » : au moins un couple (organisme, démarche) à la fois
+  // ACTIVÉ dans le Socle et dans mes droits (RM-58 + activation, 2026-08-31) —
+  // reflet de confort, le serveur revalide le couple et le trigger t18 refuse
+  // une démarche non activée. Sans le croisement, le bouton mènerait à un
+  // parcours vide.
   const canCreate =
-    rights.is_platform_admin ||
-    (procCatalog.data ?? []).some((o) => canCreateProcedure(rights, o.value));
+    creatableByOrganisation(
+      rights,
+      (procCatalog.data ?? []).map((o) => o.value),
+      activationsByOrganisation(activations.data ?? []),
+    ).size > 0;
 
   if (!current) {
     return (

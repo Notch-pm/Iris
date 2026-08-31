@@ -16,7 +16,9 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import {
+  buildActivationRows,
   buildSyncPlan,
+  type OrgActivation,
   type SocleCategory,
   type SocleOrg,
   type SocleProcedure,
@@ -52,6 +54,9 @@ function json(req: Request, status: number, body: unknown): Response {
 }
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Lectures `?enabled_for=` menées de front. Une par organisation du sous-arbre. */
+const ACTIVATION_BATCH = 4;
 
 interface SyncScope {
   /** `cron` ou l'id de l'utilisateur déclencheur. */
@@ -158,6 +163,45 @@ async function fetchSocleSmtp(
   return { status: res.status, dto: (await res.json()) as SocleSmtpDto };
 }
 
+/**
+ * Activations d'UNE organisation : `GET /v1/procedures?enabled_for=<org>` rend
+ * les démarches du catalogue racine qu'elle propose (`is_enabled = true`).
+ *
+ * ⚠️ C'est la SEULE lecture possible de l'information : le DTO `Procedure` du
+ * Socle ne dit jamais qui a activé quoi, et la route inverse
+ * `GET /v1/organization-procedures` n'est branchée sur aucun endpoint. D'où un
+ * appel par organisation du sous-arbre — 8 pour une agglomération comme ACCM.
+ * Le filtre n'est PAS récursif : interroger la racine ne dit rien des filles.
+ *
+ * Rend `null` en cas d'échec plutôt que de lever : une organisation muette ne
+ * doit pas faire échouer toute la synchronisation, mais elle interdit de
+ * conclure « plus rien n'est activé » — l'appelant renonce alors à périmer quoi
+ * que ce soit pour ce tenant.
+ */
+async function fetchActivations(
+  base: string,
+  key: string,
+  socleOrgId: string,
+): Promise<OrgActivation | null> {
+  try {
+    const res = await fetch(`${base}/v1/procedures?enabled_for=${socleOrgId}`, {
+      headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) return null;
+    const rows = await res.json() as { id?: unknown }[] | null;
+    if (!Array.isArray(rows)) return null;
+    return {
+      socleOrgId,
+      procedureIds: rows
+        .map((r) => (typeof r?.id === "string" ? r.id : null))
+        .filter((id): id is string => id !== null),
+    };
+  } catch {
+    return null;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
@@ -241,6 +285,37 @@ Deno.serve(async (req) => {
       if (error) throw error;
     }
 
+    // ---- Activation des démarches par organisation (Socle organization_procedures)
+    // Un appel `?enabled_for=` par organisation du sous-arbre : le DTO Socle ne
+    // rend l'information dans aucun autre sens. Par lots, pour ne pas ouvrir 8,
+    // 20 ou 50 connexions d'un coup au référentiel.
+    const activations: OrgActivation[] = [];
+    const activationFailures = new Set<string>();  // tenants dont une lecture a échoué
+    const orgsToProbe = plan.orgRows.map((o) => ({
+      socleOrgId: o.socle_id,
+      tenantId: o.organization_id,
+    }));
+    for (let i = 0; i < orgsToProbe.length; i += ACTIVATION_BATCH) {
+      const batch = orgsToProbe.slice(i, i + ACTIVATION_BATCH);
+      const results = await Promise.all(
+        batch.map((o) => fetchActivations(base, socleKey, o.socleOrgId)),
+      );
+      results.forEach((result, k) => {
+        if (result) activations.push(result);
+        else activationFailures.add(batch[k].tenantId);
+      });
+    }
+    const activationRows = buildActivationRows(plan.orgRows, plan.procRows, activations);
+    if (activationRows.length > 0) {
+      const { error } = await supabase
+        .from("socle_procedure_organizations")
+        .upsert(
+          activationRows.map((r) => ({ ...r, synced_at: now, obsoleted_at: null })),
+          { onConflict: "organization_id,socle_procedure_id,socle_org_id" },
+        );
+      if (error) throw error;
+    }
+
     // ⚠️ Avec une clé Socle LIÉE (non plateforme), seul le sous-arbre de sa
     // racine est visible : les miroirs des autres tenants passeraient en
     // obsolete. On ne marque obsolète que les lignes des tenants dont la racine
@@ -251,6 +326,7 @@ Deno.serve(async (req) => {
 
     let staleOrgCount = 0;
     let staleProcCount = 0;
+    let staleActivationCount = 0;
     if (observedTenantIds.length > 0) {
       const syncedOrgIds = new Set(plan.orgRows.map((r) => r.socle_id));
       const { data: existingOrgs } = await supabase
@@ -276,6 +352,35 @@ Deno.serve(async (req) => {
       staleProcCount = staleProcIds.length;
       if (staleProcIds.length > 0) {
         await supabase.from("socle_procedure_cache").update({ obsoleted_at: now }).in("socle_id", staleProcIds);
+      }
+
+      // Activations disparues = démarches DÉSACTIVÉES depuis la dernière
+      // synchro. On ne périme que les tenants dont TOUTES les organisations ont
+      // répondu : une seule lecture manquée et « rien n'est activé ici » devient
+      // indiscernable de « le Socle n'a pas répondu ». Comme la garde t18 refuse
+      // ce qui n'est pas au miroir, périmer sur un silence fermerait le guichet.
+      const trustedTenantIds = observedTenantIds.filter((id) => !activationFailures.has(id));
+      if (trustedTenantIds.length > 0) {
+        const kept = new Set(
+          activationRows.map((r) => `${r.organization_id}|${r.socle_procedure_id}|${r.socle_org_id}`),
+        );
+        const { data: existingLinks } = await supabase
+          .from("socle_procedure_organizations")
+          .select("organization_id, socle_procedure_id, socle_org_id")
+          .in("organization_id", trustedTenantIds)
+          .is("obsoleted_at", null);
+        const stale = (existingLinks ?? []).filter(
+          (r) => !kept.has(`${r.organization_id}|${r.socle_procedure_id}|${r.socle_org_id}`),
+        );
+        staleActivationCount = stale.length;
+        for (const row of stale) {
+          await supabase
+            .from("socle_procedure_organizations")
+            .update({ obsoleted_at: now })
+            .eq("organization_id", row.organization_id)
+            .eq("socle_procedure_id", row.socle_procedure_id)
+            .eq("socle_org_id", row.socle_org_id);
+        }
       }
     }
 
@@ -328,6 +433,16 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Une lecture d'activation manquée laisse le miroir en l'état — il faut le
+    // DIRE : la garde t18 s'appuie dessus, et un miroir figé qu'on croit frais
+    // se manifesterait plus tard par une démarche désactivée encore proposée.
+    if (activationFailures.size > 0) {
+      warnings.push(
+        `activations non relues pour ${activationFailures.size} tenant(s) : le miroir des `
+          + `démarches activées a été laissé en l'état (aucune désactivation appliquée).`,
+      );
+    }
+
     // Recalcul du périmètre porteur des droits (profils de droits, ADR-14) :
     // le miroir vient de bouger (nouvelles organisations, reparentages,
     // obsolescences), certaines demandes peuvent devoir changer de
@@ -350,6 +465,8 @@ Deno.serve(async (req) => {
       tenants_observes: observedTenantIds.length,
       organizations_obsoleted: staleOrgCount,
       procedures_obsoleted: staleProcCount,
+      activations: activationRows.length,
+      activations_obsoletes: staleActivationCount,
       requests_scope_recalculees: requestsScopeRecalculees,
       smtp_synchronises: smtpSynchronises,
       smtp_retires: smtpRetires,

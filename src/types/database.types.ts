@@ -1447,6 +1447,38 @@ export type Database = {
           },
         ]
       }
+      socle_procedure_organizations: {
+        Row: {
+          obsoleted_at: string | null
+          organization_id: string
+          socle_org_id: string
+          socle_procedure_id: string
+          synced_at: string
+        }
+        Insert: {
+          obsoleted_at?: string | null
+          organization_id: string
+          socle_org_id: string
+          socle_procedure_id: string
+          synced_at?: string
+        }
+        Update: {
+          obsoleted_at?: string | null
+          organization_id?: string
+          socle_org_id?: string
+          socle_procedure_id?: string
+          synced_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_procedure_organizations_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       sync_runs: {
         Row: {
           counters: Json

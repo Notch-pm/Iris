@@ -73,7 +73,7 @@ export function ResumePane({
         <dl className="grid grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-x-5 gap-y-3">
           <InfoCell label="Démarche" value={r.socle_procedure_label ?? "Demande historique sans démarche"} />
           {r.socle_category_label ? <InfoCell label="Catégorie de démarche" value={r.socle_category_label} /> : null}
-          <InfoCell label="Organisation destinataire" value={r.socle_organization_label ?? "À affecter"} />
+          <InfoCell label="Organisme" value={r.socle_organization_label ?? "À affecter"} />
           {channel ? <InfoCell label="Canal de dépôt" value={channel} /> : null}
           {r.source !== "iris" ? (
             <InfoCell label="Source" value={r.external_ref ? `${r.source} · réf. ${r.external_ref}` : r.source} />

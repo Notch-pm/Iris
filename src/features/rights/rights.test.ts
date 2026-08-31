@@ -4,6 +4,7 @@ import {
   canViewProcedure,
   creatableProcedureIds,
   creatableProcedures,
+  creatableProceduresOn,
   creationOrganizationIds,
   emptyRights,
   explainRight,
@@ -183,6 +184,56 @@ describe("création — sélecteurs dérivés (RM-58, RM-59)", () => {
     const my = myRights([inactif, actif]);
     expect(creationOrganizationIds(my, D1)).toEqual(new Set([CCAS]));
     expect(creationOrganizationIds(my, D1).has(VOIRIE)).toBe(false);
+  });
+});
+
+// B4 (décision PO 2026-08-31) — une fois l'organisme arrêté, c'est « créable
+// POUR LUI » qu'il faut demander, pas « créable quelque part ».
+// ⚠️ Ce module ne répond QUE des droits : le croisement avec l'activation Socle
+// (`organization_procedures`) vit dans `creation/proposables.test.ts`.
+describe("creatableProceduresOn — les droits, organisme par organisme", () => {
+  it("ne retient que les démarches créables POUR cet organisme", () => {
+    const my = myRights([
+      profile({ name: "Voirie", scope_organization_ids: [VOIRIE], procedures: { [D1]: ["creation"] } }),
+      profile({ name: "CCAS", scope_organization_ids: [CCAS], procedures: { [D2]: ["creation"] } }),
+    ]);
+    expect(creatableProceduresOn(my, VOIRIE, [D1, D2])).toEqual(new Set([D1]));
+    expect(creatableProceduresOn(my, CCAS, [D1, D2])).toEqual(new Set([D2]));
+    expect(creatableProceduresOn(my, MAIRIE, [D1, D2])).toEqual(new Set()); // hors périmètre
+  });
+
+  it("résout le droit par DÉFAUT du profil (RM-33)", () => {
+    const my = myRights([
+      profile({ name: "Guichet", scope_organization_ids: [MAIRIE, VOIRIE], default: ["creation"] }),
+    ]);
+    expect(creatableProceduresOn(my, VOIRIE, [D1, D2])).toEqual(new Set([D1, D2]));
+  });
+
+  it("une ligne explicite VIDE l'emporte sur un défaut créateur (CL-25)", () => {
+    const my = myRights([
+      profile({
+        name: "Sauf D1", scope_organization_ids: [VOIRIE],
+        default: ["creation"], procedures: { [D1]: [] },
+      }),
+    ]);
+    expect(creatableProceduresOn(my, VOIRIE, [D1, D2])).toEqual(new Set([D2]));
+  });
+
+  it("un profil désactivé n'ouvre rien (CL-02)", () => {
+    const my = myRights([
+      profile({
+        name: "Désactivé", status: "inactive",
+        scope_organization_ids: [VOIRIE], procedures: { [D1]: ["creation"] },
+      }),
+    ]);
+    expect(creatableProceduresOn(my, VOIRIE, [D1])).toEqual(new Set());
+  });
+
+  it("l'instruction seule n'ouvre pas la création (RM-01)", () => {
+    const my = myRights([
+      profile({ name: "Instructeur", scope_organization_ids: [VOIRIE], procedures: { [D1]: ["instruction", "cloture"] } }),
+    ]);
+    expect(creatableProceduresOn(my, VOIRIE, [D1])).toEqual(new Set());
   });
 });
 

@@ -91,6 +91,74 @@ export function subtreeOf(rootId: string, orgs: SocleOrg[]): SocleOrg[] {
   return out;
 }
 
+/**
+ * Activation d'une démarche pour UNE organisation, telle que le Socle la rend.
+ *
+ * ⚠️ Le DTO `Procedure` de l'API publique n'expose PAS qui a activé quoi : la
+ * seule lecture possible est le FILTRE `GET /v1/procedures?enabled_for=<org>`,
+ * organisation par organisation (il n'est pas récursif). D'où cette forme —
+ * un relevé par organisation interrogée — plutôt qu'un champ de la démarche.
+ * Le jour où le Socle branchera `GET /v1/organization-procedures` (sérialiseur
+ * déjà écrit, route absente), c'est cette structure-ci qu'il remplira en un
+ * seul appel, et rien d'autre ne bougera.
+ */
+export interface OrgActivation {
+  socleOrgId: string;
+  /** Démarches rendues par `?enabled_for=` — donc `is_enabled = true`, opt-in strict. */
+  procedureIds: string[];
+}
+
+export interface ProcOrgRow {
+  organization_id: string;    // tenant Iris
+  socle_procedure_id: string;
+  socle_org_id: string;
+}
+
+/**
+ * Miroir des activations : une ligne par couple (organisation, démarche)
+ * réellement proposé.
+ *
+ * Croisé avec le cache du tenant (`procRows`) — une activation qui désignerait
+ * une démarche hors cache n'aurait aucun sens ici : la garde `t16` la
+ * refuserait de toute façon à l'insertion d'une demande, et la ligne resterait
+ * à pourrir dans le miroir. Croisé aussi avec le miroir d'organisations, qui
+ * dit à quel TENANT appartient chaque organisation : les identifiants Socle ne
+ * la portent pas.
+ */
+export function buildActivationRows(
+  orgRows: readonly OrgMirrorRow[],
+  procRows: readonly ProcCacheRow[],
+  activations: readonly OrgActivation[],
+): ProcOrgRow[] {
+  const tenantOfOrg = new Map(orgRows.map((o) => [o.socle_id, o.organization_id]));
+  const cacheOfTenant = new Map<string, Set<string>>();
+  for (const proc of procRows) {
+    const set = cacheOfTenant.get(proc.organization_id) ?? new Set<string>();
+    set.add(proc.socle_id);
+    cacheOfTenant.set(proc.organization_id, set);
+  }
+
+  const out: ProcOrgRow[] = [];
+  const seen = new Set<string>();
+  for (const activation of activations) {
+    const tenantId = tenantOfOrg.get(activation.socleOrgId);
+    if (!tenantId) continue;                       // organisation hors périmètre miroité
+    const cache = cacheOfTenant.get(tenantId);
+    for (const procedureId of activation.procedureIds) {
+      if (!cache?.has(procedureId)) continue;      // démarche hors cache du tenant
+      const key = `${tenantId}|${procedureId}|${activation.socleOrgId}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({
+        organization_id: tenantId,
+        socle_procedure_id: procedureId,
+        socle_org_id: activation.socleOrgId,
+      });
+    }
+  }
+  return out;
+}
+
 export interface SyncPlan {
   orgRows: OrgMirrorRow[];
   procRows: ProcCacheRow[];

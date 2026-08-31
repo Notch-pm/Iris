@@ -13,8 +13,44 @@ export interface LoadedProcedure {
   schema: FormSchema;
 }
 
-/** Étapes de saisie (la confirmation de création n'est pas une étape du stepper). */
-export type CreationStep = 1 | 2 | 3 | 4;
+/**
+ * Étapes de saisie (la confirmation de création n'est pas une étape du stepper).
+ *
+ * L'étape **0 — organisme** n'existe que pour un agent qui peut créer pour
+ * PLUSIEURS organisations (décision PO du 2026-08-31) : elle est numérotée 0
+ * plutôt que de décaler les autres, pour que « étape 2 = usager » reste vrai
+ * partout dans le parcours, que la question soit posée ou non. Le numéro
+ * AFFICHÉ, lui, est le rang dans le stepper — voir `CreationStepper`.
+ */
+export type CreationStep = 0 | 1 | 2 | 3 | 4;
+
+/**
+ * Étapes ATTEIGNABLES du stepper : celles déjà visitées, plus — quand l'étape
+ * courante est franchissable — la **suivante** (demande du 2026-08-31 : « quand
+ * le bouton Continuer s'active, la puce suivante s'active aussi »).
+ *
+ * Le voisinage se lit dans l'ORDRE DU TABLEAU, jamais en arithmétique sur les
+ * numéros : l'étape « Organisme » (0) n'existe pas pour tout le monde, et rien
+ * ne garantit que les identifiants restent contigus.
+ *
+ * ⚠️ Rendre une puce cliquable ne DISPENSE de rien : la franchir doit appeler
+ * le même geste que « Continuer » (validation du formulaire comprise), sinon
+ * le parcours a deux portes dont une sans serrure.
+ */
+export function reachableSteps(
+  nums: readonly number[],
+  current: number,
+  maxReached: number,
+  canAdvance: boolean,
+): Set<number> {
+  const out = new Set<number>(nums.filter((n) => n <= maxReached));
+  if (canAdvance) {
+    const index = nums.indexOf(current);
+    const next = index >= 0 ? nums[index + 1] : undefined;
+    if (next !== undefined) out.add(next);
+  }
+  return out;
+}
 
 /** Demandes liées choisies pendant la saisie : id → référence. */
 export type LinkedRequests = Record<string, string>;

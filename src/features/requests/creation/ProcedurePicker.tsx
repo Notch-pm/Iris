@@ -35,10 +35,22 @@ interface Props {
   selectedId: string;
   /** Démarche dont le snapshot est en cours de chargement depuis le Socle. */
   loadingId: string | null;
+  /**
+   * Organisme porteur retenu à l'étape 0, quand la question s'est posée. La
+   * liste est alors bornée à ce que les DROITS de l'agent ouvrent pour lui (les
+   * droits sont des couples) : l'écrire évite qu'il cherche en vain une démarche
+   * qu'il connaît mais qu'il n'a pas le droit de consigner pour CET organisme.
+   *
+   * ⚠️ Ce n'est PAS un rattachement Socle : dans le référentiel, une démarche
+   * appartient à UNE organisation, et Iris ne miroite que celles de la RACINE du
+   * tenant (`buildSyncPlan`, `socle-proxy /v1/procedures/list`). Le libellé ne
+   * doit donc jamais laisser croire que la liste est « les démarches de X ».
+   */
+  scopeLabel?: string | null;
   onSelect: (socleProcedureId: string) => void;
 }
 
-export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, onSelect }: Props) {
+export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, scopeLabel, onSelect }: Props) {
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState(ALL_CATEGORIES);
 
@@ -49,7 +61,7 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
   );
 
   return (
-    <div className="flex max-w-[820px] flex-col gap-4">
+    <div className="flex max-w-[1240px] flex-col gap-4">
       <div className="relative">
         <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
@@ -87,19 +99,34 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
         </div>
       ) : null}
 
-      <div className="mt-0.5 flex items-baseline gap-2">
+      <div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <h3 className="text-base font-semibold">Démarches disponibles</h3>
         <small className="text-xs text-muted-foreground">
           {loading ? "chargement…" : `${visible.length} sur ${rows.length}`}
         </small>
+        {scopeLabel ? (
+          <small className="text-xs text-muted-foreground">
+            · celles que vos droits vous ouvrent pour <strong className="font-semibold">{scopeLabel}</strong>
+          </small>
+        ) : null}
       </div>
 
       {!loading && rows.length === 0 ? (
         <div className="rounded-[14px] border border-dashed border-border p-5 text-sm text-muted-foreground">
-          Aucune démarche proposable pour ce tenant. Seules les démarches <strong>externes</strong>,
-          dont le paramétrage est <strong>en production</strong> dans le Socle et qui sont
-          <strong> dans leur période de publication</strong>, sont proposées ici — vérifiez leur
-          état dans le référentiel, puis synchronisez-le.
+          {scopeLabel ? (
+            <>
+              Aucune démarche à consigner pour <strong>{scopeLabel}</strong> : vous n'y détenez
+              le droit de création sur aucune des démarches proposables du tenant. Revenez à
+              l'étape précédente pour choisir un autre organisme.
+            </>
+          ) : (
+            <>
+              Aucune démarche proposable pour ce tenant. Seules les démarches <strong>externes</strong>,
+              dont le paramétrage est <strong>en production</strong> dans le Socle et qui sont
+              <strong> dans leur période de publication</strong>, sont proposées ici — vérifiez leur
+              état dans le référentiel, puis synchronisez-le.
+            </>
+          )}
         </div>
       ) : null}
 
@@ -109,7 +136,7 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2" role="listbox" aria-label="Démarches">
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 min-[1400px]:grid-cols-3" role="listbox" aria-label="Démarches">
         {visible.map((row) => {
           const selected = row.socle_id === selectedId;
           const isLoading = row.socle_id === loadingId;

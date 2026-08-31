@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { CreationStep } from "./model";
+import { reachableSteps, type CreationStep } from "./model";
 
 export interface StepDef {
   num: CreationStep;
@@ -11,23 +11,38 @@ export interface StepDef {
 interface Props {
   steps: StepDef[];
   current: number;
-  /** Étape la plus avancée atteinte : les étapes au-delà ne sont pas cliquables. */
+  /** Étape la plus avancée atteinte : les étapes au-delà ne sont pas cliquables… */
   maxReached: number;
+  /**
+   * …à une près : quand l'étape courante est franchissable — c'est-à-dire quand
+   * le bouton « Continuer » est actif —, la puce SUIVANTE l'est aussi
+   * (demande du 2026-08-31). L'appelant doit alors traiter ce clic comme le
+   * bouton lui-même : `onGo` reçoit une étape au-delà de `maxReached`, et
+   * c'est à lui de la valider avant d'y aller.
+   */
+  canAdvance?: boolean;
   onGo: (step: CreationStep) => void;
 }
 
-export function CreationStepper({ steps, current, maxReached, onGo }: Props) {
+export function CreationStepper({ steps, current, maxReached, canAdvance = false, onGo }: Props) {
+  const nums = steps.map((s) => s.num);
+  const reachable = reachableSteps(nums, current, maxReached, canAdvance);
   return (
     <ol className="flex items-center gap-1.5" aria-label="Étapes de la saisie">
       {steps.map((s, i) => {
         const isCurrent = current === s.num;
         const isPast = current > s.num;
-        const reachable = s.num <= maxReached;
+        const isReachable = reachable.has(s.num);
+        // La puce franchissable se donne l'air d'une étape faite : elle est
+        // cliquable, et un gris de « verrouillé » mentirait. Sa pastille garde
+        // son numéro (pas de coche) — c'est ce qui la distingue d'une étape
+        // réellement parcourue.
+        const isNext = isReachable && !isCurrent && !isPast;
         return (
           <li key={s.num} className={cn("flex items-center gap-1.5", i < steps.length - 1 && "flex-1")}>
             <button
               type="button"
-              disabled={!reachable}
+              disabled={!isReachable}
               aria-current={isCurrent ? "step" : undefined}
               onClick={() => onGo(s.num)}
               className={cn(
@@ -35,10 +50,10 @@ export function CreationStepper({ steps, current, maxReached, onGo }: Props) {
                 "disabled:cursor-default",
                 isCurrent
                   ? "border-primary bg-primary/[0.06] text-primary"
-                  : isPast
+                  : isPast || isNext
                     ? "border-primary/30 bg-card text-foreground hover:bg-secondary/40"
                     : "border-border bg-card text-muted-foreground",
-                reachable && !isCurrent && "cursor-pointer",
+                isReachable && !isCurrent && "cursor-pointer",
               )}
             >
               <span
@@ -48,7 +63,11 @@ export function CreationStepper({ steps, current, maxReached, onGo }: Props) {
                 )}
                 aria-hidden="true"
               >
-                {isPast ? <Check className="size-3" strokeWidth={3} /> : s.num}
+                {/* Le RANG affiché, pas l'identifiant d'étape : l'étape
+                    « organisme » n'est proposée qu'à qui a plusieurs
+                    organismes, et sans elle le parcours doit rester numéroté
+                    1 à 4. */}
+                {isPast ? <Check className="size-3" strokeWidth={3} /> : i + 1}
               </span>
               <span className="flex min-w-0 max-w-[168px] flex-col items-start gap-0.5 leading-tight">
                 <span className="whitespace-nowrap font-bold">{s.label}</span>

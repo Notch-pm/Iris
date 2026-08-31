@@ -154,6 +154,31 @@ export function creatableProcedures(my: MyRights, cacheIds: readonly string[]): 
   return out;
 }
 
+/**
+ * Démarches créables parmi `cacheIds` **pour une organisation donnée** (RM-59).
+ *
+ * Sœur de `creatableProcedures`, qui répond « créable QUELQUE PART » : une fois
+ * l'organisme arrêté (première étape du parcours de création depuis le
+ * 2026-08-31), c'est cette question-ci qu'il faut poser — sans quoi le
+ * sélecteur proposerait des démarches que le serveur refuserait pour CET
+ * organisme.
+ *
+ * ⚠️ Elle ne répond QUE des droits. Ce qu'un organisme propose vraiment se
+ * croise avec l'activation Socle — `creation/proposables.ts`, seul endroit où
+ * les quatre règles se rencontrent.
+ */
+export function creatableProceduresOn(
+  my: MyRights,
+  scopeOrgId: string,
+  cacheIds: readonly string[],
+): Set<string> {
+  const out = new Set<string>();
+  for (const procedureId of cacheIds) {
+    if (creationOrganizationIds(my, procedureId).has(scopeOrgId)) out.add(procedureId);
+  }
+  return out;
+}
+
 /** La démarche `procedureId` (connue) est-elle consultable sur au moins une organisation ? */
 export function canViewProcedure(my: MyRights, procedureId: string): boolean {
   return my.profiles.some((profile) => {

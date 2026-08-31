@@ -5,21 +5,66 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type { FacetOption } from "@/features/requests/facets";
+import type { ActivationPair } from "@/features/requests/creation/proposables";
 import { isoDay, isPublishedOn, type ProcedurePublication } from "@fn/_shared/procedures/publication";
+
+/**
+ * Organisation du miroir, avec son parent. `parentValue` ne sert qu'à SITUER
+ * une organisation quand on la propose à un humain (« Service Etat Civil » sous
+ * « Mairie de Saint Martin de Crau ») : le miroir de la hiérarchie reste léger,
+ * et les droits, eux, se lisent dans `permission_*` — jamais dans cet arbre.
+ * Champ additionnel sur `FacetOption` : les filtres qui n'en ont pas l'usage
+ * (liste, tableau, fiche) l'ignorent sans rien changer.
+ */
+export interface SocleOrganizationOption extends FacetOption {
+  parentValue: string | null;
+}
 
 export function useSocleOrganizationsCatalog(orgId: string) {
   return useQuery({
     queryKey: ["socle-organizations", orgId],
     enabled: Boolean(orgId),
-    queryFn: async (): Promise<FacetOption[]> => {
+    queryFn: async (): Promise<SocleOrganizationOption[]> => {
       const { data, error } = await supabase
         .from("socle_organizations")
-        .select("socle_id, name")
+        .select("socle_id, name, socle_parent_id")
         .eq("organization_id", orgId)
         .is("obsoleted_at", null)
         .order("name");
       if (error) throw error;
-      return (data ?? []).map((r) => ({ value: r.socle_id, label: r.name }));
+      return (data ?? []).map((r) => ({
+        value: r.socle_id,
+        label: r.name,
+        parentValue: r.socle_parent_id,
+      }));
+    },
+  });
+}
+
+/**
+ * Activations du tenant : quels organismes proposent quelles démarches
+ * (miroir de `Socle.organization_procedures`, rempli par la synchro).
+ *
+ * ⚠️ **Opt-in strict** : ce que cette liste ne contient pas n'est pas activé.
+ * Une organisation absente n'a AUCUNE démarche — surtout pas « toutes ».
+ *
+ * Une seule lecture pour tout l'écran : le volume est celui d'un sous-arbre ×
+ * un catalogue (31 lignes pour ACCM), et l'indexer côté client évite une
+ * requête à chaque changement d'organisme. La garde réelle reste le trigger
+ * `t18_requests_require_procedure_active`.
+ */
+export function useSocleProcedureActivations(orgId: string) {
+  return useQuery({
+    queryKey: ["socle-procedure-activations", orgId],
+    enabled: Boolean(orgId),
+    queryFn: async (): Promise<ActivationPair[]> => {
+      const { data, error } = await supabase
+        .from("socle_procedure_organizations")
+        .select("socle_org_id, socle_procedure_id")
+        .eq("organization_id", orgId)
+        .is("obsoleted_at", null);
+      if (error) throw error;
+      return data ?? [];
     },
   });
 }

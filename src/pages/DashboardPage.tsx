@@ -5,13 +5,17 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
-import { useSocleProceduresCatalog } from "@/features/socle/useSocleCatalog";
-import { creatableProcedures } from "@/features/rights/rights";
+import {
+  useSocleProcedureActivations,
+  useSocleProceduresCatalog,
+} from "@/features/socle/useSocleCatalog";
+import { creatableByOrganisation, activationsByOrganisation } from "@/features/requests/creation/proposables";
 
 export function DashboardPage() {
   const { profile } = useAuth();
   const { current, rights, rightsLoading, hasAnyProfile, isAdmin } = useTenant();
   const procCatalog = useSocleProceduresCatalog(current?.organizationId ?? "");
+  const activations = useSocleProcedureActivations(current?.organizationId ?? "");
   if (!current) return null;
   // Évite un flash de la carte « aucun droit » pendant le premier chargement
   // de my_rights (repli emptyRights le temps que la requête résolve).
@@ -44,7 +48,12 @@ export function DashboardPage() {
   // serveur, cette carte n'affiche le lien que pour éviter un aller-retour
   // inutile vers une page bloquée.
   const cacheIds = (procCatalog.data ?? []).map((o) => o.value);
-  const canCreateSomething = creatableProcedures(rights, cacheIds).size > 0;
+  // Croisé avec l'ACTIVATION Socle (2026-08-31) : des droits de création sur
+  // une démarche qu'aucun de mes organismes ne propose n'ouvrent rien, et le
+  // lien mènerait à un parcours vide.
+  const canCreateSomething = creatableByOrganisation(
+    rights, cacheIds, activationsByOrganisation(activations.data ?? []),
+  ).size > 0;
 
   return (
     <div className="flex flex-col gap-6">

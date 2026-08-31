@@ -92,7 +92,7 @@ export function PrintReceipt({ data }: { data: ReceiptData }) {
 
       <h2 className="mb-1 text-[13pt] font-bold">Démarche</h2>
       <p>{data.procedureName}{data.categoryLabel ? ` (${data.categoryLabel})` : ""}</p>
-      {data.destinationLabel ? <p>Service destinataire : {data.destinationLabel}</p> : null}
+      {data.destinationLabel ? <p>Organisme : {data.destinationLabel}</p> : null}
       <p>Objet : {data.subject}</p>
 
       <h2 className="mb-1 mt-5 text-[13pt] font-bold">Demandeur</h2>

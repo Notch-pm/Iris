@@ -54,24 +54,13 @@ chiffrage :
 **À trancher d'abord** : de quel transfert parle-t-on ? Et que deviennent le journal, les
 pièces et les échanges avec l'usager ?
 
+**Depuis B4 (2026-08-31), un repère** : le PO a tranché, pour la création, que
+« collectivité » désignait l'**organisation Socle** du tenant et non le tenant — ce qui
+rend la lecture 1 nettement plus probable ici aussi. À confirmer explicitement : ce n'est
+pas parce que les deux entrées emploient le même mot qu'elles parlent du même objet.
+
 **Touche** : selon la lecture, `src/features/requests/` seul, ou le modèle de données et
 [`architecture-proposee.md`](architecture-proposee.md).
-
-## B4 — Sélection de la collectivité à la création d'une demande
-
-**Ce qui existe.** Le parcours de création impose déjà une **organisation destinataire**
-(obligatoire, RM-29/RM-59), restreinte à l'intersection du périmètre de l'agent et des
-organisations qui proposent la démarche. Depuis le 2026-08-30 ce champ s'appelle
-**« Organisme »** sur la liste et le tableau ; le parcours de création, lui, dit encore
-« Organisation destinataire » (cf. B8).
-
-**À préciser** : s'agit-il de choisir le **tenant** — pour un agent membre de plusieurs
-collectivités, ce que fait aujourd'hui le sélecteur du header, hors du parcours — ou
-d'assouplir la restriction de périmètre du parcours actuel ? La seconde lecture touche
-directement les droits : `requests_guard_write` revalide le couple côté serveur, et l'écran ne
-fait que refléter.
-
-**Touche** : `src/features/requests/creation/`, [`droits.md`](droits.md).
 
 ## B5 — Sous-tâches
 
@@ -132,6 +121,19 @@ délibérée : lire `CLAUDE.md` § Conventions avant d'y toucher.
 
 Les numéros ne sont pas réattribués : une entrée traitée laisse son numéro derrière elle, pour
 que qui l'a en tête retrouve où elle a atterri.
+
+- **B4 — Sélection de la collectivité à la création** · arbitrée par le PO le
+  **2026-08-31**, livrée le jour même. La lecture retenue est celle de l'**organisation
+  Socle** (Arles, Saint-Martin-de-Crau, un service…), pas du tenant : les droits sont des
+  couples, et « dans ses droits » désignait bien le périmètre des profils. Le parcours de
+  création s'ouvre désormais, **pour qui peut créer pour plusieurs organismes**, sur la
+  question « pour quel organisme ? » ; l'organisme retenu borne ensuite les démarches
+  proposées. Rien n'est pré-sélectionné, et le pré-remplissage silencieux par
+  l'organisation de la démarche est supprimé — c'est lui qui faisait atterrir sur la racine
+  ACCM des demandes communales, les 15 démarches du tenant y étant rattachées. Un agent
+  d'une commune unique ne voit pas la question. Détail :
+  [`../src/features/requests/CLAUDE.md`](../src/features/requests/CLAUDE.md) § « Organisme
+  d'abord ».
 
 - **B1 — Centrage de la carte et zoom** · arbitrée par le PO le **2026-08-31**, livrée le
   jour même. La carte des interventions se cadre désormais sur l'**étendue des quartiers**

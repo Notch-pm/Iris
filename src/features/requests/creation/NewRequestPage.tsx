@@ -3,6 +3,14 @@
 // Quatre étapes (démarche → usager → formulaire → récapitulatif) puis création
 // via l'edge function create-request-from-procedure (revalidation + écriture
 // atomique côté serveur — le navigateur ne fournit jamais de snapshot).
+//
+// …précédées, POUR QUI EN A PLUSIEURS, d'une question préalable : « pour quel
+// organisme ? » (étape 0, décision PO du 2026-08-31 — backlog B4). Elle ne
+// s'affiche pas quand la réponse est unique, et rien n'y est pré-sélectionné
+// quand elle s'affiche : l'organisme porteur décide des droits d'instruction et
+// de clôture, il ne doit pas se choisir par défaut. C'est lui, ensuite, qui
+// borne les démarches proposées — les droits étant des couples (organisation,
+// démarche), l'ordre inverse proposerait des démarches refusées au bout.
 // Autour : brouillon local continu, détection best-effort des demandes proches
 // avec liaison explicite, récépissé imprimable, et l'onglet « Procédure » du
 // rail : la base de connaissances que le Socle destine à l'agent, lue à côté
@@ -33,6 +41,7 @@ import { creatableProcedures, creationOrganizationIds } from "@/features/rights/
 import {
   fetchProcedureSnapshot,
   useSocleOrganizationsCatalog,
+  useSocleProcedureActivations,
   useSocleProcedureRows,
   type ProcedureSnapshot,
 } from "@/features/socle/useSocleCatalog";
@@ -61,6 +70,7 @@ import {
 } from "@fn/socle-proxy/_shared/knowledge";
 import { CreationRail, type FicheLine, type NearbyState } from "./CreationRail";
 import { CreationStepper, type StepDef } from "./CreationStepper";
+import { OrganismePicker } from "./OrganismePicker";
 import { ProcedureFormFields } from "./ProcedureFormFields";
 import { ProcedurePicker } from "./ProcedurePicker";
 import { PrintReceipt, RequestCreated, type ReceiptData } from "./RequestCreated";
@@ -87,7 +97,13 @@ import {
   type LinkedRequests,
   type LoadedProcedure,
 } from "./model";
+import {
+  needsOrganizationChoice,
+  organizationChoices,
+  soleOrganization,
+} from "./organismes";
 import { scoreNearbyRequests, type NearbyScored } from "./proches";
+import { activationsByOrganisation, creatableByOrganisation } from "./proposables";
 import { useCreateFromProcedure } from "./useCreateFromProcedure";
 import {
   nearbyBasisFromResolution,
@@ -120,6 +136,7 @@ export function NewRequestPage() {
   const procRows = useSocleProcedureRows(orgId);
   const monthlyCounts = useProcedureMonthlyCounts(orgId);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
+  const activationRows = useSocleProcedureActivations(orgId);
   const create = useCreateFromProcedure();
   const linkRequests = useLinkRequests();
   const getContact = useGetContact();
@@ -132,8 +149,12 @@ export function NewRequestPage() {
   const imposedContactId = searchParams.get("usager");
   const imposedContact = useSocleContact(orgId, imposedContactId);
 
-  const [step, setStep] = React.useState<PageStep>(1);
-  const [maxReached, setMaxReached] = React.useState(1);
+  // `null` = l'agent n'a pas encore navigué : l'étape courante est alors la
+  // PREMIÈRE du parcours — laquelle n'est connue qu'une fois le périmètre lu
+  // (0 quand l'organisme reste à choisir, 1 sinon). Dériver plutôt que
+  // d'initialiser évite d'ouvrir sur une étape que les droits contrediront.
+  const [stepState, setStep] = React.useState<PageStep | null>(null);
+  const [maxReachedState, setMaxReached] = React.useState<number | null>(null);
   const [procedureId, setProcedureId] = React.useState("");
   const [procedure, setProcedure] = React.useState<LoadedProcedure | null>(null);
   const [loadingId, setLoadingId] = React.useState<string | null>(null);
@@ -182,10 +203,46 @@ export function NewRequestPage() {
   const fileCounts = fileCountsFrom(files);
   const activeCount = activeFields(schema, values).length;
 
-  // RM-58 : seules les démarches où l'utilisateur détient création sont proposées.
-  const creatableProcedureIds = creatableProcedures(rights, (procRows.data ?? []).map((r) => r.socle_id));
+  // ---- Périmètre de création : l'organisme D'ABORD (B4) ----------------------
+  // Le périmètre est connu quand les droits ET les deux catalogues du tenant le
+  // sont : tant qu'il ne l'est pas, on ne sait pas encore si la question de
+  // l'organisme se pose, donc on n'affiche aucune étape (voir le garde-fou
+  // plus bas) plutôt qu'un parcours qui se renumérote sous les yeux de l'agent.
+  const cacheIds = (procRows.data ?? []).map((r) => r.socle_id);
+  const perimeterReady = !rightsLoading && !procRows.isLoading
+    && !orgCatalog.isLoading && !activationRows.isLoading;
+
+  // Les QUATRE règles de la spécification PO du 2026-08-31, croisées une seule
+  // fois : `cacheIds` porte déjà « en production » et « dans sa période »,
+  // `creatableByOrganisation` ajoute « activée pour cet organisme » et « dans
+  // mes droits ». Une organisation absente de la table n'a rien à proposer —
+  // elle ne sera donc pas offerte à l'étape 0 (pas de cul-de-sac).
+  const activated = React.useMemo(
+    () => activationsByOrganisation(activationRows.data ?? []),
+    [activationRows.data],
+  );
+  const proposable = creatableByOrganisation(rights, cacheIds, activated);
+  const orgChoices = organizationChoices(orgCatalog.data ?? [], new Set(proposable.keys()));
+  const needsOrgStep = needsOrganizationChoice(orgChoices);
+  const firstStep: CreationStep = needsOrgStep ? 0 : 1;
+  const step: PageStep = stepState ?? firstStep;
+  const maxReached = maxReachedState ?? firstStep;
+  /** Unique organisme admissible : retenu d'office, sans question (B4). */
+  const soleOrgId = soleOrganization(orgChoices);
+
+  // RM-58 : seules les démarches où l'utilisateur détient création sont
+  // proposées — et, l'organisme une fois arrêté, seulement celles créables POUR
+  // LUI (les droits sont des couples). Avant qu'il le soit, l'union sert au
+  // seul état vide « aucun droit de création ».
+  const creatableProcedureIds = destinationId === ""
+    ? new Set([...proposable.values()].flatMap((set) => [...set]))
+    : (proposable.get(destinationId) ?? new Set<string>());
   const creatableRows = (procRows.data ?? []).filter((r) => creatableProcedureIds.has(r.socle_id));
-  const noCreationRight = !rightsLoading && !procRows.isLoading && creatableRows.length === 0;
+  const noCreationRight = perimeterReady && orgChoices.length === 0;
+  // Droits en règle mais rien de proposable : ce n'est PAS un défaut de droits,
+  // et l'administrateur doit pouvoir faire la différence — le plus souvent,
+  // aucune démarche n'est activée pour ses organisations dans le Socle.
+  const mirrorEmpty = noCreationRight && creatableProcedures(rights, cacheIds).size > 0;
 
   // RM-59 : le destinataire ne propose que l'intersection périmètre (création sur cette
   // démarche) ∩ organisations non obsolètes du miroir.
@@ -262,11 +319,24 @@ export function NewRequestPage() {
     });
   }, [imposedContactId, imposedResolution, procedure]);
 
+  // Un seul organisme admissible : il est retenu d'office et l'étape 0 ne
+  // s'ouvre pas — il n'y a rien à demander. Plusieurs : RIEN n'est
+  // pré-sélectionné (décision PO du 2026-08-31), sans quoi la question serait
+  // entérinée sans être lue, comme l'était le pré-remplissage par
+  // l'organisation de la démarche.
+  React.useEffect(() => {
+    if (soleOrgId) setDestinationId((d) => (d === "" ? soleOrgId : d));
+  }, [soleOrgId]);
+
   // ---- Brouillon local (différé à chaque saisie) -----------------------------
   const draftBody: DraftBody | null = procedureId !== "" && step !== 5
     ? {
         draftId: draftIdRef.current,
-        step,
+        // L'étape 0 n'est pas une saisie mais une question, et le brouillon
+        // porte déjà sa réponse (`destinationId`) : un retour en arrière sur
+        // l'organisme se reprend à la démarche. `resumeDraft` renverra à la
+        // question si la réponse enregistrée n'est plus admissible.
+        step: Math.max(step, 1) as 1 | 2 | 3 | 4,
         procedureId,
         destinationId,
         requester: draftRequesterFromResolution(resolution),
@@ -285,7 +355,30 @@ export function NewRequestPage() {
     scheduleSave(JSON.parse(draftSignature) as DraftBody);
   }, [draftSignature, scheduleSave]);
 
+  // Base de connaissances de la démarche : elle est arrivée AVEC elle
+  // (socle-proxy l'ajoute à la lecture complète), donc aucun appel de plus.
+  // ⚠️ Ce `useMemo` est le DERNIER hook du composant, et il doit rester
+  // au-dessus des sorties anticipées qui suivent : sous elles, il n'était
+  // évalué que sur certains rendus — « Rendered more hooks than during the
+  // previous render » dès que le garde-fou de chargement s'ouvrait.
+  const knowledge = React.useMemo(
+    () => (procedure ? parseAgentKnowledge(procedure.snapshot.knowledge_base) : null),
+    [procedure],
+  );
+
   if (!current) return null;
+
+  // Le parcours n'ouvre pas avant de savoir combien d'organismes l'agent peut
+  // servir : c'est ce qui décide de sa PREMIÈRE étape. Ouvrir avant, ce serait
+  // afficher un stepper qui se renumérote une fraction de seconde plus tard.
+  if (!perimeterReady && !procedure) {
+    return (
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
+        <h1 className="text-xl font-semibold">Nouvelle demande</h1>
+        <p className="text-sm text-muted-foreground">Lecture de votre périmètre de création…</p>
+      </div>
+    );
+  }
 
   // RM-58 : sans droit de création sur aucune démarche, le parcours ne
   // s'ouvre pas — sauf pour ne pas interrompre une saisie déjà commencée
@@ -295,7 +388,11 @@ export function NewRequestPage() {
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-10 text-center">
         <h1 className="text-xl font-semibold">Nouvelle demande</h1>
         <p className="max-w-md text-sm text-muted-foreground">
-          Vous n'avez pas de droit de création de demande — contactez votre administrateur.
+          {mirrorEmpty
+            ? "Vos droits autorisent la création, mais aucune des organisations de votre "
+              + "périmètre n'est connue du référentiel de ce tenant — signalez-le à votre "
+              + "administrateur, une synchronisation du Socle est probablement en attente."
+            : "Vous n'avez pas de droit de création de demande — contactez votre administrateur."}
         </p>
         <Button type="button" variant="outline" onClick={() => navigate("/demandes")}>
           Retour aux demandes
@@ -312,7 +409,7 @@ export function NewRequestPage() {
 
   function goTo(n: CreationStep) {
     setStep(n);
-    setMaxReached((m) => Math.max(m, n));
+    setMaxReached((m) => Math.max(m ?? n, n));
     setError(null);
   }
 
@@ -325,24 +422,21 @@ export function NewRequestPage() {
       setFiles({});
       setFieldErrors({});
       setDupDismissed(false);
-      setMaxReached((m) => Math.min(m, 2));
+      setMaxReached((m) => Math.min(m ?? 2, 2));
     }
     setSubject((s) => (resetForm || s.trim() === "" ? snapshot.name : s));
     // RM-59 : le destinataire ne peut être que dans l'intersection périmètre
-    // (création sur CETTE démarche) ∩ miroir non obsolète. Si le
-    // pré-remplissage issu de la démarche ou la valeur déjà saisie en sort,
-    // le champ est vidé — l'agent doit choisir explicitement.
+    // (création sur CETTE démarche) ∩ miroir non obsolète. L'organisme est
+    // désormais arrêté AVANT la démarche, et la liste des démarches est bornée
+    // par lui : cette vérification est défensive, elle ne devrait jamais mordre.
+    // ⚠️ Plus de repli sur `snapshot.organization_id` : c'est ce pré-remplissage
+    // silencieux qui faisait atterrir sur la racine des demandes communales
+    // (décision PO du 2026-08-31 — B4).
     const allowedIds = creationOrganizationIds(rights, id);
     const validOrgIds = new Set(
       (orgCatalog.data ?? []).filter((o) => allowedIds.has(o.value)).map((o) => o.value),
     );
-    setDestinationId((d) => {
-      if (!resetForm && validOrgIds.has(d)) return d;
-      if (snapshot.organization_id && validOrgIds.has(snapshot.organization_id)) {
-        return snapshot.organization_id;
-      }
-      return "";
-    });
+    setDestinationId((d) => (validOrgIds.has(d) ? d : ""));
     // Le demandeur déjà désigné doit rester admissible par la nouvelle démarche
     // (publics activés, anonymat) — sinon il est à désigner de nouveau.
     setResolution((r) => (r && validateRequesterSubmission(snapshot.requester_config, toSubmission(r)).ok ? r : null));
@@ -378,7 +472,14 @@ export function NewRequestPage() {
       const parsed = parseFormSchema(snapshot.form_schema);
       setProcedureId(d.procedureId);
       setProcedure({ snapshot, schema: parsed });
-      setDestinationId(d.destinationId);
+      // L'organisme du brouillon est REVÉRIFIÉ : les droits ont pu changer
+      // depuis l'enregistrement, et un brouillon n'est pas un droit acquis.
+      const allowedIds = creationOrganizationIds(rights, d.procedureId);
+      const validOrgIds = new Set(
+        (orgCatalog.data ?? []).filter((o) => allowedIds.has(o.value)).map((o) => o.value),
+      );
+      const keptDestination = validOrgIds.has(d.destinationId) ? d.destinationId : "";
+      setDestinationId(keptDestination);
       setSubject(d.subject.trim() === "" ? snapshot.name : d.subject);
       setBodyText(d.body);
       setPriority(d.priority);
@@ -407,8 +508,12 @@ export function NewRequestPage() {
       if (res && !validateRequesterSubmission(snapshot.requester_config, toSubmission(res)).ok) res = null;
       setResolution(res);
 
-      // Les pièces ne sont pas persistées : on repasse au plus tard par le formulaire.
-      const target: CreationStep = !res ? 2 : (Math.max(2, Math.min(d.step, 3)) as CreationStep);
+      // Les pièces ne sont pas persistées : on repasse au plus tard par le
+      // formulaire — et par l'étape 0 si l'organisme du brouillon n'est plus
+      // admissible, plutôt que de laisser une saisie qui sera refusée au bout.
+      const target: CreationStep = keptDestination === "" && needsOrgStep ? 0
+        : !res ? 2
+        : (Math.max(2, Math.min(d.step, 3)) as CreationStep);
       setMaxReached(target);
       setStep(target);
       draft.dismissExisting();
@@ -454,14 +559,44 @@ export function NewRequestPage() {
     goTo(4);
   }
 
+  /**
+   * Choix de l'organisme porteur (étape 0). Comme le choix d'une démarche
+   * (`selectProcedure`) et celui d'un usager (`onResolve`), il ENCHAÎNE sur
+   * l'étape suivante : désigner, c'est avoir répondu — faire cliquer
+   * « Continuer » derrière serait un geste de plus pour rien, et cette étape-ci
+   * était la seule à le demander.
+   *
+   * En changer peut RETIRER la démarche déjà choisie : les droits sont des
+   * couples (organisation, démarche), et une démarche créable à Arles ne l'est
+   * pas forcément à Fontvieille. On la relâche franchement plutôt que de
+   * laisser courir une saisie que le serveur refusera.
+   */
+  function chooseOrganisme(id: string) {
+    setDestinationId(id);
+    setError(null);
+    if (procedureId !== "" && !creationOrganizationIds(rights, procedureId).has(id)) {
+      setProcedureId("");
+      setProcedure(null);
+      setValues({});
+      setFiles({});
+      setFieldErrors({});
+      setResolution(null);
+      setLinked({});
+      setDupDismissed(false);
+      flash("Démarche retirée — elle n'est pas proposée pour cet organisme");
+    }
+    goTo(1);
+  }
+
   function next() {
-    if (step === 1 && procedure) goTo(2);
+    if (step === 0 && destinationId !== "") goTo(1);
+    else if (step === 1 && procedure) goTo(2);
     else if (step === 2 && resolution) goTo(3);
     else if (step === 3) nextFromForm();
   }
 
   function back() {
-    if (step > 1 && step < 5) {
+    if (step > firstStep && step < 5) {
       setStep((step - 1) as CreationStep);
       setError(null);
     }
@@ -488,8 +623,9 @@ export function NewRequestPage() {
     setError(null);
     setLinkError(null);
     if (destinationMissing(destinationId)) {
-      setError("L'organisation destinataire est obligatoire.");
-      setStep(4);
+      setError("L'organisme est obligatoire.");
+      // Renvoyé là où la question se pose : l'étape 0 quand elle existe.
+      setStep(needsOrgStep ? 0 : 4);
       return;
     }
     try {
@@ -536,10 +672,12 @@ export function NewRequestPage() {
 
   function restart() {
     draftIdRef.current = crypto.randomUUID();
-    setStep(1);
-    setMaxReached(1);
+    setStep(firstStep);
+    setMaxReached(firstStep);
     setProcedureId("");
     setProcedure(null);
+    // L'organisme est reposé à la question quand il y en a plusieurs ; l'unique
+    // organisme, lui, sera remis d'office par l'effet dédié.
     setDestinationId("");
     setResolution(null);
     setSubject("");
@@ -573,15 +711,9 @@ export function NewRequestPage() {
 
   // ---- Vue ---------------------------------------------------------------------
 
-  // Base de connaissances de la démarche : elle est arrivée AVEC elle
-  // (socle-proxy l'ajoute à la lecture complète), donc aucun appel de plus.
   // Le service affiché est le DESTINATAIRE retenu — le même sous-titre qu'à
   // l'instruction —, avec repli sur l'organisation qui porte la démarche dans
   // le Socle tant que le destinataire n'est pas arrêté.
-  const knowledge = React.useMemo(
-    () => (procedure ? parseAgentKnowledge(procedure.snapshot.knowledge_base) : null),
-    [procedure],
-  );
   const procedureService = destinationLabel
     ?? (procedure?.snapshot.organization_id
       ? (orgCatalog.data ?? []).find((o) => o.value === procedure.snapshot.organization_id)?.label ?? null
@@ -605,6 +737,10 @@ export function NewRequestPage() {
 
   const requesterName = requesterShortName(resolution);
   const steps: StepDef[] = [
+    // L'étape 0 n'existe que s'il y a une question à poser (B4).
+    ...(needsOrgStep
+      ? [{ num: 0 as CreationStep, label: "Organisme", hint: destinationLabel ?? "à choisir" }]
+      : []),
     { num: 1, label: "Démarche", hint: procedure ? procedure.snapshot.name : "à choisir" },
     { num: 2, label: "Usager", hint: requesterName ?? imposedName ?? "recherche & homonymes" },
     {
@@ -627,18 +763,26 @@ export function NewRequestPage() {
       value: procedure ? (pieces.total === 0 ? "aucune attendue" : `${pieces.provided} sur ${pieces.total}`) : "—",
       ok: Boolean(procedure) && (pieces.total === 0 || pieces.provided === pieces.total),
     },
-    { key: "Organisation destinataire", value: destinationLabel ?? "à choisir", ok: Boolean(destinationLabel) },
+    { key: "Organisme", value: destinationLabel ?? "à choisir", ok: Boolean(destinationLabel) },
     { key: "Demandes liées", value: linkedCount > 0 ? Object.values(linked).join(", ") : "aucune", ok: linkedCount > 0 },
     { key: "Statut à la création", value: STATUS_LABELS.a_traiter, ok: true },
   ];
 
-  const nextDisabled = step === 1 ? !procedure || loadingId !== null
+  const nextDisabled = step === 0 ? destinationId === ""
+    : step === 1 ? !procedure || loadingId !== null
     : step === 2 ? !resolution
     : false;
-  const nextLabel = step === 1 ? "Continuer vers l'usager"
+  const nextLabel = step === 0 ? "Continuer vers la démarche"
+    : step === 1 ? "Continuer vers l'usager"
     : step === 2 ? "Continuer vers le formulaire"
     : "Voir le récapitulatif";
-  const footHint = step === 1 ? "Choisissez la démarche Socle qui fonde la demande"
+  // La puce suivante s'ouvre exactement quand le bouton s'ouvre — et jamais au
+  // récapitulatif, qui n'a pas de suivante (le bouton y devient « Créer »), ni
+  // sur l'écran de confirmation.
+  const canAdvance = !created && step !== 5 && step !== 4 && !nextDisabled;
+  const footHint = step === 0
+      ? "L'organisme porte la demande : il décide de qui pourra l'instruire et la clore"
+    : step === 1 ? "Choisissez la démarche Socle qui fonde la demande"
     : step === 2 ? (imposedContactId
         ? "Usager imposé par sa fiche — il n'est pas modifiable dans ce parcours"
         : "Renseignez l'usager : ses homonymes du Socle sont proposés automatiquement")
@@ -714,7 +858,16 @@ export function NewRequestPage() {
             steps={steps}
             current={step}
             maxReached={created ? 0 : maxReached}
-            onGo={(n) => { setStep(n); setError(null); }}
+            canAdvance={canAdvance}
+            onGo={(n) => {
+              // FRANCHIR depuis la puce, c'est le même geste que « Continuer » :
+              // même validation du formulaire, même suivi de progression. Deux
+              // chemins vers l'étape suivante, dont un sans contrôle, serait la
+              // porte à côté de la serrure.
+              if (n > maxReached) { next(); return; }
+              setStep(n);
+              setError(null);
+            }}
           />
         </div>
       </div>
@@ -727,15 +880,18 @@ export function NewRequestPage() {
             </div>
           ) : null}
 
-          {step === 1 ? (
+          {/* Étapes 0 et 1 partagent la proposition de reprise : un brouillon
+              en attente doit se voir AVANT qu'on réponde à une question qu'il
+              écrasera — l'organisme repris est celui du brouillon. */}
+          {step <= 1 ? (
             <div className="flex flex-col gap-4">
               {existingDraft ? (
-                <div className="flex max-w-[820px] flex-wrap items-center justify-between gap-3 rounded-[14px] border border-primary/30 bg-primary/[0.04] px-4 py-3">
+                <div className="flex max-w-[1240px] flex-wrap items-center justify-between gap-3 rounded-[14px] border border-primary/30 bg-primary/[0.04] px-4 py-3">
                   <div className="flex flex-col">
                     <span className="text-sm font-bold">Un brouillon est en attente sur ce poste</span>
                     <span className="text-xs text-muted-foreground">
                       Enregistré le {draftDateLabel(existingDraft.savedAt)} — {existingDraftName ?? "démarche à recharger"},
-                      étape {existingDraft.step} sur 4.
+                      étape « {steps.find((s) => s.num === existingDraft.step)?.label ?? "Démarche"} ».
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -748,14 +904,19 @@ export function NewRequestPage() {
                   </div>
                 </div>
               ) : null}
-              <ProcedurePicker
-                rows={creatableRows}
-                loading={procRows.isLoading}
-                counts={monthlyCounts.data}
-                selectedId={procedureId}
-                loadingId={loadingId}
-                onSelect={(id) => void selectProcedure(id)}
-              />
+              {step === 0 ? (
+                <OrganismePicker choices={orgChoices} value={destinationId} onChange={chooseOrganisme} />
+              ) : (
+                <ProcedurePicker
+                  rows={creatableRows}
+                  loading={procRows.isLoading}
+                  counts={monthlyCounts.data}
+                  selectedId={procedureId}
+                  loadingId={loadingId}
+                  scopeLabel={needsOrgStep ? destinationLabel : null}
+                  onSelect={(id) => void selectProcedure(id)}
+                />
+              )}
             </div>
           ) : null}
 
@@ -893,7 +1054,8 @@ export function NewRequestPage() {
       {step !== 5 ? (
         <div className="flex shrink-0 items-center gap-2.5 border-t border-border bg-card px-6 py-3">
           <Button type="button" variant="ghost" onClick={back}
-            disabled={step === 1 || create.isPending} className={cn(step === 1 && "invisible")}>
+            disabled={step === firstStep || create.isPending}
+            className={cn(step === firstStep && "invisible")}>
             <ArrowLeft />
             Retour
           </Button>

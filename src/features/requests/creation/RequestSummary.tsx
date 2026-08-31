@@ -135,14 +135,15 @@ export function RequestSummary({
       ]}>
         <div className="max-w-md">
           <Field
-            label="Organisation destinataire (Socle)"
+            label="Organisme"
             htmlFor="rs-destination"
             required
+            hint="Organisation Socle qui porte la demande et décide de qui pourra l'instruire."
             error={
               destination.options.length === 0
                 ? "Aucune organisation de votre périmètre n'autorise la création sur cette démarche — contactez votre administrateur."
                 : destination.value === ""
-                  ? "Obligatoire — choisissez le service destinataire."
+                  ? "Obligatoire — choisissez l'organisme qui portera la demande."
                   : undefined
             }
           >
