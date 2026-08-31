@@ -2,11 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   batchGeocodeCsv,
   batchGeocodeUrl,
+  boundsOf,
   clampZoom,
+  COUNTRY_ZOOM,
   DEFAULT_GEOCODE_URL,
   DEFAULT_TILE_URL,
   fitAround,
   fitBounds,
+  fitBox,
   geocodeUrl,
   googleMapsDirectionsUrl,
   mapTiles,
@@ -16,6 +19,7 @@ import {
   openStreetMapUrl,
   panView,
   parseBatchGeocodeCsv,
+  TERRITORY_ZOOM,
   parseGeocodeResponse,
   readCartoConfig,
   TILE_SIZE,
@@ -52,6 +56,16 @@ describe("worldPixel", () => {
   it("borne les latitudes au-delà desquelles Mercator diverge", () => {
     expect(Number.isFinite(worldPixel(90, 0, 3).y)).toBe(true);
     expect(Number.isFinite(worldPixel(-90, 0, 3).y)).toBe(true);
+  });
+});
+
+describe("planchers de zoom", () => {
+  it("laisse l'agent reculer PLUS LOIN que ce que la carte se donne seule", () => {
+    // L'intention du 2026-08-31 : une demande hors territoire doit pouvoir
+    // entrer dans le champ à la molette, sans que la carte s'ouvre d'elle-même
+    // sur l'Europe à l'arrivée d'une épingle lointaine.
+    expect(MIN_ZOOM).toBeLessThan(TERRITORY_ZOOM);
+    expect(COUNTRY_ZOOM).toBeLessThan(TERRITORY_ZOOM);
   });
 });
 
@@ -231,8 +245,76 @@ describe("fitBounds", () => {
     expect(fitted).toMatchObject({ zoom: 17 });
     expect(fitted.lat).toBeCloseTo(LAT, 6);
   });
-  it("retombe sur la France au zoom le plus large sans point", () => {
-    expect(fitBounds([], width, height)).toEqual({ lat: 46.6, lon: 2.5, zoom: MIN_ZOOM });
+  it("retombe sur la France entière sans point", () => {
+    expect(fitBounds([], width, height)).toEqual({ lat: 46.6, lon: 2.5, zoom: COUNTRY_ZOOM });
+  });
+
+  it("garde le zoom de lecture pour des points CONFONDUS", () => {
+    // Deux demandes à la même adresse : il n'y a rien à cadrer, et le zoom
+    // maximal poserait la carte sur un trottoir.
+    const fitted = fitBounds([{ lat: LAT, lon: LON }, { lat: LAT, lon: LON }], width, height);
+    expect(fitted.zoom).toBe(17);
+  });
+
+  it("ne recule pas au-delà du territoire pour rattraper une épingle lointaine", () => {
+    // Arles et Nantes : rien ne peut cadrer les deux à l'échelle d'un
+    // territoire. La carte ne part pas pour autant à l'échelle du continent.
+    const fitted = fitBounds(
+      [{ lat: 43.6768, lon: 4.6277 }, { lat: 47.218, lon: -1.554 }],
+      width,
+      height,
+    );
+    expect(fitted.zoom).toBe(TERRITORY_ZOOM);
+  });
+});
+
+describe("boundsOf", () => {
+  it("rend les quatre bords des points exploitables", () => {
+    expect(
+      boundsOf([
+        { lat: 43.6, lon: 4.5 },
+        { lat: 43.8, lon: 4.9 },
+        { lat: Number.NaN, lon: 4.7 },
+      ]),
+    ).toEqual({ south: 43.6, west: 4.5, north: 43.8, east: 4.9 });
+  });
+
+  it("rend null quand aucun point n'est exploitable", () => {
+    expect(boundsOf([])).toBeNull();
+    expect(boundsOf([{ lat: Number.NaN, lon: Number.POSITIVE_INFINITY }])).toBeNull();
+  });
+});
+
+describe("fitBox", () => {
+  const width = 800;
+  const height = 400;
+  // Étendue d'ACCM (Arles, Camargue, Crau) : ~60 km d'est en ouest.
+  const territoire = { south: 43.33, west: 4.36, north: 43.83, east: 4.92 };
+
+  it("cadre l'étendue entière dans le conteneur", () => {
+    const view = { ...fitBox(territoire, width, height, 56, MIN_ZOOM), width, height };
+    for (const corner of [
+      { lat: territoire.north, lon: territoire.west },
+      { lat: territoire.south, lon: territoire.east },
+    ]) {
+      const { left, top } = markerPosition(corner, view);
+      expect(left).toBeGreaterThanOrEqual(0);
+      expect(left).toBeLessThanOrEqual(width);
+      expect(top).toBeGreaterThanOrEqual(0);
+      expect(top).toBeLessThanOrEqual(height);
+    }
+  });
+
+  it("descend SOUS le zoom d'un territoire quand l'étendue l'exige", () => {
+    // Le cas qui a motivé la séparation des deux planchers : une
+    // intercommunalité ne tient pas dans un écran au zoom 12.
+    expect(fitBox(territoire, width, height, 56, MIN_ZOOM).zoom).toBeLessThan(TERRITORY_ZOOM);
+  });
+
+  it("s'arrête au plancher demandé sans jamais le franchir", () => {
+    const monde = { south: -60, west: -170, north: 70, east: 170 };
+    expect(fitBox(monde, width, height, 56, MIN_ZOOM).zoom).toBe(MIN_ZOOM);
+    expect(fitBox(monde, width, height).zoom).toBe(TERRITORY_ZOOM);
   });
 });
 
@@ -267,14 +349,15 @@ describe("fitAround", () => {
   });
 
   it("reste chez elle quand un point est trop loin pour tenir", () => {
-    // Une demande à Nantes : à MIN_ZOOM rien ne peut cadrer les deux. La carte
-    // s'ancre sur la collectivité plutôt que sur un barycentre en Corrèze.
+    // Une demande à Nantes : à l'échelle d'un territoire, rien ne peut cadrer
+    // les deux. La carte s'ancre sur la collectivité plutôt que sur un
+    // barycentre en Corrèze — et ne s'ouvre pas seule sur la France.
     const fitted = fitAround(siege, [siege, { lat: 47.218, lon: -1.554 }], width, height);
-    expect(fitted).toEqual({ ...siege, zoom: MIN_ZOOM });
+    expect(fitted).toEqual({ ...siege, zoom: TERRITORY_ZOOM });
   });
 
   it("montre le territoire, pas un trottoir, quand il n'y a aucun point", () => {
-    expect(fitAround(siege, [], width, height)).toEqual({ ...siege, zoom: MIN_ZOOM });
+    expect(fitAround(siege, [], width, height)).toEqual({ ...siege, zoom: TERRITORY_ZOOM });
   });
 
   it("ne serre JAMAIS plus que le zoom de lecture", () => {

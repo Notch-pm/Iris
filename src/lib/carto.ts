@@ -51,9 +51,27 @@ export const CARTO: CartoConfig = readCartoConfig(
 // ---- Projection et tuiles ---------------------------------------------------
 
 export const TILE_SIZE = 256;
-export const MIN_ZOOM = 12;
+/**
+ * Jusqu'où l'agent peut RECULER (molette, bouton « Dézoomer ») : l'échelle
+ * d'un continent. Il a valu 12 — celle d'une commune —, et aucune vue ne
+ * pouvait alors montrer ensemble le territoire et une demande déposée à
+ * l'autre bout du pays : celle-ci était hors cadre, et « Recadrer » ne l'y
+ * ramenait pas (constat de recette du 2026-08-30, tranché le 2026-08-31).
+ */
+export const MIN_ZOOM = 4;
 export const MAX_ZOOM = 19;
 export const DEFAULT_ZOOM = 17;
+/**
+ * Échelle d'un TERRITOIRE (une commune, une intercommunalité) : le plancher
+ * des cadrages que la carte se donne TOUTE SEULE à partir de ses épingles.
+ *
+ * ⚠️ Distinct de `MIN_ZOOM` à dessein : abaisser ce que l'agent peut demander
+ * ne doit pas abaisser ce que la carte s'accorde sans qu'on lui demande — une
+ * demande égarée à 600 km ne doit pas ouvrir la vue sur l'Europe.
+ */
+export const TERRITORY_ZOOM = 12;
+/** La France entière : repli quand il n'y a RIEN à cadrer. */
+export const COUNTRY_ZOOM = 6;
 
 /** Latitude au-delà de laquelle la projection Mercator diverge. */
 const MERCATOR_LIMIT = 85.05112878;
@@ -170,10 +188,85 @@ export function panView(view: MapView, dx: number, dy: number): LatLon {
   return worldPixelToLatLon(center.x - dx, center.y - dy, view.zoom);
 }
 
+/** Boîte englobante géographique — les quatre bords, rien d'autre. */
+export interface GeoBounds {
+  south: number;
+  west: number;
+  north: number;
+  east: number;
+}
+
+/**
+ * Étendue englobant tous les points, ou `null` si aucun n'est exploitable.
+ *
+ * Séparée du cadrage : un territoire (des milliers de sommets de polygones) et
+ * une sélection de demandes (des épingles) se MESURENT pareil, mais ne se
+ * cadrent pas pareil. Boucle plutôt que `Math.min(...points)` : le spread
+ * déborde la pile au-delà de quelques dizaines de milliers d'arguments, et un
+ * découpage de quartiers y arrive.
+ */
+export function boundsOf(points: LatLon[]): GeoBounds | null {
+  let bounds: GeoBounds | null = null;
+  for (const point of points) {
+    if (!Number.isFinite(point.lat) || !Number.isFinite(point.lon)) continue;
+    if (!bounds) {
+      bounds = { south: point.lat, west: point.lon, north: point.lat, east: point.lon };
+      continue;
+    }
+    bounds.south = Math.min(bounds.south, point.lat);
+    bounds.north = Math.max(bounds.north, point.lat);
+    bounds.west = Math.min(bounds.west, point.lon);
+    bounds.east = Math.max(bounds.east, point.lon);
+  }
+  return bounds;
+}
+
+/**
+ * Centre et zoom cadrant une étendue, marge comprise : le zoom le plus serré
+ * qui la laisse entière dans le conteneur.
+ *
+ * `minZoom` dit jusqu'où la carte s'autorise à reculer pour y parvenir, et ce
+ * n'est PAS `MIN_ZOOM` par défaut (cf. `TERRITORY_ZOOM`). Trop grand pour
+ * entrer même à `minZoom` → on rend `minZoom`, et ce qui dépasse s'atteint en
+ * faisant glisser la carte.
+ */
+export function fitBox(
+  bounds: GeoBounds,
+  width: number,
+  height: number,
+  padding = 56,
+  minZoom = TERRITORY_ZOOM,
+): { lat: number; lon: number; zoom: number } {
+  const innerWidth = Math.max(32, width - 2 * padding);
+  const innerHeight = Math.max(32, height - 2 * padding);
+
+  let zoom = minZoom;
+  for (let candidate = MAX_ZOOM; candidate >= minZoom; candidate--) {
+    const a = worldPixel(bounds.north, bounds.west, candidate);
+    const b = worldPixel(bounds.south, bounds.east, candidate);
+    if (b.x - a.x <= innerWidth && b.y - a.y <= innerHeight) {
+      zoom = candidate;
+      break;
+    }
+    zoom = candidate;
+  }
+  const topLeft = worldPixel(bounds.north, bounds.west, zoom);
+  const bottomRight = worldPixel(bounds.south, bounds.east, zoom);
+  const center = worldPixelToLatLon(
+    (topLeft.x + bottomRight.x) / 2,
+    (topLeft.y + bottomRight.y) / 2,
+    zoom,
+  );
+  return { ...center, zoom };
+}
+
 /**
  * Centre et zoom englobant tous les points, marge comprise. Un seul point (ou
- * des points confondus) → zoom de lecture par défaut ; aucun point → centre de
- * la France métropolitaine au zoom le plus large.
+ * des points confondus) → zoom de lecture par défaut ; aucun point → la France
+ * entière.
+ *
+ * Le dézoom s'arrête au TERRITOIRE : une carte qui se pose seule ne part pas à
+ * l'échelle du continent parce qu'une demande est loin.
  */
 export function fitBounds(
   points: LatLon[],
@@ -181,37 +274,13 @@ export function fitBounds(
   height: number,
   padding = 56,
 ): { lat: number; lon: number; zoom: number } {
-  const usable = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
-  if (usable.length === 0) return { lat: 46.6, lon: 2.5, zoom: MIN_ZOOM };
-
-  const lats = usable.map((p) => p.lat);
-  const lons = usable.map((p) => p.lon);
-  const south = Math.min(...lats);
-  const north = Math.max(...lats);
-  const west = Math.min(...lons);
-  const east = Math.max(...lons);
-
-  const innerWidth = Math.max(32, width - 2 * padding);
-  const innerHeight = Math.max(32, height - 2 * padding);
-
-  let zoom = MAX_ZOOM;
-  for (let candidate = MAX_ZOOM; candidate >= MIN_ZOOM; candidate--) {
-    const a = worldPixel(north, west, candidate);
-    const b = worldPixel(south, east, candidate);
-    if (b.x - a.x <= innerWidth && b.y - a.y <= innerHeight) {
-      zoom = candidate;
-      break;
-    }
-    zoom = candidate;
-  }
-  const topLeft = worldPixel(north, west, zoom);
-  const bottomRight = worldPixel(south, east, zoom);
-  const center = worldPixelToLatLon(
-    (topLeft.x + bottomRight.x) / 2,
-    (topLeft.y + bottomRight.y) / 2,
-    zoom,
-  );
-  return { ...center, zoom: usable.length === 1 ? DEFAULT_ZOOM : zoom };
+  const bounds = boundsOf(points);
+  if (!bounds) return { lat: 46.6, lon: 2.5, zoom: COUNTRY_ZOOM };
+  const fitted = fitBox(bounds, width, height, padding, TERRITORY_ZOOM);
+  // Étendue nulle : il n'y a rien à cadrer, on se pose au zoom de LECTURE
+  // plutôt qu'au zoom maximal, sur un trottoir.
+  const single = bounds.south === bounds.north && bounds.west === bounds.east;
+  return single ? { ...fitted, zoom: DEFAULT_ZOOM } : fitted;
 }
 
 /**
@@ -226,10 +295,10 @@ export function fitBounds(
  * symétrique autour du centre imposé, donc rien ne sort par construction —
  * au prix d'un zoom plus large quand un point est loin.
  *
- * Aucun point → le centre au zoom le PLUS LARGE (`MIN_ZOOM`) : on montre le
- * territoire, pas un trottoir. Rien ne rentre, même au plus large → `MIN_ZOOM` :
- * la carte reste chez elle, et les épingles lointaines s'atteignent par
- * « Recadrer ».
+ * Aucun point → le centre à l'échelle du territoire (`TERRITORY_ZOOM`) : on
+ * montre le territoire, pas un trottoir. Rien ne rentre, même à cette
+ * échelle → `TERRITORY_ZOOM` : la carte reste chez elle, et les épingles
+ * lointaines s'atteignent en reculant (`MIN_ZOOM` le permet désormais).
  *
  * ⚠️ Le zoom est BORNÉ au zoom de lecture (`DEFAULT_ZOOM`), jamais plus serré :
  * sans cela, une unique demande située au siège même de la collectivité
@@ -247,14 +316,14 @@ export function fitAround(
 ): { lat: number; lon: number; zoom: number } {
   const anchor = { lat: center.lat, lon: center.lon };
   const usable = points.filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lon));
-  if (usable.length === 0) return { ...anchor, zoom: MIN_ZOOM };
+  if (usable.length === 0) return { ...anchor, zoom: TERRITORY_ZOOM };
 
   // Demi-fenêtre : l'étendue est mesurée de part et d'autre du centre.
   const halfWidth = Math.max(16, (width - 2 * padding) / 2);
   const halfHeight = Math.max(16, (height - 2 * padding) / 2);
 
-  let zoom = MIN_ZOOM;
-  for (let candidate = MAX_ZOOM; candidate >= MIN_ZOOM; candidate--) {
+  let zoom = TERRITORY_ZOOM;
+  for (let candidate = MAX_ZOOM; candidate >= TERRITORY_ZOOM; candidate--) {
     const c = worldPixel(anchor.lat, anchor.lon, candidate);
     const fits = usable.every((p) => {
       const q = worldPixel(p.lat, p.lon, candidate);

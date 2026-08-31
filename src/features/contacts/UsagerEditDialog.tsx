@@ -41,7 +41,7 @@ export function UsagerEditDialog({ open, onOpenChange, organizationId, contact, 
   const update = useUpdateContact();
   // Couche de confort : le Socle recalcule le quartier depuis l'adresse, la
   // voir sur la carte permet de repérer une adresse tombée au mauvais endroit.
-  const quartiers = useQuartiers(organizationId);
+  const { quartiers } = useQuartiers(organizationId);
 
   // Réouverture (ou fiche relue) : on repart de l'état du Socle.
   React.useEffect(() => {

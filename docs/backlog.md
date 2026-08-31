@@ -2,7 +2,7 @@
 
 > **Public** : PO et équipe Iris · **Question traitée** : qu'est-ce qui a été demandé, pas
 > encore arbitré, et que faut-il savoir avant de s'y mettre ? · **Dernière mise à jour** :
-> 2026-08-30
+> 2026-08-31
 
 Ce document porte les demandes **produit** en attente. Il ne double pas
 [`dette-technique.md`](dette-technique.md), qui traite de ce qui est **assumé comme dette** :
@@ -17,27 +17,6 @@ le `CLAUDE.md` de sa feature.
 Consigné le **2026-08-30** sur demande du PO, sans priorisation.
 
 ---
-
-## B1 — Centrage de la carte et zoom
-
-**Ce qui existe.** Depuis le 2026-08-30, la carte des interventions s'ancre sur l'adresse de
-l'organisation principale (`socle-proxy /v1/organizations/root`, géocodée à la BAN), et
-`fitAround` (`src/lib/carto.ts`, pur/testé) n'ajuste plus que le zoom, en symétrique autour de
-ce centre. Sans adresse exploitable, repli sur `fitBounds`.
-
-**Ce qui reste ouvert**, constaté en recette le jour même :
-
-- `MIN_ZOOM` vaut **12**. Aucune vue ne peut donc montrer Arles et Nantes ensemble : une
-  demande hors territoire est invisible et ne s'atteint qu'en faisant glisser la carte. Le
-  bouton **« Recadrer » ne l'y ramène plus** — il recentre sur la collectivité.
-- Pistes évoquées, non tranchées : faire de « Recadrer » une **bascule** (« sur la
-  collectivité » / « sur toutes les épingles » — `fitBounds` est toujours là, c'est quelques
-  lignes) ; ou **descendre `MIN_ZOOM`**, ce qui changerait le comportement de TOUTES les
-  cartes d'Iris, y compris celle du lieu d'intervention d'une fiche.
-- Question de fond jamais posée : que *doit-il* se passer quand une demande sort du
-  territoire ? C'est peut-être une **anomalie à signaler** plutôt qu'un cadrage à élargir.
-
-**Touche** : `src/lib/carto.ts`, `src/features/requests/carte/`.
 
 ## B2 — Retrait de colonnes inutiles dans le kanban
 
@@ -146,3 +125,20 @@ rejoint le vocabulaire arrêté le 2026-08-30 (« Organisme », cf.
 
 ⚠️ Toute reprise du header touche le **DS Notch/Ariane** et la parité avec Clara, qui est
 délibérée : lire `CLAUDE.md` § Conventions avant d'y toucher.
+
+---
+
+## Entrées sorties de ce document
+
+Les numéros ne sont pas réattribués : une entrée traitée laisse son numéro derrière elle, pour
+que qui l'a en tête retrouve où elle a atterri.
+
+- **B1 — Centrage de la carte et zoom** · arbitrée par le PO le **2026-08-31**, livrée le
+  jour même. La carte des interventions se cadre désormais sur l'**étendue des quartiers**
+  du territoire (le siège ne sert plus que de repli), et `MIN_ZOOM` est descendu de 12 à
+  **4** : une demande hors territoire s'atteint enfin en reculant. Deux planchers distincts
+  désormais — ce que l'agent peut demander (`MIN_ZOOM`) et ce que la carte s'accorde seule
+  (`TERRITORY_ZOOM`, 12). La piste « Recadrer en bascule » n'a pas été retenue ; la question
+  de fond — une demande hors territoire est-elle une **anomalie à signaler** ? — reste
+  ouverte, consignée dans
+  [`../src/features/requests/CLAUDE.md`](../src/features/requests/CLAUDE.md).

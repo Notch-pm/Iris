@@ -45,7 +45,7 @@ export function InterventionAddress({ fields, values, onChange, errors }: Props)
   // (`null`), qui portent alors le libellé canonique du référentiel.
   const [typed, setTyped] = React.useState<string | null>(null);
   const { current } = useTenant();
-  const quartiers = useQuartiers(current?.organizationId ?? "");
+  const { quartiers } = useQuartiers(current?.organizationId ?? "");
   const entryOf = (part: AddressPart) => fields.get(part) ?? null;
   const has = (part: AddressPart) => fields.has(part);
 

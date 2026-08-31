@@ -16,7 +16,17 @@ import { parseQuartiers, type QuartierShape } from "./quartiers";
 
 const ONE_HOUR = 60 * 60 * 1000;
 
-export function useQuartiers(orgId: string): QuartierShape[] {
+export interface QuartiersResult {
+  quartiers: QuartierShape[];
+  /**
+   * La réponse n'est pas encore là. À distinguer d'une liste vide : « pas de
+   * quartiers » et « on ne sait pas encore » ne se cadrent pas pareil sur la
+   * carte des interventions, qui s'ouvre sur l'étendue du territoire.
+   */
+  pending: boolean;
+}
+
+export function useQuartiers(orgId: string): QuartiersResult {
   const query = useQuery({
     queryKey: ["socle-quartiers", orgId],
     enabled: Boolean(orgId),
@@ -30,5 +40,7 @@ export function useQuartiers(orgId: string): QuartierShape[] {
       return parseQuartiers(data);
     },
   });
-  return query.data ?? [];
+  // `isLoading` et non `isPending` : une requête désactivée (pas d'orgId) reste
+  // `pending` pour toujours, et bloquerait l'appelant qui l'attend.
+  return { quartiers: query.data ?? [], pending: query.isLoading };
 }

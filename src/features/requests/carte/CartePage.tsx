@@ -48,10 +48,10 @@ export function CartePage() {
   // débrayable — sur une commune très découpée, les traits finissent par
   // concurrencer les épingles.
   const [showQuartiers, setShowQuartiers] = React.useState(true);
-  const quartiers = useQuartiers(orgId);
-  // Siège de la collectivité : la carte s'y ancre plutôt que sur le barycentre
-  // de ses épingles. `null` = pas d'adresse au Socle → recadrage d'avant.
-  const anchor = useOrganisationAnchor(orgId);
+  // L'étendue des quartiers CADRE la carte (elle ne fait pas que la décorer) ;
+  // le siège n'est que le repli quand le Socle ne publie pas de découpage.
+  const { quartiers, pending: quartiersPending } = useQuartiers(orgId);
+  const { anchor, pending: anchorPending } = useOrganisationAnchor(orgId);
 
   const rows = requests.data?.rows ?? [];
   const { located, withoutAddress } = React.useMemo(() => locatableRequests(rows), [rows]);
@@ -246,9 +246,15 @@ export function CartePage() {
         ) : (
           <>
             <InterventionMap markers={markers} nameOf={nameOf}
-              quartiers={quartiers} showQuartiers={showQuartiers} anchor={anchor} />
+              quartiers={quartiers} showQuartiers={showQuartiers} anchor={anchor}
+              framePending={quartiersPending || anchorPending} />
             {geocode.isLoading && markers.length === 0 ? (
               <Overlay>Localisation des adresses…</Overlay>
+            ) : quartiersPending || anchorPending ? (
+              // La carte ne se cadre pas tant qu'on ne sait pas sur QUOI : sans
+              // ce mot, l'agent regarderait un rectangle vide sans savoir
+              // pourquoi (le silence dure le temps d'un appel au référentiel).
+              <Overlay>Chargement du territoire…</Overlay>
             ) : null}
             {geocode.isError ? (
               <Overlay>

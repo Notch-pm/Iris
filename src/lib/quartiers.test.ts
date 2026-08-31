@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { geometryRings, quartierAt, quartierLabelPoint, ringCentroid } from "./quartiers";
+import {
+  geometryRings,
+  quartierAt,
+  quartierLabelPoint,
+  quartiersBounds,
+  ringCentroid,
+} from "./quartiers";
 
 const CARRE = [[[4.0, 43.0], [4.1, 43.0], [4.1, 43.1], [4.0, 43.1], [4.0, 43.0]]];
 
@@ -129,5 +135,33 @@ describe("ringCentroid / quartierLabelPoint — où poser le nom", () => {
 
   it("rend null quand il n'y a rien à nommer", () => {
     expect(quartierLabelPoint({ id: "q", name: "q", color: null, rings: [] })).toBeNull();
+  });
+});
+
+describe("quartiersBounds", () => {
+  const quartier = (id: string, rings: { lat: number; lon: number }[][]) => ({
+    id, name: id, color: null, rings,
+  });
+
+  it("englobe TOUS les quartiers, y compris ceux en plusieurs morceaux", () => {
+    const ouest = [
+      { lat: 43.30, lon: 4.30 }, { lat: 43.40, lon: 4.30 }, { lat: 43.40, lon: 4.40 },
+    ];
+    const morceau = [
+      { lat: 43.80, lon: 4.90 }, { lat: 43.70, lon: 4.90 }, { lat: 43.70, lon: 4.80 },
+    ];
+    const est = [
+      { lat: 43.50, lon: 4.60 }, { lat: 43.60, lon: 4.60 }, { lat: 43.60, lon: 4.70 },
+    ];
+    expect(
+      quartiersBounds([quartier("ouest", [ouest, morceau]), quartier("est", [est])]),
+    ).toEqual({ south: 43.3, west: 4.3, north: 43.8, east: 4.9 });
+  });
+
+  it("rend null quand le référentiel ne publie aucun découpage", () => {
+    // Route absente, Socle muet, ou territoire sans quartiers : le cadrage
+    // retombe sur le siège puis sur les épingles, il ne casse pas.
+    expect(quartiersBounds([])).toBeNull();
+    expect(quartiersBounds([quartier("vide", [])])).toBeNull();
   });
 });

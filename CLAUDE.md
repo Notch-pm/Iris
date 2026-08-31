@@ -177,10 +177,13 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `address`, whitelist stricte : ni téléphone, ni courriel, aucun écran n'en ayant l'usage. La
   route ne prend **aucun identifiant du navigateur** : c'est `tenant.socleOrgId`, sinon elle
   serait un lecteur libre du référentiel d'organisations. Ouverte à tout membre — l'adresse
-  d'une mairie est publique. Sert à **ancrer la carte des interventions** sur le siège),
+  d'une mairie est publique. Sert de **repli au cadrage de la carte des interventions**,
+  quand le référentiel ne publie aucun quartier),
   **`/v1/quartiers/list`** (quartiers du territoire **avec leur géométrie**, pour la carte du
-  champ d'adresse — ouverte à tout membre comme `/v1/procedures/*` : une limite de quartier
-  n'est pas une donnée personnelle ; 404 du Socle ⇒ `available: false`, pas une erreur).
+  champ d'adresse **et le cadrage de la carte des interventions** — qui s'ouvre depuis le
+  2026-08-31 sur l'étendue du territoire, et non sur ses épingles ; ouverte à tout membre
+  comme `/v1/procedures/*` : une limite de quartier n'est pas une donnée personnelle ; 404 du
+  Socle ⇒ `available: false`, pas une erreur).
   ⚠️ `geom` ne franchit la frontière que par CETTE route : `sanitizeContact` continue de le
   retirer du quartier d'une fiche usager — un polygone par ligne d'annuaire serait du poids pur. Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
   `internal_notes`, consentements, relations, `external_references` ne sont **jamais**

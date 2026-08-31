@@ -12,12 +12,14 @@ import { Crosshair, Minus, Plus, TriangleAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TileLayer, useElementSize } from "@/components/map/TileLayer";
 import { QuartierLayer } from "@/components/map/QuartierLayer";
-import type { QuartierShape } from "@/lib/quartiers";
+import { quartiersBounds, type QuartierShape } from "@/lib/quartiers";
 import {
   clampZoom,
   fitAround,
   fitBounds,
+  fitBox,
   markerPosition,
+  MIN_ZOOM,
   panView,
   type GeoPoint,
 } from "@/lib/carto";
@@ -43,26 +45,42 @@ export function pinColor(priority: string): string {
 }
 
 const CARD = { width: 320, height: 330 };
+/** Marge autour du cadre — la même que le cadrage par défaut de `carto.ts`. */
+const FIT_PADDING = 56;
 /** Une épingle un peu hors cadre reste rendue (fiche ouverte pendant un déplacement). */
 const OFF_SCREEN_MARGIN = 60;
 
 interface Props {
   markers: MapMarker[];
   nameOf: (userId: string | null) => string;
-  /** Découpage du territoire (référentiel Socle) — vide s'il n'en publie pas. */
+  /**
+   * Découpage du territoire (référentiel Socle) — vide s'il n'en publie pas.
+   * Il ne fait pas que se dessiner : son étendue COMMANDE le cadrage.
+   */
   quartiers?: QuartierShape[];
+  /** Dessiner les limites. N'influe PAS sur le cadrage (cf. `frameKey`). */
   showQuartiers?: boolean;
   /**
-   * Siège de la collectivité (Socle, géocodé) : la carte s'y ancre au lieu de
-   * se poser sur le barycentre de ses épingles. `null` = pas d'adresse connue,
-   * référentiel muet ou géocodeur en panne → comportement d'avant, à
-   * l'identique.
+   * Siège de la collectivité (Socle, géocodé), utilisé À DÉFAUT de territoire
+   * publié : le centre est alors imposé et seul le zoom s'ajuste. `null` = pas
+   * d'adresse connue, référentiel muet ou géocodeur en panne → cadrage sur les
+   * épingles, comportement d'origine.
    */
   anchor?: GeoPoint | null;
+  /**
+   * On ne sait pas ENCORE ce sur quoi cadrer (territoire et siège en cours de
+   * lecture) : ne rien cadrer du tout. Sans cela, la carte se pose d'abord sur
+   * ses épingles — au milieu de nulle part dès que l'une d'elles est loin —
+   * puis saute sur le territoire une seconde plus tard, sous les yeux de
+   * l'agent. Mieux vaut une carte qui arrive un peu après qu'une carte qui
+   * arrive fausse.
+   */
+  framePending?: boolean;
 }
 
 export function InterventionMap({
   markers, nameOf, quartiers = [], showQuartiers = true, anchor = null,
+  framePending = false,
 }: Props) {
   const { ref, width, height } = useElementSize<HTMLDivElement>();
   const [center, setCenter] = React.useState<{ lat: number; lon: number; zoom: number } | null>(null);
@@ -71,26 +89,45 @@ export function InterventionMap({
   const closeTimer = React.useRef<number | undefined>(undefined);
   const drag = React.useRef<{ x: number; y: number; moved: boolean } | null>(null);
 
+  // Étendue du territoire — calculée que les limites soient dessinées ou non :
+  // basculer leur affichage ne doit pas déplacer la carte.
+  const territory = React.useMemo(() => quartiersBounds(quartiers), [quartiers]);
+
   const signature = markers.map((m) => m.item.row.id).join(",");
   const anchorKey = anchor ? `${anchor.lat},${anchor.lon}` : "";
-  const recenter = React.useCallback(() => {
-    if (width === 0 || height === 0) return;
-    const points = markers.map((m) => m.point);
-    // Avec un siège connu, le centre est IMPOSÉ et seul le zoom s'ajuste : une
-    // demande isolée à l'autre bout du pays ne déplace plus la carte, elle
-    // l'élargit (et si même le zoom le plus large n'y suffit pas, la carte
-    // reste sur le territoire — c'est « Recadrer » qui existe pour le reste).
-    setCenter(
-      anchor
-        ? fitAround(anchor, points, width, height)
-        : fitBounds(points, width, height),
-    );
-    // `markers` suit `signature`, `anchor` suit `anchorKey`.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, anchorKey, width, height]);
+  // Ce qui DÉTERMINE le cadre, et donc ce qui doit le refaire. Avec un
+  // territoire connu, les épingles n'y entrent pas : l'agent qui a zoomé sur
+  // une rue ne se fait pas renvoyer sur la commune parce qu'il vient de cocher
+  // une démarche.
+  const frameKey = territory
+    ? `territoire:${territory.south},${territory.west},${territory.north},${territory.east}`
+    : `demandes:${anchorKey}:${signature}`;
 
-  // Recadrage automatique à l'arrivée des points et à chaque changement de
-  // filtre ; ensuite l'agent est maître de sa vue (bouton « Recadrer »).
+  const recenter = React.useCallback(() => {
+    if (width === 0 || height === 0 || framePending) return;
+    const points = markers.map((m) => m.point);
+    setCenter(
+      territory
+        // 1. Le TERRITOIRE quand le Socle le publie : la carte s'ouvre sur ce
+        //    que la collectivité couvre, entier, et une demande égarée à 600 km
+        //    n'y change rien (elle s'atteint en reculant, `MIN_ZOOM` le permet).
+        //    Le dézoom va jusqu'à `MIN_ZOOM` ici, et non `TERRITORY_ZOOM` : une
+        //    intercommunalité ne tient pas dans un écran au zoom 12.
+        ? fitBox(territory, width, height, FIT_PADDING, MIN_ZOOM)
+        : anchor
+          // 2. À défaut, le SIÈGE : centre imposé, seul le zoom s'ajuste.
+          ? fitAround(anchor, points, width, height)
+          // 3. À défaut, les épingles seules — le cadrage d'origine.
+          : fitBounds(points, width, height),
+    );
+    // Le cadre ne dépend que de `frameKey` et de la taille du conteneur : lui
+    // ajouter `markers` renverrait l'agent au cadre initial à chaque filtre.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameKey, framePending, width, height]);
+
+  // Recadrage automatique quand le cadre lui-même change (arrivée du
+  // territoire, du siège ou des premiers points, redimensionnement) ; ensuite
+  // l'agent est maître de sa vue (bouton « Recadrer »).
   React.useEffect(() => recenter(), [recenter]);
 
   React.useEffect(() => () => window.clearTimeout(closeTimer.current), []);
@@ -179,8 +216,8 @@ export function InterventionMap({
       {view ? <TileLayer view={view} /> : null}
 
       {/* Sous les épingles : les quartiers situent les demandes, ils ne les
-          cachent pas. Le recadrage suit les DEMANDES, jamais les quartiers —
-          c'est la sélection filtrée qu'on vient regarder. */}
+          cachent pas. Leur AFFICHAGE est débrayable ; leur étendue, elle,
+          commande le cadrage même quand les limites ne sont pas dessinées. */}
       {view && showQuartiers ? <QuartierLayer quartiers={quartiers} view={view} /> : null}
 
       {placed.map(({ marker, left, top }) => {
@@ -235,7 +272,10 @@ export function InterventionMap({
         <MapButton label="Dézoomer" onClick={() => setCenter((c) => (c ? { ...c, zoom: clampZoom(c.zoom - 1) } : c))}>
           <Minus aria-hidden="true" />
         </MapButton>
-        <MapButton label="Recadrer sur les demandes affichées" onClick={recenter}>
+        <MapButton
+          label={territory ? "Recadrer sur le territoire" : "Recadrer sur les demandes affichées"}
+          onClick={recenter}
+        >
           <Crosshair aria-hidden="true" />
         </MapButton>
       </div>

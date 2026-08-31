@@ -4,7 +4,7 @@
 // fournit les limites. Le contrat du référentiel, lui, vit dans
 // `src/features/socle/quartiers.ts`.
 
-import type { LatLon } from "./carto";
+import { boundsOf, type GeoBounds, type LatLon } from "./carto";
 
 export interface QuartierShape {
   id: string;
@@ -174,4 +174,21 @@ export function quartierLabelPoint(quartier: QuartierShape): LatLon | null {
     }
   }
   return best;
+}
+
+/**
+ * Étendue du TERRITOIRE : la boîte englobant tous les quartiers publiés, ou
+ * `null` quand le référentiel n'en publie aucun (ou n'a pas répondu).
+ *
+ * C'est le cadrage qui a du SENS pour la carte d'une collectivité : ce qu'un
+ * agent vient voir, c'est son territoire — pas le barycentre des demandes du
+ * jour, qu'une seule demande lointaine suffit à déplacer, ni le seul siège,
+ * qui ne dit rien de l'étendue à couvrir (leçons des 2026-08-23 et 08-30).
+ *
+ * ⚠️ L'étendue DESSINÉE, pas l'étendue administrative : un quartier absent du
+ * découpage manque aussi au cadre. C'est assumé — le Socle fait foi, Iris
+ * cadre sur ce qu'il en reçoit.
+ */
+export function quartiersBounds(quartiers: QuartierShape[]): GeoBounds | null {
+  return boundsOf(quartiers.flatMap((quartier) => quartier.rings.flat()));
 }

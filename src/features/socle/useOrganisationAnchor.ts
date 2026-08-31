@@ -32,12 +32,21 @@ interface RootOrganizationResponse {
   organization?: { id?: string; name?: string | null; address?: string | null } | null;
 }
 
-/**
- * `null` tant qu'on ne sait pas, et `null` pour de bon si l'ancrage n'est pas
- * possible : l'appelant n'a qu'un cas à traiter — il y a un siège, ou il n'y en
- * a pas.
- */
-export function useOrganisationAnchor(orgId: string): GeoPoint | null {
+export interface AnchorResult {
+  /**
+   * `null` pour de bon quand l'ancrage n'est pas possible (pas d'adresse,
+   * référentiel muet, géocodeur en panne) : l'appelant n'a qu'un cas à traiter.
+   */
+  anchor: GeoPoint | null;
+  /**
+   * La réponse n'est pas encore là. `null` et « pas encore » se ressemblent et
+   * ne se cadrent pas pareil : une carte qui se pose sur ses épingles avant
+   * d'apprendre où est le siège saute sous les yeux de l'agent.
+   */
+  pending: boolean;
+}
+
+export function useOrganisationAnchor(orgId: string): AnchorResult {
   const query = useQuery({
     queryKey: ["socle-organisation-anchor", orgId],
     enabled: Boolean(orgId),
@@ -62,5 +71,6 @@ export function useOrganisationAnchor(orgId: string): GeoPoint | null {
       return parseGeocodeResponse(await res.json().catch(() => null));
     },
   });
-  return query.data ?? null;
+  // `isLoading` et non `isPending` : cf. `useQuartiers`.
+  return { anchor: query.data ?? null, pending: query.isLoading };
 }
