@@ -13,46 +13,17 @@
 // ne fait toujours que refléter.
 //
 // Ce que le Socle possède et qu'Iris ne recalcule plus : la période et la date
-// de renouvellement. Ce qu'Iris garde : la présentation — `quotaView` dessine
-// la jauge à partir des trois faits (plafond, consommé, réservé).
+// de renouvellement. Ce qu'Iris garde : la présentation — elle vit dans
+// `aiUsage.ts` (pur, testé), et NON ici : ce fichier importe le client
+// Supabase, qui lève au chargement sans configuration. Lire l'avertissement en
+// tête de `aiUsage.ts` avant de rapatrier quoi que ce soit.
 
 import { useQuery } from "@tanstack/react-query";
 import { invokeEdge } from "@/lib/edge";
-import { quotaView, type QuotaView } from "@fn/_shared/ai/quota";
+import { toSummary, type AiUsageSummary } from "./aiUsage";
 import type { AiUsageView } from "@fn/socle-proxy/_shared/sanitize";
 
-/** Ce qu'une application de la gamme a dépensé, et sur quelle fonctionnalité. */
-export interface ConsumerUsage {
-  consumer: string;
-  feature: string | null;
-  calls: number;
-  tokens: number;
-}
-
-export interface AiUsageSummary {
-  period: string;
-  /** Date ISO rendue par le Socle — Iris ne fait que la mettre en français. */
-  renewsAt: string | null;
-  view: QuotaView;
-  /** Le plafond est commun ; le journal, lui, sait qui a dépensé. */
-  byConsumer: ConsumerUsage[];
-}
-
-/** Traduit la réponse du proxy en ce que l'écran dessine. Pur, testé. */
-export function toSummary(usage: AiUsageView): AiUsageSummary {
-  return {
-    period: usage.period,
-    renewsAt: usage.renews_at,
-    view: quotaView({
-      limit: usage.limit,
-      used: usage.used_tokens,
-      reserved: usage.reserved_tokens,
-    }),
-    // Les plus gros postes d'abord : c'est la question que se pose un
-    // administrateur qui ouvre cet écran.
-    byConsumer: [...usage.by_consumer].sort((a, b) => b.tokens - a.tokens),
-  };
-}
+export type { AiUsageSummary, ConsumerUsage } from "./aiUsage";
 
 /** Consommation du tenant — panneau Paramètres de l'administrateur. */
 export function useAiUsage(orgId: string) {

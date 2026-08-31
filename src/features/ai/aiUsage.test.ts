@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { toSummary } from "./useAiUsage";
+import { toSummary } from "./aiUsage";
 import type { AiUsageView } from "@fn/socle-proxy/_shared/sanitize";
 
 const usage = (over: Partial<AiUsageView> = {}): AiUsageView => ({
