@@ -265,6 +265,18 @@ note interne → résolution avec texte de clôture → journal.
   quelle que soit l'origine — contacts-api, publics Iris, clés partenaires conservées en
   clair —, **relue dans le Socle** quand la demande y est rattachée, correction sur place,
   autres demandes du même usager Socle via `useRequesterRequests`).
+  - ⚠️ **Piège vécu (2026-08-31) — la barre d'onglets disparaissait sur « Échanges ».**
+    Elle porte `overflow-x-auto` (les onglets doivent pouvoir défiler sur un écran
+    étroit) ; or dès qu'un axe d'`overflow` n'est plus `visible`, la **taille minimale
+    automatique de l'autre axe tombe à 0**. Dans la colonne de gauche, qui est un flex
+    vertical à hauteur contrainte (`lg:min-h-0 lg:overflow-y-auto`), la barre devenait
+    donc le seul enfant capable de céder — le panneau, lui, ne peut pas descendre sous
+    la hauteur de son contenu. Sur un panneau plus haut que la colonne (Échanges et son
+    composeur), elle était écrasée à **1 px** : il ne restait que sa bordure, et elle ne
+    « revenait » qu'au changement de zoom, le temps d'une remise en page. Correctif :
+    `shrink-0`. **Règle générale : tout enfant d'un flex à hauteur contrainte qui porte
+    un `overflow-*` doit porter `shrink-0`, sauf s'il est justement celui qui doit
+    absorber la place.** `RailTabs` n'a pas d'`overflow` et n'est donc pas concerné.
   - **Lieu d'intervention** (`instruction/lieu.ts` pur/testé, `LieuIntervention.tsx`,
     `useGeocode.ts`, 2026-08-23) : affiché **uniquement si la démarche pose la question**.
     Le Socle propose un bloc prêt à l'emploi qui est une **section ORDINAIRE** du

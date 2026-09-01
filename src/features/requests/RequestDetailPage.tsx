@@ -552,7 +552,15 @@ export function RequestDetailPage() {
       <div className="min-h-0 flex-1 overflow-auto px-5 pb-7 pt-[18px] lg:overflow-hidden">
         <div className="flex flex-wrap items-start gap-[18px] lg:h-full lg:flex-nowrap lg:items-stretch">
           <div className="flex min-w-0 flex-[1_1_540px] flex-col gap-4 lg:min-h-0 lg:overflow-y-auto">
-            <div role="tablist" aria-label="Sections de la fiche" className="flex gap-1 overflow-x-auto border-b border-border">
+            {/* ⚠️ `shrink-0` OBLIGATOIRE. `overflow-x-auto` fait tomber à 0 la taille
+                minimale automatique de l'AUTRE axe (dès qu'un axe d'overflow n'est
+                plus `visible`, l'autre l'est aussi) : la barre devient le seul enfant
+                de la colonne qui accepte d'être écrasé, le panneau en dessous ne
+                pouvant pas descendre sous la hauteur de son contenu. Sur un panneau
+                plus haut que la colonne — Échanges et son composeur —, les onglets
+                disparaissaient purement et simplement, et ne revenaient qu'au
+                changement de zoom, le temps d'une remise en page. */}
+            <div role="tablist" aria-label="Sections de la fiche" className="flex shrink-0 gap-1 overflow-x-auto border-b border-border">
               {tabs.map((t) => {
                 const on = t.key === tab;
                 return (
