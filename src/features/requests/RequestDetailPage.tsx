@@ -16,11 +16,11 @@ import { Dropdown, DropdownDivider, DropdownItem } from "@/components/ui/dropdow
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
-import { useSocleOrganizationsCatalog } from "@/features/socle/useSocleCatalog";
+import { useSocleOrganizationsCatalog, useSocleProcedureActivations } from "@/features/socle/useSocleCatalog";
 import { useSocleContact } from "@/features/contacts/useContacts";
 import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
 import { UsagerEditDialog } from "@/features/contacts/UsagerEditDialog";
-import { isAdminOn, rightsFor } from "@/features/rights/rights";
+import { hasRight, isAdminOn, rightsFor } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
 import type { EdgeError } from "@/lib/edge";
 import { StatusBadge } from "./StatusBadge";
@@ -32,8 +32,9 @@ import {
 import {
   createAttachmentUrl, useAddMessage, useAssignRequest, useDeleteMessage, useEligibleAssignees, useMentionableUsers,
   useRequest, useRequestAttachments, useRequestEmails, useRequestEvents, useRequestLinks,
-  useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useUpdatePriority,
-  type RequestAttachment, type TenantMember,
+  useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useTransferRequest,
+  useUpdatePriority,
+  type RequestAttachment, type TenantMember, type TransferResult,
 } from "./useRequests";
 import { useSendClosureEmail, useSendRequestEmail } from "./instruction/useSendRequestEmail";
 import { ActivityPane } from "./instruction/ActivityPane";
@@ -51,6 +52,8 @@ import {
 import { NotesPane } from "./instruction/NotesPane";
 import { ResumePane } from "./instruction/ResumePane";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
+import { TransfertDialog } from "./instruction/TransfertDialog";
+import { transferOptions } from "./instruction/transfert";
 import { ProcedurePane } from "./procedure/ProcedurePane";
 import { RailTabs, type RailTab } from "./procedure/RailTabs";
 import { useProcedureDocumentUrl, useProcedureKnowledge } from "./procedure/useProcedureKnowledge";
@@ -119,6 +122,11 @@ export function RequestDetailPage() {
 
   const assignRequest = useAssignRequest();
   const updatePriority = useUpdatePriority();
+  const transferRequest = useTransferRequest();
+  // Activations du tenant (quel organisme assure quelle démarche) : une seule
+  // lecture pour tout l'écran, comme au guichet. La garde réelle reste
+  // `t12_requests_transfer_procedure_active`.
+  const activations = useSocleProcedureActivations(orgId);
   const addMessage = useAddMessage();
   const deleteMessage = useDeleteMessage();
 
@@ -139,6 +147,14 @@ export function RequestDetailPage() {
   const [answersOpen, setAnswersOpen] = React.useState(false);
   const [answersError, setAnswersError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  // Transfert visé, tant que la modale n'a pas été validée : rien n'est écrit
+  // avant elle, et son texte se calcule sur la cible.
+  const [transferTo, setTransferTo] = React.useState<string | null>(null);
+  const [transferError, setTransferError] = React.useState<string | null>(null);
+  // Transfert accompli VERS UN PÉRIMÈTRE QU'ON NE VOIT PLUS : la fiche a
+  // quitté l'écran de son auteur. On le dit à sa place, au lieu de laisser le
+  // « Demande introuvable » générique passer pour une panne.
+  const [transferredAway, setTransferredAway] = React.useState<string | null>(null);
   // Le texte est conservé pendant le fondu de sortie (visible=false).
   const [toast, setToast] = React.useState<{ text: string; visible: boolean }>({ text: "", visible: false });
   const toastTimer = React.useRef<number | undefined>(undefined);
@@ -198,6 +214,18 @@ export function RequestDetailPage() {
   });
 
   if (!current) return null;
+  if (transferredAway) {
+    return (
+      <div className="flex flex-col gap-3 p-6">
+        <p className="text-sm font-semibold">La demande a été transférée à {transferredAway}.</p>
+        <p className="text-sm text-muted-foreground">
+          Vous n'avez pas de droit de consultation sur cette démarche pour cet organisme :
+          la demande n'est plus dans votre périmètre.
+        </p>
+        <Link to="/demandes" className="text-sm text-primary hover:underline">← Retour aux demandes</Link>
+      </div>
+    );
+  }
   if (request.isLoading) {
     return <p className="p-6 text-sm text-muted-foreground">Chargement…</p>;
   }
@@ -235,6 +263,29 @@ export function RequestDetailPage() {
     const known = memberList.find((m) => m.userId === e.user_id);
     return known ?? { userId: e.user_id, role: "agent", displayName: e.display_name || e.email, email: e.email };
   });
+
+  // ---- Transfert d'organisme responsable -------------------------------------------
+  // Les organismes proposés sont ceux qui ASSURENT la démarche (activation
+  // Socle) — les droits de l'agent n'entrent pas dans ce filtre : se dessaisir
+  // vers un service où l'on n'a rien à faire est précisément le geste (RM-19).
+  const organismes = transferOptions({
+    organizations: orgCatalog.data ?? [],
+    activations: activations.data ?? [],
+    procedureId: r.socle_procedure_id,
+    currentOrgId: r.socle_organization_id,
+    currentLabel: r.socle_organization_label,
+  });
+  const transferTarget = transferTo
+    ? {
+        orgId: transferTo,
+        fromLabel: r.socle_organization_label,
+        toLabel: organismes.find((o) => o.value === transferTo)?.label ?? "cet organisme",
+        // Reflet de `requests_select` sur le couple d'ARRIVÉE : sans
+        // consultation, la fiche disparaîtra du périmètre dès la validation.
+        losesAccess: !hasRight(rights, transferTo, r.socle_procedure_id, "consultation"),
+        assignedName: r.assigned_to ? nameOf(r.assigned_to) : null,
+      }
+    : null;
 
   // ---- Dérivés purs ---------------------------------------------------------------
   // Identité affichée = fiche Socle du jour si elle a pu être relue, dépôt sinon
@@ -326,6 +377,40 @@ export function RequestDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Action refusée.");
     }
+  }
+
+  /**
+   * Transfert confirmé. Deux suites possibles, et il faut les distinguer :
+   * si l'auteur garde l'accès, il reste sur la fiche ; sinon elle vient de
+   * quitter son périmètre, et l'y laisser afficherait « Demande introuvable »
+   * une seconde plus tard — on le ramène à la liste en disant ce qui s'est
+   * passé, plutôt que de le laisser croire à une panne.
+   */
+  async function submitTransfer(socleOrgId: string) {
+    if (!r || !transferTarget) return;
+    setTransferError(null);
+    let result: TransferResult;
+    try {
+      result = await transferRequest.mutateAsync({ requestId: r.id, socleOrganizationId: socleOrgId });
+    } catch (err) {
+      setTransferError(err instanceof Error ? err.message : "Transfert refusé.");
+      return;
+    }
+    const { losesAccess } = transferTarget;
+    // Le libellé annoncé est celui que le SERVEUR a retenu (miroir), pas celui
+    // qu'on avait sous les yeux : entre l'ouverture du menu et la validation,
+    // une synchronisation a pu renommer l'organisme.
+    const toLabel = result.organisme ?? transferTarget.toLabel;
+    setTransferTo(null);
+    if (losesAccess) {
+      setTransferredAway(toLabel);
+      return;
+    }
+    flash(
+      result.unassigned
+        ? `Demande transférée à ${toLabel} — affectation retirée`
+        : `Demande transférée à ${toLabel}`,
+    );
   }
 
   async function openAttachment(a: RequestAttachment, download: boolean) {
@@ -715,9 +800,10 @@ export function RequestDetailPage() {
               assignedTo={r.assigned_to}
               serviceLabel={r.socle_organization_label}
               members={eligibleMembers}
-              serviceOptions={orgCatalog.data ?? []}
+              organismes={organismes}
               editable={canProcessWith(rr) && !archived}
-              pending={updatePriority.isPending || assignRequest.isPending}
+              pending={updatePriority.isPending || assignRequest.isPending || transferRequest.isPending}
+              onTransfer={(socleOrgId) => { setTransferError(null); setTransferTo(socleOrgId); }}
               onPriority={(priority) => void guarded(
                 () => updatePriority.mutateAsync({ requestId: r!.id, priority }),
                 `Urgence : ${priorityOption(priority).label.toLowerCase()}`,
@@ -759,6 +845,16 @@ export function RequestDetailPage() {
       </div>
 
       <TransitionDialog runner={runner} members={eligibleMembers} />
+
+      {/* Transfert vers un autre organisme responsable. La modale est le SEUL
+          chemin : le menu du rail ne fait que la viser. */}
+      <TransfertDialog
+        target={transferTarget}
+        pending={transferRequest.isPending}
+        error={transferError}
+        onClose={() => { setTransferTo(null); setTransferError(null); }}
+        onConfirm={(socleOrgId) => void submitTransfer(socleOrgId)}
+      />
 
       {/* Qualification d'une pièce. L'écriture passe par la RPC
           `qualify_request_attachment` — `request_attachments` n'a aucune policy

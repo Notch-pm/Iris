@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  notificationEmail, requestLabel, requestPermalink, statusLabel,
+  brandFor, notificationEmail, requestLabel, requestPermalink, statusLabel,
   type NotificationEmailInput,
 } from "./notifications.ts";
 import { renderEmailHtml, renderEmailText } from "./template.ts";
@@ -138,6 +138,77 @@ describe("notificationEmail — corps par motif", () => {
     const corps = mail.paragraphs.join(" ");
     expect(corps).toContain("Démarche : Signalement nid-de-poule — Voirie.");
     expect(corps).toContain("pas encore d'agent affecté");
+  });
+
+  it("transfert : la PHRASE attendue en tête, puis l'auteur, la démarche, le dépôt, le statut", () => {
+    const mail = notificationEmail(input({
+      kind: "transferred_in",
+      payload: {
+        reference: "R1", subject: "Nid-de-poule", status: "a_traiter",
+        actor_name: "Alex Dupont", procedure: "Signalement nid-de-poule",
+        from_destinataire: "Voirie", destinataire: "CCAS",
+        received_at: "2026-03-12T09:30:00+00:00",
+      },
+    }));
+    // La première phrase du corps (après la salutation) EST l'annonce du
+    // transfert : c'est ce qu'on vient lire.
+    expect(mail.paragraphs[1]).toBe("La demande R1 — Nid-de-poule a été transférée de Voirie vers CCAS.");
+    const corps = mail.paragraphs.join(" ");
+    expect(mail.subject).toContain("R1 — Demande transférée par Voirie");
+    expect(corps).toContain("Transfert effectué par Alex Dupont.");
+    expect(corps).toContain("Démarche : Signalement nid-de-poule.");
+    expect(corps).toContain("Déposée le 12/03/2026.");
+    expect(corps).toContain("Statut à l'arrivée : « À traiter ».");
+  });
+
+  it("transfert : l'annonce survit au rendu HTML ET texte", () => {
+    const mail = notificationEmail(input({
+      kind: "transferred_in",
+      payload: { reference: "R1", from_destinataire: "Voirie", destinataire: "CCAS" },
+    }));
+    const brand = brandFor("ACCM");
+    expect(renderEmailText(mail, brand)).toContain("a été transférée de Voirie vers CCAS.");
+    expect(renderEmailHtml(mail, brand)).toContain("a été transférée de Voirie vers CCAS.");
+  });
+
+  it("transfert : le DEMANDEUR ne sort jamais par e-mail", () => {
+    const mail = notificationEmail(input({
+      kind: "transferred_in",
+      payload: {
+        reference: "R1", subject: "Nid-de-poule", destinataire: "CCAS",
+        // Un payload d'une version ultérieure ne doit pas faire fuiter une
+        // identité : seules les clés connues sont rendues.
+        ...({ requester: "Marie Dupuis" } as Record<string, string>),
+      },
+    }));
+    expect(JSON.stringify(mail)).not.toContain("Marie Dupuis");
+  });
+
+  it("transfert : une date de dépôt illisible est omise, pas rendue en brut", () => {
+    const mail = notificationEmail(input({
+      kind: "transferred_in",
+      payload: { reference: "R1", destinataire: "CCAS", received_at: "pas une date" },
+    }));
+    expect(mail.paragraphs.join(" ")).not.toContain("pas une date");
+    expect(mail.paragraphs.join(" ")).not.toContain("Déposée le");
+  });
+
+  it("transfert : chaque bout manquant se RETIRE de la phrase, sans y laisser de trou", () => {
+    const sans_origine = notificationEmail(input({
+      kind: "transferred_in",
+      payload: { reference: "R1", subject: "Nid-de-poule", destinataire: "CCAS" },
+    }));
+    expect(sans_origine.paragraphs[1]).toBe("La demande R1 — Nid-de-poule a été transférée vers CCAS.");
+    expect(sans_origine.subject).toContain("R1 — Une demande vous a été transférée");
+
+    const sans_cible = notificationEmail(input({
+      kind: "transferred_in",
+      payload: { reference: "R1", from_destinataire: "Voirie" },
+    }));
+    expect(sans_cible.paragraphs[1]).toBe("La demande R1 a été transférée de Voirie vers votre organisme.");
+
+    const sans_rien = notificationEmail(input({ kind: "transferred_in", payload: { reference: "R1" } }));
+    expect(sans_rien.paragraphs[1]).toBe("La demande R1 a été transférée à votre organisme.");
   });
 
   it("attribue à l'intégration un geste sans auteur, au système sinon", () => {

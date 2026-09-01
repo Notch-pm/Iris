@@ -669,6 +669,16 @@ function describeEvent(
         detail: `${from ? `${nameOf(from)} → ` : ""}${nameOf(to)} · par ${who}`,
       };
     }
+    case "transferred": {
+      const from = typeof p.from_label === "string" ? p.from_label : null;
+      const to = typeof p.to_label === "string" ? p.to_label : null;
+      const lost = p.unassigned === true;
+      return {
+        label: "Demande transférée",
+        detail: `${from ? `${from} → ` : ""}${to ?? "organisme inconnu"} · par ${who}`
+          + (lost ? " · affectation retirée" : ""),
+      };
+    }
     case "piece_qualifiee": {
       const conforme = p.compliance === "conforme";
       const name = typeof p.file_name === "string" ? p.file_name : "Pièce";

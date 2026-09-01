@@ -51,6 +51,11 @@ export const PREFERENCE_ROWS: { kind: NotificationKind; label: string; hint: str
     label: "Une nouvelle demande entre dans mon périmètre",
     hint: "Une demande arrive sur un couple (organisation, démarche) que j'instruis.",
   },
+  {
+    kind: "transferred_in",
+    label: "Une demande nous est transférée",
+    hint: "Un autre service confie à mon organisme une demande que j'instruis.",
+  },
 ];
 
 /** Sans préférence enregistrée, tout est activé — *fail open*, comme en base. */

@@ -220,12 +220,35 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
 | `t18_requests_require_procedure_active` (DEFINER) | BEFORE INSERT | **Activation par organisation (2026-08-31)** : le couple (organisme, démarche) doit exister dans `socle_procedure_organizations`, non obsolète. L'organisme vérifié est `coalesce(socle_organization_id, socle_root_org_id)` — l'ingestion partenaire ayant le droit d'omettre le destinataire. S'applique à tout le monde, service_role compris. ⚠️ **Opt-in strict** : absent du miroir = refusé ; la migration ne doit être appliquée qu'après une synchro ayant peuplé le miroir (rollback dédié) |
 | `t20_requests_set_reference` (DEFINER) | BEFORE INSERT | Numérotation atomique + `socle_root_org_id` dérivée du tenant |
 | `t21_requests_set_scope_org` (DEFINER) | BEFORE INSERT | Calcule `socle_scope_org_id` + anomalie `destinataire_inconnu`, **après** `t20` (dépend de `socle_root_org_id`) |
+| `t08_requests_apply_transfer` (DEFINER) | BEFORE UPDATE | **Transfert d'organisme (2026-09-01)** : quand `socle_organization_id` change, le **libellé est relu dans le miroir** (jamais celui soumis — sinon un transfert pourrait mentir sur sa destination) et l'**affectation est retirée** si l'agent affecté n'a pas l'instruction sur le couple d'arrivée (RM-16 : on retire l'affectation, on ne refuse pas le transfert). Nommé `t08` pour passer **avant** `t09`/`t10`/`t11`, qui doivent voir ce qu'il pose. Aucun `is_service_context()` (fonction DEFINER, piège du 2026-08-22) : la règle vaut pour tout le monde |
 | `t09_requests_set_scope_org` (DEFINER) | BEFORE UPDATE | Même calcul, **inconditionnel** à chaque UPDATE (pas seulement `OF socle_organization_id` — correctif de sécurité 2026-08-22 : un client omettant cette colonne de son `SET` ne pouvait sinon pas en survivre l'ancienne valeur) ; repart toujours de `old.anomalies`, jamais de `new.anomalies` (même motif) ; **avant** `t10`/`t11` |
 | `t10_requests_protect_immutable` (INVOKER) | BEFORE UPDATE | `id` (2026-08-22 : une clé primaire ne se réécrit jamais, service_role compris), `reference`, `organization_id`, `socle_root_org_id`, `source`, `external_ref`, `received_at`, `created_at`, **`requester_snapshot`** immuables ; demande **archivée gelée** (seul le statut peut changer, pour désarchiver — `procedure_snapshot` compris) — **dérogation service (2026-08-22)** : en contexte de service uniquement, une demande archivée peut recevoir un simple recalcul de `socle_scope_org_id`/`anomalies` (reparentage Socle post-sync) sans que ce soit traité comme une modification interdite |
 | `t11_requests_guard_write` (INVOKER, **remplace `t11_requests_guard_transition` le 2026-08-22**) | BEFORE UPDATE | **Porte unique** (fusion garde de transition + garde d'édition, ADR-07) : matrice fixe + exigences de données **inchangées** (ci-dessous) ; en plus, portes **par droit** : édition du dossier = **instruction** sur le couple actuel (liste exhaustive de colonnes « métier », `closure_*` compris hors changement de statut) ; affectation (RM-16) = le destinataire doit détenir l'**instruction** sur le couple retenu ; requalification (RM-18) = instruction sur le couple **actuel et cible** ; transfert d'organisation (RM-19) = instruction sur le couple actuel, cible libre dans le sous-arbre du tenant ; transitions courantes = **instruction**, transitions terminales/archivage = **clôture**, réouverture/archivage/désarchivage = **administration** (`has_admin_scope`) **en plus** de la clôture ; `closed_at` **neutralisée en entrée** (`new.closed_at := old.closed_at` avant tout calcul — seule la section Effets, plus bas dans la même fonction, la fait évoluer) ; pose/purge `closed_at` ; purge la clôture à la réouverture. Contournement `is_service_context()` conservé intégralement (fonction restée `SECURITY INVOKER`, voir piège DEFINER ci-dessus) |
+| `t12_requests_transfer_procedure_active` (DEFINER) | BEFORE UPDATE | **Jumeau UPDATE de `t18` (2026-09-01)** : un transfert choisit un organisme aujourd'hui, comme un dépôt — la cible doit donc assurer la démarche (`socle_procedure_organizations`, non obsolète). S'applique à tout le monde, service_role compris. Deux échappatoires symétriques de `t18` : demande **historique sans démarche** (`socle_procedure_id` nul) et demande sans organisme désigné (repli sur la racine). ⚠️ `t18` reste **INSERT seulement** : une démarche désactivée après coup ne gèle pas les demandes déjà déposées |
 | `t17_requests_require_pieces_conformes` (DEFINER) | BEFORE UPDATE | **Qualification des pièces (2026-08-28)** : refuse `en_instruction → resolue_positive` tant qu'une exigence de pièce **obligatoire** n'est pas conforme (manquante, pas encore qualifiée, ou non conforme) — `request_pieces_blocking`, qui relit `procedure_snapshot -> form_schema` et rejoue les conditions sur `form_data`. **Elle seule** est fermée : mise en attente, annulation et résolution négative restent ouvertes (on refuse souvent PARCE QU'une pièce manque). Ne vise pas le désarchivage (`archivee → resolue_positive`), qui restaure un état déjà jugé. S'applique à tout le monde, service_role compris (règle métier, motif `t16`) |
 | `t19_requests_touch` (INVOKER) | BEFORE UPDATE | `version := version + 1`, `updated_at := now()` |
-| `t30_requests_log_insert` / `t30_requests_log_update` (DEFINER) | AFTER | Journal `request_events` (`created`, `status_changed`, `assigned`, et **`form_data_updated`** depuis le 2026-08-28) + historique `request_assignments`. NB : `piece_qualifiee` et `piece_ajoutee` sont écrits par leurs RPC (`qualify_request_attachment`, `attach_request_piece`), pas par un trigger |
+| `t30_requests_log_insert` / `t30_requests_log_update` (DEFINER) | AFTER | Journal `request_events` (`created`, `status_changed`, `assigned`, **`transferred`** depuis le 2026-09-01 — les deux identifiants, les deux **libellés** (le journal est immuable et doit rester lisible après un renommage) et `unassigned`, le sort de l'affectation —, et **`form_data_updated`** depuis le 2026-08-28) + historique `request_assignments`. NB : `piece_qualifiee` et `piece_ajoutee` sont écrits par leurs RPC (`qualify_request_attachment`, `attach_request_piece`), pas par un trigger |
+
+**Transfert d'organisme : la RPC `transfer_request(request_id, socle_org_id)` est l'UNIQUE
+porte** (migration `20260901110000`). Un `update` client de `socle_organization_id` vers un
+organisme hors du périmètre de l'auteur est refusé par le RLS — `42501 : new row violates
+row-level security policy` —, alors que c'est **précisément** le geste que RM-19 autorise
+(« la cible peut être HORS du périmètre de l'auteur »). Constaté en base le 2026-09-01 par
+trois sondes : un agent habilité des deux côtés passe, le même habilité sur la seule source
+est refusé, et le `WITH CHECK` que `pg_policy` affiche pour `requests_update`
+(`is_org_member(organization_id)`) vaut pourtant VRAI au moment du refus. Le défaut était
+**invisible pour un administrateur de plateforme**, que `is_platform_admin()` fait passer
+partout.
+
+La policy `requests_update` n'a **pas** été élargie : elle sert des clients d'un tout autre
+genre (transitions, édition du dossier, affectation) qu'on ne desserre pas pour un seul geste.
+La RPC, `SECURITY DEFINER`, réécrit dans son corps les deux contrôles que
+`t11_requests_guard_write` portait pour le transfert — **instruction sur le couple ACTUEL** et
+appartenance de la cible au **sous-arbre du tenant** — puisqu'en contexte `DEFINER`
+`is_service_context()` vaut toujours vrai et que `t11` ne garde plus rien (piège du
+2026-08-22). `t08`, `t10`, `t12`, `t30` et `t40` continuent, eux, de s'appliquer. Elle rend
+`{changed, organisme, unassigned}` : l'écran annonce ce que le serveur a fait. Un transfert
+**sur place** rend `changed: false` et ne journalise rien.
 
 ### Anomalies (`requests.anomalies`)
 
@@ -681,7 +704,8 @@ triggers `SECURITY DEFINER`** : aucune policy d'écriture cliente, un navigateur
 fabriquer pour autrui.
 
 - Colonnes : `organization_id`, `user_id` (destinataire), `request_id`, `kind`
-  (`assigned` | `unassigned` | `status_changed` | `note_added` | `new_request_in_scope`),
+  (`assigned` | `unassigned` | `status_changed` | `note_added` | `new_request_in_scope` |
+  `mentioned` | `transferred_in`),
   `payload jsonb`, `actor_id` (NULL = système/ingestion), `created_at`, `read_at`.
 - Trois FK en `on delete cascade` : la purge RGPD d'une demande emporte ses notifications.
 - Index : `(user_id, organization_id, created_at desc)` pour le volet, index **partiel**
@@ -700,7 +724,7 @@ Triggers (nommés `t40_*`, donc après le journal `t30_*`) :
 | Trigger | Table | Produit |
 |---|---|---|
 | `t40_requests_notify_insert` | `requests` (AFTER INSERT) | `assigned` à l'affectataire, puis fan-out `new_request_in_scope` aux membres détenant **instruction** sur le couple — affectataire et acteur exclus |
-| `t40_requests_notify_update` | `requests` (AFTER UPDATE) | affectation changée → `assigned` au nouveau + `unassigned` à l'ancien ; **sinon** statut changé → `status_changed` à l'affectataire |
+| `t40_requests_notify_update` | `requests` (AFTER UPDATE) | organisme changé → fan-out **`transferred_in`** aux membres détenant l'**instruction** sur le couple d'**ARRIVÉE** (acteur exclu), **indépendamment** de ce qui suit ; puis : affectation changée → `assigned` au nouveau + `unassigned` à l'ancien ; **sinon** statut changé → `status_changed` à l'affectataire |
 | `t40_request_messages_notify_insert` | `request_messages` (AFTER INSERT) | `note_added` à l'affectataire de la demande |
 
 Fonctions d'appui, **toutes sans `EXECUTE` cliente** :

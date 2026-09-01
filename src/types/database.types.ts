@@ -1889,6 +1889,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      transfer_request: {
+        Args: { p_request_id: string; p_socle_org_id: string }
+        Returns: Json
+      }
       user_display_name: { Args: { p_user_id: string }; Returns: string }
       user_has_request_right: {
         Args: {

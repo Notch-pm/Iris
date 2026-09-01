@@ -274,7 +274,15 @@ Chaque feature a son `CLAUDE.md` de dossier, chargé automatiquement quand on y 
 les invariants ci-dessus restent la référence.
 
 - **Parcours agent** (`src/features/requests`, `src/features/tenant`) : liste, fiche
-  (dont **lieu d'intervention** : adresse, carte, itinéraire), **carte des interventions**
+  (dont **lieu d'intervention** : adresse, carte, itinéraire, et **transfert vers un autre
+  organisme responsable** depuis « Prise en charge » — cible limitée aux organismes qui
+  ASSURENT la démarche, droits de l'auteur sur la cible NON exigés (RM-19 : se dessaisir,
+  c'est confier), modale de confirmation qui annonce la perte d'accès quand elle aura lieu,
+  libellé relu dans le miroir et affectation retirée côté SERVEUR, notification
+  `transferred_in` à l'organisme qui hérite. ⚠️ **Le geste passe par la RPC
+  `transfer_request`, seule porte** : un `update` client est refusé par le RLS dès que la
+  cible sort du périmètre de l'auteur — invisible pour un admin plateforme, cf.
+  `docs/data-model.md`), **carte des interventions**
   (`carte/`, route `/carte`), **tableau des demandes** (`tableau/`, route
   `/demandes/tableau`, entrée de rail — kanban : une colonne par statut du workflow, glisser-déposer ET
   menu clavier, seules les colonnes que `requests_guard_write` accepterait s'ouvrent, le
@@ -312,8 +320,9 @@ les invariants ci-dessus restent la référence.
   doctrine dans [`docs/droits.md`](docs/droits.md), détail front dans
   [`src/features/permissions/CLAUDE.md`](src/features/permissions/CLAUDE.md).
 - **Notifications** (`src/features/notifications`, edge `notifications-mailer`) : cloche du
-  header **et e-mail**, cinq motifs (affectation, retrait d'affectation, changement de statut,
-  note interne, nouvelle demande dans le périmètre d'instruction). **La base est le seul
+  header **et e-mail**, sept motifs (affectation, retrait d'affectation, changement de statut,
+  note interne, mention, nouvelle demande dans le périmètre d'instruction, et — depuis le
+  2026-09-01 — **demande transférée** à l'organisme qu'on instruit). **La base est le seul
   producteur** — triggers `t40_*` `SECURITY DEFINER`, aucune policy d'écriture cliente, jamais
   de notification pour son propre geste ; temps réel + repli par sondage. **Un événement, une
   ligne, N canaux** : l'e-mail part d'une **boîte d'envoi** drainée sur cron (jamais du

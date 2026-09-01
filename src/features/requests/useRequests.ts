@@ -396,6 +396,45 @@ export function useAssignRequest() {
   });
 }
 
+/** Ce que le serveur a VRAIMENT fait — relu après coup, jamais supposé. */
+export interface TransferResult {
+  changed: boolean;
+  /** Libellé de l'organisme d'arrivée, tel que le miroir le nomme. */
+  organisme?: string;
+  /** L'affectation a été retirée : l'agent ne pouvait pas instruire là-bas. */
+  unassigned?: boolean;
+}
+
+/**
+ * Transfert vers un autre ORGANISME RESPONSABLE (RM-19), par la RPC
+ * `transfer_request` — **unique porte**.
+ *
+ * ⚠️ Un `update` client de `socle_organization_id` NE MARCHE PAS dès que la
+ * cible sort du périmètre de l'auteur : le RLS refuse la ligne mise à jour
+ * (`42501`), alors que c'est justement le geste — se dessaisir vers un service
+ * où l'on n'a rien à faire. Constaté en base le 2026-09-01 ; invisible pour un
+ * administrateur de plateforme, qui passe partout. Détail et sondes :
+ * migration `20260901110000`.
+ *
+ * On n'envoie que l'identifiant de la cible : le libellé vient du miroir et le
+ * sort de l'affectation est une décision serveur. On les RELIT dans la réponse
+ * pour annoncer ce qui s'est passé, pas ce qu'on espérait.
+ */
+export function useTransferRequest() {
+  const invalidate = useInvalidateRequest();
+  return useMutation({
+    mutationFn: async (input: { requestId: string; socleOrganizationId: string }) => {
+      const { data, error } = await supabase.rpc("transfer_request", {
+        p_request_id: input.requestId,
+        p_socle_org_id: input.socleOrganizationId,
+      });
+      if (error) throw error;
+      return (data ?? { changed: false }) as unknown as TransferResult;
+    },
+    onSuccess: (_data, vars) => invalidate(vars.requestId),
+  });
+}
+
 export function useAddMessage() {
   const invalidate = useInvalidateRequest();
   return useMutation({

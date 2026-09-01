@@ -35,6 +35,7 @@ describe("notificationTitle", () => {
     expect(notificationTitle("note_added")).toBe("Nouvelle note interne");
     expect(notificationTitle("mentioned")).toBe("Vous êtes mentionné");
     expect(notificationTitle("new_request_in_scope")).toBe("Nouvelle demande");
+    expect(notificationTitle("transferred_in")).toBe("Demande transférée");
   });
 
   it("reste affichable devant un motif inconnu (version antérieure)", () => {
@@ -80,6 +81,17 @@ describe("notificationMessage", () => {
   it("se passe des détails absents", () => {
     expect(notificationMessage("new_request_in_scope", {}))
       .toBe("Nouvelle demande dans votre périmètre.");
+  });
+
+  it("nomme l'organisme QUITTÉ dans un transfert", () => {
+    expect(notificationMessage("transferred_in", {
+      actor_name: "Camille", from_destinataire: "Voirie", destinataire: "CCAS",
+    })).toBe("Camille vous a transféré cette demande depuis Voirie.");
+  });
+
+  it("sait annoncer un transfert dont l'origine est inconnue", () => {
+    expect(notificationMessage("transferred_in", { actor_name: "Camille" }))
+      .toBe("Camille vous a transféré cette demande.");
   });
 
   it("attribue au système un geste sans acteur (ingestion)", () => {

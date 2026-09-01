@@ -381,6 +381,24 @@ describe("formAnswers", () => {
     expect(items[0].detail).not.toContain("date_naissance");
   });
 
+  it("nomme un transfert d'organisme, et dit s'il a emporté l'affectation", () => {
+    const nameOf = () => "Camille Martin";
+    const items = activityItems({
+      events: [
+        { id: "e1", event_type: "transferred", created_by: "u1", created_at: "2026-09-01T10:00:00Z",
+          payload: { from_label: "Voirie", to_label: "CCAS", unassigned: true } },
+        { id: "e2", event_type: "transferred", created_by: "u1", created_at: "2026-09-01T09:00:00Z",
+          payload: { from_label: null, to_label: "Voirie", unassigned: false } },
+      ],
+      notes: [], nameOf,
+    });
+    expect(items[0]).toMatchObject({
+      label: "Demande transférée",
+      detail: "Voirie → CCAS · par Camille Martin · affectation retirée",
+    });
+    expect(items[1]).toMatchObject({ label: "Demande transférée", detail: "Voirie · par Camille Martin" });
+  });
+
   it("expose la version du formulaire", () => {
     expect(formSchemaVersion(SNAPSHOT)).toBe(1);
     expect(formSchemaVersion(null)).toBeNull();

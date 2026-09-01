@@ -13,7 +13,7 @@ supprimer — il peut seulement lire les siennes (RLS `user_id = auth.uid()`) et
 de lecture par RPC. Corollaire : le front ne décide **jamais** qui doit être notifié, il n'a
 même pas la question à se poser.
 
-## Les cinq motifs
+## Les motifs
 
 | `kind` | Qui reçoit | Quand |
 |---|---|---|
@@ -23,6 +23,7 @@ même pas la question à se poser.
 | `note_added` | l'affectataire | une note interne est ajoutée à sa demande |
 | `mentioned` | la personne citée | quelqu'un écrit `@elle` dans une note interne — **prime sur `note_added`** (l'affectataire cité ne reçoit qu'un message) ; seuls les agents pouvant CONSULTER la demande sont mentionnables, garde `t03_request_messages_guard_mentions` |
 | `new_request_in_scope` | tout membre du tenant détenant **instruction** sur le couple (organisation Socle, démarche) de la demande | une demande entre — créée dans Iris comme ingérée depuis Clara ou un partenaire |
+| `transferred_in` | tout membre détenant **instruction** sur le couple d'**ARRIVÉE** | un autre service transfère la demande à cet organisme (2026-09-01) |
 
 **Jamais pour son propre geste** : la règle est portée une seule fois, dans
 `push_notification` (`p_user_id = p_actor_id` → no-op), pas répétée dans chaque trigger.
@@ -33,6 +34,15 @@ alors tout le monde est servi — ce qui est le cas le plus utile.
 `assigned` et **pas** `new_request_in_scope` ; une réaffectation qui change aussi le statut
 produit `assigned`/`unassigned` et **pas** `status_changed` par-dessus (le payload d'`assigned`
 porte le statut courant).
+
+**« Notifier l'organisme cible » se lit « notifier ses agents »** (arbitrage PO 2026-09-01) :
+Iris ne miroite **aucune adresse e-mail d'organisation** — le miroir Socle porte id, parent,
+nom, statut, rien d'autre, et la whitelist de `socle-proxy` exclut explicitement courriel et
+téléphone. Le droit par couple (organisation, démarche) désigne exactement les bonnes
+personnes ; c'est donc le même fan-out que `new_request_in_scope`, sur le couple d'arrivée.
+`transferred_in` part **indépendamment** de l'affectation : un transfert qui emporte
+l'affectation produit `unassigned` pour l'ancien affectataire **et** `transferred_in` pour
+l'organisme qui hérite — ce ne sont pas les mêmes personnes, ni la même information.
 
 ## Le payload est un instantané
 
@@ -56,8 +66,21 @@ l'authentification puis par le RLS.
 **Ce qui sort d'Iris.** Un e-mail quitte le périmètre : il part chez un fournisseur de
 messagerie, atterrit sur un téléphone, se transfère. On n'y met donc que ce qui permet de
 reconnaître la demande et de décider si elle appelle une action — référence, objet, démarche,
-destinataire, statuts, auteur du geste. **Jamais** le corps d'une note interne (invariant),
-l'identité de l'usager, la description, les pièces. Le permalien porte le reste.
+destinataire, statuts, auteur du geste, **date de dépôt** (`transferred_in`). **Jamais** le
+corps d'une note interne (invariant), l'identité de l'usager, la description, les pièces. Le
+permalien porte le reste.
+
+**L'avis de transfert dit la chose attendue, en premier** : la phrase d'ouverture est
+« La demande <référence — objet> a été transférée de <organisme quitté> vers <organisme
+d'arrivée>. », et l'objet du message nomme l'organisme quitté (« trier sans ouvrir »).
+L'auteur du geste suit sur sa propre ligne : ce que le lecteur veut savoir, c'est d'où le
+dossier arrive, pas qui a cliqué. Chaque bout manquant se **retire** de la phrase au lieu d'y
+laisser un trou.
+
+⚠️ **Le DEMANDEUR ne sort pas non plus, y compris dans l'avis de transfert** — la question a
+été posée et tranchée le 2026-09-01 : l'organisme qui hérite reconnaît la demande à sa
+référence, son objet, sa démarche et sa date de dépôt, et lit l'usager sur la fiche, sous RLS.
+Un test le fige (`notifications.test.ts`).
 
 **L'envoi ne part jamais du déclencheur.** Un appel SMTP dans la transaction métier la ferait
 traîner et la ferait échouer quand le relais est indisponible — on n'annule pas une affectation
@@ -155,8 +178,8 @@ sécurité, seulement une économie de trafic — c'est le serveur qui décide, 
 
 ## Tests
 
-- `notifications.test.ts` — module pur du volet, 21 cas.
-- `supabase/functions/_shared/email/notifications.test.ts` — corps des e-mails, 22 cas (dont :
+- `notifications.test.ts` — module pur du volet, 24 cas.
+- `supabase/functions/_shared/email/notifications.test.ts` — corps des e-mails, 28 cas (dont :
   le corps de la note n'y figure pas, le permalien survit au rendu HTML **et** texte, une URL
   non http retombe sur « # », l'objet de la demande est échappé).
 - [`supabase/tests/notifications-email.test.sql`](../../../supabase/tests/notifications-email.test.sql)

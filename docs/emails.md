@@ -14,7 +14,7 @@ reste de ce document, jusqu'à l'habillage :
 | **Réinitialisation de mot de passe** | l'agent depuis `/mot-de-passe-oublie` (self-service) | GoTrue → hook `auth-email-hook` |
 | **Réinitialisation de mot de passe** | un administrateur ayant autorité sur le compte, bouton « lien de réinitialisation » | edge function `admin-users` (`send_password_reset`) |
 | **Activation de compte (invitation)** | un administrateur qui invite un agent | edge function `admin-users` (`invite_user`) |
-| **Notification métier** (affectation, retrait, changement de statut, note interne, nouvelle demande) | la BASE, par trigger — jamais le client | boîte d'envoi drainée sur cron par `notifications-mailer` |
+| **Notification métier** (affectation, retrait, changement de statut, note interne, mention, nouvelle demande, **demande transférée**) | la BASE, par trigger — jamais le client | boîte d'envoi drainée sur cron par `notifications-mailer` |
 
 **À l'USAGER** — des messages de la collectivité à ses habitants, à la marque et **aux
 couleurs de la collectivité** (§ 4, « Charte graphique de la collectivité ») :
@@ -237,12 +237,25 @@ est indisponible — on n'annule pas une affectation parce qu'un serveur de mail
 - deux exécutions concurrentes ne peuvent pas expédier deux fois (réclamation atomique).
 
 **Contenu.** Un e-mail quitte le périmètre applicatif : il n'emporte que la référence, l'objet
-de la demande, la démarche, le destinataire, les statuts et l'auteur du geste. **Jamais** le
-corps d'une note interne (invariant), l'identité de l'usager, la description ni les pièces —
-le permalien porte le reste, sous le contrôle du RLS.
+de la demande, la démarche, le destinataire, les statuts, l'auteur du geste et — pour l'avis de
+transfert — la **date de dépôt**. **Jamais** le corps d'une note interne (invariant),
+l'identité de l'usager, la description ni les pièces — le permalien porte le reste, sous le
+contrôle du RLS.
+
+⚠️ **L'avis de transfert ne nomme pas le demandeur**, bien que la question ait été posée
+(2026-09-01) : un e-mail se transfère et s'archive hors du périmètre, et l'organisme qui hérite
+reconnaît la demande à sa référence, son objet, sa démarche et sa date de dépôt. Il lit l'usager
+sur la fiche, sous RLS. Un test le fige.
 
 **Préférences.** `notification_preferences` décide des canaux servis (in-app, e-mail), *fail
-open* : sans préférence, tout est envoyé. Modèle posé, écran de réglage à venir.
+open* : sans préférence, tout est envoyé. Réglées dans « Mon compte », un motif par ligne.
+
+**Transfert d'organisme (2026-09-01).** Quand une demande change d'organisme responsable, les
+agents qui détiennent l'**instruction** sur le couple d'**arrivée** reçoivent `transferred_in`
+— volet et e-mail, au **gabarit agent** (charte Iris, pas celle de la collectivité : ce message
+reste entre agents). « Notifier l'organisme cible » se lit ainsi faute d'alternative honnête :
+Iris ne miroite aucune adresse e-mail d'organisation, et le droit par couple désigne exactement
+les bonnes personnes.
 
 ### Réponse à l'usager (2026-08-26)
 
@@ -410,7 +423,7 @@ de passe**, nulle part.
 ## 6. Tests
 
 - `supabase/functions/_shared/email/*.test.ts` — gabarit, catalogue, résolution du serveur
-  d'envoi, **corps des e-mails de notification** (`notifications.test.ts`, 22 cas : permalien
+  d'envoi, **corps des e-mails de notification** (`notifications.test.ts`, 28 cas : permalien
   présent en HTML et en texte brut, URL non http neutralisée, objet de la demande échappé, et
   le corps de la note interne absent) — vitest, `npm test`.
 - `supabase/functions/_shared/email/charte.test.ts` — 16 cas sur la charte de la collectivité :

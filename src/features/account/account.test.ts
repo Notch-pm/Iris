@@ -7,9 +7,12 @@ import {
 import { NOTIFICATION_KINDS } from "@/features/notifications/notifications";
 
 describe("matrice de préférences", () => {
-  it("couvre les six motifs, sans doublon ni oubli", () => {
+  // La matrice se compte SUR le catalogue, jamais sur un nombre écrit ici :
+  // un motif ajouté (transferred_in, 2026-09-01) doit faire échouer l'écran
+  // qui l'oublie, pas le test qui le compte.
+  it("couvre tous les motifs, sans doublon ni oubli", () => {
     expect(PREFERENCE_ROWS.map((r) => r.kind).sort()).toEqual([...NOTIFICATION_KINDS].sort());
-    expect(new Set(PREFERENCE_ROWS.map((r) => r.kind)).size).toBe(6);
+    expect(new Set(PREFERENCE_ROWS.map((r) => r.kind)).size).toBe(NOTIFICATION_KINDS.length);
   });
 
   it("sans aucune ligne enregistrée, tout est activé (fail open, comme en base)", () => {
@@ -39,7 +42,7 @@ describe("matrice de préférences", () => {
 
   it("écrit une ligne par motif, jamais « * »", () => {
     const rows = rowsFromMatrix(defaultMatrix());
-    expect(rows).toHaveLength(6);
+    expect(rows).toHaveLength(NOTIFICATION_KINDS.length);
     expect(rows.some((r) => r.kind === "*")).toBe(false);
     expect(rows.every((r) => r.in_app && r.email)).toBe(true);
   });

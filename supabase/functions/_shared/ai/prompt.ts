@@ -104,7 +104,9 @@ function contextBlock(ctx: RequestContext): string {
     `Démarche : ${ctx.procedure ?? "non renseignée"}`,
   ];
   if (ctx.category) lines.push(`Catégorie : ${ctx.category}`);
-  if (ctx.service) lines.push(`Service instructeur : ${ctx.service}`);
+  // « Organisme responsable » — le vocabulaire de l'écran (2026-09-01) : ce que
+  // l'assistant reformule doit se dire comme la fiche que l'agent a sous les yeux.
+  if (ctx.service) lines.push(`Organisme responsable : ${ctx.service}`);
   lines.push(`Objet : ${ctx.subject}`);
   lines.push(`Statut : ${ctx.status}`);
   lines.push(`Urgence : ${ctx.priority}`);

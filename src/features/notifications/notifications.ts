@@ -13,11 +13,12 @@ export type NotificationKind =
   | "status_changed"
   | "note_added"
   | "mentioned"
-  | "new_request_in_scope";
+  | "new_request_in_scope"
+  | "transferred_in";
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   "assigned", "unassigned", "status_changed", "note_added", "mentioned",
-  "new_request_in_scope",
+  "new_request_in_scope", "transferred_in",
 ];
 
 export function isNotificationKind(value: string): value is NotificationKind {
@@ -38,6 +39,10 @@ export interface NotificationPayload {
   procedure?: string | null;
   destinataire?: string | null;
   reassigned?: boolean | null;
+  /** Transfert : l'organisme QUITTÉ (`destinataire` porte celui d'arrivée). */
+  from_destinataire?: string | null;
+  /** Transfert : date de dépôt de la demande, figée au moment du geste. */
+  received_at?: string | null;
 }
 
 export interface NotificationItem {
@@ -62,6 +67,7 @@ const KIND_TITLES: Record<NotificationKind, string> = {
   note_added: "Nouvelle note interne",
   mentioned: "Vous êtes mentionné",
   new_request_in_scope: "Nouvelle demande",
+  transferred_in: "Demande transférée",
 };
 
 export function notificationTitle(kind: string): string {
@@ -107,6 +113,12 @@ export function notificationMessage(kind: string, payload: NotificationPayload):
       return detail
         ? `Nouvelle demande dans votre périmètre : ${detail}.`
         : "Nouvelle demande dans votre périmètre.";
+    }
+    case "transferred_in": {
+      const de = payload.from_destinataire?.trim();
+      return de
+        ? `${who} vous a transféré cette demande depuis ${de}.`
+        : `${who} vous a transféré cette demande.`;
     }
     default:
       return "Cette demande a évolué.";

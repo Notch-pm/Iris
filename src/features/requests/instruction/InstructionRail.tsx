@@ -1,18 +1,18 @@
 // Rail latéral de la fiche d'instruction : prise en charge (urgence, agent
-// instructeur — le service instructeur est à venir), avancement (étapes du
-// cycle de vie + action principale) et usager (identité RELUE dans le Socle
-// quand elle est disponible, écarts avec le dépôt, correction sur place,
-// autres demandes du même usager Socle). Les droits restent portés par le
-// RLS / la garde SQL : `editable` ne fait que refléter.
+// instructeur, organisme responsable), avancement (étapes du cycle de vie +
+// action principale) et usager (identité RELUE dans le Socle quand elle est
+// disponible, écarts avec le dépôt, correction sur place, autres demandes du
+// même usager Socle). Les droits restent portés par le RLS / la garde SQL :
+// `editable` ne fait que refléter.
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Check, ChevronDown, ChevronUp, ChevronsUp, History, Loader2, Minus, Pencil } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronUp, ChevronsUp, History, Loader2, Minus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
-import type { FacetOption } from "../facets";
 import { StatusBadge } from "../StatusBadge";
+import type { TransferOption } from "./transfert";
 import type { TransitionSpec } from "../statuts";
 import type { RequestSummary, TenantMember } from "../useRequests";
 import { Avatar, SOON, Surface } from "@/components/ui/surface";
@@ -51,25 +51,27 @@ const TONE_BG: Record<PriorityTone, string> = {
 interface PriseEnChargeProps {
   priority: string;
   assignedTo: string | null;
+  /** Libellé de l'organisme qui porte la demande aujourd'hui. */
   serviceLabel: string | null;
   members: TenantMember[];
-  serviceOptions: FacetOption[];
+  /** Organismes qui assurent cette démarche — seuls transferts possibles. */
+  organismes: TransferOption[];
   editable: boolean;
   pending: boolean;
   onPriority: (priority: string) => void;
   onAssign: (userId: string | null) => void;
+  /** Ouvre la confirmation de transfert : rien n'est écrit avant elle. */
+  onTransfer: (socleOrgId: string) => void;
 }
 
 export function PriseEnChargeCard({
-  priority, assignedTo, serviceLabel, members, serviceOptions, editable, pending, onPriority, onAssign,
+  priority, assignedTo, serviceLabel, members, organismes, editable, pending,
+  onPriority, onAssign, onTransfer,
 }: PriseEnChargeProps) {
   const [menu, setMenu] = React.useState<"urgence" | "agent" | null>(null);
   const option = priorityOption(priority);
   const Icon = PRIORITY_ICON[option.key] ?? Minus;
   const agentName = assignedTo ? memberName(members, assignedTo) : null;
-  const services: FacetOption[] = serviceOptions.length > 0
-    ? serviceOptions
-    : serviceLabel ? [{ value: "", label: serviceLabel }] : [];
 
   return (
     <Surface className="gap-2.5 px-3.5 py-[13px]">
@@ -116,6 +118,11 @@ export function PriseEnChargeCard({
         <Dropdown
           open={menu === "agent"}
           onOpenChange={(o) => setMenu(o ? "agent" : null)}
+          // Détaché dans le `body` et borné en hauteur : le rail est une
+          // colonne défilante (`lg:overflow-y-auto`), qui rognerait un menu
+          // long — agents du tenant PLUS organismes du sous-arbre.
+          portal
+          menuClassName="max-h-[min(70vh,420px)] overflow-y-auto"
           trigger={(p) => (
             <button
               type="button"
@@ -131,7 +138,7 @@ export function PriseEnChargeCard({
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="truncate text-[12.5px] font-bold">{agentName ?? "Non affectée"}</span>
                 <span className="truncate text-[10.5px] font-semibold text-muted-foreground">
-                  {serviceLabel ?? "Aucun service désigné"}
+                  {serviceLabel ?? "Aucun organisme désigné"}
                 </span>
               </span>
               <ChevronDown className="size-3 shrink-0 opacity-50" aria-hidden="true" />
@@ -159,13 +166,24 @@ export function PriseEnChargeCard({
             {assignedTo === null ? <Check className="size-[13px] shrink-0 text-primary" strokeWidth={2.6} aria-hidden="true" /> : null}
           </DropdownItem>
           <DropdownDivider />
-          <DropdownLabel>Service instructeur — à venir</DropdownLabel>
-          {services.slice(0, 8).map((o) => (
-            <DropdownItem key={o.value || o.label} active={o.label === serviceLabel} {...SOON}>
-              <span className="flex-1 truncate font-bold">{o.label}</span>
-              {o.label === serviceLabel ? <Check className="size-[13px] shrink-0 text-primary" strokeWidth={2.6} aria-hidden="true" /> : null}
-            </DropdownItem>
-          ))}
+          <DropdownLabel>Organisme responsable</DropdownLabel>
+          {organismes.length === 0 ? (
+            <p className="px-[9px] py-2 text-[11.5px] leading-snug text-muted-foreground">
+              Aucun autre organisme du territoire n'assure cette démarche.
+            </p>
+          ) : (
+            organismes.map((o) => (
+              <DropdownItem
+                key={o.value}
+                active={o.current}
+                onClick={() => { setMenu(null); if (!o.current) onTransfer(o.value); }}
+              >
+                <Building2 className="size-[13px] shrink-0 text-muted-foreground" aria-hidden="true" />
+                <span className="flex-1 truncate font-bold">{o.label}</span>
+                {o.current ? <Check className="size-[13px] shrink-0 text-primary" strokeWidth={2.6} aria-hidden="true" /> : null}
+              </DropdownItem>
+            ))
+          )}
         </Dropdown>
       </div>
     </Surface>

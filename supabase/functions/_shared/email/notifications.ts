@@ -23,7 +23,8 @@ export type NotificationKind =
   | "status_changed"
   | "note_added"
   | "mentioned"
-  | "new_request_in_scope";
+  | "new_request_in_scope"
+  | "transferred_in";
 
 /** Libellés de statut — copie assumée de `src/features/requests/statuts.ts`.
  *  Les edge functions ne partagent pas le graphe de modules du front ; un
@@ -57,6 +58,10 @@ export interface NotificationPayload {
   procedure?: string | null;
   destinataire?: string | null;
   reassigned?: boolean | null;
+  /** Transfert : l'organisme QUITTÉ (`destinataire` porte celui d'arrivée). */
+  from_destinataire?: string | null;
+  /** Transfert : date de dépôt de la demande (ISO), figée au moment du geste. */
+  received_at?: string | null;
 }
 
 export interface NotificationEmailInput {
@@ -97,6 +102,33 @@ export function requestLabel(payload: NotificationPayload): string {
 function subjectLine(head: string, payload: NotificationPayload): string {
   const ref = text(payload.reference);
   return ref ? `${ref} — ${head}` : head;
+}
+
+/**
+ * « La demande X a été transférée de A vers B. » — la phrase que le lecteur
+ * doit trouver EN PREMIER, à la voix passive et avec les deux organismes
+ * nommés : ce qu'il veut savoir, c'est d'où le dossier arrive et chez qui il
+ * atterrit, pas qui a cliqué (l'auteur suit, sur sa propre ligne).
+ * Chaque bout manquant se retire de la phrase au lieu d'y laisser un trou.
+ */
+function transferLine(what: string, from: string, to: string): string {
+  if (from && to) return `La demande ${what} a été transférée de ${from} vers ${to}.`;
+  if (to) return `La demande ${what} a été transférée vers ${to}.`;
+  if (from) return `La demande ${what} a été transférée de ${from} vers votre organisme.`;
+  return `La demande ${what} a été transférée à votre organisme.`;
+}
+
+/** « Déposée le 12/03/2026. » — la date du DÉPÔT, pas celle du transfert :
+ *  c'est elle qui dit depuis combien de temps l'usager attend. Une date
+ *  illisible est omise plutôt que rendue en brut. */
+function depositLine(payload: NotificationPayload): string | null {
+  const raw = text(payload.received_at);
+  if (raw === "") return null;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return null;
+  return `Déposée le ${date.toLocaleDateString("fr-FR", {
+    day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris",
+  })}.`;
 }
 
 /** Ligne de contexte ajoutée quand la démarche / le destinataire sont connus. */
@@ -184,6 +216,32 @@ function bodyFor(kind: string, payload: NotificationPayload): Body {
           `La demande ${what} vient d'entrer dans un périmètre que vous instruisez.`,
           ...(ctx ? [ctx] : []),
           `Statut à l'arrivée : « ${statusLabel(payload.status)} ». Elle n'a pas encore d'agent affecté.`,
+        ],
+      };
+    }
+
+    // ⚠️ Le DEMANDEUR n'y figure pas, malgré la tentation : un e-mail se
+    // transfère, s'archive chez un fournisseur de messagerie, atterrit sur un
+    // téléphone. La règle « jamais l'identité de l'usager » vaut ici comme
+    // ailleurs — la fiche, sous RLS, porte le reste (arbitrage PO 2026-09-01).
+    case "transferred_in": {
+      const from = text(payload.from_destinataire);
+      const to = text(payload.destinataire);
+      const deposit = depositLine(payload);
+      return {
+        // L'objet nomme l'organisme QUITTÉ quand on le connaît : en liste de
+        // réception, « qui me l'envoie » est ce qui permet de trier sans ouvrir.
+        subject: subjectLine(
+          from ? `Demande transférée par ${from}` : "Une demande vous a été transférée",
+          payload,
+        ),
+        heading: "Une demande vous a été transférée",
+        paragraphs: [
+          transferLine(what, from, to),
+          `Transfert effectué par ${who}.`,
+          ...(text(payload.procedure) ? [`Démarche : ${text(payload.procedure)}.`] : []),
+          ...(deposit ? [deposit] : []),
+          `Statut à l'arrivée : « ${statusLabel(payload.status)} ».`,
         ],
       };
     }
