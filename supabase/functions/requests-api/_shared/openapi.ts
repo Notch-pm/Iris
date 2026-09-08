@@ -1,8 +1,12 @@
 // Contrat public de l'API d'ingestion — l'OpenAPI est LA documentation de
-// référence des endpoints (règle de gamme). Politique v1 : évolutions
-// additives uniquement ; toute rupture passera par une v2.
+// référence des endpoints (règle de gamme). Politique : évolutions additives
+// au sein d'une version majeure ; la 2.0.0 (2026-09) a retiré le mode
+// « URL signée » des pièces, jamais livré, au profit du dépôt direct
+// (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "1.2.0";
+export const CONTRACT_VERSION = "2.0.0";
+/** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
+export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
 const API_MOUNT_PATH = "/functions/v1/requests-api";
 
@@ -34,7 +38,9 @@ const errorSchema = {
         code: {
           type: "string",
           enum: ["bad_request", "unauthorized", "forbidden", "not_found",
-                 "method_not_allowed", "conflict", "internal_error"],
+                 "method_not_allowed", "conflict", "payload_too_large",
+                 "unsupported_media_type", "unprocessable", "too_many_requests",
+                 "bad_gateway", "internal_error"],
         },
         message: { type: "string", description: "Message en français." },
       },
@@ -44,24 +50,37 @@ const errorSchema = {
 
 const attachmentRefSchema = {
   type: "object",
-  required: ["file_name", "fetch_url"],
+  required: ["upload_id"],
   additionalProperties: false,
   properties: {
-    file_name: { type: "string", maxLength: 255 },
-    fetch_url: {
-      type: "string",
+    upload_id: {
+      type: "string", format: "uuid",
       description:
-        "URL https SIGNÉE et temporaire d'où Iris copiera le fichier (worker asynchrone). " +
-        "Jamais de contenu inline dans la requête.",
+        "Identifiant rendu par `POST /v1/uploads`. Le fichier, son nom, son type et son " +
+        "empreinte sont ceux vérifiés par Iris à la réception — l'enveloppe ne les redit pas. " +
+        "Un `upload_id` inconnu, expiré, d'une autre clé ou déjà rattaché → 400.",
     },
-    mime_type: { type: "string" },
-    size_bytes: { type: "integer", minimum: 0 },
-    checksum: { type: "string", description: "Empreinte du fichier (déduplication de copie)." },
     form_field_key: {
       type: "string", maxLength: 120,
       description:
         "Clé machine (`key`) du champ « pièce justificative » du form_schema Socle auquel " +
         "la pièce répond. Omise = pièce hors formulaire.",
+    },
+  },
+} as const;
+
+const uploadReceiptSchema = {
+  type: "object",
+  required: ["upload_id", "file_name", "mime_type", "size_bytes", "checksum", "expires_at"],
+  properties: {
+    upload_id: { type: "string", format: "uuid" },
+    file_name: { type: "string" },
+    mime_type: { type: "string", description: "Type DÉTECTÉ par Iris (signature binaire), pas celui annoncé." },
+    size_bytes: { type: "integer", minimum: 1 },
+    checksum: { type: "string", description: "sha256 hexadécimal du fichier reçu." },
+    expires_at: {
+      type: "string", format: "date-time",
+      description: "Au-delà, un fichier non rattaché à une demande est purgé et l'upload_id refusé.",
     },
   },
 } as const;
@@ -246,17 +265,24 @@ export function buildOpenApi(baseUrl: string) {
         "`idempotency_key`. Rejeu au **contenu identique** → `200` avec la demande existante",
         "(le rejeu sur timeout réseau est le cas nominal, pas une erreur) ; **contenu divergent**",
         "→ `409`, rien n'est écrasé. L'empreinte de contenu ignore `idempotency_key` et les",
-        "`fetch_url` (URL signées éphémères).",
+        "`upload_id` des pièces : c'est le **contenu** des fichiers (nom, type, taille, sha256,",
+        "clé de champ) qui compte — un rejeu avec de nouveaux téléversements des mêmes fichiers",
+        "est un rejeu identique.",
         "",
-        "## Pièces jointes",
-        "Le contenu de fichier **n'entre jamais** dans la requête : vous fournissez des",
-        "**références** `{ file_name, fetch_url }` où `fetch_url` est une URL https **signée et",
-        "temporaire**. Iris répond immédiatement et copie les fichiers de son côté — il copie,",
-        "il ne référence pas.",
+        "## Pièces jointes — en deux temps",
+        "1. **Déposez chaque fichier** sur `POST /v1/uploads` (`multipart/form-data`, champ",
+        "`file`, 25 Mo maximum). Iris vérifie le **contenu réel** (signature binaire contre une",
+        "liste fermée : PDF, JPEG, PNG, WebP, HEIC, GIF, Word .docx, Excel .xlsx, OpenDocument",
+        ".odt/.ods — jamais de SVG, d'HTML, d'archive ni de document à macros), exige une",
+        "extension cohérente, calcule le sha256, et rend un `upload_id` valable **24 heures**.",
+        "2. **Référencez-les** dans l'enveloppe (`attachments: [{ upload_id, form_field_key }]`)",
+        "ou après coup sur `POST /v1/requests/{id}/attachments`. Le rattachement est",
+        "**synchrone** : à la réponse, les pièces sont dans le dossier.",
         "",
-        "> **État de livraison** : le worker de copie n'est pas encore actif ; les pièces",
-        "> déposées restent `copy_status: pending`. N'envoyez pas encore de pièces en",
-        "> production — la demande, elle, est bien créée.",
+        "Le contenu de fichier **n'entre jamais** dans une enveloppe JSON, et Iris ne va",
+        "**jamais chercher** un fichier chez vous : le mode `fetch_url` du contrat 1.x, jamais",
+        "livré, a été retiré en 2.0.0. Un fichier déposé et jamais référencé est purgé sans",
+        "conséquence.",
         "",
         "## Suivre ses demandes",
         "`GET /v1/requests?updated_since=` (tri `updated_at` croissant) pour la réconciliation",
@@ -267,11 +293,15 @@ export function buildOpenApi(baseUrl: string) {
         "Toute erreur renvoie `{ \"error\": { \"code\": \"...\", \"message\": \"...\" } }`, messages en",
         "français : `400` (enveloppe invalide), `401` (clé absente/inconnue/révoquée/expirée),",
         "`403` (scope manquant, source suspendue, périmètre), `404` (inexistante **ou hors",
-        "périmètre** — l'existence n'est jamais révélée), `405`, `409` (conflit), `500`.",
+        "périmètre** — l'existence n'est jamais révélée), `405`, `409` (conflit), `413` (fichier",
+        "trop gros), `415` (format refusé), `422` (extension incohérente), `429` (trop de",
+        "dépôts de fichiers : 60 par minute et par clé), `500`, `502` (stockage indisponible).",
         "",
         "## Politique de version",
-        "v1 : **évolutions additives uniquement**. Tolérez les champs de réponse inconnus et",
-        "ne codez que sur les clés documentées ; toute rupture passerait par une v2.",
+        "Au sein d'une version majeure : **évolutions additives uniquement**. Tolérez les champs",
+        "de réponse inconnus et ne codez que sur les clés documentées. **2.0.0 (2026-09)** : le",
+        "mode « URL signée » des pièces (`fetch_url`, `copy_status: pending`) est retiré — il",
+        "n'avait jamais été mis en service. Les routes restent sous `/v1`.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -287,8 +317,8 @@ export function buildOpenApi(baseUrl: string) {
       {
         name: "Pièces jointes",
         description:
-          "Dépôt de pièces par référence signée, dans l'enveloppe ou après coup. Jamais de " +
-          "contenu inline.",
+          "Dépôt des fichiers (multipart, vérifiés par Iris), puis rattachement par upload_id " +
+          "dans l'enveloppe ou après coup. Jamais de contenu inline dans une enveloppe JSON.",
       },
       { name: "Contrat", description: "Le présent document, servi publiquement." },
     ],
@@ -305,11 +335,47 @@ export function buildOpenApi(baseUrl: string) {
         Error: errorSchema,
         IngestEnvelope: envelopeSchema,
         AttachmentRef: attachmentRefSchema,
+        UploadReceipt: uploadReceiptSchema,
         LinkRef: linkRefSchema,
         Request: requestResourceSchema,
       },
     },
     paths: {
+      "/v1/uploads": {
+        post: {
+          tags: ["Pièces jointes"],
+          summary: "Déposer un fichier (avant de le rattacher)",
+          description:
+            "Scope requests:write. Un fichier par appel, `multipart/form-data`, champ `file` " +
+            "(25 Mo maximum, 60 dépôts par minute et par clé). Iris vérifie le CONTENU réel — " +
+            "signature binaire contre la liste fermée des formats acceptés, extension cohérente — " +
+            "calcule le sha256 et rend un `upload_id` valable 24 heures. Le type MIME rendu est " +
+            "celui détecté, jamais celui annoncé. Un fichier jamais rattaché est purgé.",
+          requestBody: {
+            required: true,
+            content: { "multipart/form-data": { schema: {
+              type: "object",
+              required: ["file"],
+              properties: {
+                file: { type: "string", format: "binary", description: "Le fichier, avec son nom d'origine (extension requise)." },
+              },
+            } } },
+          },
+          responses: {
+            "201": { description: "Fichier reçu et vérifié.", content: { "application/json": { schema: {
+              type: "object", properties: { upload: { $ref: "#/components/schemas/UploadReceipt" } },
+            } } } },
+            "400": err("Envoi non multipart, fichier absent ou vide, nom invalide."),
+            "401": err("Authentification requise."),
+            "403": err("Scope requests:write requis."),
+            "413": err("Fichier au-delà de 25 Mo."),
+            "415": err("Format refusé (hors liste, ou document Office à macros)."),
+            "422": err("Extension du nom incohérente avec le contenu détecté."),
+            "429": err("Plus de 60 dépôts dans la minute pour cette clé."),
+            "502": err("Stockage indisponible — réessayez."),
+          },
+        },
+      },
       "/v1/requests": {
         post: {
           tags: ["Demandes"],
@@ -382,7 +448,10 @@ export function buildOpenApi(baseUrl: string) {
                   properties: {
                     created: { type: "boolean", enum: [true] },
                     request: { $ref: "#/components/schemas/Request" },
-                    attachments_pending: { type: "integer" },
+                    attachments_registered: {
+                      type: "integer",
+                      description: "Pièces rattachées au dossier — synchrone, à la réponse elles y sont.",
+                    },
                   },
                 },
                 example: {
@@ -399,7 +468,7 @@ export function buildOpenApi(baseUrl: string) {
                     received_at: "2026-08-18T08:00:00Z",
                     url: "https://iris.exemple.fr/demandes/0f1e2d3c-4b5a-6978-8796-a5b4c3d2e1f0",
                   },
-                  attachments_pending: 0,
+                  attachments_registered: 0,
                 },
               } },
             },
@@ -413,10 +482,11 @@ export function buildOpenApi(baseUrl: string) {
                 },
               } } },
             },
-            "400": err("Enveloppe invalide (clé inconnue, champ manquant, format)."),
+            "400": err("Enveloppe invalide (clé inconnue, champ manquant, format), ou upload_id inconnu / expiré / déjà rattaché."),
             "401": err("Clé absente, inconnue, révoquée ou expirée."),
             "403": err("Scope manquant, intégration suspendue, source_system ou racine hors du périmètre de la clé."),
             "409": err("Contenu divergent pour un external_id ou une idempotency_key déjà utilisés."),
+            "502": err("Stockage indisponible pendant le rattachement des pièces — la demande est créée, rejouez à l'identique : les pièces manquantes seront rattachées."),
           },
         },
         get: {
@@ -458,10 +528,10 @@ export function buildOpenApi(baseUrl: string) {
       "/v1/requests/{id}/attachments": {
         post: {
           tags: ["Pièces jointes"],
-          summary: "Ajouter des pièces par référence signée",
+          summary: "Rattacher des pièces déjà déposées",
           description:
-            "Scope requests:write. Endpoint dédié aux pièces : références { file_name, fetch_url } " +
-            "uniquement — jamais de contenu inline. La copie est asynchrone (copy_status: pending).",
+            "Scope requests:write. Références { upload_id, form_field_key? } de fichiers déposés " +
+            "sur POST /v1/uploads — jamais de contenu inline. Rattachement synchrone.",
           parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
           requestBody: {
             required: true,
@@ -473,11 +543,12 @@ export function buildOpenApi(baseUrl: string) {
             } } },
           },
           responses: {
-            "201": { description: "Pièces enregistrées.", content: { "application/json": { schema: {
+            "201": { description: "Pièces rattachées au dossier.", content: { "application/json": { schema: {
               type: "object", properties: { registered: { type: "integer" } },
             } } } },
-            "400": err("Références invalides."),
+            "400": err("Références invalides, ou upload_id inconnu / expiré / déjà rattaché."),
             "404": err("Demande hors périmètre ou inexistante."),
+            "502": err("Stockage indisponible — rien n'est rattaché, réessayez."),
           },
         },
       },

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { cn } from "@/lib/utils";
+import { ACCEPTED_FORMATS_LABEL, acceptAttribute } from "@fn/_shared/files/magic";
 import { formatBytes } from "./instruction";
 import type { PieceRequirement } from "./conformite";
 
@@ -37,10 +38,12 @@ export function AjouterPieceDialog({
   React.useEffect(() => { if (requirement) setFile(null); }, [requirement]);
 
   const replaced = requirement?.attachments.length ?? 0;
-  const accept = acceptedFormats.map((f) => `.${f}`).join(",");
+  // Ce que la démarche demande, croisé avec ce qu'Iris accepte (liste fermée,
+  // vérifiée sur le contenu réel côté serveur — l'attribut n'est qu'un confort).
+  const accept = acceptAttribute(acceptedFormats);
   const formats = acceptedFormats.length > 0
     ? acceptedFormats.map((f) => f.toUpperCase()).join(", ")
-    : "Tout format";
+    : ACCEPTED_FORMATS_LABEL;
 
   return (
     <Dialog open={requirement !== null} onOpenChange={(o) => { if (!o) onClose(); }}>

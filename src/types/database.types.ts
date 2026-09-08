@@ -14,6 +14,89 @@ export type Database = {
   }
   public: {
     Tables: {
+      attachment_uploads: {
+        Row: {
+          checksum: string
+          consumed_at: string | null
+          created_at: string
+          discarded_at: string | null
+          expires_at: string
+          file_name: string
+          file_size: number
+          id: string
+          integration_source_id: string | null
+          mime_type: string
+          organization_id: string
+          request_attachment_id: string | null
+          scope_request_id: string | null
+          storage_path: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          checksum: string
+          consumed_at?: string | null
+          created_at?: string
+          discarded_at?: string | null
+          expires_at: string
+          file_name: string
+          file_size: number
+          id?: string
+          integration_source_id?: string | null
+          mime_type: string
+          organization_id: string
+          request_attachment_id?: string | null
+          scope_request_id?: string | null
+          storage_path: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          checksum?: string
+          consumed_at?: string | null
+          created_at?: string
+          discarded_at?: string | null
+          expires_at?: string
+          file_name?: string
+          file_size?: number
+          id?: string
+          integration_source_id?: string | null
+          mime_type?: string
+          organization_id?: string
+          request_attachment_id?: string | null
+          scope_request_id?: string | null
+          storage_path?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attachment_uploads_integration_source_id_fkey"
+            columns: ["integration_source_id"]
+            isOneToOne: false
+            referencedRelation: "integration_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attachment_uploads_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attachment_uploads_scope_request_id_fkey"
+            columns: ["scope_request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attachment_uploads_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_template_organizations: {
         Row: {
           created_at: string
@@ -788,17 +871,23 @@ export type Database = {
           document_type_label: string | null
           document_type_socle_id: string | null
           email_id: string | null
-          fetch_url: string | null
           file_name: string
           file_size: number | null
           form_field_key: string | null
+          generated_at: string | null
+          generated_by: string | null
           id: string
+          kind: string
           mime_type: string | null
           organization_id: string
           request_id: string
+          socle_contact_id: string | null
+          source_attachment_id: string | null
           storage_path: string
           superseded_at: string | null
           superseded_by: string | null
+          template_label: string | null
+          template_socle_id: string | null
           uploaded_by: string | null
         }
         Insert: {
@@ -813,17 +902,23 @@ export type Database = {
           document_type_label?: string | null
           document_type_socle_id?: string | null
           email_id?: string | null
-          fetch_url?: string | null
           file_name: string
           file_size?: number | null
           form_field_key?: string | null
+          generated_at?: string | null
+          generated_by?: string | null
           id?: string
+          kind?: string
           mime_type?: string | null
           organization_id: string
           request_id: string
+          socle_contact_id?: string | null
+          source_attachment_id?: string | null
           storage_path: string
           superseded_at?: string | null
           superseded_by?: string | null
+          template_label?: string | null
+          template_socle_id?: string | null
           uploaded_by?: string | null
         }
         Update: {
@@ -838,17 +933,23 @@ export type Database = {
           document_type_label?: string | null
           document_type_socle_id?: string | null
           email_id?: string | null
-          fetch_url?: string | null
           file_name?: string
           file_size?: number | null
           form_field_key?: string | null
+          generated_at?: string | null
+          generated_by?: string | null
           id?: string
+          kind?: string
           mime_type?: string | null
           organization_id?: string
           request_id?: string
+          socle_contact_id?: string | null
+          source_attachment_id?: string | null
           storage_path?: string
           superseded_at?: string | null
           superseded_by?: string | null
+          template_label?: string | null
+          template_socle_id?: string | null
           uploaded_by?: string | null
         }
         Relationships: [
@@ -867,10 +968,24 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "request_attachments_generated_by_fkey"
+            columns: ["generated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "request_attachments_request_id_fkey"
             columns: ["request_id"]
             isOneToOne: false
             referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_attachments_source_attachment_id_fkey"
+            columns: ["source_attachment_id"]
+            isOneToOne: false
+            referencedRelation: "request_attachments"
             referencedColumns: ["id"]
           },
           {
@@ -1479,6 +1594,45 @@ export type Database = {
           },
         ]
       }
+      storage_deletions: {
+        Row: {
+          attempts: number
+          bucket: string
+          done_at: string | null
+          enqueued_at: string
+          id: string
+          last_error: string | null
+          next_attempt_at: string
+          organization_id: string | null
+          reason: string
+          storage_path: string
+        }
+        Insert: {
+          attempts?: number
+          bucket?: string
+          done_at?: string | null
+          enqueued_at?: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          organization_id?: string | null
+          reason: string
+          storage_path: string
+        }
+        Update: {
+          attempts?: number
+          bucket?: string
+          done_at?: string | null
+          enqueued_at?: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          organization_id?: string | null
+          reason?: string
+          storage_path?: string
+        }
+        Relationships: []
+      }
       sync_runs: {
         Row: {
           counters: Json
@@ -1517,7 +1671,9 @@ export type Database = {
           first_name: string | null
           id: string
           is_platform_admin: boolean
+          landline_phone: string | null
           last_name: string | null
+          mobile_phone: string | null
         }
         Insert: {
           avatar_path?: string | null
@@ -1526,7 +1682,9 @@ export type Database = {
           first_name?: string | null
           id: string
           is_platform_admin?: boolean
+          landline_phone?: string | null
           last_name?: string | null
+          mobile_phone?: string | null
         }
         Update: {
           avatar_path?: string | null
@@ -1535,7 +1693,9 @@ export type Database = {
           first_name?: string | null
           id?: string
           is_platform_admin?: boolean
+          landline_phone?: string | null
           last_name?: string | null
+          mobile_phone?: string | null
         }
         Relationships: []
       }
@@ -1567,15 +1727,26 @@ export type Database = {
       }
       attach_request_piece: {
         Args: {
-          p_file_name: string
-          p_file_size?: number
           p_form_field_key?: string
-          p_mime_type?: string
           p_replaces_id?: string
           p_request_id: string
-          p_storage_path: string
+          p_upload_id: string
         }
         Returns: Json
+      }
+      attachment_known_paths: {
+        Args: never
+        Returns: {
+          path: string
+          source: string
+        }[]
+      }
+      bucket_objects: {
+        Args: { p_bucket: string }
+        Returns: {
+          created_at: string
+          name: string
+        }[]
       }
       can_admin_request: { Args: { p_request_id: string }; Returns: boolean }
       can_manage_account: {
@@ -1599,9 +1770,62 @@ export type Database = {
           request_id: string
         }[]
       }
+      claim_storage_deletions: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          bucket: string
+          done_at: string | null
+          enqueued_at: string
+          id: string
+          last_error: string | null
+          next_attempt_at: string
+          organization_id: string | null
+          reason: string
+          storage_path: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "storage_deletions"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       clear_smtp_settings_from_socle: {
         Args: { p_org_id: string }
         Returns: boolean
+      }
+      consume_attachment_upload: {
+        Args: {
+          p_actor: string
+          p_id: string
+          p_org: string
+          p_request_id: string
+          p_source: string
+        }
+        Returns: {
+          checksum: string
+          consumed_at: string | null
+          created_at: string
+          discarded_at: string | null
+          expires_at: string
+          file_name: string
+          file_size: number
+          id: string
+          integration_source_id: string | null
+          mime_type: string
+          organization_id: string
+          request_attachment_id: string | null
+          scope_request_id: string | null
+          storage_path: string
+          uploaded_by: string | null
+        }
+        SetofOptions: {
+          from: "*"
+          to: "attachment_uploads"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       contact_request_counts: {
         Args: { p_org_id: string }
@@ -1616,6 +1840,10 @@ export type Database = {
         Args: { p_expected_version: number; p_profile_id: string }
         Returns: Json
       }
+      discard_attachment_uploads: {
+        Args: { p_actor: string; p_ids: string[] }
+        Returns: number
+      }
       eligible_assignees: {
         Args: { p_request_id: string }
         Returns: {
@@ -1629,6 +1857,36 @@ export type Database = {
         Returns: string[]
       }
       email_template_variables: { Args: never; Returns: string[] }
+      enqueue_storage_deletion: {
+        Args: { p_org: string; p_path: string; p_reason: string }
+        Returns: undefined
+      }
+      expired_attachment_uploads: {
+        Args: { p_limit?: number }
+        Returns: {
+          checksum: string
+          consumed_at: string | null
+          created_at: string
+          discarded_at: string | null
+          expires_at: string
+          file_name: string
+          file_size: number
+          id: string
+          integration_source_id: string | null
+          mime_type: string
+          organization_id: string
+          request_attachment_id: string | null
+          scope_request_id: string | null
+          storage_path: string
+          uploaded_by: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "attachment_uploads"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       form_attachment_required: {
         Args: { p_field: Json; p_values: Json }
         Returns: boolean
@@ -1664,10 +1922,19 @@ export type Database = {
         Args: { p_org_id: string; p_socle_org_id: string }
         Returns: boolean
       }
-      has_any_creation_right: { Args: { p_org_id: string }; Returns: boolean }
       has_any_creation_right_for: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
+      }
+      immutable_unaccent: { Args: { p_text: string }; Returns: string }
+      ingest_request_attachments: {
+        Args: {
+          p_items: Json
+          p_org: string
+          p_request_id: string
+          p_source: string
+        }
+        Returns: number
       }
       is_last_root_admin: {
         Args: { p_org_id: string; p_user_id: string }
@@ -1700,6 +1967,7 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: number
       }
+      mark_attachments_missing: { Args: { p_paths: string[] }; Returns: number }
       mark_notifications_read: { Args: { p_ids: string[] }; Returns: number }
       member_role: { Args: { p_org_id: string }; Returns: string }
       member_role_derived: {
@@ -1766,6 +2034,8 @@ export type Database = {
           socle_org_id: string
         }[]
       }
+      purge_attachment_upload: { Args: { p_id: string }; Returns: undefined }
+      purge_consumed_uploads: { Args: { p_days?: number }; Returns: number }
       push_notification: {
         Args: {
           p_actor_id: string
@@ -1793,6 +2063,17 @@ export type Database = {
         Args: { p_org_id?: string }
         Returns: number
       }
+      request_attachment_paths: {
+        Args: { p_ids: string[]; p_request_id: string }
+        Returns: {
+          attachment_id: string
+          mime: string
+          name: string
+          nature: string
+          path: string
+          size: number
+        }[]
+      }
       request_exists: { Args: { p_id: string }; Returns: boolean }
       request_pieces_blocking: {
         Args: { p_form_data: Json; p_form_schema: Json; p_request_id: string }
@@ -1812,6 +2093,10 @@ export type Database = {
         Args: { p_org_id: string; p_socle_org_id: string }
         Returns: string
       }
+      request_search_text: {
+        Args: { p_reference: string; p_subject: string }
+        Returns: string
+      }
       revoke_permission_profile: {
         Args: { p_profile_id: string; p_user_id: string }
         Returns: Json
@@ -1826,6 +2111,18 @@ export type Database = {
         Returns: Json
       }
       save_permission_profile: { Args: { p: Json }; Returns: Json }
+      search_requests: {
+        Args: { p_limit?: number; p_org_id: string; p_query: string }
+        Returns: {
+          request_assigned_to: string
+          request_id: string
+          request_organisme: string
+          request_received_at: string
+          request_reference: string
+          request_status: string
+          request_subject: string
+        }[]
+      }
       set_permission_profile_status: {
         Args: {
           p_expected_version: number
@@ -1839,6 +2136,10 @@ export type Database = {
         Returns: undefined
       }
       settle_request_email: {
+        Args: { p_error?: string; p_id: string; p_ok: boolean }
+        Returns: undefined
+      }
+      settle_storage_deletion: {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
       }
@@ -1927,12 +2228,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1956,11 +2257,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -1981,11 +2282,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2006,11 +2307,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2023,11 +2324,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }

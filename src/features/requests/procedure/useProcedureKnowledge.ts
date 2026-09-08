@@ -15,6 +15,11 @@ import {
   parseAgentKnowledge,
   type AgentKnowledge,
 } from "@fn/socle-proxy/_shared/knowledge";
+import {
+  emptyDocuments,
+  parseProcedureDocuments,
+  type ProcedureDocuments,
+} from "@fn/_shared/document/templates";
 
 export function useProcedureKnowledge(organizationId: string, socleProcedureId: string | null) {
   return useQuery({
@@ -57,6 +62,39 @@ export function useProcedureDocumentUrl() {
         },
       );
       return data.url;
+    },
+  });
+}
+
+/**
+ * Modèles de document et de courrier de la démarche (contrat public-api 1.6.0).
+ * Même route que la base de connaissances — le Socle sert tout dans la fiche —
+ * mais une requête à part : l'écran des documents ne charge rien tant que
+ * personne n'ouvre la génération.
+ *
+ * Le fichier, lui, ne passe JAMAIS par ici : l'edge function de génération le
+ * télécharge côté serveur, après avoir confronté l'identifiant à cette même
+ * fiche. Le navigateur ne voit que ce qu'il faut pour PROPOSER.
+ */
+export function useProcedureDocuments(
+  organizationId: string,
+  socleProcedureId: string | null,
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["procedure-documents", organizationId, socleProcedureId],
+    enabled: Boolean(organizationId && socleProcedureId) && enabled,
+    // Un paramétrage de documents change au rythme d'un service : cinq minutes
+    // de fraîcheur, comme la base de connaissances.
+    staleTime: 300_000,
+    retry: false,
+    queryFn: async (): Promise<ProcedureDocuments> => {
+      const data = await invokeEdge<{ procedure: { documents?: unknown } | null }>(
+        "socle-proxy/v1/procedures/get",
+        { organization_id: organizationId, socle_procedure_id: socleProcedureId },
+      );
+      if (!data.procedure) return emptyDocuments();
+      return parseProcedureDocuments(data.procedure.documents);
     },
   });
 }

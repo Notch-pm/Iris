@@ -50,6 +50,7 @@ declare
   v_arr text[];
   v_jsonb jsonb;
   v_prefix text;
+  up_net uuid; up_annexe2 uuid; up_seule uuid; up_clos uuid; up_perime uuid;
 begin
   -- ==========================================================================
   -- MISE EN PLACE
@@ -65,6 +66,9 @@ begin
     (orgA, s_root, null, 'Mairie'), (orgA, s_voirie, s_root, 'Voirie'), (orgA, s_ccas, s_root, 'CCAS');
   insert into public.socle_procedure_cache (socle_id, organization_id, socle_root_org_id, name)
     values (proc, orgA, s_root, 'Acte de naissance');
+  -- t18 (2026-08-31) : une démarche doit être ACTIVÉE pour l'organisme porteur.
+  insert into public.socle_procedure_organizations (organization_id, socle_procedure_id, socle_org_id)
+    values (orgA, proc, s_voirie);
 
   insert into public.permission_profiles (organization_id, name, is_admin)
     values (orgA, 'Instructeur voirie', false) returning id into p_id;
@@ -96,6 +100,21 @@ begin
   update public.requests set status = 'annulee', closure_motif = 'abandon' where id = req_clos;
 
   v_prefix := orgA::text || '/' || req::text || '/';
+
+  -- Les pièces à ajouter sont REÇUES par le serveur avant la RPC (zone
+  -- d'attente, portée demande, déposées par l'instructeur) — porte unique.
+  insert into public.attachment_uploads (organization_id, scope_request_id, uploaded_by, storage_path,
+    file_name, mime_type, file_size, checksum, expires_at) values
+    (orgA, req, u_instructeur, v_prefix || 'e-net.pdf', 'net.pdf', 'application/pdf', 2048, 'e', now() + interval '1 day'),
+    (orgA, req, u_instructeur, v_prefix || 'f-annexe2.pdf', 'annexe2.pdf', 'application/pdf', 10, 'f', now() + interval '1 day'),
+    (orgA, req, u_instructeur, v_prefix || 'g-seule.pdf', 'seule.pdf', 'application/pdf', 10, 'g', now() + interval '1 day'),
+    (orgA, req_clos, u_instructeur, orgA::text || '/' || req_clos::text || '/x.pdf', 'x.pdf', 'application/pdf', 10, 'x', now() + interval '1 day'),
+    (orgA, req, u_instructeur, v_prefix || 'h-perime.pdf', 'perime.pdf', 'application/pdf', 10, 'h', now() - interval '1 minute');
+  select id into up_net     from public.attachment_uploads where checksum = 'e' and uploaded_by = u_instructeur;
+  select id into up_annexe2 from public.attachment_uploads where checksum = 'f' and uploaded_by = u_instructeur;
+  select id into up_seule   from public.attachment_uploads where checksum = 'g' and uploaded_by = u_instructeur;
+  select id into up_clos    from public.attachment_uploads where checksum = 'x' and uploaded_by = u_instructeur;
+  select id into up_perime  from public.attachment_uploads where checksum = 'h' and uploaded_by = u_instructeur;
 
   insert into public.request_attachments (organization_id, request_id, storage_path, file_name,
                                           form_field_key, compliance, compliance_motif,
@@ -133,9 +152,17 @@ begin
     jsonb_build_object('sub', u_instructeur, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
 
-  select public.attach_request_piece(
-           req, v_prefix || 'e-net.pdf', 'net.pdf', 'application/pdf', 2048,
-           'justificatif_domicile') into v_jsonb;
+  select public.attach_request_piece(req, up_net, 'justificatif_domicile') into v_jsonb;
+  v_uuid := (v_jsonb ->> 'attachment_id')::uuid;
+
+  -- La pièce est écrite DEPUIS la ligne d'attente, jamais depuis un payload.
+  select file_name || '|' || mime_type || '|' || file_size || '|' || coalesce(checksum, '') || '|' || storage_path
+    into v_text from public.request_attachments where id = v_uuid;
+  if v_text is distinct from 'net.pdf|application/pdf|2048|e|' || v_prefix || 'e-net.pdf' then
+    v_fail := v_fail || format('P2z: pièce écrite avec d''autres valeurs que la ligne d''attente (%s)', v_text); end if;
+  select request_attachment_id into v_uuid from public.attachment_uploads where id = up_net;
+  if v_uuid is distinct from (v_jsonb ->> 'attachment_id')::uuid then
+    v_fail := v_fail || 'P2y: la ligne d''attente n''a pas été consommée avec sa trace'::text; end if;
   v_uuid := (v_jsonb ->> 'attachment_id')::uuid;
 
   -- Les DEUX pièces actives de l'exigence sont remplacées — y compris celle qui
@@ -195,40 +222,47 @@ begin
   perform set_config('request.jwt.claims',
     jsonb_build_object('sub', u_instructeur, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
-  select public.attach_request_piece(
-           req, v_prefix || 'f-annexe2.pdf', 'annexe2.pdf', null, null, null, att_libre) into v_jsonb;
+  select public.attach_request_piece(req, up_annexe2, null, att_libre) into v_jsonb;
   if (v_jsonb ->> 'remplacees')::int <> 1 then
     v_fail := v_fail || 'P4a: le remplacement explicite hors formulaire n''a pas eu lieu'::text; end if;
 
   -- Sans cible ET sans clé, rien n'est remplacé : on n'invente pas de victime.
-  select public.attach_request_piece(req, v_prefix || 'g-seule.pdf', 'seule.pdf') into v_jsonb;
+  select public.attach_request_piece(req, up_seule) into v_jsonb;
   if (v_jsonb ->> 'remplacees')::int <> 0 then
     v_fail := v_fail || 'P4b: un ajout sans clé ni cible a remplacé quelque chose'::text; end if;
 
   -- ==========================================================================
-  -- P5. Les gardes de la RPC
+  -- P5. Les gardes de la RPC — et celles de la zone d'attente derrière elle
   -- ==========================================================================
   begin
-    perform public.attach_request_piece(req, orgA::text || '/' || req_clos::text || '/x.pdf', 'x.pdf');
-    v_fail := v_fail || 'P5a: chemin hors de la demande accepté'::text;
+    -- Une pièce reçue POUR la demande close ne se rattache pas à celle-ci.
+    perform public.attach_request_piece(req, up_clos);
+    v_fail := v_fail || 'P5a: pièce d''une autre portée acceptée'::text;
   exception when others then
-    if position('hors de la demande' in sqlerrm) = 0 then
+    if position('autre demande' in sqlerrm) = 0 then
       v_fail := v_fail || format('P5a: refus inattendu (%s)', sqlerrm); end if;
   end;
   begin
-    perform public.attach_request_piece(req, v_prefix || 'h.pdf', '   ');
-    v_fail := v_fail || 'P5b: nom de fichier vide accepté'::text;
+    perform public.attach_request_piece(req, up_perime);
+    v_fail := v_fail || 'P5b: pièce expirée acceptée'::text;
   exception when others then
-    if position('nom du fichier est obligatoire' in sqlerrm) = 0 then
+    if position('expirée' in sqlerrm) = 0 then
       v_fail := v_fail || format('P5b: refus inattendu (%s)', sqlerrm); end if;
   end;
   begin
-    perform public.attach_request_piece(
-      req_clos, orgA::text || '/' || req_clos::text || '/i.pdf', 'i.pdf');
+    perform public.attach_request_piece(req_clos, up_clos);
     v_fail := v_fail || 'P5c: pièce ajoutée à une demande close'::text;
   exception when others then
     if position('demande est close' in sqlerrm) = 0 then
       v_fail := v_fail || format('P5c: refus inattendu (%s)', sqlerrm); end if;
+  end;
+  begin
+    -- Une pièce déjà rattachée ne l'est pas deux fois.
+    perform public.attach_request_piece(req, up_net);
+    v_fail := v_fail || 'P5e: pièce rattachée deux fois'::text;
+  exception when others then
+    if position('déjà rattachée' in sqlerrm) = 0 then
+      v_fail := v_fail || format('P5e: refus inattendu (%s)', sqlerrm); end if;
   end;
 
   execute 'reset role';
@@ -236,7 +270,7 @@ begin
     jsonb_build_object('sub', u_ccas, 'role', 'authenticated')::text, true);
   execute 'set local role authenticated';
   begin
-    perform public.attach_request_piece(req, v_prefix || 'j.pdf', 'j.pdf');
+    perform public.attach_request_piece(req, up_seule);
     v_fail := v_fail || 'P5d: FUITE intra-tenant — le CCAS a déposé sur une demande de la Voirie'::text;
   exception when others then
     if position('droit d''instruction' in sqlerrm) = 0 then

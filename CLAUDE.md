@@ -86,6 +86,18 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   dépôt »).
 - **Aucune suppression de demande** (pièce administrative) : pas de policy DELETE, FK
   `ON DELETE RESTRICT` depuis le tenant, purge RGPD par procédure `service_role` dédiée.
+- **Aucun octet n'entre dans le bucket des pièces depuis un navigateur** (2026-09-08) : tout
+  fichier — d'un agent, d'un partenaire, ou produit par Iris — passe par la **porte unique**
+  `supabase/functions/_shared/files/receive.ts` (taille, **signature binaire contre une liste
+  fermée** : PDF, images raster, HEIC, DOCX/XLSX/ODT/ODS — jamais SVG, HTML, archive ni
+  Office à macros ; extension cohérente ; sha256), puis par la **zone d'attente**
+  `attachment_uploads` que seules les RPC métier consomment (`consume_attachment_upload`).
+  Le client ne désigne un fichier que par `upload_id` ; chemin, nom, type et empreinte sont
+  relus en base. `request_attachments` et `storage.objects` n'ont **aucune policy d'écriture
+  cliente** ; la lecture suit la demande du chemin. Les partenaires **déposent** (push,
+  `POST /v1/uploads`, contrat 2.0.0) : Iris ne va jamais chercher un fichier chez eux. Pas
+  d'antivirus (décision PO 2026-09-08) : la liste fermée est la défense. « Voir » n'est
+  proposé que pour PDF et images (`inlineViewable`), tout le reste se télécharge.
 - Les **notes internes ne quittent jamais Iris** (miroir de la règle `internal_notes` du
   Socle) ; le texte de clôture destiné à l'usager est un objet distinct — **facultatif** depuis
   le 2026-08-28, et repris dans l'avis de clôture envoyé à l'usager.
@@ -169,7 +181,9 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `form_schema`, `requester_config`, et —
   depuis le 2026-08-28 — la **part agent** de la `knowledge_base` : consignes, procédures,
   documents d'aide, liens, FAQ, garde-fous ; `trainingDocuments` et `aiSources`, matière de
-  l'assistant IA, ne franchissent PAS la frontière),
+  l'assistant IA, ne franchissent PAS la frontière ; et depuis le 2026-09-01 le bloc
+  **`documents`** — les modèles de document et de courrier de la démarche, pour que l'écran
+  PROPOSE : le fichier, lui, ne transite jamais par le navigateur),
   **`/v1/procedures/document-url`** (URL signée d'un document d'aide agent, relayée du Socle
   après vérification que le chemin est cité par CETTE démarche — sans quoi la route serait un
   lecteur libre du bucket `procedure-documents`), `/v1/contacts/search`, `/v1/contacts/list` (annuaire paginé de la page
@@ -296,6 +310,12 @@ les invariants ci-dessus restent la référence.
   l'instruction : ce que le Socle destine à l'agent, RELU à chaque visite — jamais stocké,
   jamais versé au snapshot ; l'assistant IA est un chantier distinct, son onglet est posé et
   grisé),
+  **documents d'instruction et courriers** (onglet Documents : trois natures — pièce
+  d'instruction INTERNE, qui ne sort jamais, pièce EXTERNE et COURRIER —, générés depuis un
+  **modèle Word** en **PDF ou en Word**, variables du dossier fusionnées côté serveur, edge
+  function `generate-request-document` ; le PDF est **redessiné par Iris**, aucun convertisseur
+  externe, et les documents transmissibles se joignent aux échanges — un interne, jamais :
+  trigger `t05_attachments_internal_never_sent`),
   **qualification des pièces justificatives** (conforme / non conforme avec motif fermé ;
   une pièce obligatoire non conforme ferme la seule résolution *positive*, une pièce non
   conforme place la demande « En attente d'information », le retour en instruction est
@@ -313,6 +333,19 @@ les invariants ci-dessus restent la référence.
   quartier / volumétrie de demandes, tri par colonne, export CSV — fiches du Socle et
   compteurs Iris bornés par le RLS, rapprochés dans le navigateur) →
   [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
+- **Recherche globale** (`src/features/search`, barre au centre du header) : une saisie, deux
+  natures — **demande** (code de suivi, libellé, date de dépôt, statut, agent instructeur,
+  organisme responsable) et **usager** (nom, prénom, ville) —, résultats **groupés par nature**,
+  lancée dès **3 caractères** avec temporisation. Deux sources qu'aucun serveur ne joint : les
+  demandes par la RPC `search_requests` (`SECURITY INVOKER`, **bornée par le RLS**), les
+  usagers par `socle-proxy /v1/contacts/search` — donc seulement pour qui a un droit de
+  création (RM-64), et **sans aucune rétention**. Socle muet ⇒ le groupe « Usagers »
+  disparaît, les demandes restent. La recherche porte sur la **référence et l'objet** seuls
+  (ni corps, ni formulaire figé) et **ignore les accents** (`unaccent` + index GIN trigramme,
+  `20260901130000`) : la normalisation vit au SERVEUR, seul endroit d'où les deux côtés de la
+  comparaison se voient — aucun jumeau JavaScript. ⚠️ Côté **usagers**, la recherche du Socle
+  (`ilike` sur `display_name` brut) reste sensible aux accents : le correctif lui appartient →
+  [`src/features/search/CLAUDE.md`](src/features/search/CLAUDE.md).
 - **Droits / Paramètres** (`src/features/permissions`, `src/features/rights`) : profils de
   droits (création, matrice, périmètre, attribution), reflet pur des droits effectifs
   (`rights.ts`, miroir de `permission_pairs_of`), zone `/parametres` (`AdminRoute`, accueil

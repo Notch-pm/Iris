@@ -130,8 +130,9 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
 - **`organizations`** — tenants : `socle_org_id` (UNIQUE, UUID racine Socle), `name` (snapshot),
   `status` active|obsolete. Écriture : admin plateforme.
 - **`users`** — profils (`id` = `auth.users.id`, créés par le trigger `handle_new_user`,
-  jamais par le client) : `email`, `first_name`, `last_name`, `is_platform_admin` (trigger
-  anti-escalade `users_prevent_admin_escalation`).
+  jamais par le client) : `email`, `first_name`, `last_name`, `landline_phone`,
+  `mobile_phone` (2026-09-01), `is_platform_admin` (trigger anti-escalade
+  `users_prevent_admin_escalation`).
 - **`organization_members`** — PK composite `(organization_id, user_id)`, `role` CHECK
   `agent|administrateur`. **Colonne DÉRIVÉE transitoire depuis le 2026-08-22** (RM-43) : un
   trigger BEFORE INSERT/UPDATE (`organization_members_force_role`) écrase toute valeur cliente
@@ -365,8 +366,10 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `send-request-email`, en service_role, via `start_request_email` / `settle_request_email`.
   Le pendant de `request_messages` : celles-ci ne sortent jamais, celle-ci ne fait que sortir.
 - **`request_attachments`** — pièces : `storage_path`
-  (`{organization_id}/{request_id}/{uuid}-{slug}`), `checksum` (dédup),
-  `copy_status` `copied|pending|error` (copie asynchrone à venir), type de PJ Socle en
+  (`{organization_id}/{request_id}/{uuid}-{slug}`), `checksum` (sha256 calculé par le serveur à
+  la réception — porte unique, 2026-09), `copy_status` `copied|error` (`pending` a disparu avec
+  le mode « URL signée », migration `20260910100100` : tout octet est reçu et vérifié AVANT la
+  ligne ; `error` = la réconciliation n'a pas retrouvé l'objet), type de PJ Socle en
   UUID nu + libellé figé, `form_field_key` (nullable — clé machine `key` du champ « pièce
   justificative » du `form_schema` auquel la pièce répond ; NULL = pièce hors formulaire),
   `email_id` (nullable — pièce jointe à un échange sortant, dont elle suit le sort ; NULL =
@@ -383,6 +386,13 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `superseded_at`, posés par la seule RPC `attach_request_piece`. Non-NULL = pièce hors du
   calcul de conformité, mais **toujours au dossier** — une pièce administrative ne se supprime
   pas. CHECKs : les deux colonnes vont ensemble, et une pièce ne se remplace pas elle-même.
+  **Usager** *(2026-09-08, migration `20260912100000`)* : `socle_contact_id` (UUID nu, sans
+  FK) **dénormalisé** depuis `requests.socle_contact_id` par trigger — `t06` à l'insertion
+  (toute valeur fournie est écrasée), `t19_requests_sync_attachment_contact` au rapprochement
+  ou détachement postérieur de la demande — et index partiel `request_attachments_contact_idx`
+  (hors internes et copies d'échange). Sert la carte « Documents de cet usager » de la fiche
+  usager et, demain, le droit d'accès RGPD ; **ne change rien au RLS** (la lecture suit la
+  demande). Test : [`../supabase/tests/pieces-usager.test.sql`](../supabase/tests/pieces-usager.test.sql).
 - **`request_links`** — relations : `doublon_de` / `issue_de_scission` / `liee_a`
   (demande↔demande, même tenant imposé par trigger — une cible invisible par RLS est
   « introuvable ») et `externe` (`external_type` + `external_id` + `external_url`).
@@ -410,8 +420,44 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   (rotation double clé). RLS : plateforme uniquement (motif api_keys Socle).
 - **`integration_api_logs`** — journal d'audit **append-only** des appels (méthode, chemin,
   statut, clé, demande — jamais les payloads), garde `forbid_change`. SELECT admin du tenant.
-- **`request_attachments.fetch_url`** — URL signée temporaire fournie à l'ingestion
-  (`copy_status='pending'`), consommée par le futur worker de copie, jamais re-servie.
+- **`attachment_uploads`** *(2026-09-08, migration `20260910100000`)* — **zone d'attente des
+  pièces** : la vérité de tout octet reçu par le serveur et pas encore rattaché à une demande.
+  Une ligne par fichier déposé (`POST /v1/uploads` d'un partenaire, ou — lot 2 — edge
+  `request-attachments` d'un agent) : `storage_path` UNIQUE, `file_name`, `mime_type`
+  **détecté** (signature binaire, jamais déclaré), `file_size > 0`, `checksum` sha256,
+  `expires_at` (24 h), `consumed_at`, `discarded_at`, `request_attachment_id` (uuid nu, trace
+  qui survit à la pièce). Déposant = **exactement l'un** de `integration_source_id` /
+  `uploaded_by` (CHECK). Portée : `scope_request_id` NULL = organisation (objet sous
+  `{org}/_staging/{upload_id}` — le 2ᵉ segment n'est pas un UUID, `uuid_or_null` y rend NULL,
+  **aucune policy storage cliente ne le voit**), sinon la demande sous laquelle l'objet a été
+  écrit directement. **Aucune policy cliente** (service_role seul).
+  **`consume_attachment_upload(id, org, request, actor, source)`** est la porte unique de
+  consommation, appelée par les RPC métier DANS leur transaction : verrou `for update`, tenant,
+  déposant, portée, non expiré, non consommé, non retiré, et **objet déjà sous
+  `{org}/{request}/`** (preuve du déplacement). Acteur et source sont des PARAMÈTRES — jamais
+  `auth.uid()`, deux appelants étant des DEFINER en service_role.
+  **`ingest_request_attachments(request, org, source, items)`** (service_role) : boucle
+  consommation + `request_attachments` (`copy_status='copied'`, `kind='demande'`,
+  `uploaded_by` NULL) pour un dépôt partenaire. Les lignes consommées sont **conservées 30 j**
+  (purge au lot 4) : c'est par elles qu'un rejeu idempotent recompose l'empreinte des pièces.
+  `fetch_url` et `copy_status='pending'` ont été **retirés** (`20260910100100`, garde-fou : refus
+  s'il en restait). Rollback : `supabase/rollback/20260910_zone_attente_pieces_rollback.sql`.
+- **`storage_deletions`** *(2026-09-08, migration `20260913100000`)* — **outbox de suppression
+  des objets** du bucket : `bucket`, `storage_path`, `organization_id`, `reason`
+  (`attachment_deleted | upload_expired | upload_discarded | orphan`), `attempts`,
+  `next_attempt_at`, `done_at`, `last_error` ; unicité partielle `(bucket, storage_path) where
+  done_at is null`. **La base enfile, l'edge `attachments-maintenance` retire** par l'API
+  Storage (jamais un DELETE SQL sur `storage.objects`) et solde (`claim_storage_deletions` /
+  `settle_storage_deletion`, recul exponentiel, abandon à 8 essais). Alimentée par le trigger
+  `t07_attachments_enqueue_deletion` (AFTER DELETE sur `request_attachments` — **seulement si
+  aucune autre ligne ne référence encore le chemin** : « joindre à un échange » = deux lignes, un
+  objet) et par la réconciliation manuelle (`?mode=reconcile` : `bucket_objects` +
+  `attachment_known_paths` → orphelins après 1 h de grâce, pièces sans objet →
+  `mark_attachments_missing`). La zone d'attente se purge par `expired_attachment_uploads` /
+  `purge_attachment_upload` (objet puis ligne) et `purge_consumed_uploads(30)` (ligne seule).
+  Cron `attachments-maintenance` toutes les 10 min (secret Vault `cron_secret_iris`). Service
+  seul, aucune policy cliente. ⚠️ L'outbox n'écrit jamais dans `request_events`. Test :
+  [`../supabase/tests/storage-outbox.test.sql`](../supabase/tests/storage-outbox.test.sql).
 
 L'edge function **`requests-api`** (`verify_jwt=false`, auth par clé dans le code, aucun
 en-tête CORS) opère en service_role : le périmètre est reconstruit à chaque appel **depuis la
@@ -697,6 +743,86 @@ servie par une seule base — les fiches viennent du Socle, les compteurs d'Iris
   colonnes d'un `RETURNS TABLE` sont des paramètres `OUT` visibles dans le corps
   (`socle_contact_id` y serait ambigu).
 
+### Recherche globale, insensible aux accents (`20260901130000`)
+
+La barre de recherche du header (`src/features/search`) cherche une **demande** ou un
+**usager**. Les usagers viennent du Socle ; côté Iris, il fallait qu'« eclairage » trouve
+« Éclairage » — `ilike` ignore la casse, jamais les diacritiques.
+
+- **`immutable_unaccent(text)`** : `unaccent()` est `STABLE` (son dictionnaire est
+  rechargeable), or un index d'expression exige de l'`IMMUTABLE`. Enveloppe standard, avec le
+  dictionnaire **nommé** (`'extensions.unaccent'::regdictionary`) — sans quoi la fonction
+  dépendrait du `search_path`, que `set search_path = ''` vide.
+- **`request_search_text(reference, subject)`** : le texte cherché d'une demande — code de
+  suivi **et** objet, minuscules sans accents. Le corps et le formulaire figé n'y entrent pas
+  (un scan du tenant à chaque frappe, et une réponse d'usager dans une liste de résultats).
+- **Index** `requests_search_trgm_idx` : `gin (request_search_text(reference, subject)
+  extensions.gin_trgm_ops)`. `like '%…%'` n'utilise aucun btree ; seul un GIN trigramme le
+  sert. ⚠️ L'expression de la RPC doit rester **au mot près** celle de l'index, sinon le
+  planificateur ne le reconnaît pas.
+- **`search_requests(p_org_id, p_query, p_limit)`** → `(request_id, request_reference,
+  request_subject, request_status, request_received_at, request_assigned_to,
+  request_organisme)`.
+  - **`SECURITY INVOKER` volontairement** : le RLS borne le résultat au périmètre du lecteur,
+    exactement comme le `select` PostgREST qu'elle remplace. La passer en `DEFINER` en ferait
+    une fuite silencieuse (et rejouerait le piège `current_user`). `EXECUTE` révoqué de
+    `public`/`anon`, accordé à `authenticated`.
+  - **Pourquoi une RPC** : la normalisation doit s'appliquer aux DEUX côtés de la comparaison,
+    ce que PostgREST ne sait pas exprimer dans un filtre. Aucun jumeau JavaScript d'`unaccent`
+    n'est écrit — il aurait divergé sur « cœur », « ß », « ø ».
+  - Les **métacaractères de LIKE** (`\`, `%`, `_`) sont échappés côté serveur, antislash
+    d'abord : « 100 % » cherche un pourcentage, pas un joker.
+  - **Jumeau SQL de `MIN_QUERY_LENGTH`** : `char_length(btrim(coalesce(p_query, ''))) >= 3` —
+    un appel direct ne doit pas pouvoir demander tout le tenant. Le `coalesce` d'abord, sinon
+    un NULL rendrait la condition NULL, donc fausse, mais silencieusement.
+  - Noms de colonnes de sortie **distincts** de ceux de `requests` (même piège `OUT` que
+    `contact_request_counts`).
+- ⚠️ `immutable_unaccent` et `request_search_text` gardent leur `EXECUTE` à `PUBLIC`,
+  contrairement aux fonctions trigger et aux RPC de service : l'index les appelle à chaque
+  écriture dans `requests` (ingestion partenaire en `service_role` comprise) et les révoquer
+  casserait les insertions. Ce sont des fonctions de texte : elles ne lisent aucune donnée.
+- **Côté usagers, rien n'a changé et rien ne pouvait l'être ici** : `socle-proxy
+  /v1/contacts/search` relaie `contacts-api`, dont le filtre est un `ilike` sur `display_name`
+  brut (Socle, `supabase/functions/contacts-api/index.ts`) — donc **sensible aux accents**
+  (« françois » trouve les six François, « francois » n'en trouve aucun). Le correctif
+  appartient au Socle.
+
+### Documents d'instruction et courriers (`20260901140000`)
+
+`request_attachments` portait une seule nature de pièce (ce que l'usager a déposé, plus les
+fichiers joints à un échange). Le métier en demande deux autres : les **pièces d'instruction**
+(internes ou externes) et les **courriers** générés depuis un modèle Word.
+
+- **`kind`** (défaut `demande`, CHECK fermé) : `demande` | `instruction_interne` |
+  `instruction_externe` | `courrier`. Pas de table parallèle : ce sont les mêmes objets (un
+  fichier dans le bucket privé, une ligne, un RLS déjà écrit), et une seconde table aurait
+  dupliqué les policies, la purge RGPD et la qualification.
+- **Génération** : `template_socle_id` (UUID nu — le modèle est une ressource Socle, aucune FK
+  inter-projet), `template_label`, `generated_at`, `generated_by`.
+- **`source_attachment_id`** : une pièce d'échange qui est la COPIE d'un document du dossier —
+  même `storage_path`, une ligne de plus. Sans ce lien, l'onglet Échanges montrerait un fichier
+  orphelin, et joindre deux fois le même courrier serait impossible (`email_id` est simple).
+- Index `request_attachments_kind_idx (request_id, kind) where email_id is null` — l'onglet
+  Documents lit toujours par nature, et jamais les pièces déjà parties.
+
+⚠️ **L'invariant du lot : un document `instruction_interne` ne peut JAMAIS être joint à un
+échange sortant.** C'est le miroir de la règle des notes internes, et il est gardé à trois
+niveaux :
+
+1. **`t05_attachments_internal_never_sent`** (trigger BEFORE INSERT OR UPDATE) : `email_id`
+   non nul + `kind = 'instruction_interne'` ⇒ `check_violation`. Il vaut pour le `service_role`
+   — l'edge function d'envoi n'est pas plus digne de confiance que le navigateur sur ce point.
+2. **`start_request_email`** (réécrite) accepte désormais deux formes de pièce :
+   `{ storage_path, … }` (fichier téléversé, inchangé) et `{ attachment_id }` (document du
+   dossier). Pour la seconde, **rien n'est accepté du payload** : chemin, nom et nature sont
+   relus en base, un interne est refusé, et un identifiant d'une autre demande aussi.
+3. **`request_attachment_paths(p_request_id, p_ids)`** → `(attachment_id, path, name, mime,
+   size, nature)`, `SECURITY INVOKER` : l'edge function d'envoi y lit les chemins **et la
+   nature**, ce qui lui permet de refuser avant même d'ouvrir l'échange. Bornée par le RLS,
+   donc au périmètre du lecteur.
+
+Test : [`../supabase/tests/documents-instruction.test.sql`](../supabase/tests/documents-instruction.test.sql).
+
 ### Notifications in-app (`20260824100000`, `20260824100100`)
 
 `notifications` — une ligne par (destinataire, événement). **Produite exclusivement par des
@@ -806,6 +932,27 @@ une préférence **est** le geste de son titulaire : policies SELECT/INSERT/UPDA
   écrire SA ligne (nom, photo) ; sans cette garde il pourrait aussi y réécrire son adresse et
   désynchroniser le miroir **sans que sa connexion change pour autant**. Le contexte de service
   et l'administrateur de plateforme passent — même posture que l'anti-escalade voisine.
+### Téléphones des utilisateurs (`20260901120000`)
+
+`public.users.landline_phone` / `mobile_phone` — coordonnées de l'AGENT, à ne pas confondre
+avec celles des **usagers**, qui existent déjà mais dans le Socle
+(`contacts.mobile_phone` / `landline_phone`, lues par `socle-proxy` — Iris ne miroite aucun
+usager). Les noms sont **alignés sur le Socle** : les deux notions se ressemblent assez pour
+qu'un nom différent de chaque côté finisse par tromper quelqu'un.
+
+- **Aucune policy ajoutée** : `users_update` autorise déjà l'utilisateur sur SA ligne et
+  l'administrateur de plateforme sur toutes. Deux colonnes de plus sont donc écrites par les
+  bonnes personnes, sans rien toucher.
+- **Aucune garde non plus**, et c'est le point : `t03_users_protect_email` existe parce que le
+  courriel est l'IDENTIFIANT DE CONNEXION. Un téléphone n'est l'identifiant de rien — son
+  titulaire le tient à jour comme son prénom.
+- Seule contrainte : `users_phones_length_check` (40 caractères). Elle attrape un collage
+  accidentel et ne dit **rien du format** — indicatifs étrangers, extensions et séparations
+  libres restent acceptés, même parti pris que pour les contacts du Socle.
+- Trois écrans écrivent ces colonnes : « Mon compte », et Superadmin › Utilisateurs à
+  l'édition (UPDATE direct) comme à l'invitation (via `admin-users`, qui pose les coordonnées
+  après `handle_new_user` — le trigger ne lit que les noms dans `user_metadata`).
+
 - Le **changement de mot de passe** n'a aucune empreinte SQL : il vit dans GoTrue. GoTrue
   n'ayant pas d'« update with current password », la revérification se fait par une
   **reconnexion** avec l'ancien mot de passe avant `updateUser` — Iris ne stocke ni ne voit
@@ -1027,7 +1174,8 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `request_events` | `EXISTS` demande visible (couple consultation, via le RLS de `requests`) | — | — (trigger raise) | — (trigger raise) |
 | `request_assignments` | idem | — | — (trigger raise) | — (trigger raise) |
 | `request_messages` | idem (RM-10 : notes internes comprises dans la consultation) | couple **écriture** + `author_id = auth.uid()` | auteur avec couple écriture **ou** `has_admin_scope` sur l'organisation de la demande | idem UPDATE |
-| `request_attachments` | `EXISTS` demande visible | couple **instruction** + `uploaded_by = auth.uid()` | — | `has_admin_scope` sur l'organisation de la demande |
+| `request_attachments` | `EXISTS` demande visible | **—** *(depuis le 2026-09-08 : RPC DEFINER `attach_request_piece` / service_role, alimentées par `attachment_uploads` — l'ancienne policy ne vérifiait pas `storage_path`)* | — (RPC `qualify_request_attachment`) | `has_admin_scope` sur l'organisation de la demande |
+| `attachment_uploads` | — | — | — | — *(service_role seul : zone d'attente des pièces)* |
 | `request_emails` | `EXISTS` demande visible (un échange avec l'usager n'est pas une note interne) | **aucune** — service seul | **aucune** — le corps doit rester celui qui est parti | **aucune** — un e-mail parti ne se dé-envoie pas |
 | `request_links` | `EXISTS` demande visible (la ligne appartient à la source) | couple **écriture** sur la source ; trigger `request_links_check_scope` exige en plus la **consultation** de la cible (hors contexte de service) | — | `has_admin_scope` sur l'organisation de la demande |
 | `integration_deliveries` | membre (diagnostic) | — | — | — |
@@ -1053,27 +1201,55 @@ contournent le RLS de la même façon qu'un trigger `SECURITY DEFINER`).
 
 ## Storage
 
-Bucket privé **`request-attachments`** (25 Mio max/fichier). Chemin porteur du RLS :
-`{organizations.id}/{request_id}/{uuid}-{slug}` — 1er segment = tenant **local** (pas l'UUID
-Socle). Policies `storage.objects` (scopées au bucket, réécrites le 2026-08-22) :
+Bucket privé **`request-attachments`** (25 Mio max/fichier, `allowed_mime_types` = la liste
+fermée de la porte unique depuis le 2026-09-08 : PDF, JPEG, PNG, WebP, GIF, HEIC, DOCX, XLSX,
+ODT, ODS — jamais SVG ni HTML). Chemin porteur du RLS :
+`{organizations.id}/{request_id}/{upload_id}-{slug}` — 1er segment = tenant **local** (pas
+l'UUID Socle) ; `{organizations.id}/_staging/{upload_id}` pour la zone d'attente (2ᵉ segment
+non-UUID ⇒ invisible à toute policy cliente).
+
+**Depuis le 2026-09-08 (lot 2b, migration `20260911100100`), le navigateur ne fait que LIRE.**
+Tout octet entre par une edge function (`request-attachments` pour les agents, `requests-api
+/v1/uploads` pour les partenaires, `generate-request-document` pour les documents produits),
+par la porte unique `_shared/files/receive.ts` : taille, signature binaire contre la liste
+fermée, extension cohérente, sha256, écriture avec le type DÉTECTÉ. Policies `storage.objects` :
 
 | Opération | Règle |
 |---|---|
-| SELECT | `can_read_request` sur le 2ᵉ segment du chemin (demande existante et consultable) **ou** brouillon : `(owner_id = auth.uid()::text OR owner = auth.uid())` **ET** `NOT request_exists(2ᵉ segment)` |
-| INSERT | `has_any_creation_right` sur le 1ᵉʳ segment (tenant) **ET** (le 2ᵉ segment ne correspond à aucune demande existante — dépôt du brouillon — **OU** `can_process_request` sur cette demande — ajout de pièce après création, exige l'instruction) |
-| DELETE | `can_admin_request` sur le 2ᵉ segment **ou** même règle de brouillon que SELECT |
-| UPDATE | Aucune (un objet se remplace par suppression + nouvel envoi) |
+| SELECT | `can_read_request` sur le 2ᵉ segment du chemin (demande existante et consultable) — rien d'autre |
+| INSERT / UPDATE / DELETE | **Aucune** (service_role seul) |
 
-`request_exists` répond **hors RLS** (`SECURITY DEFINER`) — nécessaire pour distinguer un vrai
-brouillon (id inexistant) d'une demande existante mais devenue invisible pour l'appelant :
-tester `NOT EXISTS (SELECT … FROM requests WHERE id = …)` en RLS ordinaire aurait fait passer
-la seconde pour la première, laissant un ancien déposant garder l'accès à des pièces d'un
-dossier dont il a perdu tout droit. `owner_id` (texte) et `owner` (UUID, déprécié côté
-Supabase) sont testés tous les deux. ⚠️ Les policies storage vivent dans des migrations
-versionnées (le `db dump` ne couvre pas le schéma `storage` — constat Socle) :
-`20260820100300_storage_attachments.sql` puis `20260822100700_policies_droits.sql`.
+Ce qui a disparu avec 2b, et pourquoi : la branche « brouillon » du SELECT/DELETE (objet sous
+une demande inexistante visible à vie par son `owner`) et l'INSERT sur `has_any_creation_right`
+(25 Mio × N sous des chemins de demandes fictives, que personne ne pouvait retrouver) — le
+guichet passe par la zone d'attente, purgée à 24 h (lot 4). `has_any_creation_right(uuid)`,
+sans autre appelant, est retirée (`_for` reste). ⚠️ Les policies storage vivent dans des
+migrations versionnées (le `db dump` ne couvre pas le schéma `storage` — constat Socle) :
+`20260820100300_storage_attachments.sql`, `20260822100700_policies_droits.sql`, puis
+`20260911100100_pieces_policies_serveur.sql`. Test d'étanchéité dédié :
+[`../supabase/tests/storage-pieces.test.sql`](../supabase/tests/storage-pieces.test.sql).
 
 ## Tests
+
+[`../supabase/tests/documents-instruction.test.sql`](../supabase/tests/documents-instruction.test.sql) —
+**6 groupes, tous passés le 2026-09-01** : la nature est un registre fermé · le TRIGGER refuse
+qu'un document interne porte un `email_id`, à l'insertion comme à la mise à jour (un courrier
+qu'on renommerait « interne » perd son rattachement), et laisse passer un externe · joindre un
+document du dossier crée UNE ligne de plus pointant le MÊME objet de stockage, cite l'original
+et ne consomme pas le document, qui peut repartir · la RPC refuse un interne et un document
+d'une AUTRE demande · `request_attachment_paths` rend la nature, ne traverse pas la frontière
+d'une demande, et ne rend RIEN à un membre sans droit · une pièce déposée sans nature reste
+« demande ».
+
+[`../supabase/tests/recherche-globale.test.sql`](../supabase/tests/recherche-globale.test.sql) —
+**7 groupes, tous passés le 2026-09-01** : les accents ne comptent dans aucun sens (« eclairage »
+trouve « Éclairage », « Nöel » trouve « Noël »), la casse non plus · le code de suivi se cherche
+comme l'objet · les métacaractères de LIKE sont cherchés à la lettre (« 100 % » rend une demande,
+« %%% » et « _00 » n'en rendent aucune — jokers, ils auraient rendu tout le périmètre) · la garde
+des trois caractères vit aussi au serveur, `null` compris · `p_limit` est borné et l'ordre est
+celui du dépôt · **`security invoker` tient** : deux agents de la MÊME collectivité ne trouvent
+pas les mêmes demandes, chacun son périmètre · le tenant voisin n'apparaît jamais et `anon` ne
+peut pas appeler la RPC.
 
 [`../supabase/tests/qualification-pieces.test.sql`](../supabase/tests/qualification-pieces.test.sql) —
 **8 groupes, tous passés le 2026-08-28** : le jumeau SQL du moteur rend les MÊMES exigences que

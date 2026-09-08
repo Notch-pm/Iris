@@ -1,16 +1,26 @@
 // Validation stricte de l'enveloppe d'ingestion — whitelist des clés (clé
 // inconnue → 400), messages en français. Logique pure, testée par vitest.
 
+import {
+  sortFingerprints,
+  type AttachmentFingerprint,
+} from "../../_shared/files/uploads.ts";
+
+/** Le slug de nom de fichier vit désormais avec les chemins du bucket ; ré-exporté pour les appelants historiques. */
+export { slugifyFileName } from "../../_shared/files/names.ts";
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SOURCE_RE = /^[a-z][a-z0-9_-]{1,39}$/;
 
+/**
+ * Contrat 2.0.0 : une pièce est un fichier DÉJÀ déposé sur `POST /v1/uploads`,
+ * désigné par son `upload_id`. Le contenu, le nom, le type et l'empreinte
+ * sont ceux que le serveur a vérifiés à la réception — l'enveloppe ne les
+ * redit pas (elle ne pourrait que les contredire).
+ */
 export interface AttachmentRef {
-  file_name: string;
-  fetch_url: string;
-  mime_type?: string;
-  size_bytes?: number;
-  checksum?: string;
+  upload_id: string;
   /** Clé machine (`key`) du champ pièce justificative du form_schema Socle. */
   form_field_key?: string;
 }
@@ -64,9 +74,9 @@ const ENVELOPE_KEYS = new Set([
   "subject", "body", "requester", "form_data",
   "attachments", "context", "links",
 ]);
-const ATTACHMENT_KEYS = new Set([
-  "file_name", "fetch_url", "mime_type", "size_bytes", "checksum", "form_field_key",
-]);
+const ATTACHMENT_KEYS = new Set(["upload_id", "form_field_key"]);
+/** Clés du contrat 1.x : refusées avec un message qui dit quoi faire à la place. */
+const LEGACY_ATTACHMENT_KEYS = new Set(["fetch_url", "file_name", "mime_type", "size_bytes", "checksum"]);
 const LINK_KEYS = new Set(["type", "id", "url", "label"]);
 const CONTEXT_KEYS = new Set(["channel", "received_at", "external_url", "metadata"]);
 
@@ -81,39 +91,42 @@ function checkUuid(v: unknown, name: string): string | { error: string } {
   return v.toLowerCase();
 }
 
-/** Pièces jointes : références uniquement (URL signée https), JAMAIS de contenu inline. */
+const UPLOAD_HINT =
+  "Déposez d'abord le fichier sur POST /v1/uploads (multipart), puis référencez son upload_id.";
+
+/** Pièces jointes : références `{ upload_id, form_field_key? }` — JAMAIS de contenu inline ni d'URL. */
 export function validateAttachmentList(value: unknown): Validation<AttachmentRef[]> {
   if (!Array.isArray(value)) return fail("attachments : tableau attendu.");
   if (value.length > 50) return fail("attachments : 50 pièces maximum par appel.");
   const out: AttachmentRef[] = [];
+  const seen = new Set<string>();
   for (const [i, raw] of value.entries()) {
     if (!isPlainObject(raw)) return fail(`attachments[${i}] : objet attendu.`);
+    const legacy = Object.keys(raw).filter((k) => LEGACY_ATTACHMENT_KEYS.has(k));
+    if (legacy.length > 0) {
+      return fail(
+        `attachments[${i}] : ${legacy.join(", ")} n'est plus pris en charge (contrat 2.0.0 — ` +
+        `le mode « URL signée » a été retiré). ${UPLOAD_HINT}`,
+      );
+    }
     const unknown = Object.keys(raw).filter((k) => !ATTACHMENT_KEYS.has(k));
     if (unknown.length > 0) {
       return fail(
         `attachments[${i}] : clés inconnues (${unknown.join(", ")}). ` +
-        `Le contenu inline est refusé : fournissez une URL signée (fetch_url).`,
+        `Le contenu inline est refusé. ${UPLOAD_HINT}`,
       );
     }
-    const fileName = checkString(raw.file_name, `attachments[${i}].file_name`, 255);
-    if (typeof fileName !== "string") return fail(fileName.error);
-    if (typeof raw.fetch_url !== "string" || !raw.fetch_url.startsWith("https://")) {
-      return fail(`attachments[${i}].fetch_url : URL https signée requise.`);
-    }
-    if (raw.size_bytes !== undefined && (typeof raw.size_bytes !== "number" || raw.size_bytes < 0)) {
-      return fail(`attachments[${i}].size_bytes : entier positif attendu.`);
-    }
+    const uploadId = checkUuid(raw.upload_id, `attachments[${i}].upload_id`);
+    if (typeof uploadId !== "string") return fail(uploadId.error);
+    if (seen.has(uploadId)) return fail(`attachments[${i}].upload_id : pièce référencée deux fois.`);
+    seen.add(uploadId);
     if (raw.form_field_key !== undefined
         && (typeof raw.form_field_key !== "string" || raw.form_field_key.trim() === ""
             || raw.form_field_key.length > 120)) {
       return fail(`attachments[${i}].form_field_key : clé de champ invalide.`);
     }
     out.push({
-      file_name: fileName,
-      fetch_url: raw.fetch_url,
-      mime_type: typeof raw.mime_type === "string" ? raw.mime_type : undefined,
-      size_bytes: typeof raw.size_bytes === "number" ? raw.size_bytes : undefined,
-      checksum: typeof raw.checksum === "string" ? raw.checksum : undefined,
+      upload_id: uploadId,
       form_field_key: typeof raw.form_field_key === "string" ? raw.form_field_key : undefined,
     });
   }
@@ -256,10 +269,16 @@ export function validateEnvelope(body: unknown): Validation<IngestEnvelope> {
 /**
  * Champs entrant dans l'empreinte de contenu. Exclusions volontaires :
  * - idempotency_key (identifie la soumission, pas le contenu) ;
- * - fetch_url des pièces (URL signée éphémère : deux rejeux légitimes portent
- *   des URL différentes pour le même fichier — le checksum/nom/taille suffisent).
+ * - les `upload_id` des pièces : deux dépôts légitimes du même fichier
+ *   (rejeu après timeout, avec un nouveau téléversement) portent deux
+ *   identifiants différents. Ce qui entre, c'est le CONTENU vérifié par le
+ *   serveur — nom, type détecté, taille, sha256, clé de champ —, lu dans la
+ *   zone d'attente et passé ici par l'appelant, dans un ordre stable.
  */
-export function fingerprintPayload(env: IngestEnvelope): unknown {
+export function fingerprintPayload(
+  env: IngestEnvelope,
+  attachments: AttachmentFingerprint[] = [],
+): unknown {
   return {
     external_id: env.external_id,
     socle_root_organization_id: env.socle_root_organization_id,
@@ -270,13 +289,7 @@ export function fingerprintPayload(env: IngestEnvelope): unknown {
     body: env.body ?? null,
     requester: env.requester ?? null,
     form_data: env.form_data ?? {},
-    attachments: (env.attachments ?? []).map((a) => ({
-      file_name: a.file_name,
-      mime_type: a.mime_type ?? null,
-      size_bytes: a.size_bytes ?? null,
-      checksum: a.checksum ?? null,
-      form_field_key: a.form_field_key ?? null,
-    })),
+    attachments: sortFingerprints(attachments),
     context: {
       channel: env.context?.channel ?? null,
       received_at: env.context?.received_at ?? null,
@@ -293,14 +306,3 @@ export function fingerprintPayload(env: IngestEnvelope): unknown {
 // déduit plus de l'enveloppe. Une identité déclarée sans identifiant Socle est
 // désormais rapprochée ou CRÉÉE dans le référentiel (`resolveRequester`, dans
 // index.ts), et ne retombe en `non_rapprochee` que si le Socle est muet.
-
-/** Nom de fichier → segment de chemin sûr (le chemin est généré, jamais fourni). */
-export function slugifyFileName(name: string): string {
-  const cleaned = name
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/^[.-]+|[.-]+$/g, "")
-    .slice(0, 100);
-  return cleaned === "" ? "fichier" : cleaned;
-}

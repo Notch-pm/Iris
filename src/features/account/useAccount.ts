@@ -5,8 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/features/auth/AuthProvider";
 import {
-  avatarPath, matrixFromRows, rowsFromMatrix,
-  type PreferenceMatrix, type PreferenceRow,
+  avatarPath, identityPatch, matrixFromRows, rowsFromMatrix,
+  type IdentityForm, type PreferenceMatrix, type PreferenceRow,
 } from "./account";
 
 export const accountKeys = {
@@ -142,18 +142,24 @@ export function useRemoveAvatar() {
   });
 }
 
-export function useUpdateNames() {
+/**
+ * Identité de l'agent : prénom, nom et coordonnées téléphoniques, écrites
+ * directement dans `public.users` — la policy `users_update` autorise déjà
+ * l'utilisateur sur SA ligne.
+ *
+ * ⚠️ Le COURRIEL n'en fait pas partie et n'en fera jamais : c'est
+ * l'identifiant de connexion, gardé par `t03_users_protect_email`. Un
+ * téléphone, lui, n'est l'identifiant de rien — d'où l'absence de garde.
+ */
+export function useUpdateIdentity() {
   const { session, refreshProfile } = useAuth();
   return useMutation({
-    mutationFn: async (input: { firstName: string; lastName: string }) => {
+    mutationFn: async (form: IdentityForm) => {
       const userId = session?.user.id ?? "";
       if (!userId) throw new Error("Session absente.");
       const { error } = await supabase
         .from("users")
-        .update({
-          first_name: input.firstName.trim() || null,
-          last_name: input.lastName.trim() || null,
-        } as never)
+        .update(identityPatch(form) as never)
         .eq("id", userId);
       if (error) throw error;
     },

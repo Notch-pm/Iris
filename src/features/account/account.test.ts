@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  avatarExtension, avatarPath, defaultMatrix, displayName, initials, matrixEquals,
-  matrixFromRows, PREFERENCE_ROWS, rowsFromMatrix, silencedCount, validateAvatar,
-  validatePasswordForm, type PreferenceMatrix,
+  avatarExtension, avatarPath, defaultMatrix, displayName, identityChanged, identityFormFrom,
+  identityPatch, initials, matrixEquals, matrixFromRows, PHONE_MAX_LENGTH, PREFERENCE_ROWS,
+  rowsFromMatrix, silencedCount, validateAvatar, validateIdentityForm, validatePasswordForm,
+  type PreferenceMatrix,
 } from "./account";
 import { NOTIFICATION_KINDS } from "@/features/notifications/notifications";
 
@@ -158,5 +159,71 @@ describe("identité affichée", () => {
     expect(initials({ first_name: "Camille", last_name: null })).toBe("C");
     expect(initials({ first_name: null, last_name: null, email: "zoe@x.fr" })).toBe("Z");
     expect(initials(null)).toBe("U");
+  });
+});
+
+describe("téléphones et identité", () => {
+  const form = (over: Partial<ReturnType<typeof identityFormFrom>> = {}) => ({
+    ...identityFormFrom(null), ...over,
+  });
+
+  it("accepte le vide : un téléphone n'est pas obligatoire", () => {
+    expect(validateIdentityForm(form())).toBeNull();
+    expect(validateIdentityForm(form({ landlinePhone: "   " }))).toBeNull();
+  });
+
+  it("accepte les formats réels, français comme étrangers", () => {
+    for (const n of [
+      "0490123456", "04 90 12 34 56", "04.90.12.34.56", "04-90-12-34-56",
+      "+33 4 90 12 34 56", "+1 (555) 123-4567", "0490123456 / 0612345678",
+    ]) {
+      expect(validateIdentityForm(form({ mobilePhone: n }))).toBeNull();
+    }
+  });
+
+  it("refuse ce qui ne peut PAS être un numéro, et nomme le champ fautif", () => {
+    expect(validateIdentityForm(form({ landlinePhone: "poste 42" })))
+      .toBe("Téléphone fixe : seuls les chiffres et les séparateurs (+ - . / espace) sont acceptés.");
+    expect(validateIdentityForm(form({ mobilePhone: "à venir" })))
+      .toBe("Téléphone portable : seuls les chiffres et les séparateurs (+ - . / espace) sont acceptés.");
+  });
+
+  it("refuse un numéro visiblement incomplet", () => {
+    expect(validateIdentityForm(form({ mobilePhone: "06" })))
+      .toBe("Téléphone portable : ce numéro semble incomplet.");
+  });
+
+  it("borne la longueur, comme la contrainte SQL", () => {
+    expect(validateIdentityForm(form({ landlinePhone: "0".repeat(PHONE_MAX_LENGTH + 1) })))
+      .toContain("caractères au maximum");
+  });
+
+  it("le fixe est contrôlé avant le portable — l'ordre de la saisie", () => {
+    const both = form({ landlinePhone: "abc", mobilePhone: "def" });
+    expect(validateIdentityForm(both)).toContain("Téléphone fixe");
+  });
+
+  it("rend null plutôt qu'une chaîne vide, et taille les valeurs", () => {
+    expect(identityPatch(form({ firstName: "  Camille ", lastName: "", mobilePhone: " 06 12 " })))
+      .toEqual({
+        first_name: "Camille", last_name: null,
+        landline_phone: null, mobile_phone: "06 12",
+      });
+  });
+
+  it("une espace de plus n'est PAS une modification", () => {
+    const profile = { first_name: "Camille", last_name: null, landline_phone: "0490123456", mobile_phone: null };
+    expect(identityChanged(profile, identityFormFrom(profile))).toBe(false);
+    expect(identityChanged(profile, form({ firstName: " Camille ", landlinePhone: "0490123456 " })))
+      .toBe(false);
+    expect(identityChanged(profile, form({ firstName: "Camille", landlinePhone: "0490123457" })))
+      .toBe(true);
+  });
+
+  it("lit un profil incomplet sans trou", () => {
+    expect(identityFormFrom(null))
+      .toEqual({ firstName: "", lastName: "", landlinePhone: "", mobilePhone: "" });
+    expect(identityFormFrom({ first_name: "Alex" }))
+      .toEqual({ firstName: "Alex", lastName: "", landlinePhone: "", mobilePhone: "" });
   });
 });

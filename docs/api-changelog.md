@@ -9,6 +9,47 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.0.0 — 2026-09-08 — les pièces jointes se DÉPOSENT, Iris ne va plus les chercher
+
+**Rupture — mais sur un mode qui n'a jamais été mis en service.** Le contrat 1.x décrivait des
+pièces « par URL signée » (`fetch_url`) qu'un worker viendrait copier ; ce worker n'a jamais
+existé, et le contrat lui-même disait « n'envoyez pas encore de pièces en production ». Si
+vous n'envoyiez pas de pièces, **rien ne change pour vous** : l'enveloppe, les routes (toujours
+sous `/v1`), l'idempotence et les réponses sont inchangées.
+
+### Ce qui change
+
+- **Nouvelle route `POST /v1/uploads`** (scope `requests:write`) : un fichier par appel, en
+  `multipart/form-data` (champ `file`), 25 Mo maximum, 60 dépôts par minute et par clé. Iris
+  vérifie le **contenu réel** du fichier (signature binaire contre une liste fermée : PDF, JPEG,
+  PNG, WebP, HEIC, GIF, Word `.docx`, Excel `.xlsx`, OpenDocument `.odt`/`.ods` — jamais de
+  SVG, d'HTML, d'archive ni de document à macros), exige une extension cohérente, calcule le
+  sha256, et rend un `upload_id` valable **24 heures**. Le `mime_type` rendu est celui
+  **détecté**, pas celui que vous annonciez.
+- **`AttachmentRef` devient `{ upload_id, form_field_key? }`.** `file_name`, `mime_type`,
+  `size_bytes`, `checksum` et `fetch_url` ne sont plus acceptés (400 avec un message qui
+  renvoie vers `/v1/uploads`) : Iris tient ces valeurs de sa propre vérification.
+- **Le rattachement est synchrone.** La réponse de `POST /v1/requests` porte
+  `attachments_registered` (le nombre de pièces réellement au dossier) à la place
+  d'`attachments_pending`. Plus aucun état `copy_status: pending`.
+- **Nouveaux refus** : `413 payload_too_large`, `415 unsupported_media_type`,
+  `422 unprocessable` (extension incohérente avec le contenu), `429 too_many_requests`,
+  `502 bad_gateway` (stockage indisponible).
+
+### Ce que ça implique pour vous
+
+- Déposez les fichiers **avant** l'enveloppe, gardez les `upload_id`, référencez-les. Un
+  fichier jamais référencé est purgé sans conséquence au bout de 24 h.
+- **L'idempotence ignore les `upload_id`** : elle porte sur le contenu des fichiers (nom, type
+  détecté, taille, sha256, clé de champ). Rejouer une enveloppe avec de **nouveaux**
+  téléversements des mêmes fichiers est un rejeu identique → `200`. Un rejeu à l'identique
+  après un `502` rattache les pièces qui manquaient.
+- Un `upload_id` inconnu, expiré, déposé avec une autre clé ou déjà rattaché → `400`.
+
+Détail : `docs/api-ingestion.md` § 3 et le contrat OpenAPI.
+
+---
+
 ## 1.2.0 — 2026-08-26 — l'usager déclaré entre dans le référentiel
 
 **Additif. Aucune enveloppe valide en 1.1.0 ne devient invalide.** Rien à changer chez vous ;

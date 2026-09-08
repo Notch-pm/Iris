@@ -2,11 +2,12 @@
 // les réponses corrigées du formulaire.
 //
 // AJOUT D'UNE PIÈCE — deux temps, le même ordre que partout ailleurs :
-//   1. le fichier monte dans le bucket depuis le NAVIGATEUR (la policy storage
-//      exige déjà `can_process_request`, donc le droit d'instruction) ;
-//   2. la RPC `attach_request_piece` reçoit le CHEMIN, le revérifie, déclare la
-//      pièce, REMPLACE les pièces déjà actives de la même exigence et
-//      journalise — le tout en une transaction.
+//   1. le fichier est REÇU par l'edge function `request-attachments` POUR cette
+//      demande (droit d'instruction vérifié avant de lire le corps, type réel
+//      vérifié, zone d'attente) ;
+//   2. la RPC `attach_request_piece` reçoit l'`upload_id`, relit tout en base,
+//      déclare la pièce, REMPLACE les pièces déjà actives de la même exigence
+//      et journalise — le tout en une transaction.
 // Un INSERT client suivi d'un UPDATE client laisserait, sur coupure, une pièce
 // neuve à côté d'une ancienne encore active : une exigence bloquée que personne
 // ne comprendrait.
@@ -16,8 +17,8 @@
 // écrit `form_data_updated`. Le `procedure_snapshot` ne bouge pas.
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { slugifyFileName } from "@fn/requests-api/_shared/validation";
 import { supabase } from "@/lib/supabase";
+import { discardUploads, stageFile } from "../uploads";
 
 function useInvalidate() {
   const queryClient = useQueryClient();
@@ -50,25 +51,21 @@ export function useAttachRequestPiece() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: async (input: AttachPieceInput): Promise<AttachPieceResult> => {
-      const path = `${input.organizationId}/${input.requestId}/`
-        + `${crypto.randomUUID()}-${slugifyFileName(input.file.name)}`;
-      const { error: uploadError } = await supabase.storage
-        .from("request-attachments")
-        .upload(path, input.file, { contentType: input.file.type || undefined });
-      if (uploadError) {
-        throw new Error(`Échec du dépôt de « ${input.file.name} » : ${uploadError.message}`);
-      }
+      const receipt = await stageFile(input.file, {
+        organizationId: input.organizationId,
+        requestId: input.requestId,
+      });
 
       const { data, error } = await supabase.rpc("attach_request_piece", {
         p_request_id: input.requestId,
-        p_storage_path: path,
-        p_file_name: input.file.name,
-        p_mime_type: input.file.type || undefined,
-        p_file_size: input.file.size,
+        p_upload_id: receipt.upload_id,
         p_form_field_key: input.formFieldKey ?? undefined,
         p_replaces_id: input.replacesAttachmentId ?? undefined,
       });
-      if (error) throw error;
+      if (error) {
+        await discardUploads([receipt.upload_id]);
+        throw error;
+      }
       return data as unknown as AttachPieceResult;
     },
     onSuccess: (_data, vars) => invalidate(vars.requestId),

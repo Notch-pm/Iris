@@ -7,6 +7,7 @@ import {
 
 const ROOT = "11111111-1111-1111-1111-111111111111";
 const PROC = "22222222-2222-4222-8222-222222222222";
+const UP = "33333333-3333-4333-8333-333333333333";
 const valid = {
   source_system: "portail",
   external_id: "dossier-42",
@@ -49,13 +50,13 @@ describe("validateEnvelope", () => {
   it("accepte et valide form_field_key sur les pièces", () => {
     const ok = validateEnvelope({
       ...valid,
-      attachments: [{ file_name: "cni.pdf", fetch_url: "https://x.test/s", form_field_key: "piece_identite" }],
+      attachments: [{ upload_id: UP, form_field_key: "piece_identite" }],
     });
     expect(ok.ok).toBe(true);
     if (ok.ok) expect(ok.value.attachments![0].form_field_key).toBe("piece_identite");
     expect(validateEnvelope({
       ...valid,
-      attachments: [{ file_name: "cni.pdf", fetch_url: "https://x.test/s", form_field_key: "  " }],
+      attachments: [{ upload_id: UP, form_field_key: "  " }],
     }).ok).toBe(false);
   });
 
@@ -72,21 +73,26 @@ describe("validateEnvelope", () => {
     expect(validateEnvelope({ ...sans, requester: { anonymous: true } }).ok).toBe(true);
   });
 
-  it("refuse le contenu inline dans les pièces (références signées uniquement)", () => {
+  it("refuse le contenu inline dans les pièces (upload_id uniquement)", () => {
     const r = validateEnvelope({
       ...valid,
-      attachments: [{ file_name: "a.pdf", fetch_url: "https://x.test/s", data: "AAAA" }],
+      attachments: [{ upload_id: UP, data: "AAAA" }],
     });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.message).toContain("URL signée");
+    if (!r.ok) expect(r.message).toContain("/v1/uploads");
   });
 
-  it("exige des fetch_url en https", () => {
+  it("refuse le mode URL signée du contrat 1.x en disant quoi faire à la place", () => {
     const r = validateEnvelope({
       ...valid,
-      attachments: [{ file_name: "a.pdf", fetch_url: "http://x.test/s" }],
+      attachments: [{ file_name: "a.pdf", fetch_url: "https://x.test/s" }],
     });
     expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.message).toContain("fetch_url");
+      expect(r.message).toContain("2.0.0");
+      expect(r.message).toContain("/v1/uploads");
+    }
   });
 
   it("valide le contexte et les liens", () => {
@@ -104,16 +110,24 @@ describe("validateEnvelope", () => {
 describe("validateAttachmentList", () => {
   it("borne la taille du lot et le format", () => {
     expect(validateAttachmentList("x").ok).toBe(false);
-    expect(validateAttachmentList([{ file_name: "", fetch_url: "https://x.test/s" }]).ok).toBe(false);
-    expect(validateAttachmentList([{ file_name: "a.pdf", fetch_url: "https://x.test/s", size_bytes: -1 }]).ok).toBe(false);
-    expect(validateAttachmentList([{ file_name: "a.pdf", fetch_url: "https://x.test/s", size_bytes: 10 }]).ok).toBe(true);
+    expect(validateAttachmentList([{ upload_id: "pas-un-uuid" }]).ok).toBe(false);
+    expect(validateAttachmentList([{}]).ok).toBe(false);
+    expect(validateAttachmentList([{ upload_id: UP }]).ok).toBe(true);
+    expect(validateAttachmentList(Array.from({ length: 51 }, () => ({ upload_id: UP }))).ok).toBe(false);
+  });
+
+  it("normalise l'identifiant et refuse une pièce référencée deux fois", () => {
+    const r = validateAttachmentList([{ upload_id: UP.toUpperCase() }]);
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(r.value[0].upload_id).toBe(UP);
+    const twice = validateAttachmentList([{ upload_id: UP }, { upload_id: UP.toUpperCase() }]);
+    expect(twice.ok).toBe(false);
+    if (!twice.ok) expect(twice.message).toContain("deux fois");
   });
 });
 
-describe("slugifyFileName", () => {
-  it("neutralise accents, espaces et traversées de chemin", () => {
+describe("slugifyFileName (ré-exporté depuis _shared/files/names)", () => {
+  it("reste disponible pour les appelants historiques", () => {
     expect(slugifyFileName("Pièce jointe n°1.pdf")).toBe("Piece-jointe-n-1.pdf");
-    expect(slugifyFileName("../../etc/passwd")).toBe("etc-passwd");
-    expect(slugifyFileName("///")).toBe("fichier");
   });
 });

@@ -39,6 +39,14 @@ import {
 import { useSendClosureEmail, useSendRequestEmail } from "./instruction/useSendRequestEmail";
 import { ActivityPane } from "./instruction/ActivityPane";
 import { DocumentsPane } from "./instruction/DocumentsPane";
+import { GenererDocumentDialog } from "./instruction/GenererDocumentDialog";
+import type { DocumentFormat, DocumentKind } from "./instruction/documents";
+import {
+  useGenerateDocument, usePreviewDocument, type DocumentPreview,
+} from "./instruction/useGenerateDocument";
+import {
+  closureOutcome, visibleTemplates, emptyDocuments,
+} from "@fn/_shared/document/templates";
 import { EchangesPane, type ComposerDraft, type SendEmailPayload } from "./instruction/EchangesPane";
 import { QualificationDialog, type QualificationSubmit } from "./instruction/QualificationDialog";
 import { AjouterPieceDialog } from "./instruction/AjouterPieceDialog";
@@ -56,7 +64,9 @@ import { TransfertDialog } from "./instruction/TransfertDialog";
 import { transferOptions } from "./instruction/transfert";
 import { ProcedurePane } from "./procedure/ProcedurePane";
 import { RailTabs, type RailTab } from "./procedure/RailTabs";
-import { useProcedureDocumentUrl, useProcedureKnowledge } from "./procedure/useProcedureKnowledge";
+import {
+  useProcedureDocumentUrl, useProcedureDocuments, useProcedureKnowledge,
+} from "./procedure/useProcedureKnowledge";
 import { AssistantPane } from "./assistant/AssistantPane";
 import { AssistantThreadProvider } from "./assistant/AssistantThreadProvider";
 import { emptyKnowledge, isKnowledgeEmpty, type KnowledgeDocument } from "@fn/socle-proxy/_shared/knowledge";
@@ -94,6 +104,8 @@ export function RequestDetailPage() {
   const mentionables = useMentionableUsers(id);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
   const sendEmail = useSendRequestEmail();
+  const previewDocument = usePreviewDocument();
+  const generateDocument = useGenerateDocument();
   const sendClosure = useSendClosureEmail();
   const qualify = useQualifyAttachment();
   const attachPiece = useAttachRequestPiece();
@@ -141,6 +153,13 @@ export function RequestDetailPage() {
   const [qualifyError, setQualifyError] = React.useState<string | null>(null);
   // Brouillon déposé dans le composeur de l'onglet Échanges (signalement).
   const [composerDraft, setComposerDraft] = React.useState<ComposerDraft | null>(null);
+  // Génération d'un document : la nature proposée d'emblée, le modèle choisi
+  // (converti UNE fois en base64 : l'aperçu et la génération le réutilisent),
+  // et l'aperçu rendu par le serveur.
+  const [generateGroup, setGenerateGroup] =
+    React.useState<"document" | "courrier" | null>(null);
+  const [preview, setPreview] = React.useState<DocumentPreview | null>(null);
+  const [generateError, setGenerateError] = React.useState<string | null>(null);
   // Dépôt d'une pièce sur une exigence, et édition des réponses du formulaire.
   const [addingPiece, setAddingPiece] = React.useState<PieceRequirement | null>(null);
   const [addPieceError, setAddPieceError] = React.useState<string | null>(null);
@@ -165,6 +184,22 @@ export function RequestDetailPage() {
     return () => window.clearInterval(t);
   }, []);
   React.useEffect(() => () => window.clearTimeout(toastTimer.current), []);
+
+  // Modèles de la démarche (Socle) : chargés seulement quand la génération
+  // s'ouvre, et filtrés par LA règle du référentiel — `restrict_visibility`
+  // d'abord, `visibility` ensuite (brief Socle du 2026-09-01).
+  const procedureDocuments = useProcedureDocuments(
+    r?.organization_id ?? "",
+    r?.socle_procedure_id ?? null,
+    generateGroup !== null,
+  );
+  const availableTemplates = React.useMemo(
+    () => visibleTemplates(
+      procedureDocuments.data ?? emptyDocuments(),
+      closureOutcome(r?.status ?? ""),
+    ),
+    [procedureDocuments.data, r?.status],
+  );
 
   const flash = React.useCallback((text: string) => {
     setToast({ text, visible: true });
@@ -411,6 +446,44 @@ export function RequestDetailPage() {
         ? `Demande transférée à ${toLabel} — affectation retirée`
         : `Demande transférée à ${toLabel}`,
     );
+  }
+
+  /**
+   * L'aperçu est demandé au SERVEUR : c'est lui qui télécharge le modèle chez
+   * le Socle et résout les variables. L'agent voit ce que chaque jeton recevra
+   * avant de produire quoi que ce soit.
+   */
+  async function pickTemplate(templateId: string) {
+    if (!r) return;
+    setGenerateError(null);
+    setPreview(null);
+    try {
+      setPreview(await previewDocument.mutateAsync({ requestId: r.id, templateId }));
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Modèle illisible.");
+    }
+  }
+
+  async function generate(templateId: string, format: DocumentFormat) {
+    if (!r) return;
+    setGenerateError(null);
+    try {
+      const result = await generateDocument.mutateAsync({
+        requestId: r.id, templateId, format,
+      });
+      setGenerateGroup(null);
+      setPreview(null);
+      flash(`${result.attachment.file_name} ajouté au dossier.`);
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "Génération impossible.");
+    }
+  }
+
+  /** « Joindre à un échange » : le composeur s'ouvre avec le document déjà joint. */
+  function attachToExchange(attachment: RequestAttachment) {
+    setComposerDraft({ documentIds: [attachment.id] });
+    setTab("echanges");
+    flash(`${attachment.file_name} joint au message.`);
   }
 
   async function openAttachment(a: RequestAttachment, download: boolean) {
@@ -706,6 +779,12 @@ export function RequestDetailPage() {
                   onResume={resumeInstruction}
                   onOpen={(a) => void openAttachment(a, false)}
                   onDownload={(a) => void openAttachment(a, true)}
+                  onGenerate={(kind: DocumentKind) => {
+                    setGenerateError(null);
+                    setPreview(null);
+                    setGenerateGroup(kind === "courrier" ? "courrier" : "document");
+                  }}
+                  onAttach={attachToExchange}
                 />
               ) : null}
               {tab === "echanges" ? (
@@ -728,6 +807,7 @@ export function RequestDetailPage() {
                     subject: payload.subject,
                     body: payload.body,
                     files: payload.files,
+                    documentIds: payload.documentIds,
                     templateId: payload.templateId,
                     templateName: payload.templateName,
                   }).then(() => { flash("Message envoyé à l'usager."); })}
@@ -877,6 +957,33 @@ export function RequestDetailPage() {
         error={addPieceError}
         onClose={() => { setAddingPiece(null); setAddPieceError(null); }}
         onSubmit={(file) => void submitAddPiece(file)}
+      />
+
+      {/* Génération d'un document depuis un modèle Word. Le contexte de fusion
+          est composé par l'edge function : le navigateur n'envoie que le
+          modèle et trois choix. */}
+      <GenererDocumentDialog
+        open={generateGroup !== null}
+        defaultGroup={generateGroup ?? "courrier"}
+        templates={availableTemplates}
+        documents={procedureDocuments.data ?? emptyDocuments()}
+        loadingTemplates={procedureDocuments.isLoading}
+        templatesError={
+          procedureDocuments.isError
+            ? "Les modèles de la démarche n'ont pas pu être lus dans le Socle."
+            : null
+        }
+        preview={preview}
+        previewing={previewDocument.isPending}
+        pending={generateDocument.isPending}
+        error={generateError}
+        onClose={() => {
+          setGenerateGroup(null);
+          setPreview(null);
+          setGenerateError(null);
+        }}
+        onPickTemplate={(templateId) => void pickTemplate(templateId)}
+        onSubmit={(templateId, format) => void generate(templateId, format)}
       />
 
       {/* Correction des RÉPONSES au formulaire figé de la demande. La

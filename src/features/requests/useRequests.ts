@@ -180,9 +180,15 @@ export interface TenantMember {
   email: string;
 }
 
-export function useTenantMembers(orgId: string) {
+/**
+ * Membres du tenant (noms d'affichage). `enabled` permet à un appelant MONTÉ EN
+ * PERMANENCE — la recherche du header — de ne charger les noms qu'une fois une
+ * recherche lancée, plutôt qu'à chaque page.
+ */
+export function useTenantMembers(orgId: string, enabled = true) {
   return useQuery({
     queryKey: ["tenant-members", orgId],
+    enabled: Boolean(orgId) && enabled,
     queryFn: async (): Promise<TenantMember[]> => {
       const { data, error } = await supabase
         .from("organization_members")
@@ -378,6 +384,32 @@ export function useContactRequests(orgId: string, socleContactId: string | null)
         .limit(200);
       if (error) throw error;
       return (data ?? []) as RequestListItem[];
+    },
+  });
+}
+
+/**
+ * Les pièces d'un usager (fiche usager) : par la colonne dénormalisée
+ * `socle_contact_id` (écrite par trigger, 2026-09-08). Le RLS borne au
+ * périmètre du lecteur — comme pour ses demandes. Ni les internes, ni les
+ * copies jointes à un échange (l'original est listé).
+ */
+export function useContactAttachments(orgId: string, socleContactId: string | null) {
+  return useQuery({
+    queryKey: ["contact-attachments", orgId, socleContactId],
+    enabled: Boolean(orgId && socleContactId),
+    queryFn: async (): Promise<RequestAttachment[]> => {
+      const { data, error } = await supabase
+        .from("request_attachments")
+        .select("*")
+        .eq("organization_id", orgId)
+        .eq("socle_contact_id", socleContactId!)
+        .neq("kind", "instruction_interne")
+        .is("source_attachment_id", null)
+        .order("created_at", { ascending: false })
+        .limit(500);
+      if (error) throw error;
+      return (data ?? []) as RequestAttachment[];
     },
   });
 }

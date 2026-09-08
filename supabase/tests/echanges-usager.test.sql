@@ -30,6 +30,7 @@ declare
   orgA uuid; orgB uuid; p_id uuid;
   req  uuid; req_b uuid;
   mail uuid; mail_b uuid;
+  up_plan uuid;
   u_instructeur uuid := gen_random_uuid();  -- instruction sur (Voirie, proc)
   u_consultant  uuid := gen_random_uuid();  -- consultation SEULE
   u_ccas        uuid := gen_random_uuid();  -- même tenant, AUTRE sous-arbre
@@ -59,6 +60,9 @@ begin
   insert into public.socle_procedure_cache (socle_id, organization_id, socle_root_org_id, name) values
     (proc, orgA, s_root, 'Signalement de voirie'),
     (proc2, orgB, s_root2, 'Démarche B');
+  -- t18 (2026-08-31) : une démarche doit être ACTIVÉE pour l'organisme porteur.
+  insert into public.socle_procedure_organizations (organization_id, socle_procedure_id, socle_org_id) values
+    (orgA, proc, s_voirie), (orgB, proc2, s_root2);
 
   -- Instructeur : Voirie, droit d'instruction sur la démarche.
   insert into public.permission_profiles (organization_id, name, is_admin)
@@ -108,12 +112,17 @@ begin
   -- ==========================================================================
   -- E1. La RPC de service ouvre l'échange ET ses pièces, en une transaction
   -- ==========================================================================
+  -- La pièce jointe a été REÇUE par le serveur pour cette demande (zone
+  -- d'attente) : la RPC ne connaît que son upload_id.
+  insert into public.attachment_uploads (organization_id, scope_request_id, uploaded_by, storage_path,
+    file_name, mime_type, file_size, checksum, expires_at)
+  values (orgA, req, u_instructeur, orgA::text || '/' || req::text || '/abc-plan.pdf',
+          'plan.pdf', 'application/pdf', 1024, 'plan', now() + interval '1 day')
+  returning id into up_plan;
   select public.start_request_email(
            req, u_instructeur, '  marie@exemple.fr  ', 'Votre demande', 'Bonjour,',
            null, '  ',
-           jsonb_build_array(jsonb_build_object(
-             'storage_path', orgA::text || '/' || req::text || '/abc-plan.pdf',
-             'file_name', 'plan.pdf', 'mime_type', 'application/pdf', 'file_size', '1024'))
+           jsonb_build_array(jsonb_build_object('upload_id', up_plan))
          ) into mail;
 
   select to_email into v_text from public.request_emails where id = mail;
@@ -214,13 +223,27 @@ begin
   if v_int <> 0 then v_fail := v_fail || 'E5c: un agent a pu SUPPRIMER un échange envoyé'::text; end if;
 
   -- ==========================================================================
-  -- E6. Une pièce rattachée à un échange exige le droit d'INSTRUCTION
+  -- E6. Une pièce ne se rattache JAMAIS depuis le navigateur — pas même par
+  --     l'instructeur (2026-09-08 : plus d'INSERT client, la porte est la RPC
+  --     start_request_email en service_role, alimentée par la zone d'attente).
   -- ==========================================================================
+  begin
+    insert into public.request_attachments (organization_id, request_id, storage_path, file_name,
+                                            uploaded_by, email_id)
+    values (orgA, req, orgA::text || '/' || req::text || '/def-note.pdf', 'note.pdf', u_instructeur, mail);
+    v_fail := v_fail || 'E6a: l''instructeur a pu INSÉRER une pièce depuis le navigateur'::text;
+  exception when others then
+    if position('row-level security' in lower(sqlerrm)) = 0 then
+      v_fail := v_fail || format('E6a: refus inattendu (%s)', sqlerrm); end if;
+  end;
+  -- Le décor de E9 : la seconde pièce d'échange, posée par la porte légitime.
+  execute 'reset role';
   insert into public.request_attachments (organization_id, request_id, storage_path, file_name,
                                           uploaded_by, email_id)
   values (orgA, req, orgA::text || '/' || req::text || '/def-note.pdf', 'note.pdf', u_instructeur, mail);
-  get diagnostics v_int = row_count;
-  if v_int <> 1 then v_fail := v_fail || 'E6a: l''instructeur ne peut pas joindre de pièce'::text; end if;
+  perform set_config('request.jwt.claims',
+    jsonb_build_object('sub', u_instructeur, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
 
   execute 'reset role';
   perform set_config('request.jwt.claims',
@@ -281,7 +304,8 @@ begin
   -- ==========================================================================
   select count(*) into v_int from public.request_emails where request_id = req;
   if v_int <> 2 then v_fail := v_fail || 'E9a: décor incohérent avant la cascade'::text; end if;
-  select count(*) into v_int from public.request_attachments where email_id is not null;
+  -- Borné à la demande du test : la base réelle porte ses propres pièces d'échange.
+  select count(*) into v_int from public.request_attachments where request_id = req and email_id is not null;
   if v_int <> 2 then v_fail := v_fail || 'E9b: décor incohérent (pièces jointes) avant la cascade'::text; end if;
 
   begin

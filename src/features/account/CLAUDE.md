@@ -13,8 +13,23 @@ de collectivité.
 
 ## Identité et photo
 
-- Prénom et nom s'écrivent directement dans `public.users` (la policy `users_update` autorise
-  déjà l'utilisateur sur SA ligne). Le bouton reste inactif tant que rien n'a changé.
+- Prénom, nom et **téléphones** (fixe et portable, 2026-09-01) s'écrivent directement dans
+  `public.users` (la policy `users_update` autorise déjà l'utilisateur sur SA ligne). Le
+  bouton reste inactif tant que rien n'a changé — comparaison sur les valeurs **taillées**
+  (`identityChanged`) : une espace de plus n'est pas une modification.
+- **Les téléphones ne sont pas validés au FORMAT**, délibérément : Iris n'a pas à décider
+  qu'un agent est joignable en France. Indicatifs étrangers, extensions et séparations libres
+  passent ; seules les LETTRES sont refusées (là, c'est une faute de frappe, pas un choix),
+  avec un plancher de 4 chiffres et la borne de longueur de la base
+  (`users_phones_length_check`, 40). Même parti pris que pour les contacts du Socle, où rien
+  n'est normalisé non plus.
+- ⚠️ **Aucune garde SQL sur les téléphones**, contrairement au courriel. `t03_users_protect_email`
+  existe parce que le courriel est l'IDENTIFIANT DE CONNEXION ; un numéro n'est l'identifiant
+  de rien, c'est une coordonnée que son titulaire tient à jour, comme son prénom.
+- **Le formulaire d'identité est PARTAGÉ avec l'écran superadmin** (`IdentityForm`,
+  `identityFormFrom`, `identityPatch`, `validateIdentityForm` dans `account.ts`) : deux écrans
+  écrivent ces colonnes — « Mon compte » et Superadmin › Utilisateurs, à l'édition comme à
+  l'invitation —, ils ne doivent pas avoir deux idées de ce qu'est un champ vide.
 - **La photo vit dans un bucket PRIVÉ** (`avatars`, 2 Mio, images seulement) et se lit par
   **URL signée** (1 h, redemandée par TanStack Query). Un bucket public la servirait à qui
   connaît l'adresse, sans authentification ni trace : la photo d'un agent est une donnée
@@ -85,7 +100,7 @@ qu'il a oublié le second tenant.
   l'ordre de la saisie : on ne reproche pas la confirmation à qui n'a pas encore tapé le
   nouveau), validation de l'image, chemin de stockage, initiales et nom affiché.
 - **`useAccount.ts`** : `useAvatarUrl` / `useMyAvatarUrl`, `useUploadAvatar`, `useRemoveAvatar`,
-  `useUpdateNames`, `useChangePassword`, `useNotificationPreferences`,
+  `useUpdateIdentity`, `useChangePassword`, `useNotificationPreferences`,
   `useSaveNotificationPreferences`.
 - **`AccountPage.tsx`** : les trois blocs en `Surface`.
 - `AuthProvider.refreshProfile()` — ajouté pour cet écran. ⚠️ **Sans `setLoading(true)`** :

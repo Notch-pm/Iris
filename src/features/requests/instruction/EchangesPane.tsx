@@ -23,6 +23,8 @@ import { renderTemplate, TEMPLATE_VARIABLES } from "@/features/templates/templat
 import { useActiveEmailTemplates } from "@/features/templates/useEmailTemplates";
 import type { Tables } from "@/types/database.types";
 import type { RequestAttachment, RequestEmail, TenantMember } from "../useRequests";
+import { acceptAttribute } from "@fn/_shared/files/magic";
+import { kindLabel, sendableDocuments } from "./documents";
 import {
   MAX_EMAIL_ATTACHMENT_BYTES,
   hasDraftErrors,
@@ -41,16 +43,26 @@ import {
   type StageEvent,
 } from "./instruction";
 
-/** Brouillon déposé dans le composeur par un autre bloc de la fiche. */
+/**
+ * Brouillon déposé dans le composeur par un autre bloc de la fiche. Chaque
+ * champ est FACULTATIF : « Signaler à l'usager » remplit l'objet et le corps,
+ * « Joindre à un échange » n'apporte qu'un document et ne doit surtout pas
+ * effacer ce que l'agent est en train d'écrire.
+ */
 export interface ComposerDraft {
-  subject: string;
-  body: string;
+  subject?: string;
+  body?: string;
+  /** Documents du dossier à joindre (identifiants `request_attachments`). */
+  documentIds?: string[];
 }
 
 export interface SendEmailPayload {
   subject: string;
   body: string;
   files: File[];
+  /** Documents DÉJÀ au dossier, joints par leur identifiant : le navigateur ne
+   *  redit ni leur chemin ni leur nature, que le serveur relit en base. */
+  documentIds: string[];
   templateId: string | null;
   templateName: string | null;
 }
@@ -93,6 +105,7 @@ export function EchangesPane({
   const [body, setBody] = React.useState("");
   const [templateId, setTemplateId] = React.useState("");
   const [files, setFiles] = React.useState<File[]>([]);
+  const [docIds, setDocIds] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
 
@@ -100,9 +113,13 @@ export function EchangesPane({
   // (« Signaler à l'usager »), jamais d'un rendu de fond.
   React.useEffect(() => {
     if (!draft) return;
-    setSubject(draft.subject);
-    setBody(draft.body);
-    setTemplateId("");
+    if (draft.subject !== undefined) setSubject(draft.subject);
+    if (draft.body !== undefined) setBody(draft.body);
+    if (draft.subject !== undefined || draft.body !== undefined) setTemplateId("");
+    if (draft.documentIds) {
+      // Un document déjà joint ne se joint pas deux fois.
+      setDocIds((current) => [...new Set([...current, ...draft.documentIds!])]);
+    }
     setSubmitted(false);
     setError(null);
     onDraftApplied?.();
@@ -114,7 +131,17 @@ export function EchangesPane({
   );
 
   const errors = validateEmailDraft({ subject, body }, files);
-  const total = totalBytes(files);
+
+  // Documents DU DOSSIER joints à ce message : jamais un interne (la liste ne
+  // les propose pas, la RPC les refuse, un trigger les interdit).
+  const sendable = React.useMemo(() => sendableDocuments(attachments), [attachments]);
+  const joinedDocs = React.useMemo(
+    () => sendable.filter((a) => docIds.includes(a.id)),
+    [sendable, docIds],
+  );
+  const availableDocs = sendable.filter((a) => !docIds.includes(a.id));
+  const total = totalBytes(files)
+    + joinedDocs.reduce((sum, doc) => sum + (doc.file_size ?? 0), 0);
   const tooHeavy = total > MAX_EMAIL_ATTACHMENT_BYTES;
 
   // Les pièces d'un échange donné — les autres restent dans l'onglet Documents.
@@ -170,18 +197,24 @@ export function EchangesPane({
     setSubmitted(true);
     setError(null);
     if (hasDraftErrors(errors)) return;
+    if (tooHeavy) {
+      setError(`Les pièces jointes dépassent ${formatBytes(MAX_EMAIL_ATTACHMENT_BYTES)}.`);
+      return;
+    }
     const tpl = templates.data?.find((t) => t.id === templateId);
     try {
       await onSend({
         subject: subject.trim(),
         body,
         files,
+        documentIds: docIds,
         templateId: tpl?.id ?? null,
         templateName: tpl?.name ?? null,
       });
       setSubject("");
       setBody("");
       setFiles([]);
+      setDocIds([]);
       setTemplateId("");
       setSubmitted(false);
     } catch (err) {
@@ -334,6 +367,60 @@ export function EchangesPane({
               <span role="alert" className="text-[11.5px] text-destructive">{errors.attachments}</span>
             ) : null}
 
+            {/* Documents du dossier — externes et courriers seulement. */}
+            {sendable.length > 0 ? (
+              <div className="flex flex-col gap-1.5">
+                <div className="flex flex-wrap items-center gap-2">
+                  <label
+                    className="text-[11px] font-semibold text-muted-foreground"
+                    htmlFor="echange-document"
+                  >
+                    Documents du dossier
+                  </label>
+                  <Select
+                    id="echange-document"
+                    className="h-8 w-auto min-w-[240px] text-[12.5px]"
+                    value=""
+                    disabled={sending || availableDocs.length === 0}
+                    onChange={(e) => {
+                      if (e.target.value) setDocIds((current) => [...current, e.target.value]);
+                    }}
+                  >
+                    <option value="">
+                      {availableDocs.length === 0 ? "Tous déjà joints" : "Joindre un document…"}
+                    </option>
+                    {availableDocs.map((doc) => (
+                      <option key={doc.id} value={doc.id}>
+                        {doc.file_name} — {kindLabel(doc.kind)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+                {joinedDocs.length > 0 ? (
+                  <ul className="flex flex-wrap gap-1.5">
+                    {joinedDocs.map((doc) => (
+                      <li
+                        key={doc.id}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/[0.06] px-2 py-1 text-[11.5px]"
+                      >
+                        <span className="font-semibold">{doc.file_name}</span>
+                        <span className="text-muted-foreground">{formatBytes(doc.file_size)}</span>
+                        <button
+                          type="button"
+                          className="text-muted-foreground transition-colors hover:text-destructive"
+                          disabled={sending}
+                          onClick={() => setDocIds((current) => current.filter((id) => id !== doc.id))}
+                          aria-label={`Retirer ${doc.file_name}`}
+                        >
+                          <X className="size-3.5" aria-hidden="true" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
             {error ? (
               <p role="alert" className="rounded-xl bg-destructive/10 p-2.5 text-[13px] text-destructive">
                 {error}
@@ -467,6 +554,7 @@ function AttachmentPicker({ files, total, tooHeavy, disabled, inputRef, onAdd, o
           ref={inputRef}
           type="file"
           multiple
+          accept={acceptAttribute()}
           className="hidden"
           disabled={disabled}
           onChange={(e) => onAdd(e.target.files)}

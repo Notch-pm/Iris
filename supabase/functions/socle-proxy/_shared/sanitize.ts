@@ -5,6 +5,10 @@
 
 // deno-lint-ignore-file no-explicit-any
 
+import {
+  parseProcedureDocuments,
+  type ProcedureDocuments,
+} from "../../_shared/document/templates.ts";
 import { type AgentKnowledge, parseAgentKnowledge } from "./knowledge.ts";
 import {
   parseProcedureStatus,
@@ -161,6 +165,12 @@ export function sanitizeProcedureFull(raw: any): Record<string, unknown> | null 
     form_schema: raw.form_schema ?? null,
     requester_config: raw.requester_config ?? null,
     knowledge_base: parseAgentKnowledge(raw.knowledge_base) satisfies AgentKnowledge,
+    // Modèles de document et de courrier de la démarche (contrat public-api
+    // 1.6.0, 2026-09-01). L'écran en a besoin pour PROPOSER ; le fichier, lui,
+    // ne transite jamais par le navigateur — l'edge function de génération le
+    // télécharge côté serveur. `parseProcedureDocuments` ne recopie que le
+    // contrat : un `file_path` inventé par le Socle ne franchirait pas.
+    documents: parseProcedureDocuments(raw.documents) satisfies ProcedureDocuments,
   };
 }
 

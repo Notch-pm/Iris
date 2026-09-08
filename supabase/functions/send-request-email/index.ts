@@ -56,6 +56,7 @@ import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
 import { charteFromSocle, type EmailCharte, type SocleBrandingDto } from "../_shared/email/charte.ts";
 import { closureEmail, isClosureOutcome } from "../_shared/email/cloture.ts";
 import { pickDeclared } from "../_shared/identity/declared.ts";
+import { checkUploadRow, type UploadRow } from "../_shared/files/uploads.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -256,8 +257,16 @@ async function smtpForOrg(orgId: string): Promise<{ smtp: SmtpConfig | null; ten
   return { smtp: resolveSmtp(row, Deno.env.toObject()), tenantName: row?.organization_name ?? null };
 }
 
-/** Retire des objets déjà téléversés — le brouillon n'a pas abouti. */
-async function discardUploads(paths: string[]): Promise<void> {
+/**
+ * Retire des pièces reçues pour cet envoi — le brouillon n'a pas abouti. La
+ * ligne d'attente est marquée retirée (elle ne pourra plus être rattachée) et
+ * l'objet part avec.
+ */
+async function discardUploads(paths: string[], uploadIds: string[], actorId: string): Promise<void> {
+  if (uploadIds.length > 0) {
+    const { error } = await supabase.rpc("discard_attachment_uploads", { p_ids: uploadIds, p_actor: actorId });
+    if (error) console.error("send-request-email: lignes d'attente non retirées", error);
+  }
   if (paths.length === 0) return;
   const { error } = await supabase.storage.from(BUCKET).remove(paths);
   if (error) console.error("send-request-email: nettoyage des pièces en échec", error);
@@ -398,23 +407,105 @@ Deno.serve(async (req) => {
   // ---- Les pièces : chemins vérifiés, poids borné ---------------------------
   // Aucune pièce en mode clôture : l'avis annonce une décision, il ne transmet
   // pas de document. Le payload n'en propose d'ailleurs pas.
+  // DEUX FORMES, et AUCUNE n'est dictée par le navigateur :
+  //   · `{ upload_id }` — un fichier reçu par l'edge function
+  //     `request-attachments` POUR cette demande, PAR cet agent (zone
+  //     d'attente : type réel vérifié, chemin déjà sous la demande) ;
+  //   · `{ attachment_id }` — un document DÉJÀ au dossier. Le chemin, le nom et
+  //     la NATURE sont relus en base (`request_attachment_paths`). Sans quoi un
+  //     client ferait passer un document interne pour un externe et le ferait
+  //     sortir.
   const prefix = `${request.organization_id}/${request.id}/`;
-  const declared: DeclaredAttachment[] = !closureMode && Array.isArray(body?.attachments)
-    ? (body.attachments as unknown[]).filter(isRecord).map((a) => ({
-      storage_path: str(a.storage_path),
-      file_name: str(a.file_name) || "piece-jointe",
-      mime_type: str(a.mime_type) || null,
-      file_size: typeof a.file_size === "number" && a.file_size >= 0 ? a.file_size : 0,
-    }))
+  const items = !closureMode && Array.isArray(body?.attachments)
+    ? (body.attachments as unknown[]).filter(isRecord)
     : [];
-  const paths = declared.map((a) => a.storage_path);
-
-  if (declared.some((a) => !a.storage_path.startsWith(prefix))) {
-    // Aucun nettoyage : les chemins sont hors de cette demande, on n'y touche pas.
-    return fail(req, 400, "invalid_attachment", "Pièce jointe hors de cette demande.");
+  const documentIds = items
+    .map((a) => str(a.attachment_id))
+    .filter((id) => id !== "");
+  const uploadIds = items
+    .map((a) => str(a.upload_id))
+    .filter((id) => id !== "");
+  if (items.length !== documentIds.length + uploadIds.length) {
+    return fail(req, 400, "invalid_attachment", "Pièce jointe : upload_id ou attachment_id attendu.");
   }
+
+  const uploaded: DeclaredAttachment[] = [];
+  if (uploadIds.length > 0) {
+    const { data: rows, error: rowsError } = await supabase
+      .from("attachment_uploads")
+      .select(
+        "id, organization_id, scope_request_id, integration_source_id, uploaded_by, storage_path, " +
+        "file_name, mime_type, file_size, checksum, expires_at, consumed_at, discarded_at",
+      )
+      .in("id", uploadIds)
+      .eq("organization_id", request.organization_id);
+    if (rowsError) return fail(req, 500, "attachments_unreadable", "Pièces jointes illisibles — réessayez.");
+    const byId = new Map((rows ?? []).map((r) => [r.id, r as UploadRow]));
+    for (const id of uploadIds) {
+      const row = byId.get(id);
+      const check = checkUploadRow(row, {
+        organizationId: request.organization_id,
+        requestId: request.id,
+        actorId,
+      });
+      if (!check.ok) return fail(req, 400, "invalid_attachment", check.message);
+      // Ceinture et bretelles : la porte de consommation le revérifie en SQL.
+      if (!row!.storage_path.startsWith(prefix)) {
+        return fail(req, 400, "invalid_attachment", "Pièce jointe hors de cette demande.");
+      }
+      uploaded.push({
+        storage_path: row!.storage_path,
+        file_name: row!.file_name,
+        mime_type: row!.mime_type,
+        file_size: row!.file_size,
+      });
+    }
+  }
+  const paths = uploaded.map((a) => a.storage_path);
+
+  // Les documents du dossier, relus en base.
+  const fromDossier: DeclaredAttachment[] = [];
+  if (documentIds.length > 0) {
+    const { data: rows, error: pathsError } = await supabase.rpc("request_attachment_paths", {
+      p_request_id: request.id,
+      p_ids: documentIds,
+    });
+    if (pathsError) {
+      console.error("send-request-email: request_attachment_paths en échec", pathsError);
+      await discardUploads(paths, uploadIds, actorId);
+      return fail(req, 500, "attachments_unreadable", "Pièces jointes illisibles — réessayez.");
+    }
+    const found = rows ?? [];
+    if (found.length !== documentIds.length) {
+      await discardUploads(paths, uploadIds, actorId);
+      return fail(req, 400, "invalid_attachment", "Pièce jointe introuvable dans cette demande.");
+    }
+    for (const row of found) {
+      // Défense en profondeur : la RPC `start_request_email` refuse déjà, et un
+      // trigger interdit la ligne. Refuser ICI évite en plus d'ouvrir un
+      // échange pour rien.
+      if (row.nature === "instruction_interne") {
+        await discardUploads(paths, uploadIds, actorId);
+        return fail(req, 403, "internal_document",
+          "Un document interne à l'instruction ne peut pas être envoyé à l'usager.");
+      }
+      // La RPC filtre déjà par préfixe ; on ne télécharge JAMAIS hors de la demande.
+      if (!row.path.startsWith(prefix)) {
+        await discardUploads(paths, uploadIds, actorId);
+        return fail(req, 400, "invalid_attachment", "Pièce jointe hors de cette demande.");
+      }
+      fromDossier.push({
+        storage_path: row.path,
+        file_name: row.name,
+        mime_type: row.mime,
+        file_size: row.size ?? 0,
+      });
+    }
+  }
+
+  const declared = [...uploaded, ...fromDossier];
   if (declared.reduce((sum, a) => sum + a.file_size, 0) > MAX_ATTACHMENTS_BYTES) {
-    await discardUploads(paths);
+    await discardUploads(paths, uploadIds, actorId);
     return fail(req, 400, "attachments_too_large", "Les pièces jointes dépassent 10 Mo.");
   }
 
@@ -427,11 +518,14 @@ Deno.serve(async (req) => {
     p_body: message,
     p_template_id: closureMode ? null : (str(body?.template_id) || null),
     p_template_name: closureMode ? null : (str(body?.template_name) || null),
-    p_attachments: declared,
+    p_attachments: [
+      ...uploadIds.map((id) => ({ upload_id: id })),
+      ...documentIds.map((id) => ({ attachment_id: id })),
+    ],
   });
   if (startError || typeof emailId !== "string") {
     console.error("send-request-email: start_request_email en échec", startError);
-    await discardUploads(paths);
+    await discardUploads(paths, uploadIds, actorId);
     return fail(req, 500, "not_recorded", "L'échange n'a pas pu être enregistré : rien n'a été envoyé.");
   }
 

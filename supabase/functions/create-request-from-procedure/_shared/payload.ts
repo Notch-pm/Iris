@@ -11,11 +11,22 @@
 
 // deno-lint-ignore-file no-explicit-any
 
-import type { AttachmentDeclaration, Audience, RequesterSubmission } from "./procedureForm.ts";
+import type { Audience, RequesterSubmission } from "./procedureForm.ts";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PRIORITIES = ["basse", "normale", "haute", "urgente"];
 const AUDIENCES: Audience[] = ["citoyen", "entreprise", "association"];
+
+/**
+ * Une pièce du guichet est un fichier DÉJÀ reçu par l'edge function
+ * `request-attachments` (zone d'attente) : le navigateur ne dit plus que
+ * « quel upload répond à quelle exigence ». Nom, type, taille, chemin et
+ * empreinte sont relus en base.
+ */
+export interface UploadRef {
+  upload_id: string;
+  form_field_key: string;
+}
 
 export interface CreatePayload {
   organizationId: string;
@@ -29,7 +40,7 @@ export interface CreatePayload {
   destinationId: string;
   requester: RequesterSubmission;
   formValues: Record<string, unknown>;
-  attachments: AttachmentDeclaration[];
+  attachments: UploadRef[];
 }
 
 const PAYLOAD_KEYS = new Set([
@@ -97,35 +108,31 @@ export function parsePayload(raw: any): CreatePayload | { error: string } {
     return { error: "form_values : objet requis." };
   }
 
-  const attachments: AttachmentDeclaration[] = [];
+  const attachments: UploadRef[] = [];
   const rawAttachments = raw.attachments ?? [];
   if (!Array.isArray(rawAttachments) || rawAttachments.length > 50) {
     return { error: "attachments : tableau de 50 éléments maximum." };
   }
-  const prefix = `${raw.organization_id}/${raw.request_id}/`;
+  const seen = new Set<string>();
   for (const [i, a] of rawAttachments.entries()) {
     if (typeof a !== "object" || a === null) return { error: `attachments[${i}] : objet attendu.` };
+    const keys = Object.keys(a);
+    if (keys.some((k) => k !== "upload_id" && k !== "form_field_key")) {
+      // Un chemin, un nom ou un type venus du navigateur ne sont plus acceptés :
+      // tout est relu dans la zone d'attente.
+      return { error: `attachments[${i}] : seules les clés upload_id et form_field_key sont acceptées.` };
+    }
     if (typeof a.form_field_key !== "string" || a.form_field_key.trim() === ""
         || a.form_field_key.length > 120) {
       return { error: `attachments[${i}].form_field_key : clé de champ requise.` };
     }
-    if (typeof a.file_name !== "string" || a.file_name.trim() === "" || a.file_name.length > 255) {
-      return { error: `attachments[${i}].file_name : nom de fichier requis.` };
+    if (typeof a.upload_id !== "string" || !UUID_RE.test(a.upload_id)) {
+      return { error: `attachments[${i}].upload_id : identifiant de pièce téléversée requis.` };
     }
-    if (typeof a.storage_path !== "string" || !a.storage_path.startsWith(prefix)
-        || a.storage_path.includes("..")) {
-      return { error: `attachments[${i}].storage_path : chemin hors du brouillon de la demande.` };
-    }
-    if (a.size_bytes !== undefined && (typeof a.size_bytes !== "number" || a.size_bytes < 0)) {
-      return { error: `attachments[${i}].size_bytes : entier positif attendu.` };
-    }
-    attachments.push({
-      form_field_key: a.form_field_key.trim(),
-      file_name: a.file_name,
-      storage_path: a.storage_path,
-      mime_type: typeof a.mime_type === "string" ? a.mime_type : null,
-      size_bytes: typeof a.size_bytes === "number" ? a.size_bytes : null,
-    });
+    const uploadId = a.upload_id.toLowerCase();
+    if (seen.has(uploadId)) return { error: `attachments[${i}].upload_id : pièce référencée deux fois.` };
+    seen.add(uploadId);
+    attachments.push({ upload_id: uploadId, form_field_key: a.form_field_key.trim() });
   }
 
   return {

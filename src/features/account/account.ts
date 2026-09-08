@@ -193,6 +193,97 @@ export function avatarPath(userId: string, mimeType: string, token: string): str
 }
 
 // ---------------------------------------------------------------------------
+// Coordonnées téléphoniques
+// ---------------------------------------------------------------------------
+
+/** Miroir de `users_phones_length_check` : la base refuse déjà au-delà. */
+export const PHONE_MAX_LENGTH = 40;
+
+/**
+ * Ce qu'on accepte dans un numéro : des chiffres, et de quoi les présenter —
+ * espaces, points, tirets, barres obliques, parenthèses, et un `+` d'indicatif.
+ *
+ * ⚠️ On ne valide PAS un format, délibérément. Iris n'a pas à décider qu'un
+ * agent est joignable en France : indicatifs étrangers, extensions et
+ * séparations libres passent. Le seul refus est ce qui ne peut pas être un
+ * numéro — des lettres —, parce que là c'est une faute de frappe, pas un choix.
+ * Même parti pris que pour les contacts du Socle, où rien n'est normalisé.
+ */
+const PHONE_ALLOWED = /^[+()./\s\d-]*$/;
+
+/** `null` = acceptable (le vide compris : un téléphone n'est pas obligatoire). */
+export function validatePhone(value: string, label: string): string | null {
+  const v = value.trim();
+  if (v === "") return null;
+  if (!PHONE_ALLOWED.test(v)) {
+    return `${label} : seuls les chiffres et les séparateurs (+ - . / espace) sont acceptés.`;
+  }
+  if ((v.match(/\d/g) ?? []).length < 4) {
+    return `${label} : ce numéro semble incomplet.`;
+  }
+  if (v.length > PHONE_MAX_LENGTH) {
+    return `${label} : ${PHONE_MAX_LENGTH} caractères au maximum.`;
+  }
+  return null;
+}
+
+/**
+ * Ce que « Mon compte » et l'écran superadmin écrivent tous les deux dans
+ * `public.users`. Un seul objet, une seule validation, un seul « rien n'a
+ * changé » — deux écrans, mais une seule idée de ce qu'est une identité.
+ */
+export interface IdentityForm {
+  firstName: string;
+  lastName: string;
+  landlinePhone: string;
+  mobilePhone: string;
+}
+
+export interface IdentityRow {
+  first_name?: string | null;
+  last_name?: string | null;
+  landline_phone?: string | null;
+  mobile_phone?: string | null;
+}
+
+export function identityFormFrom(profile: IdentityRow | null | undefined): IdentityForm {
+  return {
+    firstName: profile?.first_name ?? "",
+    lastName: profile?.last_name ?? "",
+    landlinePhone: profile?.landline_phone ?? "",
+    mobilePhone: profile?.mobile_phone ?? "",
+  };
+}
+
+/** `null` = le formulaire peut partir. Sinon la raison, en français. */
+export function validateIdentityForm(form: IdentityForm): string | null {
+  return validatePhone(form.landlinePhone, "Téléphone fixe")
+    ?? validatePhone(form.mobilePhone, "Téléphone portable");
+}
+
+/**
+ * Le bouton reste inactif tant que rien n'a bougé. La comparaison se fait sur
+ * les valeurs TAILLÉES, celles qui partiront : ajouter une espace en fin de
+ * champ n'est pas une modification.
+ */
+export function identityChanged(profile: IdentityRow | null | undefined, form: IdentityForm): boolean {
+  const before = identityFormFrom(profile);
+  return (["firstName", "lastName", "landlinePhone", "mobilePhone"] as const)
+    .some((k) => before[k].trim() !== form[k].trim());
+}
+
+/** Valeurs prêtes pour la base : taillées, et `null` plutôt qu'une chaîne vide. */
+export function identityPatch(form: IdentityForm): Required<IdentityRow> {
+  const clean = (v: string) => (v.trim() === "" ? null : v.trim());
+  return {
+    first_name: clean(form.firstName),
+    last_name: clean(form.lastName),
+    landline_phone: clean(form.landlinePhone),
+    mobile_phone: clean(form.mobilePhone),
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Identité affichée
 // ---------------------------------------------------------------------------
 

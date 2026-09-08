@@ -20,13 +20,23 @@ Vérifiée au navigateur le 2026-08-20 (arbre, création/rattachement/suppressio
 - **Utilisateurs** (`/superadmin/utilisateurs`) : recherche, table (nom, email, badge Admin
   plateforme, rattachements par tenant), **invitation** (compte ouvert sans mot de passe,
   rattachement au tenant et lien d'activation envoyés d'un bloc côté serveur), édition (noms,
-  statut plateforme — verrouillé sur soi-même —, accès par tenant appliqués immédiatement),
+  **téléphones fixe et portable**, statut plateforme — verrouillé sur soi-même —, accès par
+  tenant appliqués immédiatement),
   **envoi d'un lien de réinitialisation** au titulaire, suppression (confirmée, interdite sur
   soi-même).
   ⚠️ **Aucun mot de passe n'est plus généré ni affiché** (2026-08-23) : l'ancien encart
   « Identifiants de connexion » a laissé place à un message d'issue (invitation envoyée /
   compte existant rattaché / compte créé mais mail non parti). Voir
   [`docs/emails.md`](../../../docs/emails.md).
+- **Les téléphones (2026-09-01) réutilisent le module de « Mon compte »** — `IdentityForm`,
+  `identityPatch`, `validateIdentityForm` de `features/account/account.ts`. L'écran superadmin
+  et l'écran personnel écrivent les MÊMES colonnes de `public.users` : leur donner deux idées
+  de ce qu'est un champ vide, ou deux validations, serait le meilleur moyen de les faire
+  diverger. `is_platform_admin` s'y ajoute et n'appartient qu'à cet écran.
+  ⚠️ À l'**invitation**, les coordonnées transitent par `admin-users` (le compte n'existe pas
+  encore) : elles sont posées juste après `handle_new_user`, qui ne lit que les noms dans
+  `user_metadata`. Toute modification de ce chemin exige un **redéploiement** de la fonction —
+  sans lui les deux champs du dialogue seraient inertes.
 - Rattachement à un tenant = **simple accès** (« Donner accès » / « Retirer l'accès »), **sans
   rôle** (RM-44) : `role` n'est plus qu'un filet de compatibilité (`agent`, écrasé par la
   colonne dérivée côté serveur). Colonne Tenants : chips d'accès + **profils de droits

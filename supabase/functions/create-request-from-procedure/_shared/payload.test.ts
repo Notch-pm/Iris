@@ -88,8 +88,17 @@ describe("parsePayload", () => {
     expect(parsePayload({ ...valid, requester: { kind: "autre_chose" } })).toHaveProperty("error");
   });
 
-  it("valide le préfixe de storage_path des pièces jointes", () => {
+  it("les pièces ne sont plus que des upload_id rattachés à une exigence", () => {
+    const UP = "33333333-3333-4333-8333-333333333333";
     const ok = parsePayload({
+      ...valid,
+      attachments: [{ form_field_key: "piece_identite", upload_id: UP.toUpperCase() }],
+    });
+    expect(ok).not.toHaveProperty("error");
+    if (!("error" in ok)) expect(ok.attachments).toEqual([{ upload_id: UP, form_field_key: "piece_identite" }]);
+
+    // Un chemin, un nom ou un type venus du navigateur ne sont plus acceptés.
+    const legacy = parsePayload({
       ...valid,
       attachments: [{
         form_field_key: "piece_identite",
@@ -97,15 +106,13 @@ describe("parsePayload", () => {
         storage_path: `${ORG}/${REQ}/piece_identite/cni.pdf`,
       }],
     });
-    expect(ok).not.toHaveProperty("error");
-    const bad = parsePayload({
+    expect(legacy).toHaveProperty("error");
+    expect(parsePayload({ ...valid, attachments: [{ form_field_key: "x", upload_id: "pas-un-uuid" }] }))
+      .toHaveProperty("error");
+    expect(parsePayload({ ...valid, attachments: [{ upload_id: UP }] })).toHaveProperty("error");
+    expect(parsePayload({
       ...valid,
-      attachments: [{
-        form_field_key: "piece_identite",
-        file_name: "cni.pdf",
-        storage_path: `autre-org/autre-req/piece_identite/cni.pdf`,
-      }],
-    });
-    expect(bad).toHaveProperty("error");
+      attachments: [{ form_field_key: "a", upload_id: UP }, { form_field_key: "b", upload_id: UP }],
+    })).toHaveProperty("error");
   });
 });

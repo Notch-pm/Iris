@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
 import { NotificationBell } from "@/features/notifications/NotificationBell";
+import { GlobalSearch } from "@/features/search/GlobalSearch";
 import { useMyAvatarUrl } from "@/features/account/useAccount";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { Select } from "@/components/ui/select";
@@ -227,7 +228,12 @@ export function AppShell() {
           ) : null}
         </div>
 
-        <div className="flex-1" />
+        {/* Centre : recherche globale (demandes et usagers), au motif des
+            barres de recherche de header — elle ne garde aucune porte, le RLS
+            et `socle-proxy` bornent ce qu'elle trouve. */}
+        <div className="flex min-w-0 flex-1 justify-center px-4">
+          <GlobalSearch />
+        </div>
 
         {/* Droite : chip administrateur + superadmin (plateforme uniquement) + menu utilisateur */}
         <div className="flex shrink-0 items-center gap-2">

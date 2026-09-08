@@ -8,6 +8,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invokeAdminUsers } from "@/lib/adminUsers";
+import { identityPatch, type IdentityForm } from "@/features/account/account";
 import { supabase } from "@/lib/supabase";
 import type { Tables } from "@/types/database.types";
 import type { SocleOrgRow } from "./socleOrgTree";
@@ -152,17 +153,20 @@ export function useInviteUser() {
   return useMutation({
     mutationFn: async (input: {
       email: string;
-      firstName: string;
-      lastName: string;
+      identity: IdentityForm;
       organizationId: string | null;
-    }): Promise<InviteResult> =>
-      invokeAdminUsers<InviteResult>({
+    }): Promise<InviteResult> => {
+      const patch = identityPatch(input.identity);
+      return invokeAdminUsers<InviteResult>({
         action: "invite_user",
         email: input.email,
-        first_name: input.firstName,
-        last_name: input.lastName,
+        first_name: patch.first_name ?? "",
+        last_name: patch.last_name ?? "",
+        landline_phone: patch.landline_phone ?? "",
+        mobile_phone: patch.mobile_phone ?? "",
         organization_id: input.organizationId,
-      }),
+      });
+    },
     onSuccess: () => invalidate(),
   });
 }
@@ -189,20 +193,27 @@ export function useDeleteUser() {
   });
 }
 
+/**
+ * Identité d'un compte, vue de l'administration de plateforme.
+ *
+ * L'identité proprement dite (nom, prénom, téléphones) est taillée par
+ * `identityPatch`, le MÊME module que « Mon compte » : deux écrans écrivent ces
+ * colonnes, ils ne doivent pas avoir deux idées de ce qu'est un champ vide.
+ * `is_platform_admin` s'y ajoute — il n'appartient qu'à cet écran, et sa garde
+ * (`t01_users_prevent_admin_escalation`) reste en base.
+ */
 export function useUpdateUserProfile() {
   const invalidate = useInvalidateUsers();
   return useMutation({
     mutationFn: async (input: {
       userId: string;
-      firstName: string;
-      lastName: string;
+      identity: IdentityForm;
       isPlatformAdmin: boolean;
     }) => {
       const { error } = await supabase
         .from("users")
         .update({
-          first_name: input.firstName.trim() === "" ? null : input.firstName.trim(),
-          last_name: input.lastName.trim() === "" ? null : input.lastName.trim(),
+          ...identityPatch(input.identity),
           is_platform_admin: input.isPlatformAdmin,
         } as never)
         .eq("id", input.userId);

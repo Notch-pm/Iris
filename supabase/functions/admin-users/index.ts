@@ -138,6 +138,11 @@ Deno.serve(async (req) => {
     const email = str(body?.email).toLowerCase();
     const firstName = str(body?.first_name);
     const lastName = str(body?.last_name);
+    // Coordonnées facultatives. Bornées ici comme en base
+    // (`users_phones_length_check`) : ce qui dépasse est COUPÉ plutôt que
+    // refusé — un numéro trop long ne vaut pas de perdre l'invitation.
+    const landlinePhone = str(body?.landline_phone).slice(0, 40);
+    const mobilePhone = str(body?.mobile_phone).slice(0, 40);
     const orgId = str(body?.organization_id) || null;
 
     if (!EMAIL_RE.test(email)) return fail(req, 400, "bad_request", "Email invalide.");
@@ -201,10 +206,16 @@ Deno.serve(async (req) => {
     }
     const newUserId = created.user.id;
 
-    // Le trigger handle_new_user a créé le profil ; on fiabilise les noms.
+    // Le trigger handle_new_user a créé le profil depuis `user_metadata` ; on
+    // fiabilise les noms et on pose les coordonnées, que le trigger ne lit pas.
     await supabase
       .from("users")
-      .update({ first_name: firstName || null, last_name: lastName || null })
+      .update({
+        first_name: firstName || null,
+        last_name: lastName || null,
+        landline_phone: landlinePhone || null,
+        mobile_phone: mobilePhone || null,
+      })
       .eq("id", newUserId);
 
     if (orgId) {

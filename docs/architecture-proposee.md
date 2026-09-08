@@ -597,6 +597,19 @@ persistée écartée* (expiration, couplage à la disponibilité et à la purge 
 **Règle d'or : Iris copie les pièces, il ne les référence pas** — coût de stockage doublé assumé
 et documenté, c'est le prix de l'autonomie du dossier.
 
+> **Remplacé le 2026-09-08 (contrat 2.0.0) — mode PUSH.** Le pull n'a jamais été livré (aucun
+> worker), et il aurait laissé dormir des URL signées de partenaires dans une table lisible par
+> tout membre, avec une surface SSRF le jour du worker. Désormais l'émetteur **dépose les
+> octets** (`POST /v1/uploads`, multipart), Iris les **vérifie** (signature binaire contre une
+> liste fermée, extension cohérente, sha256 — porte unique `_shared/files/receive.ts`) et les
+> range en **zone d'attente** (`attachment_uploads`, objet sous `{org}/_staging/`), puis
+> l'enveloppe ne porte que des `upload_id` ; le rattachement est **synchrone** (déplacement de
+> l'objet + RPC en une transaction). Une seule copie, aucun état intermédiaire, aucun secret
+> persisté. La règle d'or tient toujours : Iris détient l'octet, il ne référence rien chez
+> l'émetteur — mais sans doublement de stockage : le partenaire sans stockage (Nora) n'a rien à
+> garder. Détail : [`data-model.md`](data-model.md) § `attachment_uploads`,
+> [`api-ingestion.md`](api-ingestion.md) § 3.
+
 **Réponse de création** : identifiant Iris, `numero` lisible, organisation traitante retenue,
 liste des anomalies — directement affichable à l'agent Clara.
 
@@ -780,7 +793,7 @@ identifié chez Clara).
 |---|---|---|---|
 | `demandes-api` (Clara + partenaires) | false | Clé Iris + scope, dans le code | **Aucun en-tête CORS** (S2S uniquement) |
 | `socle-proxy` (UI Iris) | true | JWT agent + **revérification d'appartenance** avant relais | Origine Iris uniquement |
-| `sync-socle-referentiel`, `process-attachment-queue`, `process-webhook-outbox`, purge | false | Secret Vault, mode unique | Aucun |
+| `sync-socle-referentiel`, `attachments-maintenance` (a remplacé `process-attachment-queue` le 2026-09-08 : plus de copie à faire, il ne reste que la purge de la zone d'attente et l'outbox de suppression d'objets — lot 4), `process-webhook-outbox`, purge | false | Secret Vault, mode unique | Aucun |
 
 Ne jamais exposer : le service_role sous aucune forme · les données hors périmètre (404) · les
 détails d'erreur (messages génériques, détail au log) · une recherche non bornée · une colonne

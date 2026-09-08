@@ -216,9 +216,11 @@ note interne → résolution avec texte de clôture → journal.
     serveur (toute clé `procedure_snapshot`/inconnue dans le payload → 400), contact
     rapproché **relu depuis contacts-api** (identité de vérité), écriture ATOMIQUE via la
     RPC `create_request_from_procedure` (demande + pièces + événement
-    `request_created_from_procedure`, attribution à l'agent — tout ou rien). Pièces :
-    uploadées par le navigateur sur `{org}/{draftId}/…` AVANT l'appel (policy storage sur le
-    1er segment), déclarées ensuite (chemin vérifié préfixé au brouillon).
+    `request_created_from_procedure`, attribution à l'agent — tout ou rien). Pièces
+    (2026-09-08) : REÇUES d'abord par l'edge function `request-attachments` (porte unique :
+    type réel, taille, sha256 → zone d'attente `attachment_uploads`, objet sous
+    `{org}/_staging/`), puis référencées par `upload_id` ; l'edge function les DÉPLACE sous
+    la demande et la RPC relit tout en base. **Plus aucun octet du navigateur vers le bucket.**
 - **`useRequests.ts`** : hooks TanStack Query (liste paginée `range`+`count`, facettes, fiche,
   satellites, membres du tenant) + mutations (transition via `buildTransitionUpdate`,
   affectation, notes, liaison `useLinkRequests`). Pas d'appel `supabase` direct dans les
@@ -254,9 +256,10 @@ note interne → résolution avec texte de clôture → journal.
   description, **lieu d'intervention** (carte + itinéraire, ci-dessous), demandes liées via
   `useRequestSummaries`), Documents
   (pièces de la demande **groupées par exigence du formulaire**, avec leur qualification et
-  l'historique de leurs remplacements — vignette, taille, état de copie, « Voir » /
-  « Télécharger » par URL signée, « Qualifier », « Remplacer la pièce » ;
-  pièces d'instruction ; courriers), Échanges, Notes internes (`request_messages`,
+  l'historique de leurs remplacements — vignette, taille, état de copie, « Voir » (PDF et
+  images raster seulement : `inlineViewable`, une seule liste avec la reconnaissance des
+  types côté serveur) / « Télécharger » par URL signée, « Qualifier », « Remplacer la
+  pièce » ; pièces d'instruction ; courriers), Échanges, Notes internes (`request_messages`,
   bulles beurre, suppression auteur/admin), Activité (`activityItems` : journal `request_events`
   fusionné aux notes, plus récent en tête). **Rail** : prise en charge (urgence = `priority`
   via `useUpdatePriority`, agent instructeur via `useAssignRequest`, **organisme responsable**
@@ -620,8 +623,11 @@ note interne → résolution avec texte de clôture → journal.
     l'edge function, qui reste l'autorité, et déjà le droit qu'exigent la policy d'insertion de
     `request_attachments` et la policy storage du bucket.
   - **Le serveur résout ce qu'un navigateur ne peut pas se voir confier** : le destinataire
-    (jamais accepté du payload — sinon Iris devient un relais ouvert) et les chemins de pièces
-    (préfixés `{organization_id}/{request_id}/`).
+    (jamais accepté du payload — sinon Iris devient un relais ouvert) et les pièces — depuis
+    le 2026-09-08, le navigateur n'envoie que des `upload_id` (fichiers reçus par
+    `request-attachments` pour cette demande) et des `attachment_id` (documents du dossier) ;
+    chemin, nom, type et nature sont relus en base, et `send-request-email` ne télécharge
+    jamais hors du préfixe `{organization_id}/{request_id}/`.
   - **L'adresse est celle de la fiche SOCLE d'aujourd'hui** (2026-08-26, voir « Identité
     vivante » plus bas) : `send-request-email` relit `contacts-api` avec la clé de service dès
     que la demande porte un `socle_contact_id`, et retombe sur le `requester_snapshot` pour une
@@ -756,10 +762,13 @@ note interne → résolution avec texte de clôture → journal.
     l'envoi (« remplacera les N pièces déjà déposées »), et le module distingue déjà `attachments`
     (actives) de `superseded` : rouvrir un mode « compléter » ne changerait que la liste des
     lignes que la RPC marque.
-  - **`attach_request_piece` est la porte unique** : téléversement navigateur (policy storage =
-    droit d'instruction), puis RPC qui revérifie le chemin, déclare, remplace et journalise —
-    en UNE transaction. Un INSERT client puis un UPDATE client laisserait, sur coupure, une
-    pièce neuve à côté d'une ancienne encore active : une exigence bloquée inexplicable.
+  - **`attach_request_piece` est la porte unique** : le fichier est REÇU par l'edge function
+    `request-attachments` POUR la demande (droit d'instruction vérifié avant de lire le corps,
+    type réel vérifié, zone d'attente), puis la RPC reçoit l'`upload_id`, relit tout en base,
+    déclare, remplace et journalise — en UNE transaction. Un INSERT client puis un UPDATE
+    client laisserait, sur coupure, une pièce neuve à côté d'une ancienne encore active : une
+    exigence bloquée inexplicable. (Depuis le 2026-09-08, `request_attachments` n'a d'ailleurs
+    plus AUCUNE policy d'écriture cliente.)
   - **« Modifier » les réponses** (onglet Résumé) rejoue le `form_schema` **FIGÉ** du
     `procedure_snapshot` dans `ProcedureFormFields` (prop `attachmentsReadOnly` : les champs
     « pièce » sont rappelés, non déposables — elles se gèrent dans Documents). Le bouton
@@ -922,3 +931,80 @@ note interne → résolution avec texte de clôture → journal.
   La page est en **gabarit large** (`useWideLayout`) : le tableau prend toute la largeur
   de l'écran, seule la barre de filtres reste bornée (1240px) pour que les listes déroulantes
   gardent une taille utile.
+
+- **Documents d'instruction et courriers** (2026-09-01, onglet Documents, edge function
+  `generate-request-document`, modules purs `supabase/functions/_shared/document/`,
+  migration `20260901140000`) : l'agent produit un document du dossier à partir d'un **modèle
+  Word**, en **PDF ou en Word**, avec les variables du dossier fusionnées.
+  - **Trois natures, sur la même table** (`request_attachments.kind`) : `instruction_interne`,
+    `instruction_externe`, `courrier` — plus `demande` (défaut) pour les pièces de l'usager.
+    Une table parallèle aurait dupliqué les policies, la purge RGPD et la qualification.
+  - ⚠️ **L'INVARIANT DU LOT : un document interne ne sort JAMAIS.** Miroir de la règle des
+    notes internes, et gardé à trois niveaux — le trigger
+    `t05_attachments_internal_never_sent` (qui vaut aussi pour le `service_role`), la RPC
+    `start_request_email` qui refuse un interne désigné par identifiant, et l'edge function
+    d'envoi qui relit la nature avant même d'ouvrir l'échange. L'écran, lui, ne fait que
+    refléter : pas de bouton « Joindre à un échange » sur un interne.
+  - **La fusion est un travail de chaîne, et le piège est connu** : Word ne garde pas un jeton
+    d'un seul tenant. `{{usager.nom}}` se retrouve couramment coupé en cinq runs
+    (`{{`, `usager`, `.no`, `m`, `}}`) par le correcteur ou une révision. `docxMerge.ts`
+    travaille donc **paragraphe par paragraphe** : il recolle le texte de tous les `<w:t>`,
+    cherche les jetons dessus, puis redistribue le résultat — la mise en forme du run où le
+    jeton commence l'emporte. Un remplacement naïf sur le XML ne trouverait rien.
+  - **Ce que le catalogue porte** (`_shared/document/variables.ts`, contrat recopié dans les
+    modèles des collectivités : on AJOUTE, on ne renomme pas) : `usager.*` (identité relue
+    dans le Socle, bloc adresse d'un seul tenant), `demande.*` (démarche, code de suivi,
+    dates, urgence, état, instructeur), `organisme.*` (nom, adresse, charte), et une **boucle**
+    `{{#demande.pieces}} … {{libelle}} : {{statut}} … {{/demande.pieces}}`. Vérifié sur le
+    document de référence fourni par le PO : 35 variables, 1 boucle, **0 jeton inconnu**.
+  - **Un jeton hors catalogue est laissé tel quel**, délibérément : le modèle appartient à la
+    collectivité, et faire disparaître silencieusement `{{ma_variable}}` la laisserait sans
+    explication devant un courrier incomplet. L'aperçu les liste avant de produire.
+  - **Les variables d'IMAGE (`organisme.logo_url`) rendent du vide**, pas leur URL : coller une
+    adresse dans un courrier serait pire que rien. Le logo d'un pli vit dans l'en-tête du
+    modèle Word — et le .docx le recopie à l'octet près.
+  - **Word = identique au modèle** (le zip est rouvert, seules les parties textuelles sont
+    réécrites). **PDF = REDESSINÉ par Iris** (`docxParse` → `pdfLayout` → `pdfRender`, pdf-lib) :
+    décision PO du 2026-09-01, aucun convertisseur externe, aucun courrier d'usager envoyé à un
+    tiers. Le prix est écrit à l'écran avant de générer : police substituée, images et
+    en-têtes non repris, listes numérotées en puces. Le PDF sait faire : paragraphes, gras /
+    italique / souligné, tailles, couleurs, alignements (justification comprise), retraits,
+    interlignes, styles nommés avec chaîne `basedOn`, tableaux simples bordés, sauts de page,
+    format et marges de la section.
+  - **Le contexte de fusion est composé CÔTÉ SERVEUR**, jamais accepté du navigateur — même
+    règle que l'e-mail à l'usager et le prompt de l'assistant. Un client qui dicterait
+    `{{organisme.nom}}` signerait un courrier de la collectivité avec le contenu de son choix.
+    Droit exigé : **instruction** sur le couple, comme pour déposer une pièce.
+  - **Joindre un document à un échange crée une LIGNE de plus, pas un fichier de plus** : même
+    `storage_path`, `email_id` posé, `source_attachment_id` vers l'original — qui reste au
+    dossier et peut repartir dans un second message. Le composeur reçoit le document par un
+    brouillon partiel (`ComposerDraft.documentIds`) : joindre n'efface jamais ce que l'agent
+    est en train d'écrire.
+  - **LES MODÈLES VIENNENT DU SOCLE** (contrat public-api **1.6.0**, brief du 2026-09-01,
+    branché le même jour) : `GET /v1/procedures/{id}` porte un bloc `documents`
+    (`restrict_visibility` + `items`), relayé au navigateur par la whitelist de
+    `socle-proxy /v1/procedures/get`. L'écran ne propose donc que ce que le paramétreur a
+    choisi, démarche par démarche.
+    - ⚠️ **LA RÈGLE D'AFFICHAGE, ET SON PIÈGE** (`templates.ts`, pur et testé) :
+      `restrict_visibility` se lit AVANT `visibility`. Les conditions sont **conservées**
+      quand le paramétreur désactive la restriction — un modèle « negative » doit donc
+      s'afficher TOUJOURS si la restriction est levée. L'ignorer masquerait des documents que
+      la collectivité a rendus visibles. Tant que la demande n'est pas close, ni « positive »
+      ni « negative » ne s'appliquent (`closureOutcome` : `annulee` et `archivee` ne sont NI
+      l'une NI l'autre).
+    - **Le fichier ne transite jamais par le navigateur** : le client n'envoie qu'un
+      `template_id`, et l'edge function RECHARGE la démarche pour vérifier que ce modèle est
+      bien l'un de ses `items` avant de demander l'URL signée (5 min, jamais stockée) et de
+      télécharger. Sans cette confrontation, la fonction serait un lecteur libre du bucket
+      `document-templates` dans tout le périmètre de la clé Socle — même défense que
+      `/v1/procedures/document-url` pour la base de connaissances.
+    - **La NATURE vient du modèle**, plus de l'agent : `type` (`interne`/`externe`/`courrier`)
+      décide de `kind`. Le paramétreur a déjà dit ce qu'était le document ; le redemander à
+      l'agent, c'était lui permettre de faire sortir un interne.
+    - **Le Socle ne convertit rien** : il rend le fichier tel qu'il a été déposé (`.doc`,
+      `.docx`, `.odt`). La fusion ne sait ouvrir qu'un `.docx` — le refus est explicite et dit
+      quoi faire (`unmergeableReason`), à l'écran comme au serveur.
+  - Tests : `docxMerge.test.ts`, `docxParse.test.ts`, `pdfLayout.test.ts`, `context.test.ts`,
+    `templates.test.ts` (78 cas, modules purs — dont le piège `restrict_visibility`) + `documents.test.ts` côté écran + le test SQL transactionnel
+    `supabase/tests/documents-instruction.test.sql` (14 assertions, dont les trois niveaux de
+    garde de l'invariant).

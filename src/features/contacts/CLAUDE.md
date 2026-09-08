@@ -53,6 +53,16 @@ navigateur le 2026-08-20 dans le parcours de création.
   adresse et quartier — pastille à la couleur libre du référentiel, texte adapté par
   `isDarkColor`) puis **carte « Demandes de cet usager »** (tableau référence / objet /
   démarche / statut / date, résumé « N visibles · N en cours · dernier dépôt le … »).
+  - **Carte « Documents de cet usager »** (2026-09-08, `documents.ts` pur/testé,
+    `useContactAttachments`) : les pièces des demandes de l'usager, retrouvées par la colonne
+    dénormalisée `request_attachments.socle_contact_id` (écrite par TRIGGER depuis la demande,
+    resynchronisée au rapprochement postérieur — jamais par un client), groupées par demande
+    (référence → fiche, objet, statut), les plus récentes d'abord. **Jamais une pièce
+    d'instruction interne** (règle absolue), jamais la copie jointe à un échange (l'original
+    est listé) ; les pièces remplacées restent, barrées. « Voir » seulement pour PDF et images
+    (`inlineViewable`), « Télécharger » partout (URL signée, `createAttachmentUrl`). Le RLS
+    borne exactement comme pour les demandes : on ne voit que les pièces des dossiers qu'on
+    peut lire — la colonne sert à RETROUVER, pas à ouvrir.
   - `:contactId` est l'**id Socle** (Iris n'a pas d'usagers à lui). La fiche est relue à
     chaque visite via `useSocleContact` (`socle-proxy /v1/contacts/get`, requête TanStack
     `gcTime: 0`/`staleTime: 0` : **aucune rétention**), les demandes viennent d'Iris

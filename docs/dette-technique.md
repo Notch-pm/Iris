@@ -9,7 +9,7 @@ conventions, transverse). La dette de modèle de données et d'API vit là où e
 | Où | Quoi |
 |---|---|
 | [`data-model.md`](data-model.md) § Écarts et suites | Outbox non branchée (phase 4), purge RGPD (phase 5), FK non indexées de l'audit, `version` incrémentée par le recalcul de périmètre, archivage d'usager non repris |
-| [`api-ingestion.md`](api-ingestion.md) § 3 | Worker de copie des pièces ingérées non actif (phase 2) — les pièces restent `copy_status: pending` |
+| [`api-ingestion.md`](api-ingestion.md) § 3 | ~~Worker de copie des pièces ingérées non actif~~ — **fermé le 2026-09-08** : le mode pull est retiré (contrat 2.0.0), les partenaires déposent les octets sur `POST /v1/uploads` ; purge de la zone d'attente et outbox de suppression des objets livrées le même jour (`attachments-maintenance`). Reste : la **purge RGPD des demandes** (`retention_until`, levée de `t01`) — l'outbox la rend désormais possible sans orphelin |
 | [`droits.md`](droits.md) | `organization_members.role` subsiste en colonne dérivée transitoire, à retirer |
 
 ## O1 — Le garde-fou du design system ne s'exécute plus

@@ -11,6 +11,9 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/AuthProvider";
 import {
+  identityFormFrom, PHONE_MAX_LENGTH, validateIdentityForm, type IdentityForm,
+} from "@/features/account/account";
+import {
   useAllMemberships, useAllProfileAssignments, useAllTenants, useAllUsers, useDeleteUser,
   useInviteUser, useRemoveMembership, useSendPasswordReset, useSetMembership, useUpdateUserProfile,
   type ProfileAssignmentInfo, type UserRow,
@@ -50,14 +53,16 @@ export function SuperAdminUsersPage() {
 
   // Formulaire d'invitation.
   const [cEmail, setCEmail] = React.useState("");
-  const [cFirst, setCFirst] = React.useState("");
-  const [cLast, setCLast] = React.useState("");
+  const [cIdentity, setCIdentity] = React.useState<IdentityForm>(() => identityFormFrom(null));
   const [cTenant, setCTenant] = React.useState("");
+  const setC = <K extends keyof IdentityForm>(key: K, value: IdentityForm[K]) =>
+    setCIdentity((f) => ({ ...f, [key]: value }));
 
   // Formulaire d'édition.
-  const [eFirst, setEFirst] = React.useState("");
-  const [eLast, setELast] = React.useState("");
+  const [eIdentity, setEIdentity] = React.useState<IdentityForm>(() => identityFormFrom(null));
   const [ePlatform, setEPlatform] = React.useState(false);
+  const setE = <K extends keyof IdentityForm>(key: K, value: IdentityForm[K]) =>
+    setEIdentity((f) => ({ ...f, [key]: value }));
 
   // RM-44 : le rattachement à un tenant est un simple accès, sans rôle — le
   // rôle de confort (badge) est dérivé côté serveur des profils de droits.
@@ -94,8 +99,7 @@ export function SuperAdminUsersPage() {
   });
 
   function openEdit(u: UserRow) {
-    setEFirst(u.first_name ?? "");
-    setELast(u.last_name ?? "");
+    setEIdentity(identityFormFrom(u));
     setEPlatform(u.is_platform_admin);
     setError(null);
     setEditUser(u);
@@ -103,16 +107,20 @@ export function SuperAdminUsersPage() {
 
   async function submitInvite(e: React.FormEvent) {
     e.preventDefault();
+    const problem = validateIdentityForm(cIdentity);
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setError(null);
     try {
       const result = await inviteUser.mutateAsync({
         email: cEmail,
-        firstName: cFirst,
-        lastName: cLast,
+        identity: cIdentity,
         organizationId: cTenant === "" ? null : cTenant,
       });
       setCreateOpen(false);
-      setCEmail(""); setCFirst(""); setCLast(""); setCTenant("");
+      setCEmail(""); setCIdentity(identityFormFrom(null)); setCTenant("");
 
       if (!result.invited) {
         setNotice({
@@ -150,12 +158,18 @@ export function SuperAdminUsersPage() {
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editUser) return;
+    // Même contrôle de confort qu'à « Mon compte » : un administrateur ne
+    // saisit pas mieux un numéro que son titulaire.
+    const problem = validateIdentityForm(eIdentity);
+    if (problem) {
+      setError(problem);
+      return;
+    }
     setError(null);
     try {
       await updateProfile.mutateAsync({
         userId: editUser.id,
-        firstName: eFirst,
-        lastName: eLast,
+        identity: eIdentity,
         isPlatformAdmin: ePlatform,
       });
       setEditUser(null);
@@ -330,10 +344,22 @@ export function SuperAdminUsersPage() {
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Prénom" htmlFor="cu-first">
-                <Input id="cu-first" value={cFirst} onChange={(e) => setCFirst(e.target.value)} />
+                <Input id="cu-first" value={cIdentity.firstName}
+                  onChange={(e) => setC("firstName", e.target.value)} />
               </Field>
               <Field label="Nom" htmlFor="cu-last">
-                <Input id="cu-last" value={cLast} onChange={(e) => setCLast(e.target.value)} />
+                <Input id="cu-last" value={cIdentity.lastName}
+                  onChange={(e) => setC("lastName", e.target.value)} />
+              </Field>
+              <Field label="Téléphone fixe" htmlFor="cu-landline">
+                <Input id="cu-landline" type="tel" inputMode="tel" maxLength={PHONE_MAX_LENGTH}
+                  value={cIdentity.landlinePhone}
+                  onChange={(e) => setC("landlinePhone", e.target.value)} />
+              </Field>
+              <Field label="Téléphone portable" htmlFor="cu-mobile">
+                <Input id="cu-mobile" type="tel" inputMode="tel" maxLength={PHONE_MAX_LENGTH}
+                  value={cIdentity.mobilePhone}
+                  onChange={(e) => setC("mobilePhone", e.target.value)} />
               </Field>
             </div>
             <Field label="Tenant" htmlFor="cu-tenant"
@@ -367,10 +393,22 @@ export function SuperAdminUsersPage() {
               <form onSubmit={submitEdit} className="flex flex-col gap-4">
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Prénom" htmlFor="eu-first">
-                    <Input id="eu-first" value={eFirst} onChange={(e) => setEFirst(e.target.value)} />
+                    <Input id="eu-first" value={eIdentity.firstName}
+                      onChange={(e) => setE("firstName", e.target.value)} />
                   </Field>
                   <Field label="Nom" htmlFor="eu-last">
-                    <Input id="eu-last" value={eLast} onChange={(e) => setELast(e.target.value)} />
+                    <Input id="eu-last" value={eIdentity.lastName}
+                      onChange={(e) => setE("lastName", e.target.value)} />
+                  </Field>
+                  <Field label="Téléphone fixe" htmlFor="eu-landline">
+                    <Input id="eu-landline" type="tel" inputMode="tel" maxLength={PHONE_MAX_LENGTH}
+                      value={eIdentity.landlinePhone}
+                      onChange={(e) => setE("landlinePhone", e.target.value)} />
+                  </Field>
+                  <Field label="Téléphone portable" htmlFor="eu-mobile">
+                    <Input id="eu-mobile" type="tel" inputMode="tel" maxLength={PHONE_MAX_LENGTH}
+                      value={eIdentity.mobilePhone}
+                      onChange={(e) => setE("mobilePhone", e.target.value)} />
                   </Field>
                 </div>
                 <label className="flex items-center gap-2 text-sm">

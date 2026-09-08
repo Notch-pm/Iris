@@ -2,7 +2,7 @@
 
 > **Public** : équipes intégrant un émetteur de demandes vers Iris (futur connecteur Clara,
 > portail citoyen, partenaire tiers) · **Question traitée** : comment s'authentifier et créer
-> des demandes dans Iris, sans rien modifier côté Iris ? · **Dernière mise à jour** : 2026-08-23
+> des demandes dans Iris, sans rien modifier côté Iris ? · **Dernière mise à jour** : 2026-09-08
 
 Iris expose une **API d'ingestion générique et multi-source** : la même enveloppe, le même
 contrat et la même authentification pour toute application autorisée. Il n'existe **aucune
@@ -14,7 +14,7 @@ simples *sources enregistrées*.
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
 | Documentation lisible | `https://<app-iris>/api-doc` — le même contrat rendu par Redoc, consultable **sans compte** (motif `/api-doc` du Socle) |
-| Version | `1.2.0` — politique v1 : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
+| Version | `2.0.0` (2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -58,8 +58,7 @@ simples *sources enregistrées*.
   "requester": { "last_name": "Dupont", "first_name": "Marie", "email": "marie@exemple.fr" },
   "form_data": { "urgence": "haute" },
   "attachments": [
-    { "file_name": "photo.jpg", "fetch_url": "https://…url-signée-temporaire…", "checksum": "…",
-      "form_field_key": "photo_du_probleme" }
+    { "upload_id": "<uuid rendu par POST /v1/uploads>", "form_field_key": "photo_du_probleme" }
   ],
   "context": {
     "channel": "portail",
@@ -115,7 +114,7 @@ Points de contrat :
     "status": "a_traiter", "version": 1,
     "url": "https://<app-iris>/demandes/<uuid>", "…": "…"
   },
-  "attachments_pending": 1
+  "attachments_registered": 1
 }
 ```
 
@@ -131,25 +130,47 @@ clés stables sur lesquelles coder.
 | Même `external_id` (ou même `idempotency_key`) avec un **contenu divergent** | **409 conflict** explicite — rien n'est écrasé ; corrigez l'`external_id` ou rejouez à l'identique |
 | Deux rejeux simultanés | L'unicité en base tranche, un seul enregistrement, l'autre appel reçoit la demande existante |
 
-L'empreinte de contenu ignore `idempotency_key` et les `fetch_url` (URL signées éphémères) :
-deux rejeux légitimes du même contenu avec des URL signées régénérées → 200.
+L'empreinte de contenu ignore `idempotency_key` et les `upload_id` des pièces : ce qui compte,
+c'est le **contenu** des fichiers (nom, type détecté, taille, sha256, clé de champ). Rejouer
+avec de nouveaux téléversements des mêmes fichiers est un rejeu identique → 200 — et si un
+premier passage a échoué en `502` au rattachement, ce rejeu rattache ce qui manquait.
 
-## 3. Pièces jointes — par référence signée, jamais inline
+## 3. Pièces jointes — déposées d'abord, référencées ensuite (contrat 2.0.0)
 
-Le contenu de fichier **n'entre jamais** dans la requête (clé inconnue → 400). Vous fournissez
-des **références** `{ file_name, fetch_url, checksum?, size_bytes?, mime_type? }` où
-`fetch_url` est une **URL https signée temporaire** émise par votre stockage. Iris répond
-immédiatement et **copie les fichiers en asynchrone** dans son bucket privé
-(`copy_status: pending` → `copied`) : la demande n'est jamais rejetée pour une pièce, et Iris
-ne dépend plus de votre stockage ensuite (règle : Iris copie, il ne référence pas).
+Le contenu de fichier **n'entre jamais** dans une enveloppe JSON (clé inconnue → 400), et Iris
+**ne va jamais chercher un fichier chez vous** : le mode « URL signée » du contrat 1.x, jamais
+mis en service, a été retiré (voir [`api-changelog.md`](api-changelog.md)).
 
-Deux dépôts possibles : `attachments[]` dans l'enveloppe, ou après coup
-`POST /v1/requests/{id}/attachments`.
+1. **Déposez chaque fichier** — `POST /v1/uploads`, `multipart/form-data`, champ `file`, un
+   fichier par appel, **25 Mo** maximum, **60 dépôts par minute et par clé** (429 au-delà).
+   Iris vérifie le **contenu réel** : signature binaire contre une liste **fermée** (PDF, JPEG,
+   PNG, WebP, HEIC, GIF, Word `.docx`, Excel `.xlsx`, OpenDocument `.odt`/`.ods`), extension du
+   nom cohérente avec ce contenu (422 sinon), sha256. Jamais de SVG, d'HTML, d'archive, ni de
+   document Office à macros (415). La réponse porte `upload_id`, le `mime_type` **détecté**,
+   `size_bytes`, `checksum`, et `expires_at` (**24 h**).
+   ```
+   POST /v1/uploads
+   Authorization: Bearer irs_…
+   Content-Type: multipart/form-data; boundary=…
 
-> **État de livraison (2026-08-23)** : le worker de copie n'est **pas encore actif** —
-> les pièces déposées restent `copy_status: pending` et vos URL signées expireront
-> avant d'avoir été lues. N'envoyez pas encore de pièces en production ; la demande,
-> elle, est bien créée. Phase 2 du plan de livraison.
+   --…
+   Content-Disposition: form-data; name="file"; filename="justificatif.pdf"
+   Content-Type: application/pdf
+
+   %PDF-1.7 …
+   ```
+   ```json
+   { "upload": { "upload_id": "…", "file_name": "justificatif.pdf", "mime_type": "application/pdf",
+                 "size_bytes": 184233, "checksum": "…sha256…", "expires_at": "2026-09-09T10:00:00Z" } }
+   ```
+2. **Référencez-les** — `attachments: [{ "upload_id", "form_field_key"? }]` dans l'enveloppe,
+   ou après coup sur `POST /v1/requests/{id}/attachments`. Le rattachement est **synchrone** :
+   à la réponse (`attachments_registered`), les pièces sont dans le dossier, vérifiées, avec
+   leur empreinte. Un `upload_id` inconnu, expiré, déposé avec une autre clé ou déjà rattaché
+   → 400.
+
+Un fichier déposé et jamais référencé est purgé après 24 h, sans conséquence. Iris **copie, il
+ne référence pas** : une fois rattachée, la pièce ne dépend plus de rien chez vous.
 
 ## 4. Suivre ses demandes (scope `requests:read`)
 

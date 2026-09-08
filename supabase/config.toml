@@ -4,9 +4,9 @@
 # (voir docs/demarrage.md).
 project_id = "iris"
 
-# Les edge functions à venir (demandes-api, socle-proxy, sync-socle-referentiel,
-# process-attachment-queue, process-webhook-outbox) seront déclarées ici avec
-# leur verify_jwt, selon docs/architecture-proposee.md §8.2 :
+# Les edge functions à venir (attachments-maintenance — purge de la zone
+# d'attente des pièces et outbox de suppression d'objets —, process-webhook-outbox)
+# seront déclarées ici avec leur verify_jwt, selon docs/architecture-proposee.md §8.2 :
 #   demandes-api / jobs internes → verify_jwt = false (auth portée par le code)
 #   socle-proxy                  → verify_jwt = false EN PRATIQUE : le JWT de
 #     l'agent est vérifié en code (et le périmètre revérifié), la passerelle
@@ -57,4 +57,22 @@ verify_jwt = false
 # Idem — réponse à l'usager depuis l'onglet Échanges de la fiche demande
 # (droit d'instruction revérifié en SQL, destinataire résolu côté serveur).
 [functions.send-request-email]
+verify_jwt = false
+
+# Idem — génération d'un document du dossier depuis un modèle Word (droit
+# d'instruction revérifié en SQL, contexte de fusion composé côté serveur).
+[functions.generate-request-document]
+verify_jwt = false
+
+# Entretien du bucket des pièces : appelée UNIQUEMENT par pg_cron (en-tête
+# x-cron-secret, sans JWT) — purge de la zone d'attente, outbox de suppression
+# d'objets, réconciliation manuelle. Jamais depuis un navigateur, aucun CORS.
+[functions.attachments-maintenance]
+verify_jwt = false
+
+# Idem — LA porte du navigateur vers le bucket des pièces (2026-09-08) :
+# réception multipart, type réel vérifié, zone d'attente. Droits revérifiés en
+# SQL AVANT de lire le corps (création sur le tenant, ou instruction sur la
+# demande).
+[functions.request-attachments]
 verify_jwt = false

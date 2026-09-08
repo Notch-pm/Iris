@@ -22,10 +22,15 @@ import { useTenant } from "@/features/tenant/TenantProvider";
 import { canCreateProcedure } from "@/features/rights/rights";
 import { useSocleProceduresCatalog } from "@/features/socle/useSocleCatalog";
 import { StatusBadge } from "@/features/requests/StatusBadge";
-import { formatDateTime } from "@/features/requests/instruction/instruction";
-import { useContactRequests, type RequestListItem } from "@/features/requests/useRequests";
+import { formatBytes, formatDateTime } from "@/features/requests/instruction/instruction";
+import { inlineViewable } from "@/features/requests/instruction/documents";
+import {
+  createAttachmentUrl, useContactAttachments, useContactRequests,
+  type RequestAttachment, type RequestListItem,
+} from "@/features/requests/useRequests";
 import { useSocleContact } from "./useContacts";
 import { UsagerEditDialog } from "./UsagerEditDialog";
+import { groupAttachmentsByRequest, usagerDocumentsSummary, type UsagerDocumentGroup } from "./documents";
 import {
   addressRows, contactName, contactRows, contactStatusLabel, contactTypeLabel,
   identityRows, isDarkColor, isInactive, usagerStats, type FieldRow,
@@ -48,7 +53,9 @@ export function UsagerPage() {
 
   const contactQuery = useSocleContact(orgId, contactId ?? null);
   const requestsQuery = useContactRequests(orgId, contactId ?? null);
+  const attachmentsQuery = useContactAttachments(orgId, contactId ?? null);
   const procCatalog = useSocleProceduresCatalog(orgId);
+  const [docError, setDocError] = React.useState<string | null>(null);
 
   const [editOpen, setEditOpen] = React.useState(false);
   // Le texte est conservé pendant le fondu de sortie (visible=false).
@@ -66,6 +73,17 @@ export function UsagerPage() {
   const contact = contactQuery.data ?? null;
   const requests = requestsQuery.data ?? [];
   const stats = usagerStats(requests);
+  const documentGroups = groupAttachmentsByRequest(attachmentsQuery.data ?? [], requests);
+
+  async function openDocument(a: RequestAttachment, download: boolean) {
+    setDocError(null);
+    const url = await createAttachmentUrl(a.storage_path, download ? a.file_name : undefined);
+    if (!url) {
+      setDocError("Le document n'a pas pu être ouvert — URL signée refusée.");
+      return;
+    }
+    window.open(url, "_blank", "noopener");
+  }
   // « Nouvelle demande » : au moins une démarche du cache créable (reflet de
   // confort, RM-58) — le serveur revalide le couple à la création. L'usager
   // part imposé dans le parcours (`?usager=`), non modifiable.
@@ -170,6 +188,28 @@ export function UsagerPage() {
         )}
       </Surface>
 
+      <Surface>
+        <SurfaceHead
+          title="Documents de cet usager"
+          sub={attachmentsQuery.isLoading ? "Chargement…" : usagerDocumentsSummary(documentGroups)}
+        />
+        {attachmentsQuery.isError ? (
+          <p className="text-sm text-muted-foreground">Documents indisponibles — réessayez dans un instant.</p>
+        ) : documentGroups.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            Aucun document visible pour cet usager : les pièces suivent ses demandes, et
+            seules celles de votre périmètre sont montrées.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-4">
+            {documentGroups.map((g) => (
+              <DocumentGroup key={g.requestId} group={g} onOpen={openDocument} />
+            ))}
+          </div>
+        )}
+        {docError ? <p role="alert" className="text-sm text-destructive">{docError}</p> : null}
+      </Surface>
+
       {contact && canCreate ? (
         <UsagerEditDialog
           open={editOpen}
@@ -260,6 +300,50 @@ function QuartierCell({ contact }: { contact: SocleContact }) {
         )
       }
     />
+  );
+}
+
+/** Les documents d'une demande de l'usager : la référence renvoie à la fiche. */
+function DocumentGroup({ group, onOpen }: {
+  group: UsagerDocumentGroup;
+  onOpen: (a: RequestAttachment, download: boolean) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Link to={`/demandes/${group.requestId}`} className="font-mono text-xs font-semibold text-primary hover:underline">
+          {group.reference}
+        </Link>
+        {group.subject ? <span className="truncate font-semibold">{group.subject}</span> : null}
+        {group.status ? <StatusBadge status={group.status} /> : null}
+      </div>
+      <ul className="flex flex-col divide-y divide-border/60 rounded-[10px] border border-border">
+        {group.documents.map(({ attachment: a, nature, superseded }) => (
+          <li key={a.id} className="flex flex-wrap items-center gap-2 px-3 py-2 text-sm">
+            <span className={cn("min-w-[160px] flex-1 break-all font-semibold", superseded && "line-through text-muted-foreground")}>
+              {a.file_name}
+            </span>
+            <Badge variant="secondary">{nature}</Badge>
+            {superseded ? <Badge variant="outline">Remplacée</Badge> : null}
+            <span className="text-xs text-muted-foreground">
+              {a.file_size !== null ? `${formatBytes(a.file_size)} · ` : ""}{formatDateTime(a.created_at)}
+            </span>
+            <span className="flex gap-1">
+              <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs"
+                disabled={a.copy_status !== "copied" || !inlineViewable(a.mime_type)}
+                onClick={() => onOpen(a, false)}>
+                Voir
+              </Button>
+              <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs"
+                disabled={a.copy_status !== "copied"}
+                onClick={() => onOpen(a, true)}>
+                Télécharger
+              </Button>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

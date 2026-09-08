@@ -16,17 +16,21 @@ import {
   sanitizeDeclared,
   validateFormSubmission,
   validateRequesterSubmission,
+  type AttachmentDeclaration,
 } from "./_shared/procedureForm.ts";
 import { whitelistProcedureSnapshot } from "./_shared/snapshots.ts";
 import { parseProcedureStatus } from "../_shared/procedures/publication.ts";
 import { contactIdentitySnapshot } from "../_shared/identity/declared.ts";
 import { parsePayload } from "./_shared/payload.ts";
+import { finalPath, isStagingPath } from "../_shared/files/names.ts";
+import { checkUploadRow, type UploadRow } from "../_shared/files/uploads.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
   Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
   { auth: { persistSession: false } },
 );
+const BUCKET = "request-attachments";
 
 const ALLOWED_ORIGINS = new Set(
   [Deno.env.get("IRIS_APP_URL"), "http://localhost:5174"].filter(Boolean) as string[],
@@ -226,11 +230,67 @@ Deno.serve(async (req) => {
     identityStatus = "anonyme";
   }
 
+  // Les pièces : reçues par `request-attachments` (zone d'attente, portée
+  // organisation, déposées par CET agent). Le navigateur n'a envoyé que des
+  // upload_id : nom, type, taille et chemin sont relus ICI, jamais crus.
+  const uploadRows = new Map<string, UploadRow>();
+  if (p.attachments.length > 0) {
+    const { data: rows, error: rowsError } = await supabase
+      .from("attachment_uploads")
+      .select(
+        "id, organization_id, scope_request_id, integration_source_id, uploaded_by, storage_path, " +
+        "file_name, mime_type, file_size, checksum, expires_at, consumed_at, discarded_at",
+      )
+      .in("id", p.attachments.map((a) => a.upload_id))
+      .eq("organization_id", p.organizationId);
+    if (rowsError) return fail(req, 500, "internal_error", "Pièces illisibles — réessayez.");
+    for (const row of rows ?? []) uploadRows.set(row.id, row as UploadRow);
+    for (const [i, ref] of p.attachments.entries()) {
+      const check = checkUploadRow(uploadRows.get(ref.upload_id), {
+        organizationId: p.organizationId,
+        requestId: p.requestId,
+        actorId: agentId,
+      });
+      if (!check.ok) return fail(req, 400, "bad_request", `Pièce ${i + 1} : ${check.message}`);
+    }
+  }
+  const declarations: AttachmentDeclaration[] = p.attachments.map((ref) => {
+    const row = uploadRows.get(ref.upload_id)!;
+    return {
+      form_field_key: ref.form_field_key,
+      file_name: row.file_name,
+      storage_path: row.storage_path,
+      mime_type: row.mime_type,
+      size_bytes: row.file_size,
+    };
+  });
+
   // Formulaire : conditions, obligatoires, types, options, pièces (cardinalités
   // et formats) — validés contre le SCHÉMA RECHARGÉ.
-  const form = validateFormSubmission(schema, p.formValues, p.attachments);
+  const form = validateFormSubmission(schema, p.formValues, declarations);
   if (!form.ok) {
     return fail(req, 400, "bad_request", "Formulaire invalide.", { fields: form.errors });
+  }
+
+  // Les objets quittent la zone d'attente pour la demande (déplacement =
+  // métadonnées), et la ligne d'attente suit : si la RPC échoue ensuite, la
+  // purge saura où ils sont. Un objet déjà déplacé (rejeu) n'est pas rejoué.
+  const bucket = supabase.storage.from(BUCKET);
+  for (const ref of p.attachments) {
+    const row = uploadRows.get(ref.upload_id)!;
+    if (!isStagingPath(row.storage_path)) continue;
+    const dest = finalPath(p.organizationId, p.requestId, row.id, row.file_name);
+    const { error: moveError } = await bucket.move(row.storage_path, dest);
+    if (moveError && !/already exists|duplicate/i.test(moveError.message)) {
+      console.error("create-request-from-procedure: déplacement d'une pièce impossible", moveError);
+      return fail(req, 502, "storage_failed", "Stockage indisponible : réessayez dans quelques instants.");
+    }
+    const { error: updateError } = await supabase
+      .from("attachment_uploads")
+      .update({ storage_path: dest })
+      .eq("id", row.id);
+    if (updateError) return fail(req, 500, "internal_error", "Erreur serveur.");
+    row.storage_path = dest;
   }
 
   // Écriture ATOMIQUE (RPC = une transaction : demande + pièces + événement).

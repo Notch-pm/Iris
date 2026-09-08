@@ -12,11 +12,12 @@
 // Le verdict, lui, s'écrit fichier par fichier (`request_attachments`), par la
 // RPC `qualify_request_attachment` — seule porte.
 
-import { AlertTriangle, CheckCircle2, Plus, Send, Upload } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FilePlus2, Plus, Send, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RequestAttachment } from "../useRequests";
 import { Pill, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
+import { documentsOf, generatedMeta, inlineViewable, type DocumentKind } from "./documents";
 import { attachmentExt, COPY_STATUS, formatBytes, formatDayMonth } from "./instruction";
 import {
   blockingMessage, complianceCounts, motifLabel,
@@ -47,11 +48,16 @@ interface Props {
   onResume: () => void;
   onOpen: (attachment: RequestAttachment) => void;
   onDownload: (attachment: RequestAttachment) => void;
+  /** Ouvrir la génération d'un document, sur la nature du bloc cliqué. */
+  onGenerate: (kind: DocumentKind) => void;
+  /** Joindre un document transmissible au prochain message à l'usager. */
+  onAttach: (attachment: RequestAttachment) => void;
 }
 
 export function DocumentsPane({
   attachments, requirements, canInstruct, archived, waiting, readyToResume,
   resuming, onQualify, onAddPiece, onSignal, onResume, onOpen, onDownload,
+  onGenerate, onAttach,
 }: Props) {
   const byId = new Map(attachments.map((a) => [a.id, a]));
   const counts = complianceCounts(requirements);
@@ -203,7 +209,9 @@ export function DocumentsPane({
                         {row && copy && row.copy_status !== "copied" ? <Pill tone={copy.tone}>{copy.label}</Pill> : null}
                         <span className="flex gap-1.5">
                           <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs"
-                            disabled={!available || !row} onClick={() => row && onOpen(row)}>
+                            disabled={!available || !row || !inlineViewable(row.mime_type)}
+                            title={row && !inlineViewable(row.mime_type) ? "Ce format ne s'affiche pas dans le navigateur : téléchargez-le." : undefined}
+                            onClick={() => row && onOpen(row)}>
                             Voir
                           </Button>
                           <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs"
@@ -262,27 +270,137 @@ export function DocumentsPane({
         ) : null}
       </Surface>
 
-      <Surface className="opacity-60" aria-disabled="true">
+      <Surface>
         <SurfaceHead
           title="Pièces d'instruction"
-          sub="Internes au service — non transmises à l'usager"
-          action={<Button type="button" variant="outline" size="sm" {...SOON}><Plus /> Ajouter une pièce</Button>}
+          sub="Produites par le service — les internes ne quittent jamais Iris"
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!canInstruct || archived}
+              title={qualifyTitle}
+              onClick={() => onGenerate("instruction_interne")}
+            >
+              <FilePlus2 /> Générer une pièce
+            </Button>
+          }
         />
-        <p className="text-sm text-muted-foreground">
-          Le dépôt de pièces internes à l'instruction arrive dans une prochaine version.
-        </p>
+        <DocumentGroup
+          title="Internes"
+          hint="Ne seront jamais transmises à l'usager."
+          documents={documentsOf(attachments, "instruction_interne")}
+          onOpen={onOpen}
+          onDownload={onDownload}
+          onAttach={null}
+        />
+        <DocumentGroup
+          title="Externes"
+          hint="Transmissibles à l'usager en pièce jointe d'un échange."
+          documents={documentsOf(attachments, "instruction_externe")}
+          onOpen={onOpen}
+          onDownload={onDownload}
+          onAttach={canInstruct && !archived ? onAttach : null}
+        />
       </Surface>
 
-      <Surface className="opacity-60" aria-disabled="true">
+      <Surface>
         <SurfaceHead
           title="Courriers"
-          sub="Générés depuis les modèles du service"
-          action={<Button type="button" variant="outline" size="sm" {...SOON}><Plus /> Générer un courrier</Button>}
+          sub="Générés depuis un modèle Word, en PDF ou en Word"
+          action={
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={!canInstruct || archived}
+              title={qualifyTitle}
+              onClick={() => onGenerate("courrier")}
+            >
+              <Plus /> Générer un courrier
+            </Button>
+          }
         />
-        <p className="text-sm text-muted-foreground">
-          La génération de courriers depuis les modèles du service arrive dans une prochaine version.
-        </p>
+        <DocumentGroup
+          title={null}
+          hint="Transmissibles à l'usager en pièce jointe d'un échange."
+          documents={documentsOf(attachments, "courrier")}
+          onOpen={onOpen}
+          onDownload={onDownload}
+          onAttach={canInstruct && !archived ? onAttach : null}
+        />
       </Surface>
+    </div>
+  );
+}
+
+/** Un bloc de documents d'une même nature — vide, il le dit et n'affiche rien d'autre. */
+function DocumentGroup({
+  title, hint, documents, onOpen, onDownload, onAttach,
+}: {
+  title: string | null;
+  hint: string;
+  documents: RequestAttachment[];
+  onOpen: (a: RequestAttachment) => void;
+  onDownload: (a: RequestAttachment) => void;
+  /** `null` = ce document ne se joint pas (interne, ou droit manquant). */
+  onAttach: ((a: RequestAttachment) => void) | null;
+}) {
+  return (
+    <div className="flex flex-col gap-2">
+      {title ? (
+        <div className="flex flex-wrap items-baseline gap-2">
+          <span className="text-[12.5px] font-bold">{title}</span>
+          <span className="text-[11.5px] text-muted-foreground">{hint}</span>
+        </div>
+      ) : null}
+      {documents.length === 0 ? (
+        <p className="text-[12.5px] text-muted-foreground">
+          {title ? "Aucun document." : `Aucun courrier. ${hint}`}
+        </p>
+      ) : (
+        documents.map((doc) => {
+          const ext = attachmentExt(doc.file_name, doc.mime_type);
+          const meta = [formatBytes(doc.file_size), generatedMeta(doc)]
+            .filter((part) => part !== "").join(" · ");
+          return (
+            <div key={doc.id} className="flex flex-wrap items-center gap-3">
+              <span
+                aria-hidden="true"
+                className={cn(
+                  "flex h-9 w-9 shrink-0 items-center justify-center rounded-[9px] text-[10px] font-extrabold",
+                  ext === "PDF" ? "bg-destructive/10 text-destructive" : "bg-muted text-foreground/80",
+                )}
+              >
+                {ext}
+              </span>
+              <span className="flex min-w-[150px] flex-1 flex-col gap-0.5">
+                <span className="break-all text-[13px] font-semibold">{doc.file_name}</span>
+                {meta ? <span className="text-[11.5px] text-muted-foreground">{meta}</span> : null}
+              </span>
+              <span className="flex gap-1.5">
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs"
+                  disabled={!inlineViewable(doc.mime_type)}
+                  title={!inlineViewable(doc.mime_type) ? "Ce format ne s'affiche pas dans le navigateur : téléchargez-le." : undefined}
+                  onClick={() => onOpen(doc)}>
+                  Voir
+                </Button>
+                <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs"
+                  onClick={() => onDownload(doc)}>
+                  Télécharger
+                </Button>
+                {onAttach ? (
+                  <Button type="button" variant="outline" size="sm" className="h-7 px-2.5 text-xs"
+                    onClick={() => onAttach(doc)}>
+                    <Send /> Joindre à un échange
+                  </Button>
+                ) : null}
+              </span>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

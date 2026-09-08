@@ -15,12 +15,13 @@ import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/features/auth/AuthProvider";
 import {
-  defaultMatrix, displayName, initials, matrixEquals, PREFERENCE_ROWS, silencedCount,
-  validateAvatar, validatePasswordForm, type PreferenceMatrix,
+  defaultMatrix, displayName, identityChanged, identityFormFrom, initials, matrixEquals,
+  PHONE_MAX_LENGTH, PREFERENCE_ROWS, silencedCount, validateAvatar, validateIdentityForm,
+  validatePasswordForm, type IdentityForm, type PreferenceMatrix,
 } from "./account";
 import {
   useAvatarUrl, useChangePassword, useNotificationPreferences, useRemoveAvatar,
-  useSaveNotificationPreferences, useUpdateNames, useUploadAvatar,
+  useSaveNotificationPreferences, useUpdateIdentity, useUploadAvatar,
 } from "./useAccount";
 
 type Note = { text: string; error: boolean } | null;
@@ -55,25 +56,24 @@ function IdentityCard() {
   const avatarUrl = useAvatarUrl(profile?.avatar_path ?? null).data ?? null;
   const upload = useUploadAvatar();
   const remove = useRemoveAvatar();
-  const updateNames = useUpdateNames();
+  const updateIdentity = useUpdateIdentity();
   const fileRef = React.useRef<HTMLInputElement>(null);
 
-  const [firstName, setFirstName] = React.useState(profile?.first_name ?? "");
-  const [lastName, setLastName] = React.useState(profile?.last_name ?? "");
+  const [form, setForm] = React.useState<IdentityForm>(() => identityFormFrom(profile));
   const [note, setNote] = React.useState<Note>(null);
   const [photoNote, setPhotoNote] = React.useState<Note>(null);
+  const set = <K extends keyof IdentityForm>(key: K, value: IdentityForm[K]) =>
+    setForm((f) => ({ ...f, [key]: value }));
 
   // Le profil arrive après le premier rendu : on aligne les champs tant que
   // l'utilisateur n'a rien saisi (clé sur l'id, pas sur l'objet profil).
   const profileId = profile?.id ?? null;
   React.useEffect(() => {
-    setFirstName(profile?.first_name ?? "");
-    setLastName(profile?.last_name ?? "");
+    setForm(identityFormFrom(profile));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId]);
 
-  const dirty =
-    (profile?.first_name ?? "") !== firstName || (profile?.last_name ?? "") !== lastName;
+  const dirty = identityChanged(profile, form);
 
   async function onPick(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -105,10 +105,18 @@ function IdentityCard() {
     }
   }
 
-  async function onSaveNames() {
+  async function onSaveIdentity() {
+    // Le contrôle des téléphones est un CONFORT : il évite d'envoyer ce qu'on
+    // sait déjà être une faute de frappe. La borne de longueur, elle, est
+    // portée par la base (`users_phones_length_check`).
+    const problem = validateIdentityForm(form);
+    if (problem) {
+      setNote({ text: problem, error: true });
+      return;
+    }
     setNote(null);
     try {
-      await updateNames.mutateAsync({ firstName, lastName });
+      await updateIdentity.mutateAsync(form);
       setNote({ text: "Identité enregistrée.", error: false });
     } catch (err) {
       setNote({ text: err instanceof Error ? err.message : "Enregistrement impossible.", error: true });
@@ -175,17 +183,41 @@ function IdentityCard() {
           <Field label="Prénom" htmlFor="first-name">
             <Input
               id="first-name"
-              value={firstName}
-              onChange={(e) => setFirstName(e.target.value)}
+              value={form.firstName}
+              onChange={(e) => set("firstName", e.target.value)}
               autoComplete="given-name"
             />
           </Field>
           <Field label="Nom" htmlFor="last-name">
             <Input
               id="last-name"
-              value={lastName}
-              onChange={(e) => setLastName(e.target.value)}
+              value={form.lastName}
+              onChange={(e) => set("lastName", e.target.value)}
               autoComplete="family-name"
+            />
+          </Field>
+          {/* `type="tel"` ouvre le clavier numérique sur mobile ; les jetons
+              d'autocomplétion laissent le navigateur remplir tout seul. */}
+          <Field label="Téléphone fixe" htmlFor="landline-phone">
+            <Input
+              id="landline-phone"
+              type="tel"
+              inputMode="tel"
+              maxLength={PHONE_MAX_LENGTH}
+              value={form.landlinePhone}
+              onChange={(e) => set("landlinePhone", e.target.value)}
+              autoComplete="tel-national"
+            />
+          </Field>
+          <Field label="Téléphone portable" htmlFor="mobile-phone">
+            <Input
+              id="mobile-phone"
+              type="tel"
+              inputMode="tel"
+              maxLength={PHONE_MAX_LENGTH}
+              value={form.mobilePhone}
+              onChange={(e) => set("mobilePhone", e.target.value)}
+              autoComplete="mobile tel"
             />
           </Field>
           <Field
@@ -198,10 +230,10 @@ function IdentityCard() {
           <div className="flex flex-wrap items-center gap-3">
             <Button
               type="button"
-              disabled={!dirty || updateNames.isPending}
-              onClick={() => void onSaveNames()}
+              disabled={!dirty || updateIdentity.isPending}
+              onClick={() => void onSaveIdentity()}
             >
-              {updateNames.isPending ? "Enregistrement…" : "Enregistrer"}
+              {updateIdentity.isPending ? "Enregistrement…" : "Enregistrer"}
             </Button>
             <NoteLine note={note} />
           </div>
