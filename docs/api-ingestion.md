@@ -172,6 +172,17 @@ mis en service, a été retiré (voir [`api-changelog.md`](api-changelog.md)).
 Un fichier déposé et jamais référencé est purgé après 24 h, sans conséquence. Iris **copie, il
 ne référence pas** : une fois rattachée, la pièce ne dépend plus de rien chez vous.
 
+### Refus d'une garde métier — `400` avec la raison
+
+Une demande peut être refusée par une **garde serveur** d'Iris après validation de l'enveloppe :
+le cas rencontré le 2026-09-08 est une **démarche non activée pour l'organisme** transmis
+(`socle_organization_id`, ou la racine du tenant si vous n'en transmettez pas — miroir
+`Socle.organization_procedures`, opt-in strict). La réponse est un `400 bad_request` dont le
+message est celui de la garde (« Cette démarche n'est pas activée pour cet organisme dans le
+référentiel Socle. ») — pas une panne, rien à rejouer : c'est le couple (démarche, organisme)
+qu'il faut corriger, ou l'activation dans le Socle. Les pièces déjà déposées restent en attente
+24 h et peuvent être référencées par un nouvel envoi corrigé.
+
 ## 4. Suivre ses demandes (scope `requests:read`)
 
 - `GET /v1/requests/{id}` — relecture. **404** si la demande n'est pas de votre source ou de

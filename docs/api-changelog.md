@@ -35,6 +35,9 @@ sous `/v1`), l'idempotence et les réponses sont inchangées.
 - **Nouveaux refus** : `413 payload_too_large`, `415 unsupported_media_type`,
   `422 unprocessable` (extension incohérente avec le contenu), `429 too_many_requests`,
   `502 bad_gateway` (stockage indisponible).
+- **Un refus de garde métier est un `400` qui dit pourquoi** (correctif du même jour) : une
+  démarche non activée pour l'organisme transmis rendait `500 internal_error` ; le message de la
+  garde est désormais relayé en `bad_request`.
 
 ### Ce que ça implique pour vous
 
