@@ -636,6 +636,12 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
         .maybeSingle();
       if (again.data) return await replayResponse(auth, again.data, fingerprint, resolved);
     }
+    // Un refus d'une garde métier (P0001 : démarche non activée pour l'organisme,
+    // pièce obligatoire…) est une réponse au partenaire, pas une panne : il porte
+    // son message, en 400, pour que l'émetteur sache quoi corriger.
+    if (insert.error.code === "P0001") {
+      return fail("bad_request", insert.error.message);
+    }
     console.error("requests-api insert:", insert.error);
     return fail("internal_error", "Erreur serveur.");
   }
