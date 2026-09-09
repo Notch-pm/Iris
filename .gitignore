@@ -30,3 +30,6 @@ Thumbs.db
 
 # Secrets locaux (jamais versionnes)
 .secrets/
+
+# État local de wrangler (wrangler dev)
+.wrangler/

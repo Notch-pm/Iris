@@ -1,0 +1,20 @@
+// Déploiement du front Iris sur Cloudflare Workers (assets statiques uniquement, aucun code Worker).
+//
+// Ce fichier DOIT exister : sans lui, `wrangler deploy` détecte un projet Vite et tente de réécrire
+// vite.config.ts pour y injecter @cloudflare/vite-plugin. Le Worker n'a pas de script — il n'y a
+// rien à brancher, et ce fichier suffit à le dire.
+//
+// ⚠️ VITE_SUPABASE_URL / VITE_SUPABASE_PUBLISHABLE_KEY sont inlinées par Vite à `npm run build` :
+// elles se règlent comme variables de BUILD du projet Cloudflare (Settings → Build → Variables),
+// jamais comme variables de runtime — un Worker sans code n'en a pas. Absentes, le build passe
+// quand même et l'application s'ouvre sur une page blanche (`createClient` refuse une URL vide).
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "iris",
+  "compatibility_date": "2026-09-09",
+  "assets": {
+    "directory": "./dist",
+    // React Router (BrowserRouter) : toute route inconnue sert index.html au lieu d'un 404.
+    "not_found_handling": "single-page-application"
+  }
+}
