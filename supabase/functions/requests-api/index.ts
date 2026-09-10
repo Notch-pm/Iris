@@ -605,7 +605,8 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
     .from("requests")
     .insert({
       organization_id: auth.organizationId,
-      // reference / socle_root_org_id / libellés posés par triggers — vérité serveur.
+      // reference / socle_root_org_id / libellés posés par triggers — vérité serveur
+      // (démarche et catégorie : t16 ; organisme : t08, relu dans le miroir, 2026-09-17).
       reference: "en-attente", reference_year: 0, reference_seq: 0,
       socle_root_org_id: auth.socleRootOrgId,
       socle_organization_id: env.socle_organization_id ?? null,

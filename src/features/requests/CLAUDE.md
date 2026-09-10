@@ -823,7 +823,13 @@ note interne → résolution avec texte de clôture → journal.
     refléter) :
     1. `t08_requests_apply_transfer` relit le **libellé dans le miroir** — jamais celui
        soumis, sans quoi un transfert pourrait mentir sur sa destination et toute la lecture
-       humaine (liste, tableau, kanban, e-mails) mentirait de concert ;
+       humaine (liste, tableau, kanban, e-mails) mentirait de concert. Depuis le
+       2026-09-17, la même fonction joue **aussi au dépôt**
+       (`t08_requests_fill_organization_label`, BEFORE INSERT) : l'ingestion partenaire
+       n'envoie que l'identifiant, et une demande du portail rattachée à l'ACCM s'affichait
+       « Aucun organisme désigné » (DEM-2026-000050). Le libellé n'est donc **jamais une
+       entrée** : ni de l'agent, ni du partenaire — `supabase/tests/
+       libelle-organisme-depot.test.sql` ;
     2. le même trigger **retire l'affectation** quand l'agent affecté n'a pas l'instruction
        sur le couple d'arrivée (RM-16). Deux lectures étaient possibles — refuser le
        transfert, ou retirer l'affectation ; la seconde a été retenue (PO) : le service qui
