@@ -86,6 +86,11 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   dépôt »).
 - **Aucune suppression de demande** (pièce administrative) : pas de policy DELETE, FK
   `ON DELETE RESTRICT` depuis le tenant, purge RGPD par procédure `service_role` dédiée.
+  **Les statistiques survivent à cette purge** (décision PO 2026-09-18) : elles se lisent dans
+  deux tables de faits, `request_stats` et `intervention_stats` — une ligne par objet, **sans
+  donnée d'usager, sans FK vers la demande** (UUID nu), alimentées par trigger `t31_*`,
+  **jamais purgées** ; l'écran ne lit jamais `requests`. Un script qui supprime des demandes
+  de test (nettoyage e2e, purge du jeu ACCM) doit vider les faits correspondants.
 - **Aucun octet n'entre dans le bucket des pièces depuis un navigateur** (2026-09-08) : tout
   fichier — d'un agent, d'un partenaire, ou produit par Iris — passe par la **porte unique**
   `supabase/functions/_shared/files/receive.ts` (taille, **signature binaire contre une liste
@@ -348,6 +353,19 @@ les invariants ci-dessus restent la référence.
   quartier / volumétrie de demandes, tri par colonne, export CSV — fiches du Socle et
   compteurs Iris bornés par le RLS, rapprochés dans le navigateur) →
   [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
+- **Statistiques** (`src/features/stats`, route `/statistiques`, entrée de rail — 2026-09-18) :
+  motif Clara **à l'identique** (ApexCharts 3.54 via `react-apexcharts`, `chartConfig.ts`
+  recopié, cartes KPI, grille 2 colonnes, filtres organisme + période 7 j / 30 j / 1 an sur
+  `received_at`). Onze indicateurs : demandes reçues (total, par mois, **par canal** — portail,
+  Clara, création directe, partenaires API : regroupement des `source` dans `stats.ts`, pur et
+  testé —, par organisme), délais moyens avant instruction et avant résolution par organisme,
+  taux de résolution positive, agents ayant le plus résolu (**l'agent qui a instruit = l'auteur
+  de la résolution**, décision PO), interventions réalisées, délai de clôture des
+  interventions, intervenants les plus actifs. **Ouvert à tout membre, borné par ses droits** :
+  huit RPC `stats_*` SECURITY INVOKER sur les tables de faits (invariant « Aucune suppression
+  de demande »), même prédicat de consultation par couple que la liste — un administrateur
+  sans consultation voit des graphiques vides. Bureau seul →
+  [`src/features/stats/CLAUDE.md`](src/features/stats/CLAUDE.md).
 - **Recherche globale** (`src/features/search`, barre au centre du header) : une saisie, deux
   natures — **demande** (code de suivi, libellé, date de dépôt, statut, agent instructeur,
   organisme responsable) et **usager** (nom, prénom, ville) —, résultats **groupés par nature**,

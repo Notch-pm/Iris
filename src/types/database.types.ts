@@ -384,6 +384,54 @@ export type Database = {
           },
         ]
       }
+      intervention_stats: {
+        Row: {
+          completed_at: string | null
+          completed_on: string | null
+          intervenant_id: string | null
+          intervention_id: string
+          organization_id: string
+          request_id: string
+          requested_at: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          completed_on?: string | null
+          intervenant_id?: string | null
+          intervention_id: string
+          organization_id: string
+          request_id: string
+          requested_at: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          completed_on?: string | null
+          intervenant_id?: string | null
+          intervention_id?: string
+          organization_id?: string
+          request_id?: string
+          requested_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "intervention_stats_intervenant_id_fkey"
+            columns: ["intervenant_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "intervention_stats_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_preferences: {
         Row: {
           email: boolean
@@ -1419,6 +1467,75 @@ export type Database = {
           },
         ]
       }
+      request_stats: {
+        Row: {
+          channel: string | null
+          created_at: string
+          current_status: string
+          instruction_started_at: string | null
+          organization_id: string
+          outcome: string | null
+          received_at: string
+          request_id: string
+          resolved_at: string | null
+          resolved_by: string | null
+          socle_procedure_id: string | null
+          socle_root_org_id: string
+          socle_scope_org_id: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          channel?: string | null
+          created_at: string
+          current_status: string
+          instruction_started_at?: string | null
+          organization_id: string
+          outcome?: string | null
+          received_at: string
+          request_id: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          socle_procedure_id?: string | null
+          socle_root_org_id: string
+          socle_scope_org_id: string
+          source: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string | null
+          created_at?: string
+          current_status?: string
+          instruction_started_at?: string | null
+          organization_id?: string
+          outcome?: string | null
+          received_at?: string
+          request_id?: string
+          resolved_at?: string | null
+          resolved_by?: string | null
+          socle_procedure_id?: string | null
+          socle_root_org_id?: string
+          socle_scope_org_id?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_stats_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_stats_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       requests: {
         Row: {
           anomalies: Json
@@ -2259,6 +2376,14 @@ export type Database = {
         }
         Returns: Json
       }
+      rebuild_intervention_stats: {
+        Args: { p_request_id?: string }
+        Returns: number
+      }
+      rebuild_request_stats: {
+        Args: { p_request_id?: string }
+        Returns: number
+      }
       refresh_member_roles: { Args: { p_org_id: string }; Returns: undefined }
       refresh_request_scope_org: {
         Args: { p_org_id?: string }
@@ -2401,6 +2526,81 @@ export type Database = {
           p_to_email: string
         }
         Returns: string
+      }
+      stats_interventions: {
+        Args: { p_org_id: string; p_since: string; p_socle_org_id?: string }
+        Returns: {
+          avg_days_to_completion: number
+          completed_count: number
+          requested_count: number
+        }[]
+      }
+      stats_outcomes: {
+        Args: { p_org_id: string; p_since: string; p_socle_org_id?: string }
+        Returns: {
+          cancelled_count: number
+          negative_count: number
+          open_count: number
+          positive_count: number
+        }[]
+      }
+      stats_processing_times: {
+        Args: { p_org_id: string; p_since: string }
+        Returns: {
+          avg_days_to_instruction: number
+          avg_days_to_resolution: number
+          org_name: string
+          org_socle_id: string
+          request_count: number
+        }[]
+      }
+      stats_requests_by_month: {
+        Args: { p_months?: number; p_org_id: string; p_socle_org_id?: string }
+        Returns: {
+          month_key: string
+          request_count: number
+        }[]
+      }
+      stats_requests_by_organization: {
+        Args: { p_org_id: string; p_since: string }
+        Returns: {
+          org_name: string
+          org_socle_id: string
+          request_count: number
+        }[]
+      }
+      stats_requests_by_source: {
+        Args: { p_org_id: string; p_since: string; p_socle_org_id?: string }
+        Returns: {
+          request_count: number
+          source_code: string
+        }[]
+      }
+      stats_top_intervenants: {
+        Args: {
+          p_limit?: number
+          p_org_id: string
+          p_since: string
+          p_socle_org_id?: string
+        }
+        Returns: {
+          intervention_count: number
+          user_id: string
+          user_name: string
+        }[]
+      }
+      stats_top_resolvers: {
+        Args: {
+          p_limit?: number
+          p_org_id: string
+          p_since: string
+          p_socle_org_id?: string
+        }
+        Returns: {
+          request_count: number
+          user_id: string
+          user_name: string
+        }[]
       }
       sync_smtp_settings_from_socle: {
         Args: {

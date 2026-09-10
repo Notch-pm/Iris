@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  ChevronsUpDown, Columns3, HardHat, Inbox, LogOut, Map, RotateCcw, ShieldCheck,
+  BarChart3, ChevronsUpDown, Columns3, HardHat, Inbox, LogOut, Map, RotateCcw, ShieldCheck,
   Smartphone, User, Users,
 } from "lucide-react";
 import { useDevice } from "@/features/device/DeviceProvider";
@@ -62,6 +62,9 @@ const BASE_NAV_ITEMS: NavItem[] = [
   // s'allumeraient sur `/demandes/tableau` (voir `nav.ts`).
   { to: "/demandes", label: "Demandes", icon: Inbox, end: false, except: ["/demandes/tableau"] },
   { to: "/carte", label: "Carte des interventions", icon: Map, end: false },
+  // Ouvert à tout membre : les chiffres sont bornés par le RLS (consultation
+  // par couple), exactement comme la liste — pas de garde de rail.
+  { to: "/statistiques", label: "Statistiques", icon: BarChart3, end: false },
 ];
 
 // L'annuaire des usagers exige le même droit que « Nouvelle demande » (garde de

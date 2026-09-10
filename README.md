@@ -22,8 +22,10 @@ Depuis, le parcours agent s'est étoffé : **profils de droits** par couple (org
 porteuse, démarche), **tableau des demandes** (kanban) et **carte des interventions**,
 **annuaire et fiche usager**, **qualification des pièces**, **échanges avec l'usager** (réponse
 et avis de clôture, aux couleurs de la collectivité), **notifications** in-app et e-mail,
-**modèles d'e-mail**, **base de connaissances des démarches** et **assistant IA d'instruction**
-adossé au guichet du Socle.
+**modèles d'e-mail**, **base de connaissances des démarches**, **assistant IA d'instruction**
+adossé au guichet du Socle, **interventions** et — depuis le 2026-09-18 — un écran
+**Statistiques** (motif Clara, ApexCharts) lu dans des tables de faits **insensibles à la
+future purge RGPD**.
 
 Restent à venir : copie asynchrone des pièces ingérées, webhooks sortants et purge RGPD. Ce
 qui est demandé mais pas encore arbitré vit dans [`docs/backlog.md`](docs/backlog.md) ; ce qui

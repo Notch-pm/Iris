@@ -16,6 +16,7 @@ import { CartePage } from "@/features/requests/carte/CartePage";
 import { TableauPage } from "@/features/requests/tableau/TableauPage";
 import { RequestDetailPage } from "@/features/requests/RequestDetailPage";
 import { MesInterventionsPage } from "@/features/requests/interventions/MesInterventionsPage";
+import { StatistiquesPage } from "@/features/stats/StatistiquesPage";
 import { NewRequestPage } from "@/features/requests/creation/NewRequestPage";
 import { PermissionsPage } from "@/features/permissions/PermissionsPage";
 import { UsagerPage } from "@/features/contacts/UsagerPage";
@@ -75,6 +76,8 @@ export function App() {
               <Route path="demandes" element={<Adaptive desktop={<RequestsListPage />} mobile={<MobileRequestsListPage />} />} />
               <Route path="demandes/tableau" element={<Adaptive desktop={<TableauPage />} />} />
               <Route path="carte" element={<Adaptive desktop={<CartePage />} />} />
+              {/* Bureau seul : les graphiques ne font pas partie des huit écrans mobiles validés. */}
+              <Route path="statistiques" element={<Adaptive desktop={<StatistiquesPage />} />} />
               <Route path="demandes/nouvelle" element={<Adaptive desktop={<NewRequestPage />} mobile={<MobileNewRequestPage />} />} />
               <Route path="demandes/:id" element={<Adaptive desktop={<RequestDetailPage />} mobile={<MobileRequestPage />} />} />
               <Route path="interventions" element={<Adaptive desktop={<MesInterventionsPage />} mobile={<MobileInterventionsPage />} />} />

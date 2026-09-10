@@ -33,4 +33,11 @@ describe("isNavRouteActive", () => {
     expect(isNavRouteActive(DEMANDES, "/demandes-archivees")).toBe(false);
     expect(isNavRouteActive(CARTE, "/cartes")).toBe(false);
   });
+
+  it("allume « Statistiques » sur sa route, sans toucher aux voisines", () => {
+    const STATS: NavRoute = { to: "/statistiques", end: false };
+    expect(isNavRouteActive(STATS, "/statistiques")).toBe(true);
+    expect(isNavRouteActive(DEMANDES, "/statistiques")).toBe(false);
+    expect(isNavRouteActive(ACCUEIL, "/statistiques")).toBe(false);
+  });
 });

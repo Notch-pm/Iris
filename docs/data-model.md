@@ -232,6 +232,7 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
 | `t17_requests_require_pieces_conformes` (DEFINER) | BEFORE UPDATE | **Qualification des pièces (2026-08-28)** : refuse `en_instruction → resolue_positive` tant qu'une exigence de pièce **obligatoire** n'est pas conforme (manquante, pas encore qualifiée, ou non conforme) — `request_pieces_blocking`, qui relit `procedure_snapshot -> form_schema` et rejoue les conditions sur `form_data`. **Elle seule** est fermée : mise en attente, annulation et résolution négative restent ouvertes (on refuse souvent PARCE QU'une pièce manque). Ne vise pas le désarchivage (`archivee → resolue_positive`), qui restaure un état déjà jugé. S'applique à tout le monde, service_role compris (règle métier, motif `t16`) |
 | `t19_requests_touch` (INVOKER) | BEFORE UPDATE | `version := version + 1`, `updated_at := now()` |
 | `t30_requests_log_insert` / `t30_requests_log_update` (DEFINER) | AFTER | Journal `request_events` (`created`, `status_changed`, `assigned`, **`transferred`** depuis le 2026-09-01 — les deux identifiants, les deux **libellés** (le journal est immuable et doit rester lisible après un renommage) et `unassigned`, le sort de l'affectation —, et **`form_data_updated`** depuis le 2026-08-28) + historique `request_assignments`. NB : `piece_qualifiee` et `piece_ajoutee` sont écrits par leurs RPC (`qualify_request_attachment`, `attach_request_piece`), pas par un trigger |
+| `t31_requests_stats` (DEFINER) | AFTER INSERT / UPDATE | Faits statistiques `request_stats` (§ « Statistiques ») : première instruction, résolution (`closed_at`), issue, auteur — sort tôt si ni statut, ni scope, ni démarche, ni `closed_at` ne changent |
 
 **Transfert d'organisme : la RPC `transfer_request(request_id, socle_org_id)` est l'UNIQUE
 porte** (migration `20260901110000`). Un `update` client de `socle_organization_id` vers un
@@ -1267,6 +1268,62 @@ réalisée** (date de finalisation proposée au jour courant, commentaire facult
   justificatifs : cinq refusés, pièce d'un autre déposant refusée avec annulation de la
   déclaration, deux consommés et rattachés, lisibles par l'intervenant et par l'agent).
 
+### Statistiques — faits insensibles à la purge RGPD (`20260918100000`)
+
+Demande PO du 2026-09-18 : un écran « Statistiques » calqué sur celui de Clara (ApexCharts,
+filtres organisme et période), dont les chiffres **survivent à la future purge RGPD**. D'où
+deux **tables de faits**, une ligne par objet, **sans donnée d'usager** et **sans FK vers la
+demande** (UUID nu) : la purge supprimera des dossiers, pas leurs chiffres.
+
+- **`request_stats`** (PK `request_id` nu) : `organization_id` (FK tenant, **cascade** — la
+  purge ne supprime jamais un tenant, un nettoyage e2e emporte tout), `socle_root_org_id`,
+  `socle_scope_org_id` (suit les transferts), `socle_procedure_id`, `source`, `channel`,
+  `received_at`, `created_at`, `current_status`, `instruction_started_at` (**première** entrée
+  en `en_instruction`), `resolved_at` (= `closed_at` : posée par `requests_guard_write`,
+  **remise à NULL à la réouverture**), `outcome` (statut terminal ; **conservé** à l'archivage ;
+  NULL sinon), `resolved_by` (FK `users` set null — l'agent qui a posé `resolue_*` : décision PO,
+  « l'agent qui a instruit » est l'auteur de la résolution ; NULL pour `annulee` et en contexte
+  de service). Index jumeau de `requests_org_scope_proc_idx` (support du prédicat RLS),
+  `(organization_id, received_at desc)`, `(resolved_by)`.
+- **`intervention_stats`** (PK `intervention_id` nu, `request_id` nu) : `intervenant_id` (FK
+  `users` set null), `requested_at`, `completed_at`, `completed_on`.
+- **Aucun libellé copié** : l'organisme se relit dans `socle_organizations` (miroir soft-delete,
+  survit à la purge, sans filtre `obsoleted_at` — un organisme disparu garde son nom), l'agent
+  dans `users` (nom inline comme `eligible_assignees` ; `user_display_name` est DEFINER et
+  révoquée, inutilisable depuis une RPC invoker).
+- **Alimentation** : `t31_requests_stats` (AFTER INSERT OR UPDATE, DEFINER, sort tôt quand ni
+  statut, ni scope, ni démarche, ni `closed_at` ne changent — `refresh_request_scope_org` et
+  chaque `version+1` le déclenchent aussi) et `t31_request_interventions_stats`. Un
+  désarchivage ne réécrit ni l'issue ni son auteur. **Reconstruction** :
+  `rebuild_request_stats(p_request_id default null)` / `rebuild_intervention_stats` (service,
+  révoquées) — relisent `requests` + `request_events` (`status_changed` → `en_instruction` pour
+  la première instruction, `created_by` du dernier passage à `resolue_*` pour l'auteur,
+  `payload->>'from'` du passage à `archivee` pour l'issue d'une archivée). Appelées une fois
+  dans la migration : le journal antidaté du jeu ACCM donne des délais réalistes.
+- **RLS** : `request_stats_select` = prédicat de `requests_select` **sans** la branche
+  `my_intervention_request_ids()` (un intervenant pur ne consulte pas de statistiques) ;
+  `intervention_stats_select` = EXISTS direct sur `request_stats` (ADR-05). Aucune policy
+  d'écriture cliente ; policies `TO service_role` explicites.
+- **Huit RPC `stats_*`**, `language sql stable security invoker` (gabarit
+  `contact_request_counts` : deux agents lisent légitimement deux chiffres différents ; noms de
+  colonnes OUT distincts des colonnes lues ; filtre `organization_id = p_org_id` explicite) :
+  `stats_requests_by_month` (12 mois, Europe/Paris, mois vides à 0 par `generate_series`),
+  `stats_requests_by_source` (le regroupement en quatre canaux — portail, Clara, création
+  directe, partenaires — vit dans `src/features/stats/stats.ts`, pur et testé),
+  `stats_requests_by_organization`, `stats_processing_times` (jours à 1 décimale, résolution =
+  `resolue_*` seulement), `stats_outcomes` (compteurs ; le taux se calcule à l'écran),
+  `stats_top_resolvers`, `stats_interventions` (demandées / réalisées sur la période, délai
+  moyen sollicitation → réalisation), `stats_top_intervenants`. Période toujours sur
+  `received_at` (décision PO).
+- ⚠️ **La purge RGPD ne touche PAS ces deux tables.** À l'inverse, les scripts de nettoyage
+  e2e et la purge du jeu ACCM (`supabase/rollback/20260828_demandes_exemple_accm_purge.sql`)
+  suppriment des demandes qui ne sont pas des dossiers réels : ils doivent vider
+  `request_stats` / `intervention_stats` des demandes qu'ils effacent.
+- Test : `supabase/tests/statistiques.test.sql` (jalons, réouverture, archivage, trigger ⇔
+  reconstruction, visibilité par couple et après transfert, autre tenant, intervenant pur, admin
+  plateforme, aucune écriture cliente, RPC sous `authenticated` et privilèges `anon`,
+  interventions, **survie au `delete from requests`**).
+
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 
 Toutes les policies par couple ci-dessous enveloppent `is_platform_admin()` en `(select …)`
@@ -1545,8 +1602,13 @@ empêche l'enregistrement d'une migration).
 3. **Purge RGPD** : colonnes prêtes (`retention_until`, `purged_at`), la procédure
    `service_role` de purge reste à écrire (phase 5). ⚠️ Elle devra **lever l'immuabilité de
    `request_events`** : sans cela un `delete from requests` échoue, la cascade butant sur
-   `t01_request_events_immutable` (constaté par `echanges-usager.test.sql`). Les satellites,
-   `request_emails` compris, cascadent sans difficulté une fois cette garde levée.
+   `t01_request_events_immutable` (constaté par `echanges-usager.test.sql`) — **et celle de
+   `request_assignments`** (`t01_request_assignments_immutable`, constaté par
+   `statistiques.test.sql` sur une demande affectée). Les satellites, `request_emails`
+   compris, cascadent sans difficulté une fois ces deux gardes levées.
+   ⚠️ Elle **ne touche PAS** `request_stats` ni `intervention_stats` (§ « Statistiques ») :
+   ces faits n'ont ni FK vers la demande ni donnée d'usager, et la purge d'un dossier ne doit
+   pas retirer une demande des chiffres de son année (vérifié par `statistiques.test.sql`).
 4. **Advisors** : les WARN 0029 sur les helpers (fondations + profils de droits) sont assumés
    (voir plus haut) ; `rls_auto_enable` a été verrouillé (migration 5).
 5. **FK non indexées sur l'audit** : `permission_audit_log.actor_id`/`target_user_id`
