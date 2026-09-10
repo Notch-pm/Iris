@@ -12,7 +12,10 @@
 // pages de bureau réutilisées ne cassent pas.
 //
 // Les insets de sécurité (`env(safe-area-inset-*)`) comptent : en application
-// installée sur iPhone, la barre basse passe sous l'indicateur d'accueil.
+// installée sur iPhone, la barre basse passe sous l'indicateur d'accueil. L'inset
+// et la marge basse ne s'ADDITIONNENT pas (`max()`, retour d'essai 2026-09-10) :
+// les 34 px de l'indicateur suffisent comme respiration, et les cumuler laissait
+// une bande vide épaisse sous les libellés.
 
 import * as React from "react";
 import { Link, useLocation } from "react-router-dom";
@@ -52,7 +55,7 @@ function MobileTabBar({ onAccount, accountOpen }: { onAccount: () => void; accou
   return (
     <nav
       aria-label="Navigation principale"
-      className="shrink-0 bg-sidebar px-2.5 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2"
+      className="shrink-0 bg-sidebar px-2.5 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2"
     >
       <ul className="flex items-center">
         {items.map((item) => {
