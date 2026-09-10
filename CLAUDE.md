@@ -206,6 +206,11 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   serait un lecteur libre du référentiel d'organisations. Ouverte à tout membre — l'adresse
   d'une mairie est publique. Sert de **repli au cadrage de la carte des interventions**,
   quand le référentiel ne publie aucun quartier),
+  **`/v1/organizations/branding`** (2026-09-10 : le **logo du client** dans le header —
+  `GET /v1/organizations/{racine}/branding` du Socle, qui résout l'héritage ; même règle
+  qu'au-dessus, aucun identifiant du navigateur ; whitelist réduite au `logo_url` http(s) ;
+  décoratif donc **jamais une erreur** : Socle muet ⇒ `branding: null` et le header écrit
+  le nom),
   **`/v1/quartiers/list`** (quartiers du territoire **avec leur géométrie**, pour la carte du
   champ d'adresse **et le cadrage de la carte des interventions** — qui s'ouvre depuis le
   2026-08-31 sur l'étendue du territoire, et non sur ses épingles ; ouverte à tout membre
@@ -462,10 +467,16 @@ les invariants ci-dessus restent la référence.
   (+ `--primary-bright` marketing), secondaire beurre, radius 14px, ombres « airbnb »
   (`shadow-airbnb-sm…xl`, alias `iris-*`). **Police : Nunito Sans, seule famille**
   (Google Fonts). Le shell agent calque le **shell de production Clara** : header sticky
-  `h-14` (wordmark `src/assets/logo-notch.svg` en `h-6` + séparateur + tenant à gauche ;
-  à droite, chip administrateur, superadmin, **accès aux Paramètres** — tuile `h-9 w-9`,
+  `h-14` (à gauche, depuis le 2026-09-10 — maquette Claude Design « En-tête
+  multi-applications » : **bascule d'application** `AppSwitcher` dans une colonne de 52 px
+  alignée sur le rail, vers `<socle|iris|clara|ariane>.edilumen.fr` (`layout/apps.ts`, pur et
+  testé — liens nus, chaque produit a sa session), wordmark `src/assets/logo-notch.svg` en
+  `h-6`, séparateur, **logo du client** lu chez le Socle (`useOrganisationBranding`, nom à
+  défaut) et sélecteur d'organisation s'il y en a plusieurs ; à droite, pastille « I » +
+  **Iris**, chip administrateur, superadmin, **accès aux Paramètres** — tuile `h-9 w-9`,
   active en `bg-primary/10 text-primary` — puis menu compte), **rail vert `bg-primary` 52px**
-  (tuiles 36px, icônes Lucide 20px, premier item épinglé, groupe centré ; l'entrée active se
+  (tuiles 36px, icônes Lucide 20px — sauf le tableau de bord, **maison** tracée depuis la
+  maquette —, premier item épinglé, groupe centré ; l'entrée active se
   décide par `src/components/layout/nav.ts`, pur et testé, et non par `NavLink` — deux
   entrées partagent le préfixe `/demandes`). Le gabarit
   horizontal de la zone de contenu est **demandé par la page** (`src/components/layout/

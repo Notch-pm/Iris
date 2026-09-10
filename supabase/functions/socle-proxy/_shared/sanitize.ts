@@ -5,6 +5,7 @@
 
 // deno-lint-ignore-file no-explicit-any
 
+import { httpUrl } from "../../_shared/email/charte.ts";
 import {
   parseProcedureDocuments,
   type ProcedureDocuments,
@@ -435,4 +436,22 @@ export function sanitizeAiUsage(raw: any): AiUsageView {
     reserved_tokens: count(raw.reserved_tokens),
     by_consumer: rows,
   };
+}
+
+/**
+ * Charte graphique de la collectivité, telle que le HEADER de l'application
+ * la consomme : le logo couleur, et rien d'autre. Réponse de
+ * `GET /v1/organizations/{id}/branding` — la route du Socle RÉSOUT l'héritage,
+ * Iris ne remonte aucun arbre (cf. `_shared/email/charte.ts`).
+ *
+ * Whitelist stricte : ni couleurs, ni logo blanc, ni `source_organization_id`
+ * — aucun écran n'en a l'usage (les e-mails, eux, lisent le Socle côté
+ * serveur). L'URL est filtrée comme pour les e-mails : http(s) ou rien — une
+ * charte vient du référentiel, mais un `javascript:` dans un `src` reste un
+ * vecteur.
+ */
+export function sanitizeBranding(raw: any): { logo_url: string | null } | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  if (raw.configured === false) return { logo_url: null };
+  return { logo_url: httpUrl(raw.logo_url) };
 }

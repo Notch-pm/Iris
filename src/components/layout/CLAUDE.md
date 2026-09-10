@@ -3,6 +3,30 @@
 Chargé automatiquement quand on travaille dans ce dossier. Les invariants du `CLAUDE.md`
 racine priment.
 
+## Coin gauche du bureau : la gamme (maquette « En-tête multi-applications », 2026-09-10)
+
+Le header de bureau ouvre, de gauche à droite, sur la **bascule d'application**
+(`AppSwitcher.tsx` — bouton grille dans une colonne de **52 px alignée sur le rail**, tuile
+34 px sans bordure ; menu à quatre tuiles : Socle, Iris, Clara, Ariane), le wordmark de la
+gamme, un séparateur, puis le **client** : son **logo** (`ClientIdentity`), lu chez le Socle
+par `useOrganisationBranding` ; son nom tant qu'il n'y a pas de logo (ou qu'il est cassé) ;
+rien pendant le chargement ; et le sélecteur d'organisation quand on appartient à
+plusieurs. Le **nom du produit** (pastille « I » + « Iris ») est à **droite**, devant le
+chip administrateur et le menu compte. Le rail commence directement par le tableau de
+bord — icône **maison** tracée depuis la maquette (`HouseIcon`, pas la `House` de Lucide).
+
+- **`apps.ts`** (pur, testé) : la liste des applications, `CURRENT_APP` = Iris, et
+  `appUrl(key)` = `https://<key>.edilumen.fr` — les quatre sites sont bâtis sur ce motif,
+  rien n'est à configurer. Le menu est fait de **liens nus** vers ces adresses : chaque
+  produit tient son propre projet Supabase et sa propre session, **Iris ne transmet rien**
+  (ni jeton, ni organisation) — le pied du menu le dit à l'agent. La tuile d'Iris est
+  inerte et cochée (`aria-current`).
+- **Logo du client** (`src/features/socle/useOrganisationBranding.ts`) : `socle-proxy
+  /v1/organizations/branding` — la racine du tenant, aucun identifiant du navigateur,
+  whitelist réduite au `logo_url` http(s). **Ni colonne, ni miroir** : le navigateur charge
+  l'image à l'URL publique du référentiel. Un confort, jamais une dépendance : Socle muet
+  ⇒ le nom, pas une erreur (`retry: false`, erreur avalée — motif `useOrganisationAnchor`).
+
 ## Deux shells, une URL (décision PO 2026-09-14)
 
 Iris **n'adapte pas ses écrans de bureau** au téléphone. Quand un téléphone est détecté,

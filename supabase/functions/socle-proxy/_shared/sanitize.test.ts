@@ -9,6 +9,7 @@ import {
   sanitizeMatches,
   sanitizeProcedureFull,
   sanitizeProcedureSummary,
+  sanitizeBranding,
   sanitizeOrganization,
   sanitizeQuartier,
   sanitizeQuartierList,
@@ -392,5 +393,31 @@ describe("sanitizeAiUsage", () => {
       expect(out.used_tokens).toBe(0);
       expect(out.limit).toBeNull();
     }
+  });
+});
+
+describe("sanitizeBranding — le logo du client dans le header, rien de plus", () => {
+  const raw = {
+    organization_id: "org-socle", source_organization_id: "org-parent", inherited: true,
+    configured: true, logo_url: "https://accm.fr/logo.png",
+    logo_white_url: "https://accm.fr/logo-blanc.png", primary_color: "#1f8a5b",
+  };
+
+  it("ne laisse passer que le logo couleur", () => {
+    expect(sanitizeBranding(raw)).toEqual({ logo_url: "https://accm.fr/logo.png" });
+  });
+
+  it("filtre une URL qui n'est pas du http(s)", () => {
+    expect(sanitizeBranding({ ...raw, logo_url: "javascript:alert(1)" })).toEqual({ logo_url: null });
+    expect(sanitizeBranding({ ...raw, logo_url: "" })).toEqual({ logo_url: null });
+  });
+
+  it("une charte non configurée n'a pas de logo, même si un champ traîne", () => {
+    expect(sanitizeBranding({ ...raw, configured: false })).toEqual({ logo_url: null });
+  });
+
+  it("rend null sur une réponse qui n'est pas un objet", () => {
+    expect(sanitizeBranding(null)).toBeNull();
+    expect(sanitizeBranding("x")).toBeNull();
   });
 });

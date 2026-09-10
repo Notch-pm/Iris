@@ -39,6 +39,7 @@ import {
   filterContactUpdate,
   filterMatchRequest,
   sanitizeAiUsage,
+  sanitizeBranding,
   sanitizeContact,
   sanitizeContactList,
   sanitizeMatches,
@@ -337,6 +338,30 @@ Deno.serve(async (req) => {
     if (!res?.ok) return relaySocleError(req, res);
     const raw = await res.json().catch(() => null);
     return json(req, 200, { organization: sanitizeOrganization(raw) });
+  }
+
+  // ---- Charte graphique du tenant : le logo du client dans le header -------
+  // `GET /v1/organizations/{id}/branding` sur la racine du tenant — même
+  // règle que `/root` : AUCUN identifiant du navigateur. La route du Socle
+  // résout l'héritage elle-même (cf. `_shared/email/charte.ts` : ne JAMAIS
+  // reconstituer une charte depuis `/v1/organizations/{id}`).
+  //
+  // Ouverte à tout membre : le logo d'une collectivité est public. Whitelist
+  // réduite au logo couleur (`sanitizeBranding`). DÉCORATIF, DONC JAMAIS UNE
+  // ERREUR : Socle muet ou charte hors périmètre ⇒ `branding: null`, le header
+  // écrit le nom du client à la place du logo.
+  if (path === "/v1/organizations/branding") {
+    const res = await socleFetch(
+      `${publicApiBase()}/v1/organizations/${tenant.socleOrgId}/branding`,
+    );
+    if (!res?.ok) {
+      if (res?.status !== 404) {
+        console.error(`socle-proxy: charte de ${tenant.socleOrgId} illisible (${res?.status ?? "réseau"})`);
+      }
+      return json(req, 200, { branding: null });
+    }
+    const raw = await res.json().catch(() => null);
+    return json(req, 200, { branding: sanitizeBranding(raw) });
   }
 
   if (path === "/v1/quartiers/list") {

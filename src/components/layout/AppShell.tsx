@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  ChevronsUpDown, Columns3, HardHat, Inbox, LayoutDashboard, LogOut, Map, RotateCcw, ShieldCheck,
+  ChevronsUpDown, Columns3, HardHat, Inbox, LogOut, Map, RotateCcw, ShieldCheck,
   Smartphone, User, Users,
 } from "lucide-react";
 import { useDevice } from "@/features/device/DeviceProvider";
@@ -16,21 +16,47 @@ import { useMyAvatarUrl } from "@/features/account/useAccount";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { Select } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { useOrganisationBranding } from "@/features/socle/useOrganisationBranding";
+import { CURRENT_APP } from "./apps";
+import { AppSwitcher } from "./AppSwitcher";
 import { isNavRouteActive, type NavRoute } from "./nav";
 import { ShellLayoutContext, type ShellWidth } from "./shellLayout";
 
 // Shell agent — réplique du shell de production Clara (AppHeader h-14, dont
 // l'accès aux Paramètres en haut à droite + AppSidebar : rail vert 52px,
 // premier item épinglé en haut, groupe restant centré verticalement). Design
-// system Notch/Ariane.
+// system Notch/Ariane. Header repris de la maquette Claude Design « En-tête
+// multi-applications » (2026-09-10) : bascule de produit dans la colonne du
+// rail, wordmark de la gamme, LOGO du client (charte Socle), et le nom du
+// produit à droite, devant le menu compte.
+
+// Icône « maison » du tableau de bord, tracée dans la maquette : plus simple
+// que la `House` de Lucide (pas de porte), même grammaire de trait.
+function HouseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.9}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden="true"
+    >
+      <path d="M3 10.5 12 3l9 7.5" />
+      <path d="M5 9.5V20a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9.5" />
+    </svg>
+  );
+}
 
 interface NavItem extends NavRoute {
   label: string;
-  icon: typeof LayoutDashboard;
+  icon: typeof Inbox | typeof HouseIcon;
 }
 
 const BASE_NAV_ITEMS: NavItem[] = [
-  { to: "/", label: "Tableau de bord", icon: LayoutDashboard, end: true },
+  { to: "/", label: "Tableau de bord", icon: HouseIcon, end: true },
   { to: "/demandes/tableau", label: "Tableau des demandes", icon: Columns3, end: false },
   // Le tableau a désormais son entrée : sans cette exception, les deux
   // s'allumeraient sur `/demandes/tableau` (voir `nav.ts`).
@@ -106,6 +132,29 @@ function AppSidebar() {
       </div>
     </nav>
   );
+}
+
+// Le client dans le header : son LOGO quand le Socle en sert un (charte
+// graphique, résolue avec l'héritage par le référentiel), son nom sinon. Rien
+// n'est écrit tant que la réponse n'est pas là — un nom qui s'efface au profit
+// d'un logo une seconde plus tard sauterait sous les yeux de l'agent. Une image
+// cassée retombe sur le nom.
+function ClientIdentity({ name, organizationId }: { name: string; organizationId: string }) {
+  const { logoUrl, pending } = useOrganisationBranding(organizationId);
+  const [broken, setBroken] = React.useState<string | null>(null);
+  if (pending) return <span className="h-8 w-8" aria-hidden="true" />;
+  if (logoUrl && broken !== logoUrl) {
+    return (
+      <img
+        src={logoUrl}
+        alt={name}
+        title={name}
+        onError={() => setBroken(logoUrl)}
+        className="h-8 max-w-[160px] object-contain"
+      />
+    );
+  }
+  return <span className="text-sm font-semibold">{name}</span>;
 }
 
 function UserMenu() {
@@ -232,35 +281,36 @@ export function AppShell() {
   return (
     <ShellLayoutContext.Provider value={layoutValue}>
     <div className="flex h-screen flex-col">
-      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background px-4">
-        {/* Gauche : wordmark Notch + séparateur + tenant */}
+      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background pl-0 pr-4">
+        {/* Gauche (maquette « En-tête multi-applications ») : la bascule de
+            produit occupe la colonne du rail (52 px, tuile alignée sur ses
+            icônes), puis le wordmark de la gamme, un séparateur, et le CLIENT
+            — son logo, lu chez le Socle ; son nom tant qu'il n'y en a pas ; le
+            sélecteur d'organisation quand on appartient à plusieurs. */}
         <div className="flex shrink-0 items-center gap-3">
-          <Link to="/">
-            <img src={notchLogo} alt="Notch — Iris" className="h-6 object-contain" />
+          <AppSwitcher />
+          <Link to="/" className="shrink-0">
+            <img src={notchLogo} alt="Edilumen" className="h-6 object-contain" />
           </Link>
+          {current ? (
+            <>
+              <span className="h-6 w-px bg-border" aria-hidden="true" />
+              <ClientIdentity name={current.organizationName} organizationId={current.organizationId} />
+            </>
+          ) : null}
           {memberships.length > 1 ? (
-            <>
-              <span className="h-6 w-px bg-border" aria-hidden="true" />
-              <Select
-                aria-label="Organisation courante"
-                className="h-8 w-auto min-w-[180px] rounded-full border-border px-3 text-[13px] font-medium"
-                value={current?.organizationId ?? ""}
-                onChange={(e) => setCurrentOrgId(e.target.value)}
-              >
-                {memberships.map((m) => (
-                  <option key={m.organizationId} value={m.organizationId}>
-                    {m.organizationName}
-                  </option>
-                ))}
-              </Select>
-            </>
-          ) : current ? (
-            <>
-              <span className="h-6 w-px bg-border" aria-hidden="true" />
-              <span className="text-sm font-medium text-muted-foreground">
-                {current.organizationName}
-              </span>
-            </>
+            <Select
+              aria-label="Organisation courante"
+              className="h-[34px] w-auto min-w-[180px] rounded-full border-transparent bg-muted px-3 text-sm font-semibold"
+              value={current?.organizationId ?? ""}
+              onChange={(e) => setCurrentOrgId(e.target.value)}
+            >
+              {memberships.map((m) => (
+                <option key={m.organizationId} value={m.organizationId}>
+                  {m.organizationName}
+                </option>
+              ))}
+            </Select>
           ) : null}
         </div>
 
@@ -271,8 +321,24 @@ export function AppShell() {
           <GlobalSearch />
         </div>
 
-        {/* Droite : chip administrateur + superadmin (plateforme uniquement) + menu utilisateur */}
+        {/* Droite : nom du produit (maquette : pastille + « Iris », juste
+            avant le compte), chip administrateur + superadmin (plateforme
+            uniquement) + menu utilisateur */}
         <div className="flex shrink-0 items-center gap-2">
+          <Link
+            to="/"
+            className="mr-1 flex items-center gap-2"
+            title={`${CURRENT_APP.name} — ${CURRENT_APP.tagline}`}
+          >
+            <span
+              className="flex h-6 w-6 items-center justify-center rounded-[7px] bg-primary/10 text-xs font-extrabold text-primary"
+              aria-hidden="true"
+            >
+              {CURRENT_APP.initial}
+            </span>
+            <span className="text-[17px] font-bold tracking-[-0.01em] text-primary">{CURRENT_APP.name}</span>
+          </Link>
+          <span className="mr-1 h-6 w-px bg-border" aria-hidden="true" />
           {isAdmin ? (
             <Badge variant="secondary" className="hidden sm:inline-flex">
               Administrateur
