@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.0.0";
+export const CONTRACT_VERSION = "2.1.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -92,7 +92,13 @@ const linkRefSchema = {
   properties: {
     type: { type: "string", description: "Type de ressource source (ex. courrier, ticket, dossier)." },
     id: { type: "string" },
-    url: { type: "string" },
+    url: {
+      type: "string",
+      description:
+        "Permalien PUBLIC vers la ressource. Une adresse qui ne résout que sur votre réseau "
+        + "(localhost, IP privée, TLD .local/.internal, hôte sans point) est IGNORÉE : le lien "
+        + "est conservé sans URL et la demande porte l'anomalie `permalien_non_public`.",
+    },
     label: { type: "string" },
   },
 } as const;
@@ -178,7 +184,13 @@ const envelopeSchema = {
       properties: {
         channel: { type: "string", description: "courrier, email, portail, guichet, telephone…" },
         received_at: { type: "string", format: "date-time", description: "Date de réception D'ORIGINE (≠ date d'ingestion)." },
-        external_url: { type: "string", description: "Permalien vers la ressource d'origine." },
+        external_url: {
+          type: "string",
+          description:
+            "Permalien PUBLIC vers la ressource d'origine. Même règle que `links[].url` : une "
+            + "adresse qui ne résout que sur votre réseau est ignorée (anomalie "
+            + "`permalien_non_public`) — elle désignerait la machine de l'agent qui la clique.",
+        },
         metadata: { type: "object" },
       },
     },

@@ -264,6 +264,7 @@ chaînes — corrigé le 2026-08-26, avant qu'une anomalie n'ait jamais été po
 | `destinataire_inconnu` | trigger `requests_set_scope_org` | Le destinataire n'est pas (ou plus) dans le miroir du tenant ; le périmètre retombe sur la racine Socle |
 | `referentiel_indisponible` | `requests-api` | Socle injoignable au dépôt : `procedure_snapshot` minimal issu du cache |
 | `usager_a_creer_dans_socle` | `create-request-from-procedure`, `requests-api` | L'usager n'a pu être ni rapproché ni créé dans le Socle (panne avérée) : la demande est passée quand même, en `non_rapprochee`, et reste à régulariser |
+| `permalien_non_public` | `requests-api` | Le partenaire a transmis un permalien (`context.external_url`, `links[].url`) qui ne résout que sur son réseau — `localhost`, IP privée, TLD réservé, hôte sans point. Il est ÉCARTÉ, jamais réécrit : Iris ne sait pas où vit vraiment le partenaire. La demande passe, sans lien cliquable, et le geste restant est chez l'émetteur — presque toujours sa variable d'origine publique |
 
 Les anomalies décrivent un **geste restant à faire**, jamais un refus : la doctrine de la
 gamme est qu'un référentiel muet ne fait pas perdre une demande.
