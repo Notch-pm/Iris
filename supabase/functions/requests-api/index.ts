@@ -17,8 +17,10 @@ import {
   validateEnvelope,
   type AttachmentRef,
   type IngestEnvelope,
+  type LinkRef,
 } from "./_shared/validation.ts";
 import { REQUEST_SELECT, serializeRequest } from "./_shared/serializers.ts";
+import { PERMALINK_ANOMALY, sanitizePermalinks } from "./_shared/permalink.ts";
 import { buildOpenApi, MAX_UPLOAD_BYTES_DEFAULT, publicBaseUrl } from "./_shared/openapi.ts";
 import { httpStatusFor } from "../_shared/files/inspect.ts";
 import { readSingleFileForm } from "../_shared/files/multipart.ts";
@@ -447,9 +449,8 @@ async function attachUploads(
 async function insertLinks(
   organizationId: string,
   requestId: string,
-  env: IngestEnvelope,
+  links: LinkRef[],
 ): Promise<void> {
-  const links = env.links ?? [];
   if (links.length === 0) return;
   const seen = new Set<string>();
   const rows = [];
@@ -593,6 +594,13 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
   const requester = await resolveRequester(env, auth.socleRootOrgId);
   if (requester.anomaly) anomalies.push({ code: requester.anomaly });
 
+  // Permaliens du partenaire : Iris les stocke tels quels — mais seulement
+  // ceux qui ont un sens depuis le navigateur d'un agent. Un `localhost` vient
+  // d'une edge function de partenaire configurée sur un poste de dev : cliqué
+  // par un agent, il désigne SA machine. Écarté, jamais réécrit (`permalink.ts`).
+  const permalinks = sanitizePermalinks(env);
+  if (permalinks.dropped) anomalies.push({ code: PERMALINK_ANOMALY });
+
   const insert = await supabase
     .from("requests")
     .insert({
@@ -611,7 +619,7 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
       identity_status: requester.identityStatus,
       source: auth.sourceCode,
       external_ref: env.external_id,
-      external_url: env.context?.external_url ?? null,
+      external_url: permalinks.externalUrl,
       channel: env.context?.channel ?? null,
       received_at: env.context?.received_at ?? new Date().toISOString(),
       subject: env.subject,
@@ -647,7 +655,7 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
   }
 
   const row = insert.data;
-  await insertLinks(auth.organizationId, row.id, env);
+  await insertLinks(auth.organizationId, row.id, permalinks.links);
   // La demande existe désormais : un échec ici n'est PAS une perte — le
   // rejeu à l'identique (200) rattachera ce qui manque.
   const attached = await attachUploads(auth, row.id, resolved);

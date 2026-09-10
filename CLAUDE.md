@@ -166,7 +166,7 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   (`integration_sources`/`integration_credentials`/`integration_api_logs`, registre de sources
   dynamique — aucune logique spécifique à un émetteur).
 - **L'API d'ingestion `requests-api` est déployée et vérifiée** (18 + 7 scénarios HTTP bout
-  en bout) : contrat OpenAPI **1.1.0** sur `/v1/openapi.json` (routes `/` et `/v1/openapi.json`
+  en bout) : contrat OpenAPI **2.1.0** sur `/v1/openapi.json` (routes `/` et `/v1/openapi.json`
   **publiques et seules ouvertes au navigateur** — CORS ; rendu humain sur `/api-doc`), guide
   consommateurs dans [`docs/api-ingestion.md`](docs/api-ingestion.md). Périmètre dérivé de la clé (jamais d'un
   header/payload), **démarche obligatoire** (vérifiée dans le cache du tenant, snapshot

@@ -9,6 +9,44 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.1.0 — 2026-09-10 — un permalien qui ne résout que chez vous est ignoré
+
+**Additif, et sans effet pour qui envoie déjà des adresses publiques.** Aucune enveloppe
+n'est refusée, aucun champ ne disparaît du contrat.
+
+### Ce qui change
+
+- **`context.external_url` et `links[].url` doivent être PUBLICS.** Une adresse qui ne
+  résout que sur votre réseau — `localhost`, `127.0.0.1`, `::1`, plages privées
+  (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`), TLD réservés (`.local`, `.internal`,
+  `.intranet`, `.home.arpa`), ou hôte sans point (`http://clara/…`) — est désormais
+  **ignorée** : Iris enregistre la demande, mais sans ce permalien.
+- **Le lien lui-même survit.** Seule l'URL tombe : `type`, `id` et `label` restent, et la
+  demande liée s'affiche — sans bouton « Ouvrir ».
+- **Nouvelle anomalie `permalien_non_public`** sur la demande. Elle ne bloque rien ; elle
+  rend visible ce qui, sinon, se déposerait en silence.
+
+### Pourquoi
+
+Iris rend ces adresses cliquables dans la fiche d'une demande. Un `http://localhost:8080/…`,
+poussé par une fonction de partenaire configurée sur un poste de développement, désigne une
+fois cliqué **la machine de l'agent** — au mieux une erreur de connexion, au pire une sonde
+de son propre intranet. Iris ne réécrit pas ces adresses (il ne sait pas où vous vivez
+vraiment) : il les écarte et le dit.
+
+### Ce que vous avez à faire
+
+Rien, si votre permalien pointe déjà sur votre domaine de production. Sinon, vérifiez la
+variable d'environnement d'où vous tirez votre origine publique — **c'est presque toujours
+elle qui est en cause**, pas votre code.
+
+### Idempotence : inchangée
+
+L'empreinte de contenu porte toujours sur ce que **vous avez envoyé**, pas sur ce qu'Iris a
+retenu. Un rejeu à l'identique reste un `200`, y compris avec le même permalien local.
+
+---
+
 ## 2.0.0 — 2026-09-08 — les pièces jointes se DÉPOSENT, Iris ne va plus les chercher
 
 **Rupture — mais sur un mode qui n'a jamais été mis en service.** Le contrat 1.x décrivait des

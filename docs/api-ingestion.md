@@ -14,7 +14,7 @@ simples *sources enregistrées*.
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
 | Documentation lisible | `https://<app-iris>/api-doc` — le même contrat rendu par Redoc, consultable **sans compte** (motif `/api-doc` du Socle) |
-| Version | `2.0.0` (2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
+| Version | `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -92,6 +92,16 @@ Points de contrat :
     clés que le référentiel ne connaît pas.
   - Socle injoignable ⇒ **jamais un refus** : la demande passe, reste en `non_rapprochee`, et
     porte l'anomalie `usager_a_creer_dans_socle`.
+- **`context.external_url` et `links[].url` doivent être PUBLICS** (contrat 2.1.0). Iris rend
+  ces adresses cliquables dans la fiche de la demande, sous les yeux d'un agent. Une adresse
+  qui ne résout que sur votre réseau — `localhost`, `127.0.0.1`, `::1`, plages privées
+  (`10/8`, `172.16/12`, `192.168/16`, `169.254/16`), TLD réservés (`.local`, `.internal`,
+  `.intranet`, `.home.arpa`) ou hôte sans point — est **ignorée** : la demande passe, sans ce
+  permalien, et porte l'anomalie `permalien_non_public`. Le lien lui-même survit (`type`,
+  `id`, `label`), seulement privé de son URL. Iris ne réécrit jamais votre adresse : il ne
+  sait pas où vous vivez. ⚠️ **Le coupable est presque toujours la variable d'environnement
+  d'où vous tirez votre origine publique**, pas votre code — un `http://localhost:8080/…`
+  poussé depuis un poste de développement désigne, une fois cliqué, la machine de l'agent.
 - **`external_id`** = l'identifiant de la demande **chez vous** — l'unité qui devient UNE
   demande Iris (pour un futur connecteur Clara : l'id du *ticket d'action*, jamais celui du
   courrier — un courrier peut engendrer plusieurs demandes).
