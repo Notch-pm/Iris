@@ -49,7 +49,7 @@ implémentée (plan de livraison : `architecture-proposee.md` §9).
 | `SOCLE_API_URL` | `https://qhrokbkyxgcvkbpmbmna.supabase.co/functions/v1/public-api` | Connu | 1 |
 | `SOCLE_API_KEY` | Clé Socle dédiée à Iris — scopes `read` + `contacts` + **`smtp`** (ce dernier depuis le 2026-08-23 : sans lui, le serveur d'envoi du tenant ne descend pas du Socle) | **Générée le 2026-08-20**, clair dans `.secrets/SOCLE_API_KEY.txt` (local, gitignoré — à détruire après pose). ⚠️ Jamais celle de Clara. | 1 |
 | `CRON_SECRET` | Secret des jobs internes (sync, files, purge) | **Généré**, dans `.secrets/CRON_SECRET.txt` | 1 |
-| `IRIS_APP_URL` | Origine de l'app Iris (CORS de `socle-proxy` et `admin-users`, et **base des liens d'activation / de réinitialisation** envoyés par mail) | `http://localhost:5174` en dev ; l'URL de prod quand elle existera | 1 |
+| `IRIS_APP_URL` | Origine de l'app Iris (CORS de `socle-proxy` et `admin-users`, et **base des liens d'activation / de réinitialisation** envoyés par mail) | **Posé le 2026-09-10 : `https://iris.edilumen.fr`** (sans slash final — l'allowlist compare l'origine à l'identique). `http://localhost:5174` reste autorisé en dur. ⚠️ Secret absent = seule l'origine localhost passe : en prod, chaque appel au Socle échoue en « Serveur injoignable » alors que la fonction est saine (préflight 204 sans `Access-Control-Allow-Origin`) | 1 |
 | `IRIS_MAX_UPLOAD_BYTES` | *(facultatif)* Taille maximale d'un fichier déposé par un partenaire sur `requests-api /v1/uploads` — défaut 25 Mio (`MAX_UPLOAD_BYTES_DEFAULT`). À abaisser si la mesure CPU du premier déploiement l'exige (2 s CPU par requête sur les edge functions) | non posé | 0 |
 | `AUTH_HOOK_SECRET` | Secret du hook « Send Email » de GoTrue (`v1,whsec_…`, généré par le dashboard) | À poser en même temps que l'activation du hook — §4 bis | 1 |
 | `IRIS_SMTP_*` | Relais d'envoi **de plateforme**, repli quand le Socle ne déclare pas de serveur pour le tenant (`HOST`, `FROM_EMAIL` obligatoires ; `PORT`, `USERNAME`, `PASSWORD`, `FROM_NAME`, `USE_TLS` facultatifs) | Facultatif — sans lui, seuls les tenants dont le Socle déclare un serveur d'envoi reçoivent des mails | 1 |
@@ -65,7 +65,7 @@ supabase secrets set --project-ref tqcoqlneybtbrrcvpkpk \
   SOCLE_API_URL="https://qhrokbkyxgcvkbpmbmna.supabase.co/functions/v1/public-api" \
   SOCLE_API_KEY="$(cat .secrets/SOCLE_API_KEY.txt)" \
   CRON_SECRET="$(cat .secrets/CRON_SECRET.txt)" \
-  IRIS_APP_URL="http://localhost:5174"
+  IRIS_APP_URL="https://iris.edilumen.fr"   # prod (origine du navigateur, sans slash final)
 ```
 
 Puis premier lancement de la sync (et à planifier en cron quotidien, dashboard → Integrations
