@@ -441,7 +441,12 @@ les invariants ci-dessus restent la référence.
   sont pas responsives. Sur téléphone (largeur < 768 px, ou commutateur « Version mobile »
   mémorisé sur l'appareil — jamais le User-Agent, une tablette garde le bureau), `Adaptive`
   rend le `MobileShell` et la page mobile de la route, sinon un écran d'orientation vers la
-  version bureau. Détail : [`src/components/layout/CLAUDE.md`](src/components/layout/CLAUDE.md).
+  version bureau. Huit écrans mobiles (maquette Claude Design « Iris mobile — v2 ») :
+  liste et fiche des demandes, tiroir « Instruire », changement de statut, fil avec
+  l'usager, création en une page, mes interventions, déclaration d'intervention — chacun
+  dans le dossier `mobile/` de sa feature, **réutilisant les hooks et modules purs du
+  bureau, jamais un second chemin d'écriture**. Détail :
+  [`src/components/layout/CLAUDE.md`](src/components/layout/CLAUDE.md).
 - **Organisation par feature** sous `src/features/<domaine>/` (hook `useX.ts`, dialogues,
   pages). Primitives UI génériques dans `src/components/ui/`, layout dans
   `src/components/layout/`.

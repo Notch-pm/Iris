@@ -134,3 +134,14 @@ button, a, input, select, textarea {
     color: black;
   }
 }
+
+/* Rangée de puces défilante des pages mobiles : la barre de défilement d'un
+   poste de bureau n'a rien à faire sous des puces qu'un pouce fait glisser. */
+@layer utilities {
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}

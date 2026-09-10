@@ -186,3 +186,46 @@ export function useMyInterventions(orgId: string) {
     },
   });
 }
+
+/** Ce que la page MOBILE lit en plus : de quoi calculer le lieu d'intervention (`lieu.ts`). */
+export interface MyInterventionPlaceRow extends InterventionRow {
+  request: {
+    id: string;
+    reference: string;
+    subject: string;
+    status: string;
+    socle_organization_label: string | null;
+    socle_procedure_label: string | null;
+    form_data: unknown;
+    procedure_snapshot: unknown;
+  } | null;
+}
+
+/**
+ * Mes interventions, AVEC de quoi afficher l'adresse du lieu d'intervention —
+ * la page mobile la montre sous le titre, la page de bureau (tableau) n'en a
+ * pas l'usage. Même portée RLS que `useMyInterventions`, requête et clé
+ * distinctes pour ne pas alourdir la lecture de bureau d'un `form_data`
+ * qu'elle ignore.
+ */
+export function useMyInterventionsWithPlace(orgId: string) {
+  const { session } = useAuth();
+  const userId = session?.user.id ?? null;
+  return useQuery({
+    queryKey: [MY_INTERVENTIONS_KEY, "place", userId, orgId],
+    enabled: Boolean(userId && orgId),
+    queryFn: async (): Promise<MyInterventionPlaceRow[]> => {
+      const { data, error } = await supabase
+        .from("request_interventions")
+        .select(
+          "*, request:requests(id, reference, subject, status, socle_organization_label, socle_procedure_label, form_data, procedure_snapshot)",
+        )
+        .eq("organization_id", orgId)
+        .eq("intervenant_id", userId!)
+        .order("created_at", { ascending: false })
+        .limit(200);
+      if (error) throw error;
+      return (data ?? []) as unknown as MyInterventionPlaceRow[];
+    },
+  });
+}

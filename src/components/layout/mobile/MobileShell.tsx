@@ -1,83 +1,49 @@
 // Shell MOBILE — rendu à la place d'`AppShell` quand un téléphone est détecté
-// (`Adaptive`). Barre haute compacte (tenant, cloche, compte), contenu
-// défilant, barre d'onglets basse. Plein écran par nature : le gabarit
-// demandé par les pages (`useFullBleedLayout`, `useWideLayout`) est reçu et
-// ignoré — `ShellLayoutContext` est fourni avec un `setWidth` sans effet pour
-// que les pages de bureau réutilisées ne cassent pas.
+// (`Adaptive`). Maquette « Iris mobile — v2 » (2026-09-14) : PAS de barre
+// haute commune — chaque page mobile porte son en-tête (`MobileHeader`), avec
+// son retour, sa cloche ou son menu ; en application installée il n'y a pas de
+// barre d'adresse, l'en-tête de la page est le seul repère. En bas, la barre
+// d'onglets sombre avec « Créer » au centre, et « Moi » qui ouvre la feuille du
+// compte sur place.
+//
+// Plein écran par nature : le gabarit demandé par les pages
+// (`useFullBleedLayout`, `useWideLayout`) est reçu et ignoré —
+// `ShellLayoutContext` est fourni avec un `setWidth` sans effet pour que les
+// pages de bureau réutilisées ne cassent pas.
 //
 // Les insets de sécurité (`env(safe-area-inset-*)`) comptent : en application
 // installée sur iPhone, la barre basse passe sous l'indicateur d'accueil.
 
 import * as React from "react";
-import { Link, Outlet, useLocation } from "react-router-dom";
-import { ChevronsUpDown, HardHat, Inbox, PlusCircle, User } from "lucide-react";
-import notchLogo from "@/assets/logo-notch.svg";
-import { Select } from "@/components/ui/select";
-import { NotificationBell } from "@/features/notifications/NotificationBell";
+import { Link, useLocation } from "react-router-dom";
+import { Outlet } from "react-router-dom";
+import { HardHat, Inbox, Plus, User } from "lucide-react";
 import { useCanCreateRequest } from "@/features/requests/creation/useCanCreateRequest";
 import { useTenant } from "@/features/tenant/TenantProvider";
-import { useMyAvatarUrl } from "@/features/account/useAccount";
-import { useAuth } from "@/features/auth/AuthProvider";
 import { cn } from "@/lib/utils";
 import { isNavRouteActive } from "../nav";
 import { ShellLayoutContext } from "../shellLayout";
-import { mobileNavItems, type MobileNavKey } from "./mobileNav";
+import { mobileNavItems } from "./mobileNav";
 import { MobileAccountSheet } from "./MobileAccountSheet";
 
-const TAB_ICONS: Record<MobileNavKey, typeof Inbox> = {
-  interventions: HardHat,
+const TAB_ICONS = {
   demandes: Inbox,
-  nouvelle: PlusCircle,
-  compte: User,
-};
+  interventions: HardHat,
+  moi: User,
+} as const;
 
-function MobileTopBar({ onAccount }: { onAccount: () => void }) {
-  const { profile, session } = useAuth();
-  const { memberships, current, setCurrentOrgId } = useTenant();
-  const avatarUrl = useMyAvatarUrl();
-  const initials = profile
-    ? ([profile.first_name?.[0], profile.last_name?.[0]].filter(Boolean).join("").toUpperCase()
-      || profile.email[0].toUpperCase())
-    : (session?.user.email?.[0]?.toUpperCase() ?? "U");
-
+function TabLabel({ active, icon: Icon, label }: { active: boolean; icon: typeof Inbox; label: string }) {
   return (
-    <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-2 border-b border-border bg-background px-3 pt-[env(safe-area-inset-top)]">
-      <Link to="/" className="shrink-0">
-        <img src={notchLogo} alt="Notch — Iris" className="h-5 object-contain" />
-      </Link>
-      <div className="min-w-0 flex-1">
-        {memberships.length > 1 ? (
-          <Select
-            aria-label="Organisation courante"
-            className="h-8 w-full rounded-full border-border px-3 text-[13px] font-medium"
-            value={current?.organizationId ?? ""}
-            onChange={(e) => setCurrentOrgId(e.target.value)}
-          >
-            {memberships.map((m) => (
-              <option key={m.organizationId} value={m.organizationId}>{m.organizationName}</option>
-            ))}
-          </Select>
-        ) : current ? (
-          <span className="block truncate text-sm font-medium text-muted-foreground">{current.organizationName}</span>
-        ) : null}
-      </div>
-      <NotificationBell />
-      <button
-        type="button"
-        aria-label="Mon compte"
-        onClick={onAccount}
-        className="flex items-center gap-1 rounded-lg px-1.5 py-1 transition-colors hover:bg-muted"
-      >
-        <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-primary text-sm font-bold text-primary-foreground">
-          {avatarUrl ? <img src={avatarUrl} alt="" className="h-full w-full object-cover" /> : initials}
-        </span>
-        <ChevronsUpDown className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-      </button>
-    </header>
+    <>
+      <Icon className={cn("size-6", active ? "text-primary-bright" : "text-sidebar-foreground/70")} aria-hidden="true" />
+      <span className={cn("text-[11px] leading-none", active ? "font-bold text-primary-bright" : "font-semibold text-sidebar-foreground/70")}>
+        {label}
+      </span>
+    </>
   );
 }
 
-function MobileTabBar() {
+function MobileTabBar({ onAccount, accountOpen }: { onAccount: () => void; accountOpen: boolean }) {
   const { rights } = useTenant();
   const canCreate = useCanCreateRequest();
   const { pathname } = useLocation();
@@ -86,29 +52,53 @@ function MobileTabBar() {
   return (
     <nav
       aria-label="Navigation principale"
-      className="shrink-0 border-t border-primary-foreground/10 bg-primary pb-[env(safe-area-inset-bottom)]"
+      className="shrink-0 bg-sidebar px-2.5 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-2"
     >
-      <ul className="flex items-stretch">
+      <ul className="flex items-center">
         {items.map((item) => {
-          const Icon = TAB_ICONS[item.key];
-          const active = isNavRouteActive(item, pathname);
+          if (item.kind === "create") {
+            const active = isNavRouteActive(item.route, pathname);
+            return (
+              <li key={item.key} className="flex w-[76px] shrink-0 justify-center">
+                <Link
+                  to={item.route.to}
+                  aria-current={active ? "page" : undefined}
+                  aria-label="Créer une demande"
+                  className={cn(
+                    "flex size-[60px] flex-col items-center justify-center gap-px rounded-full bg-primary text-primary-foreground shadow-[0_6px_20px_-4px_hsl(var(--primary-bright)/0.5)] transition-transform active:scale-[0.96]",
+                    active && "ring-4 ring-primary-bright/40",
+                  )}
+                >
+                  <Plus className="size-[26px]" strokeWidth={2.2} aria-hidden="true" />
+                  <span className="text-[9px] font-extrabold tracking-wide">CRÉER</span>
+                </Link>
+              </li>
+            );
+          }
+          if (item.kind === "account") {
+            return (
+              <li key={item.key} className="flex-1">
+                <button
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={accountOpen}
+                  onClick={onAccount}
+                  className="flex min-h-[52px] w-full flex-col items-center justify-center gap-1.5 px-1"
+                >
+                  <TabLabel active={accountOpen || pathname === "/mon-compte"} icon={TAB_ICONS.moi} label={item.label} />
+                </button>
+              </li>
+            );
+          }
+          const active = isNavRouteActive(item.route, pathname);
           return (
             <li key={item.key} className="flex-1">
               <Link
-                to={item.to}
+                to={item.route.to}
                 aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex min-h-[56px] flex-col items-center justify-center gap-1 px-1 py-2 text-[11px] font-semibold transition-colors",
-                  active ? "text-primary-foreground" : "text-primary-foreground/70",
-                )}
+                className="flex min-h-[52px] flex-col items-center justify-center gap-1.5 px-1"
               >
-                <span className={cn(
-                  "flex h-7 w-11 items-center justify-center rounded-full",
-                  active && "bg-primary-foreground/20",
-                )}>
-                  <Icon className="h-5 w-5" aria-hidden="true" />
-                </span>
-                {item.label}
+                <TabLabel active={active} icon={TAB_ICONS[item.key]} label={item.label} />
               </Link>
             </li>
           );
@@ -127,11 +117,10 @@ export function MobileShell() {
   return (
     <ShellLayoutContext.Provider value={layoutValue}>
       <div className="flex h-dvh flex-col bg-background">
-        <MobileTopBar onAccount={() => setAccountOpen(true)} />
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto">
           {loading ? <p className="p-6 text-sm text-muted-foreground">Chargement…</p> : <Outlet />}
         </main>
-        <MobileTabBar />
+        <MobileTabBar onAccount={() => setAccountOpen(true)} accountOpen={accountOpen} />
         <MobileAccountSheet open={accountOpen} onOpenChange={setAccountOpen} />
       </div>
     </ShellLayoutContext.Provider>

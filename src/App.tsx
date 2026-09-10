@@ -26,6 +26,10 @@ import { DeviceProvider } from "@/features/device/DeviceProvider";
 import { Adaptive } from "@/features/device/Adaptive";
 import { MobileHome } from "@/features/device/MobileHome";
 import { MobileShell } from "@/components/layout/mobile/MobileShell";
+import { MobileRequestsListPage } from "@/features/requests/mobile/MobileRequestsListPage";
+import { MobileRequestPage } from "@/features/requests/mobile/MobileRequestPage";
+import { MobileNewRequestPage } from "@/features/requests/creation/mobile/MobileNewRequestPage";
+import { MobileInterventionsPage } from "@/features/requests/interventions/mobile/MobileInterventionsPage";
 
 export function App() {
   return (
@@ -65,12 +69,12 @@ export function App() {
               }
             >
               <Route index element={<Adaptive desktop={<DashboardPage />} mobile={<MobileHome />} />} />
-              <Route path="demandes" element={<Adaptive desktop={<RequestsListPage />} />} />
+              <Route path="demandes" element={<Adaptive desktop={<RequestsListPage />} mobile={<MobileRequestsListPage />} />} />
               <Route path="demandes/tableau" element={<Adaptive desktop={<TableauPage />} />} />
               <Route path="carte" element={<Adaptive desktop={<CartePage />} />} />
-              <Route path="demandes/nouvelle" element={<Adaptive desktop={<NewRequestPage />} />} />
-              <Route path="demandes/:id" element={<Adaptive desktop={<RequestDetailPage />} />} />
-              <Route path="interventions" element={<Adaptive desktop={<MesInterventionsPage />} />} />
+              <Route path="demandes/nouvelle" element={<Adaptive desktop={<NewRequestPage />} mobile={<MobileNewRequestPage />} />} />
+              <Route path="demandes/:id" element={<Adaptive desktop={<RequestDetailPage />} mobile={<MobileRequestPage />} />} />
+              <Route path="interventions" element={<Adaptive desktop={<MesInterventionsPage />} mobile={<MobileInterventionsPage />} />} />
               <Route path="usagers" element={<Adaptive desktop={<UsagersListPage />} />} />
               <Route path="usagers/:contactId" element={<Adaptive desktop={<UsagerPage />} />} />
               {/* Colonne unique, lisible telle quelle sur un téléphone. */}

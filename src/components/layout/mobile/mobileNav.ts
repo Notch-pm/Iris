@@ -1,16 +1,21 @@
-// Onglets de la barre basse mobile — logique PURE, testée. Quatre entrées au
-// plus : un pouce ne vise pas juste au-delà. L'activation vient de
-// `isNavRouteActive` (nav.ts), comme pour le rail de bureau : « Demandes »
-// et « Nouvelle » partagent le préfixe `/demandes`.
+// Barre basse mobile — logique PURE, testée. Maquette « Iris mobile — v2 »
+// (2026-09-14) : TROIS onglets au plus (Demandes, Interventions, Moi) et un
+// bouton rond « Créer » au centre, au pouce. Un pouce ne vise pas juste
+// au-delà de quatre cibles.
+//
+// Deux natures d'entrée : les ONGLETS mènent à une route (activation par
+// `isNavRouteActive`, comme le rail de bureau — « Demandes » et « Créer »
+// partagent le préfixe `/demandes`) ; « Moi » ouvre la feuille du compte SUR
+// PLACE, sans quitter l'écran.
 
 import type { NavRoute } from "../nav";
 
-export type MobileNavKey = "interventions" | "demandes" | "nouvelle" | "compte";
+export type MobileNavKey = "demandes" | "interventions" | "creer" | "moi";
 
-export interface MobileNavItem extends NavRoute {
-  key: MobileNavKey;
-  label: string;
-}
+export type MobileNavItem =
+  | { kind: "tab"; key: "demandes" | "interventions"; label: string; route: NavRoute }
+  | { kind: "create"; key: "creer"; label: string; route: NavRoute }
+  | { kind: "account"; key: "moi"; label: string };
 
 export interface MobileNavInput {
   /** Profil « Intervenant » actif dans le tenant (`my_rights.is_intervenant`). */
@@ -20,14 +25,15 @@ export interface MobileNavInput {
 }
 
 export function mobileNavItems(input: MobileNavInput): MobileNavItem[] {
-  const items: MobileNavItem[] = [];
+  const items: MobileNavItem[] = [
+    { kind: "tab", key: "demandes", label: "Demandes", route: { to: "/demandes", end: false, except: ["/demandes/nouvelle"] } },
+  ];
   if (input.isIntervenant) {
-    items.push({ key: "interventions", label: "Interventions", to: "/interventions", end: false });
+    items.push({ kind: "tab", key: "interventions", label: "Interventions", route: { to: "/interventions", end: false } });
   }
-  items.push({ key: "demandes", label: "Demandes", to: "/demandes", end: false, except: ["/demandes/nouvelle"] });
   if (input.canCreate) {
-    items.push({ key: "nouvelle", label: "Nouvelle", to: "/demandes/nouvelle", end: false });
+    items.push({ kind: "create", key: "creer", label: "Créer", route: { to: "/demandes/nouvelle", end: false } });
   }
-  items.push({ key: "compte", label: "Compte", to: "/mon-compte", end: false });
+  items.push({ kind: "account", key: "moi", label: "Moi" });
   return items;
 }
