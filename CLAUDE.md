@@ -116,7 +116,12 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   `clôture` impliquant chacun `consultation`, plus des droits par défaut (démarches non listées,
   y compris futures ; valeur initiale « aucun », *fail closed*). L'**administration** est un
   attribut de profil indépendant : elle **n'accorde par elle-même aucun droit** sur les
-  demandes. Les 5 tables `permission_*` n'ont aucune policy d'écriture cliente : les RPC
+  demandes. Depuis le 2026-09-14, un second attribut, **intervenant** (`is_intervenant`) :
+  sollicitable pour une **intervention** sur les demandes du périmètre pendant
+  l'instruction ; il n'ouvre rien par lui-même, c'est la **sollicitation**
+  (`request_interventions`, deux RPC seules portes) qui ouvre la demande à l'intervenant —
+  sans les notes internes ni les échanges (`can_consult_request`). Les 5 tables
+  `permission_*` n'ont aucune policy d'écriture cliente : les RPC
   (`save_permission_profile`…) sont l'unique porte. `organization_members.role` subsiste en
   **colonne dérivée transitoire**. Détail complet : [`docs/droits.md`](docs/droits.md).
 
@@ -322,7 +327,12 @@ les invariants ci-dessus restent la référence.
   proposé), **ajout d'une pièce** sur une exigence non conforme ou manquante (« la plus
   récente fait foi » : la nouvelle remplace, les remplacées restent au dossier) et
   **modification des réponses** au formulaire figé de la demande (jamais la définition de la
-  démarche, qui vit dans le Socle) →
+  démarche, qui vit dans le Socle), **interventions** (2026-09-14 : l'agent sollicite un
+  intervenant — profil `is_intervenant` — pendant l'instruction, l'intervenant est prévenu
+  par e-mail, ne voit que ces demandes-là dans « Mes interventions » `/interventions` et
+  déclare l'intervention réalisée avec jusqu'à 4 justificatifs — documents ou photos prises
+  à la caméra —, reçus par la porte unique avec la portée `intervention_id`, nature
+  `intervention` hors du dossier de l'usager) →
   [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
 - **Contacts / Usagers** (`src/features/contacts`) : identification du demandeur via
   `socle-proxy` (homonymes cherchés automatiquement, création, sans rapprochement,
@@ -353,9 +363,11 @@ les invariants ci-dessus restent la référence.
   doctrine dans [`docs/droits.md`](docs/droits.md), détail front dans
   [`src/features/permissions/CLAUDE.md`](src/features/permissions/CLAUDE.md).
 - **Notifications** (`src/features/notifications`, edge `notifications-mailer`) : cloche du
-  header **et e-mail**, sept motifs (affectation, retrait d'affectation, changement de statut,
-  note interne, mention, nouvelle demande dans le périmètre d'instruction, et — depuis le
-  2026-09-01 — **demande transférée** à l'organisme qu'on instruit). **La base est le seul
+  header **et e-mail**, neuf motifs (affectation, retrait d'affectation, changement de statut,
+  note interne, mention, nouvelle demande dans le périmètre d'instruction, — depuis le
+  2026-09-01 — **demande transférée** à l'organisme qu'on instruit, et — depuis le
+  2026-09-14 — **intervention demandée** / **intervention réalisée**, produites par les RPC
+  d'intervention). **La base est le seul
   producteur** — triggers `t40_*` `SECURITY DEFINER`, aucune policy d'écriture cliente, jamais
   de notification pour son propre geste ; temps réel + repli par sondage. **Un événement, une
   ligne, N canaux** : l'e-mail part d'une **boîte d'envoi** drainée sur cron (jamais du

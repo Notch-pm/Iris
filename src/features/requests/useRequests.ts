@@ -271,6 +271,7 @@ function useInvalidateRequest() {
         "request_attachments",
         "request_emails",
         "request_links",
+        "request_interventions",
         "eligible-assignees",
       ]) {
         void queryClient.invalidateQueries({ queryKey: [table, requestId] });

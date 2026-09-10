@@ -235,6 +235,7 @@ function profile(over: Partial<RightsProfile> = {}): RightsProfile {
     name: "Instructeur voirie",
     status: "active",
     is_admin: false,
+    is_intervenant: false,
     scope_organization_ids: [SCOPE],
     procedures: {},
     default: ["instruction"],

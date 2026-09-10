@@ -45,6 +45,16 @@ anticipée : la **démarche**. Détail des tables, gardes et policies :
   de la matrice. N'accorde par lui-même **aucun** droit de lecture ni d'écriture sur
   les demandes (un « administrateur fonctionnel » au périmètre racine et à la
   matrice vide ne voit aucune demande).
+- **Intervenant** (`is_intervenant`, 2026-09-14) — second attribut de profil,
+  sur le même modèle que l'administration : ses titulaires peuvent être
+  **sollicités** pour une intervention sur les demandes du **périmètre** du
+  profil, pendant l'instruction. Il n'accorde par lui-même **aucun** droit sur
+  les demandes : c'est la **sollicitation** (`request_interventions`) qui ouvre
+  la demande à l'intervenant — résumé, pièces, journal, interventions ; **ni** les
+  notes internes **ni** les échanges (`can_consult_request`). Un profil
+  « Intervenant » sans autre droit est valide (modèle de reprise rapide
+  « Intervenant » dans l'éditeur). Détail : [`data-model.md`](data-model.md)
+  § « Interventions ».
 - Un profil est `active` ou `inactive` (désactivé = zéro droit produit ; les
   attributions restent, affichées grisées).
 - Tout droit d'écriture (création, instruction, clôture) **implique** la
@@ -97,6 +107,8 @@ Socle du tenant sinon — voir [`data-model.md`](data-model.md#tables)) et
 | **Affectation** à un collègue | Exige l'instruction pour l'auteur du geste **et** au moins l'instruction pour le **destinataire** sur le couple retenu — garde serveur bloquante dès l'INSERT (une demande ne peut pas naître affectée à un agent sans droit) et à l'UPDATE, message français explicite |
 | **Transfert** d'organisation | Instruction sur le couple actuel ; cible = toute organisation du sous-arbre du tenant, y compris hors périmètre de l'auteur (perte d'accès immédiate) |
 | **Requalification** de démarche | Instruction sur le couple actuel **et** sur le couple cible |
+| **Solliciter un intervenant** | Instruction sur le couple **et** demande `en_instruction` ; l'intervenant doit détenir un profil actif `is_intervenant` couvrant l'organisation porteuse (`eligible_intervenants`) |
+| **Déclarer une intervention réalisée** | L'intervenant sollicité, et lui seul (admin plateforme compris) — aucun droit sur le couple n'est exigé |
 
 ## Règles d'exploitation
 
@@ -243,6 +255,9 @@ les RPC sont l'unique chemin, `SECURITY DEFINER`, `EXECUTE` révoqué de
 | `revoke_permission_profile(p_profile_id, p_user_id) → jsonb` | Retire (idempotente) | Idem | Dernier administrateur (`assert_tenant_keeps_root_admin` après le DELETE) |
 | `my_rights(p_org_id) → jsonb` | Profils de l'appelant, périmètre déjà expansé côté serveur (`{organization_id, is_platform_admin, is_admin, no_procedure_id, profiles[]}`) | Tout membre du tenant | « Ressource introuvable. » si non membre |
 | `eligible_assignees(p_request_id) → table(user_id, display_name, email)` | Membres du tenant détenant l'instruction sur le couple de la demande — alimente le sélecteur d'affectation | Quiconque peut lire la demande | « Demande introuvable. » |
+| `eligible_intervenants(p_request_id) → table(user_id, display_name, email)` | Membres sollicitables comme intervenant (profil actif `is_intervenant` couvrant l'organisation porteuse) | Quiconque peut lire la demande | « Demande introuvable. » |
+| `request_intervention(p_request_id, p_intervenant_id, p_requested_for, p_comment) → jsonb {id}` | Sollicite un intervenant (2026-09-14) — journal + notification `intervention_requested` | Instruction sur le couple, demande `en_instruction` | « Une intervention ne se sollicite que sur une demande en cours d'instruction. », « Cette personne n'est pas intervenant sur l'organisme de la demande. », « La date d'intervention demandée ne peut pas être passée. », « Cet intervenant a déjà une intervention en attente sur cette demande. » |
+| `complete_request_intervention(p_intervention_id, p_completed_on, p_comment, p_upload_ids uuid[]) → jsonb` | Déclare l'intervention réalisée, avec jusqu'à 4 justificatifs reçus par `request-attachments` (portée `intervention_id`) — journal + notification `intervention_completed` | L'intervenant sollicité | « Seul l'intervenant sollicité peut déclarer cette intervention réalisée. », « La date de finalisation ne peut pas être future. », « Cette intervention est déjà déclarée réalisée. », « Au plus 4 justificatifs par intervention. » |
 | `permission_coverage_report(p_org_id) → table(...)` | Couples non couverts au niveau instruction + demandes non terminales concernées (RM-62, hors RLS par construction) | Administrateur du tenant | « Accès réservé aux administrateurs. » |
 | `members_without_profile(p_org_id) → table(user_id, display_name, email)` | Membres sans attribution active | Administrateur du tenant | « Accès réservé aux administrateurs. » |
 
@@ -265,7 +280,11 @@ contraire, `EXECUTE` révoqué de `public`/`anon`, accordé à `authenticated`.
 | `is_org_admin_anywhere(org_id)` | Administration quelque part dans le tenant — ouvre les Paramètres | `authenticated` |
 | `has_any_creation_right(org_id)` | Création quelque part dans le tenant (utilisateur courant) — storage brouillon | `authenticated` |
 | `has_any_creation_right_for(user_id, org_id)` | Idem, paramétrée par utilisateur — appelée par `socle-proxy` en service_role | **révoquée aussi de `authenticated`** |
-| `can_read_request` / `can_write_request` / `can_process_request` / `can_admin_request(request_id)` | Enveloppes par id de demande — réservées aux policies storage et usages ponctuels (les satellites utilisent un `EXISTS` direct, pas ces fonctions) | `authenticated` |
+| `can_read_request` / `can_write_request` / `can_process_request` / `can_admin_request(request_id)` | Enveloppes par id de demande — réservées aux policies storage et usages ponctuels (les satellites utilisent un `EXISTS` direct, pas ces fonctions). Depuis le 2026-09-14, `can_read_request` = consultation par couple **ou** sollicitation comme intervenant | `authenticated` |
+| `can_consult_request(request_id)` | Consultation par couple **sans** la sollicitation (l'ancienne `can_read_request`) — garde des notes internes et des échanges | `authenticated` |
+| `my_intervention_request_ids()` | Demandes ouvertes à l'appelant par une sollicitation — sous-requête non corrélée de `requests_select` | `authenticated` |
+| `is_intervenant_for(user_id, org_id, socle_org_id)` | Sollicitable sur cette organisation porteuse (profil actif `is_intervenant`, périmètre en sous-arbre) | **interne** |
+| `paris_today()` | Jour courant vu de France (les dates saisies sont celles d'un agent en France, le serveur est en UTC) | **interne** |
 | `request_exists(id)` | Existence brute d'une demande, **hors RLS** — distingue un vrai brouillon d'une demande existante mais invisible | `authenticated` |
 | `is_last_root_admin(org_id, user_id)` | Vrai si l'utilisateur est l'unique détenteur actif de l'administration racine | `authenticated` |
 | `member_role_derived(org_id, user_id)` | `role` dérivé (administrateur/agent) | **interne** |

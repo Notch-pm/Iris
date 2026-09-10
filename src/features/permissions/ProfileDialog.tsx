@@ -168,6 +168,25 @@ export function ProfileDialog({
             </span>
           </label>
 
+          <label className="flex items-start gap-2.5 rounded-[14px] border border-border bg-muted/30 p-3">
+            <input
+              type="checkbox"
+              className="mt-0.5 size-4 rounded border-input text-primary"
+              checked={draft.isIntervenant}
+              onChange={(e) => setDraft((d) => ({ ...d, isIntervenant: e.target.checked }))}
+            />
+            <span className="flex flex-col gap-0.5">
+              <span className="text-sm font-semibold">
+                Intervenant (peut être sollicité pour une intervention sur les demandes du périmètre)
+              </span>
+              <span className="text-xs text-muted-foreground">
+                N'accorde aucun droit sur les demandes : l'intervenant ne voit que celles sur
+                lesquelles un agent l'a sollicité pendant l'instruction, et y déclare son
+                intervention réalisée. Un profil « Intervenant » sans autre droit est valide.
+              </span>
+            </span>
+          </label>
+
           <section ref={orgSectionRef} tabIndex={-1} className="flex flex-col gap-2 outline-none">
             <h4 className="text-sm font-bold">Périmètre d'organisations</h4>
             <p className="text-xs text-muted-foreground">

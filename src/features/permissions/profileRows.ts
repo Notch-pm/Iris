@@ -15,6 +15,7 @@ export interface ProfileTableRow {
   name: string;
   description: string | null;
   is_admin: boolean;
+  is_intervenant: boolean;
   status: string;
   version: number;
   default_view: boolean;
@@ -47,6 +48,7 @@ export interface ProfileRow {
   name: string;
   description: string;
   isAdmin: boolean;
+  isIntervenant: boolean;
   status: ProfileStatusRow;
   version: number;
   organizationIds: string[];
@@ -95,6 +97,7 @@ export function buildProfileRows(
     name: p.name,
     description: p.description ?? "",
     isAdmin: p.is_admin,
+    isIntervenant: p.is_intervenant === true,
     status: p.status === "inactive" ? "inactive" : "active",
     version: p.version,
     organizationIds: orgsByProfile.get(p.id) ?? [],
@@ -105,7 +108,10 @@ export function buildProfileRows(
 }
 
 export function emptyDraft(): ProfileDraft {
-  return { name: "", description: "", isAdmin: false, defaultRights: [], organizationIds: [], procedures: {} };
+  return {
+    name: "", description: "", isAdmin: false, isIntervenant: false,
+    defaultRights: [], organizationIds: [], procedures: {},
+  };
 }
 
 /** Édition (le profil existant reste inchangé tant que « Enregistrer » n'est pas confirmé). */
@@ -114,6 +120,7 @@ export function draftFromProfileRow(row: ProfileRow): ProfileDraft {
     name: row.name,
     description: row.description,
     isAdmin: row.isAdmin,
+    isIntervenant: row.isIntervenant,
     defaultRights: row.defaultRights,
     organizationIds: row.organizationIds,
     procedures: row.procedures,
@@ -129,6 +136,8 @@ export interface ProfileTemplate {
   id: string;
   label: string;
   presetId: PresetLevelId;
+  /** Modèle « Intervenant » : l'attribut coché, aucun droit sur les demandes. */
+  intervenant?: boolean;
 }
 
 /**
@@ -141,6 +150,9 @@ export const PROFILE_TEMPLATES: ProfileTemplate[] = [
   { id: "instructeur", label: "Instructeur", presetId: "instruction" },
   { id: "superviseur", label: "Superviseur", presetId: "instruction_cloture" },
   { id: "consultation", label: "Consultation", presetId: "consultation" },
+  // Sollicitable pour une intervention, sans rien voir d'autre que ce qu'on
+  // lui confie (2026-09-14).
+  { id: "intervenant", label: "Intervenant", presetId: "aucun", intervenant: true },
 ];
 
 /** I11 : le nom du modèle pré-remplit le champ Nom (librement modifiable ensuite). */
@@ -149,6 +161,7 @@ export function draftFromTemplate(templateId: string): ProfileDraft {
   return {
     ...emptyDraft(),
     name: template?.label ?? "",
+    isIntervenant: template?.intervenant === true,
     defaultRights: template ? rightsForPreset(template.presetId) : [],
   };
 }

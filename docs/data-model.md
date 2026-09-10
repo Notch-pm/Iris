@@ -1154,6 +1154,85 @@ le Socle la stocke en minuscules, et le premier envoi réel a produit « monsieu
 en tête d'un avis pendant que l'écran affichait « Monsieur ». Le catalogue est désormais PARTAGÉ
 entre l'écran et le serveur — il n'y en a qu'un.
 
+### Interventions — solliciter un intervenant (`20260914100000`)
+
+Demande PO du 2026-09-14 : pendant l'instruction, un agent **sollicite un intervenant**
+(commentaire, date d'intervention souhaitée) ; l'intervenant est prévenu par e-mail, ne
+voit **que** les demandes sur lesquelles on l'a sollicité, et **déclare l'intervention
+réalisée** (date de finalisation proposée au jour courant, commentaire facultatif).
+
+- **`permission_profiles.is_intervenant`** — un **attribut** de profil, comme `is_admin`,
+  pas un cinquième droit de la matrice. Il dit « ces personnes peuvent être sollicitées »
+  sur le **périmètre** du profil (sous-arbre implicite) et n'ouvre par lui-même **aucune**
+  demande. Un profil « Intervenant » sans droit de consultation est **valide**
+  (`validate_permission_profile_shape` et `save_permission_profile` l'admettent au même
+  titre qu'un profil d'administration pure). `my_rights` l'expose par profil et en tête
+  (`is_intervenant` : quelque part dans le tenant → entrée de rail « Mes interventions »).
+- **`request_interventions`** — une ligne par sollicitation : `intervenant_id`,
+  `requested_by`, `requested_for` (jour souhaité), `request_comment` (obligatoire — c'est
+  la consigne), `status` (`demandee` | `realisee`), `completed_at`, `completed_on` (jour
+  déclaré), `completion_comment`. Contrainte de cohérence entre `status` et les colonnes
+  de réalisation. **Aucune policy cliente d'écriture** ; lecture par `EXISTS` sur la
+  demande (l'intervenant y accède par `requests_select`).
+- **La sollicitation OUVRE la demande** : `requests_select` accepte désormais aussi
+  `id in (select my_intervention_request_ids())` (fonction `DEFINER`, sous-requête non
+  corrélée — aucune récursion requests ↔ request_interventions). La visibilité **survit** à
+  la réalisation : l'intervenant relit ce qu'il a déclaré.
+- **Ce qui s'ouvre avec la demande, et ce qui reste fermé.** Les satellites lus par
+  `EXISTS` direct (journal, pièces, liens, affectations) suivent, ainsi que l'URL signée
+  d'une pièce (`can_read_request` = consultation par couple **ou** sollicitation). Les
+  **notes internes** et les **échanges** (`request_messages`, `request_emails`) sont
+  désormais gardés par **`can_consult_request`** — l'ancienne définition de
+  `can_read_request`, consultation par couple **sans** la sollicitation : ce sont le
+  matériau de l'instruction, et l'intervenant n'instruit pas. L'écran retire les deux
+  onglets à un intervenant pur plutôt que de les montrer vides.
+- **Deux RPC, seules portes** (motif `transfer_request`, `is_service_context()` jamais
+  testé en `DEFINER`) :
+  - `request_intervention(p_request_id, p_intervenant_id, p_requested_for, p_comment)` —
+    exige l'**instruction** sur le couple (`request_right_for`), le statut
+    **`en_instruction`** (garde serveur, jamais UI seulement), un intervenant éligible
+    (`is_intervenant_for` : profil actif `is_intervenant` dont le périmètre expansé couvre
+    `socle_scope_org_id`), une date non passée (jour de **Paris**, `paris_today()`), un
+    commentaire non vide, et refuse un doublon **en attente** pour le même intervenant.
+    Journalise `intervention_requested` et notifie l'intervenant.
+  - `complete_request_intervention(p_intervention_id, p_completed_on, p_comment)` —
+    réservée à l'**intervenant sollicité** (admin plateforme compris), date non future,
+    une seule fois. Journalise `intervention_completed` et notifie **qui a sollicité** et
+    **l'affectataire** s'il est quelqu'un d'autre.
+  - `eligible_intervenants(p_request_id)` — alimente le sélecteur (exige
+    `can_read_request`).
+- **Deux motifs de notification**, `intervention_requested` (à l'intervenant — l'e-mail
+  demandé, gabarit **agent**, boîte d'envoi de `notifications-mailer`) et
+  `intervention_completed`. Le **commentaire sort dans l'e-mail** : il est écrit **pour**
+  son destinataire, c'est la consigne — ce n'est pas une note interne. Le demandeur, lui,
+  n'y figure pas (règle commune). Réglables dans « Mon compte ».
+- Journal : `intervention_requested` / `intervention_completed` (`intervention_id`,
+  `intervenant`, `intervenant_name`, jour). Le commentaire n'y est pas recopié : il vit
+  sur la ligne d'intervention, lisible de qui lit la demande.
+- **Justificatifs de l'intervenant** (`20260914110000`, second lot du 2026-09-14) : en
+  déclarant, l'intervenant joint jusqu'à **quatre** fichiers — documents, ou photos prises
+  avec la caméra de l'appareil. Une quatrième nature sur `request_attachments.kind`,
+  **`intervention`**, rattachée par `intervention_id` : même table que les autres pièces
+  (mêmes policies, même purge, même bucket, lecture par `can_read_request` — l'intervenant
+  relit ce qu'il a déposé), mais **hors du dossier de l'usager** (l'écran les retire du
+  groupement par exigence, de la conformité et de la validation du formulaire ; `t17` ne
+  regarde que les exigences, elles n'y entrent pas). Le fichier entre par la **porte
+  unique** `request-attachments` avec la portée `intervention_id`, ouverte à l'intervenant
+  **sollicité**, tant que l'intervention est à réaliser, sans droit d'instruction et même
+  si la demande a été close entre-temps. `complete_request_intervention(…, p_upload_ids)`
+  **consomme** les uploads dans sa transaction (`consume_attachment_upload` : tenant,
+  déposant = l'intervenant, portée = la demande), dédoublonne, refuse au-delà de
+  `intervention_max_attachments()` (= 4) — tout ou rien : une pièce refusée annule la
+  déclaration. Le journal et la notification portent le **compte** (`attachments`), jamais
+  les fichiers. Ces justificatifs ne sont **pas proposés** en pièce jointe d'un échange
+  avec l'usager (question ouverte, à trancher par le PO).
+- Tests : [`supabase/tests/interventions.test.sql`](../supabase/tests/interventions.test.sql)
+  (T1–T8 : forme du profil, éligibilité, six refus de sollicitation, visibilité avant/après
+  — notes et échanges fermés à l'intervenant, ouverts à l'agent —, aucune écriture cliente,
+  gardes et succès de la déclaration, fan-out des deux notifications, `my_rights` ; et les
+  justificatifs : cinq refusés, pièce d'un autre déposant refusée avec annulation de la
+  déclaration, deux consommés et rattachés, lisibles par l'intervenant et par l'agent).
+
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 
 Toutes les policies par couple ci-dessous enveloppent `is_platform_admin()` en `(select …)`

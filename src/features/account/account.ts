@@ -56,6 +56,16 @@ export const PREFERENCE_ROWS: { kind: NotificationKind; label: string; hint: str
     label: "Une demande nous est transférée",
     hint: "Un autre service confie à mon organisme une demande que j'instruis.",
   },
+  {
+    kind: "intervention_requested",
+    label: "Une intervention m'est demandée",
+    hint: "Un agent me sollicite comme intervenant sur une demande.",
+  },
+  {
+    kind: "intervention_completed",
+    label: "Une intervention que j'ai demandée est réalisée",
+    hint: "L'intervenant que j'ai sollicité déclare son intervention réalisée.",
+  },
 ];
 
 /** Sans préférence enregistrée, tout est activé — *fail open*, comme en base. */

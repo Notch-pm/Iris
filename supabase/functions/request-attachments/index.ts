@@ -21,6 +21,12 @@
 //     exigé : INSTRUCTION sur son couple (`request_right_for`). L'objet est
 //     écrit directement sous la demande ; sans ligne `request_attachments`,
 //     il reste invisible à l'écran et part à la purge.
+//   · `?organization_id=…&request_id=…&intervention_id=…` — le JUSTIFICATIF
+//     d'un INTERVENANT (2026-09-14) : la pièce est reçue pour la demande, par
+//     l'intervenant SOLLICITÉ sur cette intervention, tant qu'elle est à
+//     réaliser. Aucun droit d'instruction exigé, et la demande peut être
+//     close : c'est SA déclaration, elle ne dépend pas du sort du dossier.
+//     `complete_request_intervention` consomme ensuite l'upload (4 au plus).
 //
 // Le périmètre est lu dans l'URL et vérifié AVANT de lire le corps : un
 // appelant sans droit ne fait pas charger 25 Mo au serveur.
@@ -76,8 +82,11 @@ function fail(req: Request, status: number, code: string, message: string): Resp
 async function handleUpload(req: Request, url: URL, actorId: string): Promise<Response> {
   const organizationId = (url.searchParams.get("organization_id") ?? "").toLowerCase();
   const requestId = (url.searchParams.get("request_id") ?? "").toLowerCase() || null;
+  const interventionId = (url.searchParams.get("intervention_id") ?? "").toLowerCase() || null;
   if (!UUID_RE.test(organizationId)) return fail(req, 400, "bad_request", "organization_id manquant.");
   if (requestId !== null && !UUID_RE.test(requestId)) return fail(req, 400, "bad_request", "request_id invalide.");
+  if (interventionId !== null && !UUID_RE.test(interventionId)) return fail(req, 400, "bad_request", "intervention_id invalide.");
+  if (interventionId !== null && requestId === null) return fail(req, 400, "bad_request", "intervention_id exige request_id.");
 
   // Appartenance au tenant (hors périmètre = 404, jamais révélé).
   const { data: membership } = await supabase
@@ -96,19 +105,36 @@ async function handleUpload(req: Request, url: URL, actorId: string): Promise<Re
       .eq("organization_id", organizationId)
       .maybeSingle();
     if (!request) return fail(req, 404, "not_found", "Demande introuvable.");
-    if (CLOSED_STATUSES.has(request.status)) {
-      return fail(req, 409, "request_closed", "La demande est close : aucune pièce ne peut plus y être déposée.");
-    }
-    const { data: allowed, error } = await supabase.rpc("request_right_for", {
-      p_user_id: actorId,
-      p_org_id: organizationId,
-      p_socle_org_id: request.socle_scope_org_id,
-      p_socle_procedure_id: request.socle_procedure_id,
-      p_right: "instruction",
-    });
-    if (error) return fail(req, 500, "rights_unavailable", "Droits indisponibles — réessayez.");
-    if (allowed !== true) {
-      return fail(req, 403, "forbidden", "Déposer une pièce exige le droit d'instruction sur cette demande.");
+    if (interventionId !== null) {
+      // Le justificatif d'un intervenant : l'intervenant SOLLICITÉ, et lui
+      // seul, tant que l'intervention est à réaliser. Ni droit d'instruction,
+      // ni demande ouverte exigés — c'est sa déclaration, pas l'instruction.
+      const { data: intervention } = await supabase
+        .from("request_interventions")
+        .select("id")
+        .eq("id", interventionId)
+        .eq("request_id", requestId)
+        .eq("intervenant_id", actorId)
+        .eq("status", "demandee")
+        .maybeSingle();
+      if (!intervention) {
+        return fail(req, 403, "forbidden", "Seul l'intervenant sollicité peut joindre un justificatif à une intervention à réaliser.");
+      }
+    } else {
+      if (CLOSED_STATUSES.has(request.status)) {
+        return fail(req, 409, "request_closed", "La demande est close : aucune pièce ne peut plus y être déposée.");
+      }
+      const { data: allowed, error } = await supabase.rpc("request_right_for", {
+        p_user_id: actorId,
+        p_org_id: organizationId,
+        p_socle_org_id: request.socle_scope_org_id,
+        p_socle_procedure_id: request.socle_procedure_id,
+        p_right: "instruction",
+      });
+      if (error) return fail(req, 500, "rights_unavailable", "Droits indisponibles — réessayez.");
+      if (allowed !== true) {
+        return fail(req, 403, "forbidden", "Déposer une pièce exige le droit d'instruction sur cette demande.");
+      }
     }
   } else {
     const { data: allowed, error } = await supabase.rpc("has_any_creation_right_for", {

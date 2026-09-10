@@ -24,7 +24,9 @@ export type NotificationKind =
   | "note_added"
   | "mentioned"
   | "new_request_in_scope"
-  | "transferred_in";
+  | "transferred_in"
+  | "intervention_requested"
+  | "intervention_completed";
 
 /** Libellés de statut — copie assumée de `src/features/requests/statuts.ts`.
  *  Les edge functions ne partagent pas le graphe de modules du front ; un
@@ -62,6 +64,21 @@ export interface NotificationPayload {
   from_destinataire?: string | null;
   /** Transfert : date de dépôt de la demande (ISO), figée au moment du geste. */
   received_at?: string | null;
+  /** Intervention : jour souhaité par l'agent (`AAAA-MM-JJ`). */
+  requested_for?: string | null;
+  /** Intervention : jour de finalisation déclaré par l'intervenant (`AAAA-MM-JJ`). */
+  completed_on?: string | null;
+  /** Intervention réalisée : nom de l'intervenant, figé dans le payload. */
+  intervenant_name?: string | null;
+  /**
+   * Intervention : le commentaire de la sollicitation (ce qui est attendu) ou
+   * de la réalisation. Il SORT dans l'e-mail : c'est la consigne écrite POUR
+   * son destinataire, pas une note interne — et sans elle le message ne
+   * dirait pas quoi faire.
+   */
+  comment?: string | null;
+  /** Intervention réalisée : nombre de justificatifs joints à la fiche (jamais les fichiers eux-mêmes). */
+  attachments?: number | null;
 }
 
 export interface NotificationEmailInput {
@@ -129,6 +146,13 @@ function depositLine(payload: NotificationPayload): string | null {
   return `Déposée le ${date.toLocaleDateString("fr-FR", {
     day: "2-digit", month: "2-digit", year: "numeric", timeZone: "Europe/Paris",
   })}.`;
+}
+
+/** « 12/03/2026 » depuis un jour `AAAA-MM-JJ`, sans passer par `Date` (aucun
+ *  décalage de fuseau : le runtime est en UTC, le jour est celui de l'agent). */
+function dayLabel(value: unknown): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(text(value));
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
 
 /** Ligne de contexte ajoutée quand la démarche / le destinataire sont connus. */
@@ -242,6 +266,54 @@ function bodyFor(kind: string, payload: NotificationPayload): Body {
           ...(text(payload.procedure) ? [`Démarche : ${text(payload.procedure)}.`] : []),
           ...(deposit ? [deposit] : []),
           `Statut à l'arrivée : « ${statusLabel(payload.status)} ».`,
+        ],
+      };
+    }
+
+    // L'e-mail à l'INTERVENANT (demande PO 2026-09-14) : ce qu'on attend de
+    // lui, pour quand, sur quelle demande. Le commentaire de l'agent en est le
+    // cœur ; le demandeur, l'adresse et les pièces restent sur la fiche.
+    case "intervention_requested": {
+      const day = dayLabel(payload.requested_for);
+      const ctx = contextLine(payload);
+      const comment = text(payload.comment);
+      return {
+        subject: subjectLine(
+          day ? `Intervention attendue pour le ${day}` : "Intervention attendue",
+          payload,
+        ),
+        heading: "Une intervention est attendue de votre part",
+        paragraphs: [
+          day
+            ? `${who} vous sollicite pour une intervention sur la demande ${what}, souhaitée le ${day}.`
+            : `${who} vous sollicite pour une intervention sur la demande ${what}.`,
+          ...(ctx ? [ctx] : []),
+          ...(comment ? [`Ce qui est attendu : ${comment}`] : []),
+          "Une fois l'intervention faite, déclarez-la réalisée dans Iris (« Mes interventions » ou la fiche de la demande).",
+        ],
+      };
+    }
+
+    case "intervention_completed": {
+      const day = dayLabel(payload.completed_on);
+      const name = text(payload.intervenant_name) || who;
+      const comment = text(payload.comment);
+      return {
+        subject: subjectLine("Intervention réalisée", payload),
+        heading: "Une intervention a été réalisée",
+        paragraphs: [
+          day
+            ? `${name} a déclaré réalisée, le ${day}, l'intervention demandée sur la demande ${what}.`
+            : `${name} a déclaré réalisée l'intervention demandée sur la demande ${what}.`,
+          ...(comment ? [`Commentaire de l'intervenant : ${comment}`] : []),
+          // Les justificatifs restent sur la fiche, sous RLS : on dit qu'ils
+          // existent, on ne les transporte pas.
+          ...(typeof payload.attachments === "number" && payload.attachments > 0
+            ? [payload.attachments === 1
+                ? "Un justificatif a été joint à la fiche de la demande."
+                : `${payload.attachments} justificatifs ont été joints à la fiche de la demande.`]
+            : []),
+          `La demande est au statut « ${statusLabel(payload.status)} » : l'instruction peut reprendre.`,
         ],
       };
     }

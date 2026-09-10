@@ -33,6 +33,7 @@ function profile(overrides: Partial<RightsProfile> & { name: string }): RightsPr
     id: overrides.id ?? overrides.name,
     status: "active",
     is_admin: false,
+    is_intervenant: false,
     scope_organization_ids: [],
     procedures: {},
     default: [],

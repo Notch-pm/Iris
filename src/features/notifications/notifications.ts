@@ -14,11 +14,13 @@ export type NotificationKind =
   | "note_added"
   | "mentioned"
   | "new_request_in_scope"
-  | "transferred_in";
+  | "transferred_in"
+  | "intervention_requested"
+  | "intervention_completed";
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   "assigned", "unassigned", "status_changed", "note_added", "mentioned",
-  "new_request_in_scope", "transferred_in",
+  "new_request_in_scope", "transferred_in", "intervention_requested", "intervention_completed",
 ];
 
 export function isNotificationKind(value: string): value is NotificationKind {
@@ -43,6 +45,14 @@ export interface NotificationPayload {
   from_destinataire?: string | null;
   /** Transfert : date de dépôt de la demande, figée au moment du geste. */
   received_at?: string | null;
+  /** Intervention : jour souhaité par l'agent (`AAAA-MM-JJ`). */
+  requested_for?: string | null;
+  /** Intervention : jour de finalisation déclaré par l'intervenant (`AAAA-MM-JJ`). */
+  completed_on?: string | null;
+  /** Intervention réalisée : nom de l'intervenant (l'acteur est lui, mais le payload le fige). */
+  intervenant_name?: string | null;
+  /** Intervention : commentaire de la sollicitation ou de la réalisation. */
+  comment?: string | null;
 }
 
 export interface NotificationItem {
@@ -68,6 +78,8 @@ const KIND_TITLES: Record<NotificationKind, string> = {
   mentioned: "Vous êtes mentionné",
   new_request_in_scope: "Nouvelle demande",
   transferred_in: "Demande transférée",
+  intervention_requested: "Intervention demandée",
+  intervention_completed: "Intervention réalisée",
 };
 
 export function notificationTitle(kind: string): string {
@@ -77,6 +89,12 @@ export function notificationTitle(kind: string): string {
 function statusLabel(value: string | null | undefined): string {
   if (!value) return "—";
   return STATUS_LABELS[value as keyof typeof STATUS_LABELS] ?? value;
+}
+
+/** « 12/03/2026 » depuis un jour `AAAA-MM-JJ` (sans passer par `Date`) ; vide si illisible. */
+function dayLabel(value: string | null | undefined): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
 
 /** L'auteur du geste, ou « le système » quand la demande vient d'une
@@ -119,6 +137,19 @@ export function notificationMessage(kind: string, payload: NotificationPayload):
       return de
         ? `${who} vous a transféré cette demande depuis ${de}.`
         : `${who} vous a transféré cette demande.`;
+    }
+    case "intervention_requested": {
+      const day = dayLabel(payload.requested_for);
+      return day
+        ? `${who} vous sollicite pour une intervention, souhaitée le ${day}.`
+        : `${who} vous sollicite pour une intervention.`;
+    }
+    case "intervention_completed": {
+      const name = payload.intervenant_name?.trim() || who;
+      const day = dayLabel(payload.completed_on);
+      return day
+        ? `${name} a déclaré l'intervention réalisée le ${day}.`
+        : `${name} a déclaré l'intervention réalisée.`;
     }
     default:
       return "Cette demande a évolué.";

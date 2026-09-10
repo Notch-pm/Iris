@@ -24,6 +24,13 @@ même pas la question à se poser.
 | `mentioned` | la personne citée | quelqu'un écrit `@elle` dans une note interne — **prime sur `note_added`** (l'affectataire cité ne reçoit qu'un message) ; seuls les agents pouvant CONSULTER la demande sont mentionnables, garde `t03_request_messages_guard_mentions` |
 | `new_request_in_scope` | tout membre du tenant détenant **instruction** sur le couple (organisation Socle, démarche) de la demande | une demande entre — créée dans Iris comme ingérée depuis Clara ou un partenaire |
 | `transferred_in` | tout membre détenant **instruction** sur le couple d'**ARRIVÉE** | un autre service transfère la demande à cet organisme (2026-09-01) |
+| `intervention_requested` | l'**intervenant** sollicité | un agent le sollicite pendant l'instruction (2026-09-14) — produite par la RPC `request_intervention`, pas par un trigger |
+| `intervention_completed` | l'agent qui a **sollicité**, et l'**affectataire** s'il est quelqu'un d'autre | l'intervenant déclare l'intervention réalisée (RPC `complete_request_intervention`) |
+
+**Le commentaire d'intervention SORT dans l'e-mail** (décision du 2026-09-14) : la
+sollicitation dit ce qui est attendu, la réalisation ce qui a été fait — c'est un texte écrit
+POUR son destinataire, pas une note interne, et sans lui le message ne dirait pas quoi faire.
+Le demandeur, lui, n'y figure toujours pas.
 
 **Jamais pour son propre geste** : la règle est portée une seule fois, dans
 `push_notification` (`p_user_id = p_actor_id` → no-op), pas répétée dans chaque trigger.

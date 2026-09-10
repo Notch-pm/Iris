@@ -11,6 +11,8 @@ export interface ProfileDraft {
   name: string;
   description: string;
   isAdmin: boolean;
+  /** Intervenant (2026-09-14) : sollicitable sur le périmètre ; n'accorde aucun droit sur les demandes. */
+  isIntervenant: boolean;
   /** Droits appliqués à toute démarche non listée, y compris futures (RM-33). */
   defaultRights: Right[];
   /** Périmètre choisi (sémantique sous-arbre implicite, RM-25) — nœuds du miroir Socle du tenant. */
@@ -49,7 +51,9 @@ export function validateProfileDraft(draft: ProfileDraft): string[] {
   if (draft.organizationIds.length === 0) {
     errors.push(ERROR_ORG_REQUIRED);
   }
-  if (!draft.isAdmin && !grantsAnyRight(draft)) {
+  // Un profil d'administration pure ou d'intervenant pur est valide sans droit
+  // sur les demandes (même règle que `validate_permission_profile_shape`).
+  if (!draft.isAdmin && !draft.isIntervenant && !grantsAnyRight(draft)) {
     errors.push(ERROR_NO_RIGHTS);
   }
   return errors;
@@ -141,6 +145,7 @@ export interface SavePermissionProfilePayload {
   name: string;
   description: string;
   is_admin: boolean;
+  is_intervenant: boolean;
   default_rights: Right[];
   organizations: string[];
   procedures: { id: string; rights: Right[] }[];
@@ -158,6 +163,7 @@ export function toSavePayload(
     name: draft.name.trim(),
     description: draft.description.trim(),
     is_admin: draft.isAdmin,
+    is_intervenant: draft.isIntervenant,
     default_rights: normalizeRights(draft.defaultRights),
     organizations: [...draft.organizationIds],
     procedures: Object.entries(draft.procedures).map(([id, rights]) => ({

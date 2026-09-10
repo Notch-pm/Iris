@@ -38,12 +38,14 @@ export function parseMyRights(raw: unknown, orgId: string): MyRights {
     organization_id: typeof raw.organization_id === "string" ? raw.organization_id : orgId,
     is_platform_admin: raw.is_platform_admin === true,
     is_admin: raw.is_admin === true,
+    is_intervenant: raw.is_intervenant === true,
     no_procedure_id: typeof raw.no_procedure_id === "string" ? raw.no_procedure_id : fallback.no_procedure_id,
     profiles: profilesRaw.filter(isRecord).map((p) => ({
       id: typeof p.id === "string" ? p.id : "",
       name: typeof p.name === "string" ? p.name : "",
       status: parseStatus(p.status),
       is_admin: p.is_admin === true,
+      is_intervenant: p.is_intervenant === true,
       scope_organization_ids: Array.isArray(p.scope_organization_ids)
         ? p.scope_organization_ids.filter((v): v is string => typeof v === "string")
         : [],

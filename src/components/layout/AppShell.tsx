@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  ChevronsUpDown, Columns3, Inbox, LayoutDashboard, LogOut, Map, ShieldCheck, User, Users,
+  ChevronsUpDown, Columns3, HardHat, Inbox, LayoutDashboard, LogOut, Map, ShieldCheck, User, Users,
 } from "lucide-react";
 import parametresIcon from "@/assets/icons/parametres.svg";
 import notchLogo from "@/assets/logo-notch.svg";
@@ -43,6 +43,13 @@ const USAGERS_NAV_ITEM: NavItem = {
   to: "/usagers", label: "Usagers", icon: Users, end: false,
 };
 
+// « Mes interventions » n'apparaît qu'aux titulaires d'un profil « Intervenant »
+// actif dans le tenant (`my_rights.is_intervenant`) — reflet de confort : la
+// page elle-même ne montre que ce que le RLS laisse lire.
+const INTERVENTIONS_NAV_ITEM: NavItem = {
+  to: "/interventions", label: "Mes interventions", icon: HardHat, end: false,
+};
+
 // L'activation vient de `isNavRouteActive`, pas de `NavLink` : deux entrées
 // partagent le préfixe `/demandes`, et `NavLink` les allumerait toutes les deux
 // (jusqu'à l'`aria-current`, qu'il ne laisse pas contredire de l'extérieur).
@@ -73,9 +80,12 @@ function SidebarItem({ item }: { item: NavItem }) {
 
 function AppSidebar() {
   const canBrowseUsagers = useCanBrowseUsagers();
-  const items = canBrowseUsagers
-    ? [...BASE_NAV_ITEMS, USAGERS_NAV_ITEM]
-    : BASE_NAV_ITEMS;
+  const { rights } = useTenant();
+  const items = [
+    ...BASE_NAV_ITEMS,
+    ...(canBrowseUsagers ? [USAGERS_NAV_ITEM] : []),
+    ...(rights.is_intervenant ? [INTERVENTIONS_NAV_ITEM] : []),
+  ];
   const [first, ...rest] = items;
   return (
     <nav

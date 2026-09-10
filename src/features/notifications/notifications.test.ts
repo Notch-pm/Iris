@@ -185,3 +185,25 @@ describe("groupNotifications", () => {
     expect(groupNotifications([], NOW)).toEqual([]);
   });
 });
+
+describe("interventions (2026-09-14)", () => {
+  it("nomme les deux motifs", () => {
+    expect(notificationTitle("intervention_requested")).toBe("Intervention demandée");
+    expect(notificationTitle("intervention_completed")).toBe("Intervention réalisée");
+  });
+
+  it("annonce la sollicitation avec le jour souhaité, lu en texte", () => {
+    expect(notificationMessage("intervention_requested", { actor_name: "Alex", requested_for: "2026-09-20" }))
+      .toBe("Alex vous sollicite pour une intervention, souhaitée le 20/09/2026.");
+    expect(notificationMessage("intervention_requested", { actor_name: "Alex" }))
+      .toBe("Alex vous sollicite pour une intervention.");
+  });
+
+  it("annonce la réalisation par le nom figé de l'intervenant", () => {
+    expect(notificationMessage("intervention_completed", {
+      actor_name: "Sam", intervenant_name: "Sam Ouvrier", completed_on: "2026-09-21",
+    })).toBe("Sam Ouvrier a déclaré l'intervention réalisée le 21/09/2026.");
+    expect(notificationMessage("intervention_completed", { actor_name: "Sam" }))
+      .toBe("Sam a déclaré l'intervention réalisée.");
+  });
+});

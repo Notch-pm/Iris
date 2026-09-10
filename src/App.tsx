@@ -15,6 +15,7 @@ import { RequestsListPage } from "@/features/requests/RequestsListPage";
 import { CartePage } from "@/features/requests/carte/CartePage";
 import { TableauPage } from "@/features/requests/tableau/TableauPage";
 import { RequestDetailPage } from "@/features/requests/RequestDetailPage";
+import { MesInterventionsPage } from "@/features/requests/interventions/MesInterventionsPage";
 import { NewRequestPage } from "@/features/requests/creation/NewRequestPage";
 import { PermissionsPage } from "@/features/permissions/PermissionsPage";
 import { UsagerPage } from "@/features/contacts/UsagerPage";
@@ -58,6 +59,7 @@ export function App() {
               <Route path="carte" element={<CartePage />} />
               <Route path="demandes/nouvelle" element={<NewRequestPage />} />
               <Route path="demandes/:id" element={<RequestDetailPage />} />
+              <Route path="interventions" element={<MesInterventionsPage />} />
               <Route path="usagers" element={<UsagersListPage />} />
               <Route path="usagers/:contactId" element={<UsagerPage />} />
               <Route path="mon-compte" element={<AccountPage />} />

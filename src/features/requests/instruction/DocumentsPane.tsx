@@ -17,7 +17,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { RequestAttachment } from "../useRequests";
 import { Pill, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
-import { documentsOf, generatedMeta, inlineViewable, type DocumentKind } from "./documents";
+import {
+  documentsOf, generatedMeta, inlineViewable, interventionDocuments, type DocumentKind,
+} from "./documents";
 import { attachmentExt, COPY_STATUS, formatBytes, formatDayMonth } from "./instruction";
 import {
   blockingMessage, complianceCounts, motifLabel,
@@ -331,6 +333,27 @@ export function DocumentsPane({
           onAttach={canInstruct && !archived ? onAttach : null}
         />
       </Surface>
+
+      {/* Déposés par les INTERVENANTS en déclarant leur intervention réalisée
+          (2026-09-14). Ils documentent le geste du service, pas le dépôt de
+          l'usager : ni exigence, ni conformité, ni envoi à l'usager depuis ici
+          — l'onglet Interventions les montre sous chaque intervention. */}
+      {interventionDocuments(attachments).length > 0 ? (
+        <Surface>
+          <SurfaceHead
+            title="Justificatifs d'intervention"
+            sub="Photos et documents déposés par les intervenants"
+          />
+          <DocumentGroup
+            title="Déposés à la déclaration"
+            hint="Consultables par qui lit la demande."
+            documents={interventionDocuments(attachments)}
+            onOpen={onOpen}
+            onDownload={onDownload}
+            onAttach={null}
+          />
+        </Surface>
+      ) : null}
     </div>
   );
 }

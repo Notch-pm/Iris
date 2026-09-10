@@ -257,6 +257,16 @@ reste entre agents). « Notifier l'organisme cible » se lit ainsi faute d'alter
 Iris ne miroite aucune adresse e-mail d'organisation, et le droit par couple désigne exactement
 les bonnes personnes.
 
+**Interventions (2026-09-14).** Deux motifs de plus empruntent ce chemin, au gabarit
+**agent** : `intervention_requested` — l'e-mail à l'intervenant sollicité, avec le jour
+souhaité et **la consigne de l'agent** (le commentaire sort : il est écrit pour son
+destinataire) — et `intervention_completed`, à l'agent qui a sollicité et à l'affectataire (avec le
+**nombre** de justificatifs joints à la fiche — jamais les fichiers).
+Ils sont produits par les RPC `request_intervention` / `complete_request_intervention`, et
+drainés par `notifications-mailer` comme les autres — **à redéployer** pour que le catalogue
+`_shared/email/notifications.ts` les connaisse, sans quoi ils partent avec le corps de repli
+« Une demande a évolué ».
+
 ### Réponse à l'usager (2026-08-26)
 
 Depuis l'onglet **Échanges** de la fiche demande, un agent écrit à l'usager — avec un modèle

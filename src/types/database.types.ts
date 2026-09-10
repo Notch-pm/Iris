@@ -744,6 +744,7 @@ export type Database = {
           description: string | null
           id: string
           is_admin: boolean
+          is_intervenant: boolean
           name: string
           organization_id: string
           status: string
@@ -761,6 +762,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_admin?: boolean
+          is_intervenant?: boolean
           name: string
           organization_id: string
           status?: string
@@ -778,6 +780,7 @@ export type Database = {
           description?: string | null
           id?: string
           is_admin?: boolean
+          is_intervenant?: boolean
           name?: string
           organization_id?: string
           status?: string
@@ -877,6 +880,7 @@ export type Database = {
           generated_at: string | null
           generated_by: string | null
           id: string
+          intervention_id: string | null
           kind: string
           mime_type: string | null
           organization_id: string
@@ -908,6 +912,7 @@ export type Database = {
           generated_at?: string | null
           generated_by?: string | null
           id?: string
+          intervention_id?: string | null
           kind?: string
           mime_type?: string | null
           organization_id: string
@@ -939,6 +944,7 @@ export type Database = {
           generated_at?: string | null
           generated_by?: string | null
           id?: string
+          intervention_id?: string | null
           kind?: string
           mime_type?: string | null
           organization_id?: string
@@ -972,6 +978,13 @@ export type Database = {
             columns: ["generated_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_attachments_intervention_id_fkey"
+            columns: ["intervention_id"]
+            isOneToOne: false
+            referencedRelation: "request_interventions"
             referencedColumns: ["id"]
           },
           {
@@ -1122,6 +1135,86 @@ export type Database = {
             columns: ["request_id"]
             isOneToOne: false
             referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_interventions: {
+        Row: {
+          completed_at: string | null
+          completed_on: string | null
+          completion_comment: string | null
+          created_at: string
+          id: string
+          intervenant_id: string
+          organization_id: string
+          request_comment: string
+          request_id: string
+          requested_at: string
+          requested_by: string | null
+          requested_for: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          completed_on?: string | null
+          completion_comment?: string | null
+          created_at?: string
+          id?: string
+          intervenant_id: string
+          organization_id: string
+          request_comment: string
+          request_id: string
+          requested_at?: string
+          requested_by?: string | null
+          requested_for: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          completed_on?: string | null
+          completion_comment?: string | null
+          created_at?: string
+          id?: string
+          intervenant_id?: string
+          organization_id?: string
+          request_comment?: string
+          request_id?: string
+          requested_at?: string
+          requested_by?: string | null
+          requested_for?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_interventions_intervenant_id_fkey"
+            columns: ["intervenant_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_interventions_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_interventions_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_interventions_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -1749,6 +1842,7 @@ export type Database = {
         }[]
       }
       can_admin_request: { Args: { p_request_id: string }; Returns: boolean }
+      can_consult_request: { Args: { p_request_id: string }; Returns: boolean }
       can_manage_account: {
         Args: { p_actor_id: string; p_target_id: string }
         Returns: boolean
@@ -1794,6 +1888,15 @@ export type Database = {
       clear_smtp_settings_from_socle: {
         Args: { p_org_id: string }
         Returns: boolean
+      }
+      complete_request_intervention: {
+        Args: {
+          p_comment: string
+          p_completed_on: string
+          p_intervention_id: string
+          p_upload_ids?: string[]
+        }
+        Returns: Json
       }
       consume_attachment_upload: {
         Args: {
@@ -1845,6 +1948,14 @@ export type Database = {
         Returns: number
       }
       eligible_assignees: {
+        Args: { p_request_id: string }
+        Returns: {
+          display_name: string
+          email: string
+          user_id: string
+        }[]
+      }
+      eligible_intervenants: {
         Args: { p_request_id: string }
         Returns: {
           display_name: string
@@ -1936,6 +2047,11 @@ export type Database = {
         }
         Returns: number
       }
+      intervention_max_attachments: { Args: never; Returns: number }
+      is_intervenant_for: {
+        Args: { p_org_id: string; p_socle_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
       is_last_root_admin: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
@@ -1992,6 +2108,7 @@ export type Database = {
         }[]
       }
       message_mentions: { Args: { p_body: string }; Returns: string[] }
+      my_intervention_request_ids: { Args: never; Returns: string[] }
       my_permission_pairs: {
         Args: { p_right: string }
         Returns: {
@@ -2010,6 +2127,7 @@ export type Database = {
         }[]
       }
       notification_email_max_attempts: { Args: never; Returns: number }
+      paris_today: { Args: never; Returns: string }
       permission_coverage_report: {
         Args: { p_org_id: string }
         Returns: {
@@ -2075,6 +2193,15 @@ export type Database = {
         }[]
       }
       request_exists: { Args: { p_id: string }; Returns: boolean }
+      request_intervention: {
+        Args: {
+          p_comment: string
+          p_intervenant_id: string
+          p_request_id: string
+          p_requested_for: string
+        }
+        Returns: Json
+      }
       request_pieces_blocking: {
         Args: { p_form_data: Json; p_form_schema: Json; p_request_id: string }
         Returns: string[]

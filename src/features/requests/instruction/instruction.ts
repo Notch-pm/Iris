@@ -631,6 +631,12 @@ function statusLabel(value: unknown): string {
   return typeof value === "string" ? STATUS_LABELS[value as RequestStatus] ?? value : "—";
 }
 
+/** « 12/03/2026 » depuis un jour `AAAA-MM-JJ` du payload ; vide si absent ou illisible. */
+function dayLabel(value: unknown): string {
+  const m = typeof value === "string" ? /^(\d{4})-(\d{2})-(\d{2})/.exec(value) : null;
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+}
+
 function describeEvent(
   event: ActivityEvent,
   nameOf: ActivityInput["nameOf"],
@@ -702,6 +708,25 @@ function describeEvent(
       return {
         label: "Réponses du formulaire modifiées",
         detail: `${who}${n > 0 ? ` · ${n} réponse${n > 1 ? "s" : ""}` : ""}`,
+      };
+    }
+    case "intervention_requested": {
+      const name = typeof p.intervenant_name === "string" && p.intervenant_name !== ""
+        ? p.intervenant_name : nameOf(typeof p.intervenant === "string" ? p.intervenant : null);
+      const day = dayLabel(p.requested_for);
+      return {
+        label: "Intervenant sollicité",
+        detail: `${name} · par ${who}${day ? ` · souhaitée le ${day}` : ""}`,
+      };
+    }
+    case "intervention_completed": {
+      const name = typeof p.intervenant_name === "string" && p.intervenant_name !== ""
+        ? p.intervenant_name : who;
+      const day = dayLabel(p.completed_on);
+      const n = typeof p.attachments === "number" ? p.attachments : 0;
+      return {
+        label: "Intervention réalisée",
+        detail: `${name}${day ? ` · le ${day}` : ""}${n > 0 ? ` · ${n} justificatif${n > 1 ? "s" : ""}` : ""}`,
       };
     }
     default:

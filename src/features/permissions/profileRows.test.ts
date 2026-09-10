@@ -21,6 +21,7 @@ const PROFILE: ProfileTableRow = {
   name: "Voirie-instruction",
   description: "Instruction Voirie",
   is_admin: false,
+  is_intervenant: false,
   status: "active",
   version: 2,
   default_view: false,
@@ -46,6 +47,7 @@ describe("buildProfileRows", () => {
         name: "Voirie-instruction",
         description: "Instruction Voirie",
         isAdmin: false,
+        isIntervenant: false,
         status: "active",
         version: 2,
         organizationIds: [MAIRIE],
@@ -82,6 +84,7 @@ describe("draftFromProfileRow / draftForDuplicate", () => {
       name: "Voirie-instruction",
       description: "Instruction Voirie",
       isAdmin: false,
+      isIntervenant: false,
       defaultRights: [],
       organizationIds: [MAIRIE],
       procedures: { [D1]: ["consultation", "creation"] },
@@ -98,7 +101,7 @@ describe("draftFromProfileRow / draftForDuplicate", () => {
 describe("emptyDraft / draftFromTemplate — RM-51", () => {
   it("emptyDraft n'accorde rien et ne porte aucune organisation", () => {
     expect(emptyDraft()).toEqual({
-      name: "", description: "", isAdmin: false, defaultRights: [], organizationIds: [], procedures: {},
+      name: "", description: "", isAdmin: false, isIntervenant: false, defaultRights: [], organizationIds: [], procedures: {},
     });
   });
 
@@ -108,7 +111,15 @@ describe("emptyDraft / draftFromTemplate — RM-51", () => {
       expect(draft.name).toBe(template.label);
       expect(draft.organizationIds).toEqual([]);
       expect(draft.procedures).toEqual({});
-      expect(draft.defaultRights.length).toBeGreaterThan(0);
+      // Le modèle « Intervenant » est le seul à n'accorder AUCUN droit : c'est
+      // l'attribut qui le définit, pas la matrice.
+      if (template.intervenant) {
+        expect(draft.isIntervenant).toBe(true);
+        expect(draft.defaultRights).toEqual([]);
+      } else {
+        expect(draft.isIntervenant).toBe(false);
+        expect(draft.defaultRights.length).toBeGreaterThan(0);
+      }
     }
   });
 

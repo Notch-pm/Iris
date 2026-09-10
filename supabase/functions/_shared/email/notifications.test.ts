@@ -262,3 +262,79 @@ describe("notificationEmail — permalien et rendu", () => {
     expect(notificationEmail(input()).footnote).toContain("préférences de notification");
   });
 });
+
+describe("notificationEmail — interventions (2026-09-14)", () => {
+  const payload = {
+    reference: "DEM-2026-000042", subject: "Nid-de-poule rue des Lilas",
+    actor_name: "Alex Dupont", status: "en_instruction",
+    procedure: "Signalement nid-de-poule", destinataire: "Voirie",
+    requested_for: "2026-09-20", comment: "Sécuriser la zone et reboucher.",
+  };
+
+  it("intervention_requested : l'objet porte le jour souhaité, le corps la consigne", () => {
+    const mail = notificationEmail(input({ kind: "intervention_requested", payload }));
+    expect(mail.subject).toBe("DEM-2026-000042 — Intervention attendue pour le 20/09/2026 — Iris · ACCM");
+    expect(mail.heading).toBe("Une intervention est attendue de votre part");
+    expect(mail.paragraphs).toContain(
+      "Alex Dupont vous sollicite pour une intervention sur la demande DEM-2026-000042 — Nid-de-poule rue des Lilas, souhaitée le 20/09/2026.",
+    );
+    expect(mail.paragraphs).toContain("Démarche : Signalement nid-de-poule — Voirie.");
+    expect(mail.paragraphs).toContain("Ce qui est attendu : Sécuriser la zone et reboucher.");
+    expect(mail.paragraphs.join("\n")).toContain("Mes interventions");
+  });
+
+  it("intervention_requested : sans jour ni commentaire, les phrases se retirent au lieu de laisser un trou", () => {
+    const mail = notificationEmail(input({
+      kind: "intervention_requested",
+      payload: { reference: "R1", subject: "S", actor_name: "Alex" },
+    }));
+    expect(mail.subject).toBe("R1 — Intervention attendue — Iris · ACCM");
+    expect(mail.paragraphs).toContain("Alex vous sollicite pour une intervention sur la demande R1 — S.");
+    expect(mail.paragraphs.join("\n")).not.toContain("Ce qui est attendu");
+    expect(mail.paragraphs.join("\n")).not.toContain("souhaitée le");
+  });
+
+  it("intervention_requested : le jour est lu en texte, jamais décalé par le fuseau UTC du runtime", () => {
+    const mail = notificationEmail(input({
+      kind: "intervention_requested",
+      payload: { ...payload, requested_for: "2026-01-01" },
+    }));
+    expect(mail.subject).toContain("01/01/2026");
+  });
+
+  it("intervention_completed : nomme l'intervenant, le jour, le commentaire, et le statut de la demande", () => {
+    const mail = notificationEmail(input({
+      kind: "intervention_completed",
+      payload: {
+        reference: "DEM-2026-000042", subject: "Nid-de-poule rue des Lilas",
+        actor_name: "Sam Ouvrier", intervenant_name: "Sam Ouvrier", status: "en_instruction",
+        completed_on: "2026-09-21", comment: "Rebouché, signalisation retirée.",
+      },
+    }));
+    expect(mail.subject).toBe("DEM-2026-000042 — Intervention réalisée — Iris · ACCM");
+    expect(mail.paragraphs).toContain(
+      "Sam Ouvrier a déclaré réalisée, le 21/09/2026, l'intervention demandée sur la demande DEM-2026-000042 — Nid-de-poule rue des Lilas.",
+    );
+    expect(mail.paragraphs).toContain("Commentaire de l'intervenant : Rebouché, signalisation retirée.");
+    expect(mail.paragraphs).toContain("La demande est au statut « En cours d'instruction » : l'instruction peut reprendre.");
+  });
+
+  it("intervention_completed : annonce les justificatifs sans les transporter", () => {
+    const base = { reference: "R1", subject: "S", actor_name: "Sam", intervenant_name: "Sam", status: "en_instruction" };
+    expect(notificationEmail(input({ kind: "intervention_completed", payload: { ...base, attachments: 1 } })).paragraphs)
+      .toContain("Un justificatif a été joint à la fiche de la demande.");
+    expect(notificationEmail(input({ kind: "intervention_completed", payload: { ...base, attachments: 3 } })).paragraphs)
+      .toContain("3 justificatifs ont été joints à la fiche de la demande.");
+    expect(notificationEmail(input({ kind: "intervention_completed", payload: { ...base, attachments: 0 } })).paragraphs.join(" "))
+      .not.toContain("justificatif");
+  });
+
+  it("aucun des deux ne nomme le demandeur (règle commune des e-mails aux agents)", () => {
+    for (const kind of ["intervention_requested", "intervention_completed"]) {
+      const mail = notificationEmail(input({
+        kind, payload: { ...payload, requester_name: "Jean Usager" } as never,
+      }));
+      expect(JSON.stringify(mail)).not.toContain("Jean Usager");
+    }
+  });
+});

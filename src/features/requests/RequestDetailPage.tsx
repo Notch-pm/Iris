@@ -47,6 +47,7 @@ import {
 import {
   closureOutcome, visibleTemplates, emptyDocuments,
 } from "@fn/_shared/document/templates";
+import { interventionDocuments, usagerPieces } from "./instruction/documents";
 import { EchangesPane, type ComposerDraft, type SendEmailPayload } from "./instruction/EchangesPane";
 import { QualificationDialog, type QualificationSubmit } from "./instruction/QualificationDialog";
 import { AjouterPieceDialog } from "./instruction/AjouterPieceDialog";
@@ -76,9 +77,19 @@ import {
 } from "./instruction/instruction";
 import { interventionLocation } from "./instruction/lieu";
 import { formSchemaFrom } from "./instruction/instruction";
+import { InterventionsPane } from "./interventions/InterventionsPane";
+import { SolliciterDialog } from "./interventions/SolliciterDialog";
+import { ConfirmerInterventionDialog } from "./interventions/ConfirmerInterventionDialog";
+import {
+  formatDay, pendingCount, solicitGate,
+  type CompletionDraft, type InterventionRow, type SollicitationDraft,
+} from "./interventions/interventions";
+import {
+  useCompleteIntervention, useEligibleIntervenants, useRequestIntervention, useRequestInterventions,
+} from "./interventions/useInterventions";
 import { dataKey, flatFields } from "@fn/create-request-from-procedure/_shared/procedureForm";
 
-type TabKey = "resume" | "docs" | "echanges" | "notes" | "activite";
+type TabKey = "resume" | "docs" | "echanges" | "notes" | "interventions" | "activite";
 
 const DUE_TONE = {
   late: "bg-destructive/10 text-destructive",
@@ -141,8 +152,18 @@ export function RequestDetailPage() {
   const activations = useSocleProcedureActivations(orgId);
   const addMessage = useAddMessage();
   const deleteMessage = useDeleteMessage();
+  // Interventions : les sollicitations de la demande (RLS), les intervenants
+  // sollicitables (RPC), et les deux gestes — solliciter, déclarer réalisée.
+  const interventions = useRequestInterventions(id);
+  const eligibleIntervenants = useEligibleIntervenants(id);
+  const requestIntervention = useRequestIntervention();
+  const completeIntervention = useCompleteIntervention();
 
   const [tab, setTab] = React.useState<TabKey>("resume");
+  const [solliciterOpen, setSolliciterOpen] = React.useState(false);
+  const [solliciterError, setSolliciterError] = React.useState<string | null>(null);
+  const [completing, setCompleting] = React.useState<InterventionRow | null>(null);
+  const [completeError, setCompleteError] = React.useState<string | null>(null);
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [usagerEditOpen, setUsagerEditOpen] = React.useState(false);
   const [railTab, setRailTab] = React.useState<RailTab>("demande");
@@ -346,10 +367,15 @@ export function RequestDetailPage() {
     status, closureMotif: r.closure_motif, createdAt: r.created_at, events: events.data ?? [],
   });
   const attachmentList = attachments.data ?? [];
+  // Les justificatifs d'INTERVENTION documentent le geste du service, pas le
+  // dépôt de l'usager : hors exigences, hors conformité, hors validation du
+  // formulaire. Ils vivent sous chaque intervention (onglet Interventions).
+  const usagerAttachments = usagerPieces(attachmentList);
+  const interventionProofs = interventionDocuments(attachmentList);
   // Exigences de pièces du formulaire, avec leur qualification — miroir de
   // `form_attachment_requirements` / `request_pieces_blocking` (migration
   // 20260828100000). L'autorité reste la garde SQL t17 : ici on explique.
-  const requirements = pieceRequirements(r.procedure_snapshot, r.form_data, attachmentList);
+  const requirements = pieceRequirements(r.procedure_snapshot, r.form_data, usagerAttachments);
   const piecesBlocking = blockingMessage(requirements);
   const canResume = readyToResume(requirements);
   // Le schéma FIGÉ de la demande — celui du dépôt, jamais la démarche du jour.
@@ -359,7 +385,7 @@ export function RequestDetailPage() {
   const editable = canInstruct && !archived && !isFinal(status);
   // Pièces ACTIVES, déclarées telles quelles au moteur de validation : les
   // conditions se rejouent exactement comme à l'écran.
-  const activeDeclarations = attachmentList
+  const activeDeclarations = usagerAttachments
     .filter((a) => !a.email_id && !a.superseded_by)
     .map((a) => ({
       form_field_key: a.form_field_key ?? "",
@@ -392,14 +418,24 @@ export function RequestDetailPage() {
   });
   const noteList = messages.data ?? [];
   const headerError = error ?? (runner.active ? null : runner.error);
+  // Un INTERVENANT PUR lit cette fiche par la seule sollicitation (RLS) : il
+  // n'a pas la consultation du couple. Les notes internes et les échanges lui
+  // sont fermés côté serveur (`can_consult_request`) — on ne lui montre pas
+  // deux onglets vides, on les retire.
+  const intervenantOnly = !rr.rights.has("consultation") && !rights.is_platform_admin;
+  const interventionList = interventions.data ?? [];
+  const gate = solicitGate(status, canInstruct && !archived);
 
   const tabs: { key: TabKey; label: string; count: number | null }[] = [
     { key: "resume", label: "Résumé", count: null },
     // Le compteur suit l'onglet : les pièces d'un e-mail sortant vivent sous
     // leur échange, pas dans « Pièces de la demande ».
-    { key: "docs", label: "Documents", count: attachmentList.filter((a) => !a.email_id).length },
-    { key: "echanges", label: "Échanges", count: null },
-    { key: "notes", label: "Notes internes", count: noteList.length },
+    { key: "docs", label: "Documents", count: usagerAttachments.filter((a) => !a.email_id).length },
+    ...(intervenantOnly ? [] : [
+      { key: "echanges" as const, label: "Échanges", count: null },
+      { key: "notes" as const, label: "Notes internes", count: noteList.length },
+    ]),
+    { key: "interventions", label: "Interventions", count: pendingCount(interventionList) },
     { key: "activite", label: "Activité", count: null },
   ];
 
@@ -603,6 +639,50 @@ export function RequestDetailPage() {
   function copyReference() {
     setMenuOpen(false);
     void navigator.clipboard?.writeText(r!.reference).then(() => flash("Référence copiée"));
+  }
+
+  /**
+   * Solliciter un intervenant : la RPC rejoue le statut, le droit d'instruction
+   * et l'éligibilité, et c'est elle qui journalise et notifie (volet + e-mail).
+   * Son refus se lit dans le dialogue, là où le geste a été fait.
+   */
+  async function submitSollicitation(draft: SollicitationDraft) {
+    if (!r) return;
+    setSolliciterError(null);
+    try {
+      await requestIntervention.mutateAsync({
+        requestId: r.id,
+        intervenantId: draft.intervenantId,
+        requestedFor: draft.requestedFor,
+        comment: draft.comment,
+      });
+      setSolliciterOpen(false);
+      const who = eligibleIntervenants.data?.find((i) => i.user_id === draft.intervenantId);
+      flash(`${who?.display_name || "L'intervenant"} sollicité pour le ${formatDay(draft.requestedFor)} — prévenu par e-mail.`);
+    } catch (err) {
+      setSolliciterError(err instanceof Error ? err.message : "Sollicitation refusée.");
+    }
+  }
+
+  async function submitCompletion(draft: CompletionDraft) {
+    if (!r || !completing) return;
+    setCompleteError(null);
+    try {
+      const result = await completeIntervention.mutateAsync({
+        interventionId: completing.id,
+        requestId: r.id,
+        organizationId: r.organization_id,
+        completedOn: draft.completedOn,
+        comment: draft.comment,
+        files: draft.files,
+      });
+      setCompleting(null);
+      flash(result.attachments > 0
+        ? `Intervention déclarée réalisée le ${formatDay(draft.completedOn)} — ${result.attachments} justificatif${result.attachments > 1 ? "s" : ""} joint${result.attachments > 1 ? "s" : ""}.`
+        : `Intervention déclarée réalisée le ${formatDay(draft.completedOn)}.`);
+    } catch (err) {
+      setCompleteError(err instanceof Error ? err.message : "Enregistrement refusé.");
+    }
   }
 
   // ---- Vue ---------------------------------------------------------------------------
@@ -842,6 +922,21 @@ export function RequestDetailPage() {
                   )}
                 />
               ) : null}
+              {tab === "interventions" ? (
+                <InterventionsPane
+                  interventions={interventionList}
+                  attachments={interventionProofs}
+                  nameOf={nameOf}
+                  currentUserId={session?.user.id ?? null}
+                  canSolicit={gate.ok}
+                  solicitReason={gate.reason}
+                  pending={requestIntervention.isPending || completeIntervention.isPending}
+                  onSolicit={() => { setSolliciterError(null); setSolliciterOpen(true); }}
+                  onComplete={(i) => { setCompleteError(null); setCompleting(i); }}
+                  onOpen={(a) => void openAttachment(a, false)}
+                  onDownload={(a) => void openAttachment(a, true)}
+                />
+              ) : null}
               {tab === "activite" ? <ActivityPane items={activity} /> : null}
             </div>
           </div>
@@ -934,6 +1029,27 @@ export function RequestDetailPage() {
         error={transferError}
         onClose={() => { setTransferTo(null); setTransferError(null); }}
         onConfirm={(socleOrgId) => void submitTransfer(socleOrgId)}
+      />
+
+      {/* Sollicitation d'un intervenant et déclaration de réalisation : deux
+          RPC, seules portes d'écriture de `request_interventions`. */}
+      <SolliciterDialog
+        open={solliciterOpen}
+        intervenants={eligibleIntervenants.data ?? []}
+        loadingIntervenants={eligibleIntervenants.isLoading}
+        pending={requestIntervention.isPending}
+        error={solliciterError}
+        onClose={() => { setSolliciterOpen(false); setSolliciterError(null); }}
+        onSubmit={(draft) => void submitSollicitation(draft)}
+      />
+      <ConfirmerInterventionDialog
+        intervention={completing}
+        requestLabel={`${r.reference} — ${r.subject}`}
+        pending={completeIntervention.isPending}
+        progress={completeIntervention.progress}
+        error={completeError}
+        onClose={() => { setCompleting(null); setCompleteError(null); }}
+        onSubmit={(draft) => void submitCompletion(draft)}
       />
 
       {/* Qualification d'une pièce. L'écriture passe par la RPC

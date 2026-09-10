@@ -113,3 +113,15 @@ d'extension ci-dessus (une entrée dans `SECTIONS` + un bloc conditionnel) :
 
 Le périmètre documenté de cette feature reste « permissions + rights » : ces deux panneaux
 n'y vivent pas, seul leur branchement est ici.
+
+## Attribut « Intervenant » (2026-09-14)
+
+`ProfileDraft.isIntervenant` ↔ `permission_profiles.is_intervenant` ↔ payload
+`is_intervenant` de `save_permission_profile`. Second attribut de profil après
+l'administration : case à cocher dans `ProfileDialog`, badge « Intervenant » dans la table
+des profils, modèle de reprise rapide « Intervenant » (`PROFILE_TEMPLATES`, aucun droit
+par défaut). `validateProfileDraft` admet un profil intervenant sans aucun droit — jumeau
+de `validate_permission_profile_shape`. Côté droits, `MyRights.is_intervenant` et
+`RightsProfile.is_intervenant` sont exposés par `my_rights` ; ils n'entrent dans AUCUN
+calcul de `rightsFor` (l'attribut n'accorde rien sur les demandes). Doctrine :
+[`docs/droits.md`](../../../docs/droits.md) ; écran : `src/features/requests/interventions/`.

@@ -47,8 +47,28 @@ export const DOCUMENT_KINDS: {
   },
 ];
 
+/** Justificatif déposé par un INTERVENANT en déclarant son intervention réalisée (2026-09-14). */
+export const INTERVENTION_KIND = "intervention";
+
 export function kindLabel(kind: string): string {
+  if (kind === INTERVENTION_KIND) return "Justificatif d'intervention";
   return DOCUMENT_KINDS.find((k) => k.value === kind)?.label ?? kind;
+}
+
+/** Les justificatifs d'intervention du dossier, les plus récents en tête. */
+export function interventionDocuments(attachments: readonly RequestAttachment[]): RequestAttachment[] {
+  return attachments
+    .filter((a) => a.email_id === null && a.kind === INTERVENTION_KIND)
+    .sort((a, b) => b.created_at.localeCompare(a.created_at));
+}
+
+/**
+ * Ce qui entre dans le dossier de l'USAGER (groupement par exigence,
+ * conformité) : tout sauf les justificatifs d'intervention, qui documentent
+ * le geste du service, pas le dépôt.
+ */
+export function usagerPieces<T extends { kind: string }>(attachments: readonly T[]): T[] {
+  return attachments.filter((a) => a.kind !== INTERVENTION_KIND);
 }
 
 /** Un document interne ne quitte JAMAIS Iris — miroir de la règle des notes internes. */

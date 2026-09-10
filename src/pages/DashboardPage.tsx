@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Inbox, PlusCircle, Settings } from "lucide-react";
+import { HardHat, Inbox, PlusCircle, Settings } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -83,6 +83,13 @@ export function DashboardPage() {
             <Button asChild variant="outline" size="sm">
               <Link to="/demandes/nouvelle">
                 <PlusCircle /> Nouvelle demande
+              </Link>
+            </Button>
+          ) : null}
+          {rights.is_intervenant ? (
+            <Button asChild variant="outline" size="sm">
+              <Link to="/interventions">
+                <HardHat /> Mes interventions
               </Link>
             </Button>
           ) : null}

@@ -26,6 +26,13 @@ export interface UploadReceipt {
 export interface UploadScope {
   organizationId: string;
   requestId?: string | null;
+  /**
+   * Justificatif d'un INTERVENANT (2026-09-14) : la pièce est reçue pour cette
+   * intervention, par l'intervenant sollicité — sans droit d'instruction. Le
+   * serveur vérifie que l'appelant est bien lui, et que l'intervention est
+   * encore à réaliser.
+   */
+  interventionId?: string | null;
 }
 
 export async function stageFile(file: File, scope: UploadScope): Promise<UploadReceipt> {
@@ -33,6 +40,7 @@ export async function stageFile(file: File, scope: UploadScope): Promise<UploadR
   form.append("file", file, file.name);
   const query: Record<string, string> = { organization_id: scope.organizationId };
   if (scope.requestId) query.request_id = scope.requestId;
+  if (scope.interventionId) query.intervention_id = scope.interventionId;
   try {
     return await invokeEdgeForm<UploadReceipt>("request-attachments/upload", form, query);
   } catch (err) {

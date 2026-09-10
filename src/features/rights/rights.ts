@@ -29,6 +29,13 @@ export interface RightsProfile {
   status: ProfileStatus;
   /** Administration (RM-20 à RM-24) : attribut du profil, pas un cinquième droit de la matrice. */
   is_admin: boolean;
+  /**
+   * Intervenant (2026-09-14) : attribut du profil, comme l'administration. Ses
+   * titulaires peuvent être SOLLICITÉS pour une intervention sur les demandes
+   * du périmètre ; il n'ouvre par lui-même aucune demande — c'est la
+   * sollicitation qui ouvre (RLS `requests_select`).
+   */
+  is_intervenant: boolean;
   /** Périmètre DÉJÀ expansé en sous-arbre par le serveur (`permission_profile_scope`). */
   scope_organization_ids: string[];
   /** Lignes explicites de la matrice, clé = `socle_procedure_id` (ou `NIL_PROCEDURE_ID`). */
@@ -42,6 +49,8 @@ export interface MyRights {
   is_platform_admin: boolean;
   /** Administration quelque part dans le tenant (ouvre l'entrée « Paramètres », RM-20). */
   is_admin: boolean;
+  /** Intervenant quelque part dans le tenant (ouvre l'entrée « Mes interventions »). */
+  is_intervenant: boolean;
   no_procedure_id: string;
   profiles: RightsProfile[];
 }
@@ -52,6 +61,7 @@ export function emptyRights(orgId: string): MyRights {
     organization_id: orgId,
     is_platform_admin: false,
     is_admin: false,
+    is_intervenant: false,
     no_procedure_id: NIL_PROCEDURE_ID,
     profiles: [],
   };
