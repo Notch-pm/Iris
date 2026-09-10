@@ -54,6 +54,11 @@ verify_jwt = false
 [functions.notifications-mailer]
 verify_jwt = false
 
+# Facteur de la boîte d'envoi PUSH (Web Push / VAPID) : même porte que le
+# mailer — pg_cron seul, en-tête x-cron-secret, aucun CORS.
+[functions.notifications-push]
+verify_jwt = false
+
 # Idem — réponse à l'usager depuis l'onglet Échanges de la fiche demande
 # (droit d'instruction revérifié en SQL, destinataire résolu côté serveur).
 [functions.send-request-email]

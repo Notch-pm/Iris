@@ -13,7 +13,8 @@ import { useAuth } from "@/features/auth/AuthProvider";
 import { useDevice } from "@/features/device/DeviceProvider";
 import { useMyAvatarUrl } from "@/features/account/useAccount";
 import { useTenant } from "@/features/tenant/TenantProvider";
-import { MobileSheet } from "./MobilePage";
+import { PushDeviceToggle } from "@/features/notifications/PushDeviceToggle";
+import { MobileGroupLabel, MobileSheet } from "./MobilePage";
 
 interface Props {
   open: boolean;
@@ -68,6 +69,11 @@ export function MobileAccountSheet({ open, onOpenChange }: Props) {
             ? "Administrateur de la plateforme"
             : activeProfiles.length > 0 ? activeProfiles.map((p) => p.name).join(", ") : "Aucun"}
         </p>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <MobileGroupLabel>Notifications</MobileGroupLabel>
+        <PushDeviceToggle />
       </div>
 
       <div className="flex flex-col gap-2">

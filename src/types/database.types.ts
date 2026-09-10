@@ -431,6 +431,12 @@ export type Database = {
           kind: string
           organization_id: string
           payload: Json
+          push_attempted_at: string | null
+          push_attempts: number
+          push_error: string | null
+          push_next_attempt_at: string | null
+          push_sent_at: string | null
+          push_status: string
           read_at: string | null
           request_id: string
           user_id: string
@@ -449,6 +455,12 @@ export type Database = {
           kind: string
           organization_id: string
           payload?: Json
+          push_attempted_at?: string | null
+          push_attempts?: number
+          push_error?: string | null
+          push_next_attempt_at?: string | null
+          push_sent_at?: string | null
+          push_status?: string
           read_at?: string | null
           request_id: string
           user_id: string
@@ -467,6 +479,12 @@ export type Database = {
           kind?: string
           organization_id?: string
           payload?: Json
+          push_attempted_at?: string | null
+          push_attempts?: number
+          push_error?: string | null
+          push_next_attempt_at?: string | null
+          push_sent_at?: string | null
+          push_status?: string
           read_at?: string | null
           request_id?: string
           user_id?: string
@@ -806,6 +824,53 @@ export type Database = {
           {
             foreignKeyName: "permission_profiles_updated_by_fkey"
             columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      push_subscriptions: {
+        Row: {
+          auth: string
+          created_at: string
+          disabled_at: string | null
+          disabled_reason: string | null
+          endpoint: string
+          id: string
+          last_seen_at: string
+          p256dh: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth: string
+          created_at?: string
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          endpoint: string
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth?: string
+          created_at?: string
+          disabled_at?: string | null
+          disabled_reason?: string | null
+          endpoint?: string
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "users"
             referencedColumns: ["id"]
@@ -1864,6 +1929,19 @@ export type Database = {
           request_id: string
         }[]
       }
+      claim_notification_pushes: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          kind: string
+          notification_id: string
+          organization_id: string
+          organization_name: string
+          payload: Json
+          request_id: string
+          subscriptions: Json
+        }[]
+      }
       claim_storage_deletions: {
         Args: { p_limit?: number }
         Returns: {
@@ -1942,6 +2020,10 @@ export type Database = {
       delete_permission_profile: {
         Args: { p_expected_version: number; p_profile_id: string }
         Returns: Json
+      }
+      disable_push_subscription: {
+        Args: { p_id: string; p_reason: string }
+        Returns: undefined
       }
       discard_attachment_uploads: {
         Args: { p_actor: string; p_ids: string[] }
@@ -2127,6 +2209,7 @@ export type Database = {
         }[]
       }
       notification_email_max_attempts: { Args: never; Returns: number }
+      notification_push_max_attempts: { Args: never; Returns: number }
       paris_today: { Args: never; Returns: string }
       permission_coverage_report: {
         Args: { p_org_id: string }
@@ -2180,6 +2263,15 @@ export type Database = {
       refresh_request_scope_org: {
         Args: { p_org_id?: string }
         Returns: number
+      }
+      register_push_subscription: {
+        Args: {
+          p_auth: string
+          p_endpoint: string
+          p_p256dh: string
+          p_user_agent?: string
+        }
+        Returns: string
       }
       request_attachment_paths: {
         Args: { p_ids: string[]; p_request_id: string }
@@ -2262,6 +2354,10 @@ export type Database = {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
       }
+      settle_notification_push: {
+        Args: { p_error?: string; p_id: string; p_ok: boolean }
+        Returns: undefined
+      }
       settle_request_email: {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
@@ -2272,6 +2368,10 @@ export type Database = {
       }
       shares_org_with: { Args: { p_user_id: string }; Returns: boolean }
       skip_notification_email: {
+        Args: { p_id: string; p_reason: string }
+        Returns: undefined
+      }
+      skip_notification_push: {
         Args: { p_id: string; p_reason: string }
         Returns: undefined
       }

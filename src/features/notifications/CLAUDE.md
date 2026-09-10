@@ -108,6 +108,60 @@ vol ne bloque rien.
 notifications,transport}.ts` — les CINQ doivent figurer dans le tableau `files` du déploiement,
 sinon l'import échoue à froid (piège connu du projet).
 
+## Doublage par push sur appareil (Web Push / VAPID, 2026-09-10)
+
+Chaque notification **in-app** est aussi poussée sur les appareils inscrits de son destinataire,
+application fermée comprise. Décisions PO (2026-09-10) et choix d'architecture :
+
+- **Le push SUIT le canal in-app.** Aucun réglage par événement : ce qui apparaît dans la cloche
+  est poussé. Le seul réglage est **par appareil** — l'interrupteur « Notifications sur cet
+  appareil » (`PushDeviceToggle`, sur « Mon compte » et dans la feuille « Moi » du mobile).
+- **`push_subscriptions`** : UN abonnement PAR APPAREIL (endpoint du service de push, clés
+  p256dh/auth — publiques par construction, elles servent à chiffrer VERS l'appareil).
+  L'enregistrement passe par la RPC **`register_push_subscription`** (DEFINER), seule porte
+  d'écriture : sur un poste partagé, le navigateur rend le **même endpoint** au titulaire
+  suivant, et la RPC **reprend** la ligne (`on conflict (endpoint) do update set user_id`),
+  ce qu'un `insert` borné à `user_id = auth.uid()` ne pourrait pas. Lecture, `last_seen_at` et
+  suppression restent en écriture directe sous RLS (soi seul).
+- **`push_status`** (+ `push_attempts`, `push_attempted_at`, `push_sent_at`,
+  `push_next_attempt_at`, `push_error`) sur `notifications`, miroir des colonnes `email_*`. La
+  valeur initiale est décidée par le trigger **`t10_notifications_push_queue`** (BEFORE INSERT) :
+  `pending` ssi `in_app` ET au moins un appareil actif du destinataire, `skipped` sinon — une
+  règle, appliquée aux huit sites d'insertion sans toucher aucun producteur. Un producteur qui
+  poserait `push_status` serait écrasé : voulu.
+- **Le facteur** : edge function `notifications-push` sur cron (`* * * * *`, même porte que le
+  mailer — `x-cron-secret`, aucun CORS). `claim_notification_pushes` renonce d'abord aux lignes
+  **déjà lues** (« lue avant envoi ») et à celles **sans appareil actif**, puis réclame
+  atomiquement avec les appareils du destinataire en JSON. Un envoi par appareil ; la ligne est
+  `sent` dès qu'UN appareil a reçu ; 404/410 ⇒ `disable_push_subscription` ; le reste ⇒
+  temporisation croissante puis `failed` (`_shared/push/outcome.ts`, pur, testé). Sans clés
+  VAPID, la fonction répond 503 **sans réclamer** : réclamer consommerait les tentatives.
+- **Ce qui sort, version la plus stricte** (`_shared/push/message.ts`, pur, testé) : un push
+  s'affiche sur un écran VERROUILLÉ. Titre = motif · référence ; corps = acteur + action +
+  objet, tronqué. Jamais le corps d'une note, jamais l'usager, **jamais le `comment` d'une
+  intervention** (il sort dans l'e-mail, pas ici). Le texte est chiffré de bout en bout (RFC
+  8291) : le service de push ne le lit pas. `tag = iris:<request_id>` : une carte par demande
+  sur le téléphone, la plus récente remplace. Clic ⇒ `/demandes/<id>` pour tous les motifs
+  (parité cloche et e-mail).
+- **Service worker `public/sw.js` — push SEUL** : aucun `fetch`, aucun cache, Iris reste en ligne
+  uniquement. Enregistré **à l'activation de l'interrupteur**, jamais au démarrage (sans
+  abonnement il ne recevrait rien). `PushBootstrap` (monté une fois dans `App.tsx`, commun aux
+  deux shells) touche `last_seen_at` et écoute le worker : `iris:navigate` (clic quand l'app est
+  ouverte) et `iris:push-resubscribed` (rotation d'abonnement par le navigateur).
+- **Déconnexion** : `signOut` retire l'abonnement de l'appareil (best effort) — poste partagé.
+  Un abonnement du navigateur **sans ligne à moi** est retiré à la lecture (`readState`).
+- **Clé publique VAPID** en `VITE_VAPID_PUBLIC_KEY` : elle est dans chaque abonnement, ce n'est
+  pas un secret — hors du champ « aucun secret en `VITE_*` ». Clé privée et sujet
+  (`VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`) dans les secrets d'edge functions. Absente ⇒ état
+  `not_configured`, rien ne casse.
+- **iOS** : Safari n'expose le push qu'en application AJOUTÉE À L'ÉCRAN D'ACCUEIL (≥ 16.4) ;
+  l'état `needs_install` l'explique. C'est une détection de **capacité** (plateforme Apple et
+  non `standalone`), pas de layout — la règle « jamais le User-Agent » vise le choix
+  bureau/mobile.
+
+⚠️ **Redéploiement de `notifications-push`** : `_shared/push/{config,message,outcome,transport}.ts`
+et `_shared/email/{notifications,template}.ts` — les SIX dans le tableau `files`.
+
 ## Préférences par canal
 
 `notification_preferences (user_id, kind, in_app, email)` — **globales à tous les tenants du
@@ -146,6 +200,14 @@ d'appartenance à un tenant : une préférence est un attribut du COMPTE, pas d'
 - **`supabase/functions/_shared/email/notifications.ts`** (pur, testé) : un message par motif,
   objet préfixé de la référence (tri en boîte de réception), permalien en bouton d'action.
 - **`supabase/functions/notifications-mailer/index.ts`** : le facteur de la boîte d'envoi.
+- **`supabase/functions/_shared/push/`** : `message.ts` (texte du push, pur, testé), `outcome.ts`
+  (règlement après N appareils, pur, testé), `config.ts` (`readVapid`, pur, testé),
+  `transport.ts` (`web-push`, seule brique Deno — se substitue seule si la bibliothèque fait
+  défaut) ; **`notifications-push/index.ts`** : le facteur push.
+- **`src/lib/push.ts`** (pur, testé) : états (`resolvePushState`), textes (`PUSH_COPY`), mapping
+  abonnement → ligne, libellé d'appareil ; **`usePushSubscription.ts`** : lecture du navigateur,
+  `enable`/`disable`, `forgetDevicePush` (déconnexion), `PushBootstrap` ; **`PushDeviceToggle.tsx`**
+  : l'interrupteur, un composant pour les deux hôtes ; **`public/sw.js`** : le service worker.
 - **`NotificationBell.tsx`** : tuile `h-9 w-9` du header à gauche des Paramètres, pastille de
   non-lues, volet flottant (clic extérieur + Échap), « Tout marquer comme lu ». Cliquer une
   ligne **vaut accusé de lecture** puis ouvre la fiche.

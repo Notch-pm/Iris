@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Surface } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/features/auth/AuthProvider";
+import { PushDeviceToggle } from "@/features/notifications/PushDeviceToggle";
 import {
   defaultMatrix, displayName, identityChanged, identityFormFrom, initials, matrixEquals,
   PHONE_MAX_LENGTH, PREFERENCE_ROWS, silencedCount, validateAvatar, validateIdentityForm,
@@ -440,6 +441,23 @@ function PreferencesCard() {
 
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Push sur cet appareil — PAS une préférence du compte : un abonnement par
+// appareil et par navigateur, qui suit le canal « Dans Iris » ci-dessus.
+// ---------------------------------------------------------------------------
+
+function PushDeviceCard() {
+  return (
+    <Surface>
+      <SectionTitle
+        title="Sur cet appareil"
+        hint="Recevez les notifications d'Iris sur cet appareil, même l'application fermée."
+      />
+      <PushDeviceToggle footnote />
+    </Surface>
+  );
+}
+
 export function AccountPage() {
   const { profile } = useAuth();
   return (
@@ -459,6 +477,7 @@ export function AccountPage() {
         <PasswordCard />
       </div>
       <PreferencesCard />
+      <PushDeviceCard />
     </div>
   );
 }

@@ -26,6 +26,7 @@ import { DeviceProvider } from "@/features/device/DeviceProvider";
 import { Adaptive } from "@/features/device/Adaptive";
 import { MobileHome } from "@/features/device/MobileHome";
 import { MobileShell } from "@/components/layout/mobile/MobileShell";
+import { PushBootstrap } from "@/features/notifications/usePushSubscription";
 import { MobileRequestsListPage } from "@/features/requests/mobile/MobileRequestsListPage";
 import { MobileRequestPage } from "@/features/requests/mobile/MobileRequestPage";
 import { MobileNewRequestPage } from "@/features/requests/creation/mobile/MobileNewRequestPage";
@@ -64,6 +65,8 @@ export function App() {
             <Route
               element={
                 <TenantProvider>
+                  {/* Push sur appareil : un seul point de montage, commun aux deux shells. */}
+                  <PushBootstrap />
                   <Adaptive desktop={<AppShell />} mobile={<MobileShell />} />
                 </TenantProvider>
               }

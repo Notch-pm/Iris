@@ -72,8 +72,11 @@ d'un e-mail (`/demandes/<id>`) ouvre la bonne fiche sur les deux appareils.
   (`src/components/ui/dialog.tsx`) — le bureau ne change pas.
 - **Accueil mobile** : `MobileHome` route vers `/interventions` (intervenant) ou `/demandes`.
 - **PWA** : `public/manifest.webmanifest` + icônes `public/icons/` (produites par script
-  depuis les formes du favicon, sans dépendance), balises dans `index.html`. **Aucun service
-  worker** : Iris ne fonctionne pas hors ligne. Sur iOS, l'installation passe par
+  depuis les formes du favicon, sans dépendance), balises dans `index.html`. **Un service
+  worker PUSH SEUL** (`public/sw.js`, depuis le 2026-09-10) : aucun `fetch`, aucun cache — Iris
+  ne fonctionne pas hors ligne et ne sert jamais une version périmée. Il n'est enregistré qu'à
+  l'activation de « Notifications sur cet appareil » (feuille « Moi », page Mon compte) —
+  détail dans `src/features/notifications/CLAUDE.md`. Sur iOS, l'installation passe par
   Partager › Sur l'écran d'accueil ; en application installée il n'y a pas de barre
   d'adresse, chaque en-tête mobile porte donc son retour.
 

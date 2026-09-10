@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { forgetDevicePush } from "@/features/notifications/usePushSubscription";
 import type { Tables } from "@/types/database.types";
 
 type Profile = Tables<"users">;
@@ -76,6 +77,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [userId]);
 
   const signOut = React.useCallback(async () => {
+    // Poste partagé : cet appareil ne doit pas continuer à recevoir les
+    // notifications push du titulaire qui s'en va. Best effort, jamais bloquant.
+    try { await forgetDevicePush(); } catch { /* ignoré */ }
     await supabase.auth.signOut();
   }, []);
 

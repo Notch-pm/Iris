@@ -377,7 +377,11 @@ les invariants ci-dessus restent la référence.
   de notification pour son propre geste ; temps réel + repli par sondage. **Un événement, une
   ligne, N canaux** : l'e-mail part d'une **boîte d'envoi** drainée sur cron (jamais du
   déclencheur), et `notification_preferences` (*fail open*, **globales au compte**) décide des
-  canaux, réglées depuis « Mon compte » →
+  canaux, réglées depuis « Mon compte ». Depuis le 2026-09-10, un **troisième canal, le push
+  sur appareil** (Web Push / VAPID, edge `notifications-push`, service worker `public/sw.js`
+  PUSH SEUL — aucun cache, aucun hors-ligne) : il **suit le canal in-app**, se règle **par
+  appareil** (« Notifications sur cet appareil »), et son texte est encore plus court que
+  l'e-mail — un écran verrouillé se lit par n'importe qui →
   [`src/features/notifications/CLAUDE.md`](src/features/notifications/CLAUDE.md).
 - **Mon compte** (`src/features/account`, route `/mon-compte`, entrée du menu compte) :
   identité et **photo de profil** (bucket privé `avatars`, URL signée — jamais public : la

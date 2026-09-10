@@ -55,6 +55,8 @@ implémentée (plan de livraison : `architecture-proposee.md` §9).
 | `IRIS_SMTP_*` | Relais d'envoi **de plateforme**, repli quand le Socle ne déclare pas de serveur pour le tenant (`HOST`, `FROM_EMAIL` obligatoires ; `PORT`, `USERNAME`, `PASSWORD`, `FROM_NAME`, `USE_TLS` facultatifs) | Facultatif — sans lui, seuls les tenants dont le Socle déclare un serveur d'envoi reçoivent des mails | 1 |
 | ~~`MISTRAL_API_KEY`~~ | — | **RETIRÉ le 2026-08-29.** ⚠️ **Ne pas le reposer ici** : la clé du fournisseur vit dans le **Socle** (`ai-api`), et c'est tout l'intérêt de la centralisation — une application compromise ne compromet pas la clé. Iris passe par le guichet avec sa `SOCLE_API_KEY` (scope `ai` + imputation `consumer = iris`) | — |
 | ~~`MISTRAL_ASSISTANT_AGENT_ID`~~ | — | **RETIRÉ le 2026-08-29.** L'agent est résolu par le Socle depuis un **alias** (`assistant-instruction`) : changer d'agent ou de modèle ne touche plus aucune application | — |
+| `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` | Paire de clés **Web Push** (notifications sur appareil, 2026-09-10). Générée une fois : `npx web-push generate-vapid-keys` → `.secrets/VAPID_PUBLIC_KEY.txt`, `.secrets/VAPID_PRIVATE_KEY.txt`. ⚠️ Changer la paire **invalide tous les abonnements** existants (chaque appareil devra réactiver). La clé PUBLIQUE est aussi une variable de **build** du front : `VITE_VAPID_PUBLIC_KEY` (Cloudflare → Settings → Build → Variables, et `.env.local`) — publique par construction, elle est dans chaque abonnement | **Générée et posée le 2026-09-10** — reste la variable de build Cloudflare | mobile |
+| `VAPID_SUBJECT` | Contact que les services de push peuvent joindre en cas d'abus : `mailto:<adresse>` ou `https://iris.edilumen.fr` | **Posé le 2026-09-10 : `https://iris.edilumen.fr`**. Sans lui (ou mal formé), `notifications-push` répond 503 et ne réclame rien | mobile |
 | `CLARA_WEBHOOK_URL` | URL de l'edge function `iris-webhook` de Clara | Équipe Clara | 4 |
 | `IRIS_WEBHOOK_SECRET` | Secret HMAC du webhook Iris→Clara (partagé avec Clara) | Généré, échangé hors bande | 4 |
 
@@ -66,6 +68,12 @@ supabase secrets set --project-ref tqcoqlneybtbrrcvpkpk \
   SOCLE_API_KEY="$(cat .secrets/SOCLE_API_KEY.txt)" \
   CRON_SECRET="$(cat .secrets/CRON_SECRET.txt)" \
   IRIS_APP_URL="https://iris.edilumen.fr"   # prod (origine du navigateur, sans slash final)
+
+# Push sur appareil (2026-09-10)
+supabase secrets set --project-ref tqcoqlneybtbrrcvpkpk \
+  VAPID_PUBLIC_KEY="$(cat .secrets/VAPID_PUBLIC_KEY.txt)" \
+  VAPID_PRIVATE_KEY="$(cat .secrets/VAPID_PRIVATE_KEY.txt)" \
+  VAPID_SUBJECT="mailto:<adresse de contact>"
 ```
 
 Puis premier lancement de la sync (et à planifier en cron quotidien, dashboard → Integrations

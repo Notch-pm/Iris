@@ -93,6 +93,16 @@ qu'il a oublié le second tenant.
   in-app coupé seul → ligne muette qui porte quand même l'e-mail. Détail :
   [`../notifications/CLAUDE.md`](../notifications/CLAUDE.md).
 
+## Sur cet appareil (push, 2026-09-10)
+
+Sous les préférences, une carte **« Sur cet appareil »** avec l'interrupteur « Notifications sur
+cet appareil » (`PushDeviceToggle`, partagé avec la feuille « Moi » du mobile). Ce n'est **pas
+une préférence du compte** : un abonnement Web Push vaut pour UN appareil et UN navigateur, et
+il **suit le canal « Dans Iris »** de la matrice au-dessus — aucun réglage par événement
+(décision PO). États écrits, jamais un gris muet : `on`, `off`, `denied` (bloqué dans le
+navigateur), `needs_install` (iPhone hors écran d'accueil), `unsupported`, `not_configured`.
+Détail : [`../notifications/CLAUDE.md`](../notifications/CLAUDE.md) § « Doublage par push ».
+
 ## Fichiers
 
 - **`account.ts`** (pur, testé — 24 cas) : matrice de préférences (aller-retour lignes ↔

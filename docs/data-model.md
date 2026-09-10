@@ -878,7 +878,7 @@ le RLS par abonné ; le filtre `user_id` posé côté client n'est qu'une écono
 
 **Un événement, une ligne, N canaux.** On ne duplique pas la ligne par canal : `notifications`
 porte l'état de chacun. Ajouter un canal (SMS, push) = ajouter des colonnes, sans toucher aux
-déclencheurs ni au volet.
+déclencheurs ni au volet — fait pour le **push** le 2026-09-10 (`20260915100000`, § suivant).
 
 - `in_app boolean` — `false` : la ligne existe UNIQUEMENT pour porter l'e-mail (canal in-app
   coupé par préférence). Le volet filtre dessus ; le RLS est inchangé.
@@ -900,6 +900,36 @@ motif que `integration_deliveries` et que le cron de `sync-socle-referentiel` (s
 | `skip_notification_email(id, raison)` | renonce définitivement (pas d'adresse, pas de relais) |
 
 Toutes `service_role` uniquement — aucune `EXECUTE` cliente.
+
+### Canal push sur appareil — Web Push / VAPID (`20260915100000`)
+
+Le push **suit le canal in-app** (décision PO 2026-09-10) : aucune préférence par événement, le
+seul réglage est **par appareil**.
+
+- **`push_subscriptions`** — un abonnement par appareil : `endpoint` (unique — l'adresse de
+  l'appareil chez le service de push, pas un secret), `p256dh` / `auth` (clé publique et sel de
+  chiffrement VERS l'appareil, RFC 8291), `user_agent` (libellé d'affichage), `last_seen_at`,
+  `disabled_at` / `disabled_reason` (posés par le facteur sur 404/410). RLS : soi seul en
+  select / update / delete ; **aucune policy INSERT cliente** — l'enregistrement passe par
+  **`register_push_subscription(endpoint, p256dh, auth, user_agent)`** (DEFINER, `authenticated`),
+  qui **reprend** un endpoint déjà connu (`on conflict (endpoint) do update set user_id =
+  auth.uid()`, réactivation) : sur un poste partagé, le navigateur rend le même endpoint au
+  titulaire suivant, et une clé `(user_id, endpoint)` ferait recevoir à l'appareil les
+  notifications de l'ancien titulaire.
+- **`notifications.push_status`** (`pending` · `sending` · `sent` · `skipped` · `failed`) +
+  `push_attempts`, `push_attempted_at`, `push_sent_at`, `push_next_attempt_at`, `push_error`,
+  index partiel `notifications_push_queue_idx`. Valeur initiale décidée par le trigger
+  **`t10_notifications_push_queue`** (BEFORE INSERT, DEFINER révoqué) : `pending` ssi `in_app`
+  ET un abonnement actif du destinataire, `skipped` sinon — une règle pour les huit sites
+  d'insertion. Colonne en `default 'skipped'` : backfill gratuit.
+- **Boîte d'envoi** (service_role seul, révoquées dans la même migration) :
+  `claim_notification_pushes(p_limit)` — renonce d'abord aux lignes **lues** (« lue avant
+  envoi ») et à celles **sans appareil actif**, puis `for update skip locked` avec les
+  abonnements du destinataire agrégés en JSON ; `settle_notification_push(id, ok, error)`
+  (temporisation `2^n` min, `failed` après 5) ; `skip_notification_push` ;
+  `disable_push_subscription(id, reason)`. Cron `notifications-push` (`* * * * *`, secret au
+  Vault) → edge function `notifications-push`.
+- Test : `supabase/tests/notifications-push.test.sql` (12 scénarios, transactionnel annulé).
 
 **Préférences** (`notification_preferences`, réglées depuis « Mon compte ») : clé
 `(user_id, kind)` — **GLOBALES à tous les tenants du compte** (décision PO 2026-08-24,
@@ -1260,6 +1290,7 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `integration_deliveries` | membre (diagnostic) | — | — | — |
 | `notifications` | **soi seul** (`user_id = auth.uid()`) | — (triggers DEFINER) | — (RPC `mark_*_read`) | — |
 | `notification_preferences` | soi seul | soi seul | soi seul | soi seul |
+| `push_subscriptions` | soi seul | **—** (RPC `register_push_subscription`, qui reprend un endpoint) | soi seul (`last_seen_at`) | soi seul |
 | `email_templates` | membre du tenant | `is_org_admin_anywhere` + `created_by = auth.uid()` | `is_org_admin_anywhere` | `is_org_admin_anywhere` |
 | `email_template_organizations` | membre du tenant du modèle | **`has_admin_scope`** sur l'organisation visée | — (rien à modifier) | **`has_admin_scope`** sur l'organisation visée |
 | `storage.objects` (bucket `avatars`) | son dossier, ou celui d'un membre du même tenant | **son dossier seul** | son dossier seul | son dossier seul |
