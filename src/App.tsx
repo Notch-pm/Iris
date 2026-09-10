@@ -22,10 +22,17 @@ import { UsagerPage } from "@/features/contacts/UsagerPage";
 import { UsagersListPage } from "@/features/contacts/UsagersListPage";
 import { AccountPage } from "@/features/account/AccountPage";
 import { ApiDocsPage } from "@/features/public-api-docs/ApiDocsPage";
+import { DeviceProvider } from "@/features/device/DeviceProvider";
+import { Adaptive } from "@/features/device/Adaptive";
+import { MobileHome } from "@/features/device/MobileHome";
+import { MobileShell } from "@/components/layout/mobile/MobileShell";
 
 export function App() {
   return (
     <BrowserRouter>
+      {/* Appareil (téléphone ou bureau) connu dès la racine : les routes
+          publiques pourront s'en servir, et `Adaptive` choisit le rendu. */}
+      <DeviceProvider>
       <AuthProvider>
         <Routes>
           {/* Routes publiques (hors shell) */}
@@ -44,28 +51,33 @@ export function App() {
             </Route>
           </Route>
 
-          {/* Zone authentifiée — tenant sélectionné dans le shell */}
+          {/* Zone authentifiée — tenant sélectionné dans le shell.
+              MÊME URL, DEUX RENDUS (2026-09-14) : sur téléphone, `Adaptive` rend
+              le shell mobile et, route par route, la page mobile quand elle
+              existe — sinon l'écran d'orientation vers la version bureau. Le
+              permalien d'un e-mail ouvre donc la bonne fiche sur les deux. */}
           <Route element={<ProtectedRoute />}>
             <Route
               element={
                 <TenantProvider>
-                  <AppShell />
+                  <Adaptive desktop={<AppShell />} mobile={<MobileShell />} />
                 </TenantProvider>
               }
             >
-              <Route index element={<DashboardPage />} />
-              <Route path="demandes" element={<RequestsListPage />} />
-              <Route path="demandes/tableau" element={<TableauPage />} />
-              <Route path="carte" element={<CartePage />} />
-              <Route path="demandes/nouvelle" element={<NewRequestPage />} />
-              <Route path="demandes/:id" element={<RequestDetailPage />} />
-              <Route path="interventions" element={<MesInterventionsPage />} />
-              <Route path="usagers" element={<UsagersListPage />} />
-              <Route path="usagers/:contactId" element={<UsagerPage />} />
+              <Route index element={<Adaptive desktop={<DashboardPage />} mobile={<MobileHome />} />} />
+              <Route path="demandes" element={<Adaptive desktop={<RequestsListPage />} />} />
+              <Route path="demandes/tableau" element={<Adaptive desktop={<TableauPage />} />} />
+              <Route path="carte" element={<Adaptive desktop={<CartePage />} />} />
+              <Route path="demandes/nouvelle" element={<Adaptive desktop={<NewRequestPage />} />} />
+              <Route path="demandes/:id" element={<Adaptive desktop={<RequestDetailPage />} />} />
+              <Route path="interventions" element={<Adaptive desktop={<MesInterventionsPage />} />} />
+              <Route path="usagers" element={<Adaptive desktop={<UsagersListPage />} />} />
+              <Route path="usagers/:contactId" element={<Adaptive desktop={<UsagerPage />} />} />
+              {/* Colonne unique, lisible telle quelle sur un téléphone. */}
               <Route path="mon-compte" element={<AccountPage />} />
               <Route element={<AdminRoute />}>
                 <Route path="parametres">
-                  <Route index element={<PermissionsPage />} />
+                  <Route index element={<Adaptive desktop={<PermissionsPage />} />} />
                   {/* Ancienne adresse de la zone Droits (liens et signets existants). */}
                   <Route path="droits" element={<Navigate to="/parametres" replace />} />
                 </Route>
@@ -77,6 +89,7 @@ export function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AuthProvider>
+      </DeviceProvider>
     </BrowserRouter>
   );
 }

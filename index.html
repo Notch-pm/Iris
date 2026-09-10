@@ -2,8 +2,19 @@
 <html lang="fr" translate="no">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover : les pages mobiles gèrent elles-mêmes les insets
+         de sécurité (encoche, indicateur d'accueil) via env(safe-area-inset-*). -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- Installation « sur l'écran d'accueil » (2026-09-14) : manifeste + icônes,
+         aucun service worker de cache — Iris ne fonctionne pas hors ligne. iOS
+         ignore le manifeste pour l'icône : apple-touch-icon est obligatoire. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <meta name="theme-color" content="#089B59" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Iris" />
     <title>Iris - Edilumen</title>
   </head>
   <body>

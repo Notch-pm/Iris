@@ -1,0 +1,17 @@
+{
+  "name": "Iris — Edilumen",
+  "short_name": "Iris",
+  "description": "Demandes d'usagers et interventions de la collectivité.",
+  "lang": "fr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#089B59",
+  "background_color": "#FCFCFC",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

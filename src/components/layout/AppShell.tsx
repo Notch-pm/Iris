@@ -1,8 +1,10 @@
 import * as React from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  ChevronsUpDown, Columns3, HardHat, Inbox, LayoutDashboard, LogOut, Map, ShieldCheck, User, Users,
+  ChevronsUpDown, Columns3, HardHat, Inbox, LayoutDashboard, LogOut, Map, RotateCcw, ShieldCheck,
+  Smartphone, User, Users,
 } from "lucide-react";
+import { useDevice } from "@/features/device/DeviceProvider";
 import parametresIcon from "@/assets/icons/parametres.svg";
 import notchLogo from "@/assets/logo-notch.svg";
 import { Badge } from "@/components/ui/badge";
@@ -109,6 +111,7 @@ function AppSidebar() {
 function UserMenu() {
   const { session, profile, signOut } = useAuth();
   const { isAdmin, rights } = useTenant();
+  const { override, viewportNarrow, setOverride } = useDevice();
   const avatarUrl = useMyAvatarUrl();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
@@ -181,6 +184,29 @@ function UserMenu() {
             <User className="h-3.5 w-3.5" aria-hidden="true" />
             Mon compte
           </NavLink>
+          {/* Le commutateur d'appareil (2026-09-14) : forcer la version mobile,
+              ou rendre la main à la détection quand un choix a été forcé —
+              typiquement un téléphone sur lequel on a ouvert le bureau. */}
+          <button
+            role="menuitem"
+            type="button"
+            onClick={() => { setOpen(false); setOverride("mobile"); }}
+            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-muted"
+          >
+            <Smartphone className="h-3.5 w-3.5" aria-hidden="true" />
+            Version mobile
+          </button>
+          {override === "desktop" && viewportNarrow ? (
+            <button
+              role="menuitem"
+              type="button"
+              onClick={() => { setOpen(false); setOverride(null); }}
+              className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-[13px] transition-colors hover:bg-muted"
+            >
+              <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
+              Détection automatique
+            </button>
+          ) : null}
           <div className="my-1 h-px bg-border" />
           <button
             role="menuitem"

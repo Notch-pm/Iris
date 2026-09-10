@@ -437,6 +437,11 @@ les invariants ci-dessus restent la référence.
 
 ## Conventions
 
+- **Mobile = pages dédiées, même URL** (décision PO 2026-09-14) : les écrans de bureau ne
+  sont pas responsives. Sur téléphone (largeur < 768 px, ou commutateur « Version mobile »
+  mémorisé sur l'appareil — jamais le User-Agent, une tablette garde le bureau), `Adaptive`
+  rend le `MobileShell` et la page mobile de la route, sinon un écran d'orientation vers la
+  version bureau. Détail : [`src/components/layout/CLAUDE.md`](src/components/layout/CLAUDE.md).
 - **Organisation par feature** sous `src/features/<domaine>/` (hook `useX.ts`, dialogues,
   pages). Primitives UI génériques dans `src/components/ui/`, layout dans
   `src/components/layout/`.
