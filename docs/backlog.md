@@ -2,7 +2,7 @@
 
 > **Public** : PO et équipe Iris · **Question traitée** : qu'est-ce qui a été demandé, pas
 > encore arbitré, et que faut-il savoir avant de s'y mettre ? · **Dernière mise à jour** :
-> 2026-08-31
+> 2026-09-18
 
 Ce document porte les demandes **produit** en attente. Il ne double pas
 [`dette-technique.md`](dette-technique.md), qui traite de ce qui est **assumé comme dette** :
@@ -116,6 +116,51 @@ rejoint le vocabulaire arrêté le 2026-08-30 (« Organisme », cf.
 délibérée : lire `CLAUDE.md` § Conventions avant d'y toucher.
 
 ---
+
+## B9 — Tableau de bord (page d'accueil)
+
+Annoncé par le PO le **2026-09-18** comme chantier du lendemain. Consigné ici le soir même
+pour que la reprise parte de ce qui existe.
+
+**Ce qui existe.** La route `/` rend `src/pages/DashboardPage.tsx`, un **placeholder** : un
+titre, une carte « Bienvenue dans Iris » qui liste les profils attribués et quatre boutons
+(Demandes, Nouvelle demande, Mes interventions, Paramètres), plus un message « Aucun droit
+attribué » pour un membre sans profil (RM-45). Le mobile a son propre accueil (`MobileHome`).
+L'entrée de rail est la maison tracée depuis la maquette (`HouseIcon`).
+
+**Ce qui est réutilisable sans nouvelle RPC.** Depuis le 2026-09-18, les **statistiques**
+(`src/features/stats/`) exposent huit RPC `stats_*` bornées par le RLS, un hook par RPC
+(`useStats.ts`), la config ApexCharts de Clara (`chartConfig.ts`) et les cartes `KpiCard` /
+`ChartCard`. Tout indicateur déjà compté là (demandes reçues, canaux, organismes, délais,
+issues, agents, interventions) se pose sur l'accueil par simple réemploi. S'y ajoutent, déjà
+en place : la liste des demandes et ses facettes (`useRequests`, `facets.ts`), les
+notifications (`useNotifications`, cloche), les droits effectifs (`useTenant().rights`), les
+interventions sollicitées (`useMyInterventions`), la carte (`carte/`).
+
+**Ce qui n'existe pas encore.** Aucune RPC « mes demandes à traiter / en retard » agrégée
+(la liste les filtre côté client, sur ce que le RLS laisse passer) ; aucune notion de
+**retard** hors `due_at`, rarement renseignée ; aucun réglage de tableau de bord par
+utilisateur.
+
+**Questions ouvertes pour le PO.**
+1. Un tableau de bord **pour qui** ? L'agent (mes demandes, mes interventions, ce qui
+   m'attend), le responsable de service (charge du service, délais), l'administrateur
+   (activité de la collectivité) — ou un seul écran qui s'adapte aux droits ?
+2. Quels **blocs**, et dans quel ordre ? Compteurs personnels (à traiter, en instruction, en
+   attente d'information), demandes récentes, mes interventions à réaliser, notifications
+   non lues, et/ou une sélection des statistiques (par mois, taux de résolution) ?
+3. La **période** des chiffres de l'accueil (30 jours fixes, ou le filtre de l'écran
+   Statistiques ?) et le **périmètre** (tout ce que je vois, ou l'organisme sélectionné dans
+   le header ?).
+4. Le cas du membre **sans aucun droit** et de l'**intervenant pur** : que voient-ils ?
+5. Faut-il une version **mobile** distincte (huit écrans validés à ce jour, l'accueil mobile
+   existe déjà) ?
+
+**Pistes, non arbitrées.** Motif Clara : **Clara a un accueil**
+(`clara-mailflow-hub/src/pages/Dashboard.tsx`, et `SuperAdminDashboard.tsx`), à relire en
+premier — le PO a demandé pour les statistiques « même bibliothèque, même rendu », la même
+attente est probable ici ; blocs = cartes `Card` du DS ; toute agrégation nouvelle en RPC
+`SECURITY INVOKER` (jamais un rapatriement de toutes les demandes dans le navigateur).
 
 ## Entrées sorties de ce document
 
