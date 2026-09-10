@@ -73,8 +73,22 @@ supabase secrets set --project-ref tqcoqlneybtbrrcvpkpk \
 supabase secrets set --project-ref tqcoqlneybtbrrcvpkpk \
   VAPID_PUBLIC_KEY="$(cat .secrets/VAPID_PUBLIC_KEY.txt)" \
   VAPID_PRIVATE_KEY="$(cat .secrets/VAPID_PRIVATE_KEY.txt)" \
-  VAPID_SUBJECT="mailto:<adresse de contact>"
+  VAPID_SUBJECT="https://iris.edilumen.fr"
 ```
+
+**Mise en service du push, côté front** (fait le 2026-09-10, à refaire si le projet Cloudflare
+est recréé) : dash.cloudflare.com → Compute (Workers) → projet `iris` → Settings → Build →
+Variables → `VITE_VAPID_PUBLIC_KEY` = contenu de `.secrets/VAPID_PUBLIC_KEY.txt`. La variable
+n'est prise qu'à la construction SUIVANTE : après l'avoir posée, Deployments → Retry build.
+Contrôle : `https://iris.edilumen.fr/sw.js` doit rendre le service worker (texte « Service
+worker d'Iris »), pas la page d'accueil.
+
+**Essai** : sur le téléphone, compte A, onglet « Moi » → « Notifications sur cet appareil »,
+accepter l'autorisation ; depuis un AUTRE compte B sur l'ordinateur, affecter une demande à A
+(ou le mentionner dans une note). La carte arrive dans la minute, application fermée. ⚠️ Un
+geste fait depuis A ne notifie jamais A : l'essai « je me sollicite moi-même » ne peut pas
+produire de push. Diagnostic : `src/features/notifications/CLAUDE.md` § « Vérifier ou
+diagnostiquer ».
 
 Puis premier lancement de la sync (et à planifier en cron quotidien, dashboard → Integrations
 → Cron, ou pg_cron) :

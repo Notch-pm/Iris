@@ -159,8 +159,46 @@ application fermée comprise. Décisions PO (2026-09-10) et choix d'architecture
   non `standalone`), pas de layout — la règle « jamais le User-Agent » vise le choix
   bureau/mobile.
 
-⚠️ **Redéploiement de `notifications-push`** : `_shared/push/{config,message,outcome,transport}.ts`
-et `_shared/email/{notifications,template}.ts` — les SIX dans le tableau `files`.
+⚠️ **Redéploiement de `notifications-push`** : par la CLI de préférence
+(`npx supabase functions deploy notifications-push --project-ref tqcoqlneybtbrrcvpkpk
+--no-verify-jwt`), qui embarque `_shared` d'elle-même. Par le MCP, les SIX fichiers
+`_shared/push/{config,message,outcome,transport}.ts` + `_shared/email/{notifications,template}.ts`
+doivent figurer dans le tableau `files`.
+
+**Vérifié de bout en bout le 2026-09-10** (Android · Firefox, application fermée) : geste dans
+Iris → ligne `pending` → cron → `sent` en 10 s → carte sur le téléphone.
+
+### Vérifier ou diagnostiquer (« je n'ai pas reçu la notification »)
+
+Le piège du premier essai : **on n'est jamais notifié de son propre geste**. Un essai demande
+DEUX comptes — le téléphone est inscrit avec le compte A, et c'est le compte B, sur un autre
+appareil, qui fait un geste visant A (affectation, mention `@A`, sollicitation d'intervention).
+Un geste fait depuis A notifie quelqu'un d'autre, dont l'appareil n'est probablement pas
+inscrit : la ligne sera `skipped`, sans erreur — c'est le comportement attendu.
+
+Trois lectures, dans l'ordre, disent où ça bloque (`execute_sql`, lecture seule) :
+
+```sql
+-- 1. L'appareil est-il inscrit, et pour QUEL compte ?
+select u.email, s.user_agent, s.disabled_at, s.disabled_reason, s.created_at
+  from public.push_subscriptions s join public.users u on u.id = s.user_id;
+
+-- 2. La notification a-t-elle été produite, pour QUI, et qu'a décidé la file ?
+--    skipped + push_error null  → décidé à l'insertion : in-app coupé, ou aucun appareil du DESTINATAIRE
+--    skipped + « lue avant envoi » / « aucun appareil actif » → renoncement au claim
+--    pending + push_error        → envoi en échec, temporisation en cours
+select n.kind, u.email as destinataire, n.push_status, n.push_attempts, n.push_error, n.created_at, n.push_sent_at
+  from public.notifications n join public.users u on u.id = n.user_id
+ where n.created_at > now() - interval '1 hour' order by n.created_at desc;
+
+-- 3. Le cron atteint-il la fonction ? (200 {claimed…retried…} attendu ; 401 = secret cron, 503 = VAPID, 404 = non déployée)
+select status_code, left(content::text, 100), created from net._http_response
+ where created > now() - interval '10 minutes' order by created desc;
+```
+
+Côté navigateur : le texte sous l'interrupteur nomme l'état (« non configuré » = clé publique
+absente du build ; « bloquées dans les réglages » = permission refusée). `Notification.permission`
+et `navigator.serviceWorker.getRegistration('/')` dans la console confirment.
 
 ## Préférences par canal
 
