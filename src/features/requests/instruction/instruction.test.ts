@@ -58,7 +58,13 @@ describe("headerSubtitle", () => {
     const text = headerSubtitle({
       requesterName: "X", channel: "pigeon", source: "iris", receivedAt: "2026-08-21T10:00:00", dueAt: "n/a",
     });
-    expect(text).toBe("X · déposée via pigeon le 21 août 2026");
+    expect(text).toBe("X · déposée via « pigeon » le 21 août 2026");
+  });
+  it("parle français pour les canaux de Clara et du portail", () => {
+    const base = { requesterName: "X", source: "clara", receivedAt: "2026-08-21T10:00:00", dueAt: null };
+    expect(headerSubtitle({ ...base, channel: "paper" })).toBe("X · déposée par courrier le 21 août 2026");
+    expect(headerSubtitle({ ...base, channel: "manual" })).toBe("X · déposée par saisie d'un agent le 21 août 2026");
+    expect(headerSubtitle({ ...base, channel: "portail" })).toBe("X · déposée sur le portail usagers le 21 août 2026");
   });
   it("omet le nom tant que l'identité n'est pas arrêtée (relecture Socle en cours)", () => {
     // Afficher le nom du dépôt puis le remplacer par celui de la fiche ferait

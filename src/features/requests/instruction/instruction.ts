@@ -98,25 +98,40 @@ export function dueView(dueAt: string | null, now: Date): DueView | null {
 
 // ---- Canal de dépôt et sous-titre ------------------------------------------
 
+// Le canal de réception est un TEXTE LIBRE du contrat d'ingestion (`context.channel`) :
+// chaque émetteur y met ses propres codes. À ceux d'Iris s'ajoutent donc ceux de
+// CLARA (`paper` = courrier papier scanné, `email`, `portal`, `manual` = saisi à la
+// main par un agent — le vocabulaire de son `couriers.channel`) et celui du PORTAIL
+// usagers (`portail`). Un code inconnu reste affiché tel quel, mais entre guillemets
+// dans la phrase : « déposée via paper » mélangeait les langues sans le dire
+// (DEM-2026-000053, 2026-09-19).
 const CHANNEL_PHRASES: Record<string, string> = {
   guichet: "au guichet",
   courrier: "par courrier",
+  paper: "par courrier",
   email: "par courriel",
   courriel: "par courriel",
   telephone: "par téléphone",
   web: "en ligne",
   en_ligne: "en ligne",
+  portail: "sur le portail usagers",
+  portal: "sur le portail usagers",
+  manual: "par saisie d'un agent",
   api: "par une application partenaire",
 };
 
 const CHANNEL_LABELS: Record<string, string> = {
   guichet: "Guichet",
   courrier: "Courrier",
+  paper: "Courrier",
   email: "Courriel",
   courriel: "Courriel",
   telephone: "Téléphone",
   web: "En ligne",
   en_ligne: "En ligne",
+  portail: "Portail usagers",
+  portal: "Portail usagers",
+  manual: "Saisie par un agent",
   api: "Application partenaire",
 };
 
@@ -141,7 +156,7 @@ export function headerSubtitle(input: SubtitleInput): string {
   const received = formatDayMonth(input.receivedAt, true);
   let deposit: string;
   if (input.channel) {
-    const phrase = CHANNEL_PHRASES[input.channel] ?? `via ${input.channel}`;
+    const phrase = CHANNEL_PHRASES[input.channel] ?? `via « ${input.channel} »`;
     deposit = `déposée ${phrase} le ${received}`;
   } else if (input.source !== "iris") {
     deposit = `reçue de ${input.source} le ${received}`;

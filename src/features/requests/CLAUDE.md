@@ -364,6 +364,13 @@ note interne → résolution avec texte de clôture → journal.
     déclarée sans rapprochement, ou dépôt anonyme).
   - **`instruction/instruction.ts`** (pur, testé) porte TOUTE la déduction (échéance,
     sous-titre, identité, réponses, étapes, activité, vignettes) ; les composants affichent.
+    ⚠️ **Le canal de réception est un texte libre du contrat** (`context.channel`) : chaque
+    émetteur y met ses codes. Le catalogue `CHANNEL_PHRASES` / `CHANNEL_LABELS` connaît ceux
+    d'Iris, ceux de **Clara** (`paper` = courrier papier scanné, `email`, `portal`, `manual`
+    = saisi par un agent) et celui du portail (`portail`) ; un code inconnu s'affiche entre
+    guillemets (« déposée via paper » mélangeait les langues, DEM-2026-000053, 2026-09-19).
+    Un nouvel émetteur = ses codes à ajouter ICI, pas une normalisation à l'ingestion (la
+    valeur reçue reste celle de l'émetteur, comme `source`).
   - **`TransitionActions.tsx`** = `useTransitionRunner` (transition active, application
     directe ou dialogue, erreur) + `TransitionDialog` (motif / commentaire pour l'usager / assigné),
     monté une fois par fiche. Le dialogue ne dépend que de `TransitionDialogRunner` — le
