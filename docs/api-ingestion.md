@@ -212,11 +212,16 @@ contenu). Chaque demande porte son journal d'événements immuable (`request_eve
 
 ## 6. Exemples de raccordement (sans rien modifier côté Iris)
 
-- **Futur connecteur Clara** : source `clara` enregistrée sur le tenant, clé
-  `requests:write`+`requests:read` en secret d'edge function Clara ; à la création d'une
-  action externe, POST de l'enveloppe avec `external_id` = id du ticket d'action, `links` =
-  `[{type: "courrier", id: <chrono>, url: <permalien>}]`, pièces par URL signées du bucket
-  Clara ; réconciliation quotidienne par `GET ?updated_since=`.
+- **Connecteur Clara** (livré côté Clara le 2026-08-23) : source `clara` enregistrée sur le
+  tenant, clé `requests:write`+`requests:read` en secret d'edge function Clara ; à la
+  création d'une action externe, POST de l'enveloppe avec `external_id` = id du ticket
+  d'action, `links` = `[{type: "courrier", id: <chrono>, url: <permalien>}]` ;
+  réconciliation par `GET ?updated_since=`. ⚠️ **Les pièces du courrier ne sont pas encore
+  transmises** (constat du 2026-09-19, DEM-2026-000055) : le connecteur est antérieur au
+  contrat 2.0.0 et ne dépose rien sur `POST /v1/uploads`. La suite attendue côté Clara est le
+  parcours du § 3 — un dépôt par fichier, puis `attachments: [{ upload_id }]` dans
+  l'enveloppe. Le mode « URL signée du bucket Clara » de la première version de ce guide n'a
+  jamais été mis en service.
 - **Portail citoyen** : source `portail-citoyen`, clé côté serveur du portail ; dépôt à la
   soumission du formulaire avec `requester` déclaré (ou `socle_contact_id` si le compte est
   rapproché) et `form_data`.
