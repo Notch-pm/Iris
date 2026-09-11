@@ -1,8 +1,8 @@
 // Liste des demandes du tenant — maquette Claude Design « Liste — en-tête
 // compacté » (2026-09-11) : une seule barre collante de 56 px (titre, compteur,
-// recherche par objet, « Grouper », « Filtres » en popover, densité, autres vues,
-// export, CTA), chips des critères actifs, en-tête de tableau figé — seules les
-// lignes défilent —, pied de pagination fixe. Tri serveur par colonne,
+// « Grouper », « Filtres » en popover — recherche par objet en tête —, densité,
+// autres vues, export, CTA), chips des critères actifs, en-tête de tableau figé —
+// seules les lignes défilent —, pied de pagination fixe. Tri serveur par colonne,
 // regroupement de la page courante, export CSV de toute la sélection filtrée
 // (motif des listes Clara). Le RLS borne ce que l'utilisateur voit ; l'UI ne
 // fait que présenter.
@@ -239,6 +239,7 @@ export function RequestsListPage() {
   });
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebounced(q, SEARCH_DEBOUNCE_MS);
+  const searchId = React.useId();
   const [page, setPage] = React.useState(1);
   const [sort, setSort] = React.useState<SortState>(DEFAULT_SORT);
   const [groupKey, setGroupKey] = React.useState<GroupKey | null>(null);
@@ -381,21 +382,7 @@ export function RequestsListPage() {
           </span>
         </div>
 
-        <div className="flex min-w-0 flex-1 justify-center">
-          <label className="relative flex h-9 w-full max-w-[360px] items-center">
-            <Search className="pointer-events-none absolute left-3 size-[15px] text-muted-foreground" aria-hidden="true" />
-            <input
-              type="search"
-              aria-label="Rechercher par objet ou référence"
-              placeholder="Rechercher par objet…"
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              className="h-9 w-full rounded-full border border-border bg-background pl-9 pr-3 text-[13.5px] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-            />
-          </label>
-        </div>
-
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="ml-auto flex shrink-0 items-center gap-1.5">
           <Dropdown
             open={groupOpen}
             onOpenChange={setGroupOpen}
@@ -462,6 +449,28 @@ export function RequestsListPage() {
               </button>
             </div>
             <div className="flex max-h-[420px] flex-col gap-3.5 overflow-auto px-3.5 pb-3">
+              <div className="flex flex-col">
+                <label htmlFor={searchId} className="mb-1.5 text-[11.5px] font-semibold text-muted-foreground">
+                  Recherche
+                </label>
+                <div className="relative flex h-9 items-center">
+                  <Search className="pointer-events-none absolute left-3 size-[15px] text-muted-foreground" aria-hidden="true" />
+                  <input
+                    id={searchId}
+                    type="search"
+                    placeholder="Objet ou référence…"
+                    autoFocus
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    // Échap ferme le popover (écouteur du Dropdown) ; sans ce
+                    // preventDefault, Chrome viderait AUSSI le champ de recherche
+                    // — la recherche disparaîtrait au moment où on ferme le
+                    // panneau pour lire les résultats.
+                    onKeyDown={(e) => { if (e.key === "Escape") e.preventDefault(); }}
+                    className="h-9 w-full rounded-full border border-border bg-background pl-9 pr-3 text-[13.5px] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                  />
+                </div>
+              </div>
               <ChipGroup
                 label="Statut"
                 options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}

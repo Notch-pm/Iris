@@ -234,8 +234,8 @@ note interne → résolution avec texte de clôture → journal.
   test de `listing.test.ts` fige le libellé. ⚠️ La variable d'e-mail
   `{{demande.destinataire}}` ne se renomme PAS non plus : son catalogue est FIGÉ, avec
   jumeau SQL et garde serveur `t03`.
-- **Pages** : `RequestsListPage` (recherche par objet/référence, filtres MULTIPLES
-  statut/organisme/démarche/priorité/source en popover et en chips, pagination 20, filtre
+- **Pages** : `RequestsListPage` (recherche par objet/référence et filtres MULTIPLES
+  statut/organisme/démarche/priorité/source dans le popover « Filtres », rappelés en chips, pagination 20, filtre
   initial depuis `?status=`, bouton « Nouvelle demande » → `/demandes/nouvelle` — maquette
   « Liste — en-tête compacté », cf. « Liste : tri, regroupement, export » plus bas), le
   **tableau des demandes** `/demandes/tableau` et la **fiche
@@ -1004,10 +1004,16 @@ note interne → résolution avec texte de clôture → journal.
   - **En-tête compacté** (2026-09-11, maquette Claude Design « Liste Courriers —
     Proposition », projet `44db0c7a`) : la page est en **pleine hauteur**
     (`useFullBleedLayout`). Une **seule barre collante de 56 px** porte le titre, le compteur,
-    la **recherche par objet** (centrée), « Grouper » (menu radio), « Filtres » (popover à
-    cases avec pastille du nombre de critères), la **densité** (48 px / 36 px, mémorisée sur
-    l'appareil — non critique), les liens Tableau et Carte, l'export CSV et le CTA. Les
-    critères actifs se rappellent en **chips supprimables** sous la barre (« Tout effacer »).
+    « Grouper » (menu radio), « Filtres » (popover à cases avec pastille du nombre de
+    critères), la **densité** (48 px / 36 px, mémorisée sur l'appareil — non critique), les
+    liens Tableau et Carte, l'export CSV et le CTA. La **recherche par objet** est le premier
+    critère du popover « Filtrer les demandes » (retour PO du 2026-09-11 — elle était centrée
+    dans la barre) : focalisée à l'ouverture, comptée dans la pastille, rappelée en chip une
+    fois le panneau fermé. ⚠️ Son `onKeyDown` bloque le défaut d'Échap : dans Chrome, Échap
+    VIDE un `<input type="search">` en plus de fermer le popover — la recherche disparaissait
+    au moment où l'agent refermait le panneau pour lire les résultats (vérifié dans
+    Chrome 152). Les critères actifs se rappellent en **chips supprimables** sous la barre
+    (« Tout effacer »).
     L'**en-tête du tableau est figé** (`sticky`), les en-têtes de groupe aussi, seules les
     lignes défilent ; le pied porte la pagination **numérotée** (`pageWindow`, 7 entrées au
     plus) et « x–y sur N demandes ». Ligne : référence en mono, objet sur deux niveaux (objet
