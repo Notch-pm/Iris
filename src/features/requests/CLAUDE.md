@@ -628,6 +628,12 @@ note interne → résolution avec texte de clôture → journal.
     ⚠️ L'exclusion est faite à l'ÉCRAN, pas dans la RPC : `mentionable_users` sert aussi à
     résoudre les noms et photos des mentions **déjà écrites**, les siennes comprises —
     l'amputer ferait retomber sa propre mention sur le nom figé du jeton.
+  - ⚠️ **Le jeton `@[Nom](uuid)` ne s'affiche NULLE PART tel quel** : partout où un corps de
+    note est rendu hors de `NotesPane` — l'onglet Activité (`activityItems`), les notes de la
+    fiche mobile —, il passe par `plainBody` (« @Nom »). Constaté le 2026-09-19 : l'Activité
+    montrait `@[jacquotlaurent@gmail.com](d7dc…)`. Un compte **sans prénom ni nom** est
+    désigné par son **adresse** (`user_display_name`, côté serveur, et donc le jeton) : c'est
+    le repli voulu, pas un défaut d'affichage.
   - ⚠️ **Le nom du jeton n'est pas de confiance** (rien n'empêche d'écrire
     `@[Le Maire](uuid-d-un-autre)` à la main) : l'affichage préfère TOUJOURS le nom vivant de
     `mentionable_users`, le jeton ne servant que de repli si la personne n'est plus connue.

@@ -52,6 +52,7 @@ import {
   headerSubtitle, memberName, requesterView,
 } from "../instruction/instruction";
 import { interventionLocation } from "../instruction/lieu";
+import { plainBody } from "../instruction/mentions";
 import { inlineViewable, interventionDocuments, usagerPieces } from "../instruction/documents";
 import { blockingMessage, motifLabel, pieceRequirements } from "../instruction/conformite";
 import {
@@ -757,7 +758,8 @@ function NotesBlock({ messages, memberList, writer, archived, pending, onAdd }: 
                 <span className="font-bold">{memberName(memberList, m.author_id)}</span>
                 <span className="text-muted-foreground">{formatTimeline(m.created_at)}</span>
               </span>
-              <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{m.body}</p>
+              {/* Jetons de mention rendus lisibles (« @Nom »), comme au bureau. */}
+              <p className="whitespace-pre-wrap text-[13px] leading-relaxed">{plainBody(m.body)}</p>
             </li>
           ))}
         </ul>

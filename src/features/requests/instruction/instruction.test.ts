@@ -504,6 +504,17 @@ describe("activityItems", () => {
     expect(items[3]).toMatchObject({ label: "Fondée sur une démarche Socle", detail: "2 pièces jointes · Claire Lemoine" });
     expect(items[4]).toMatchObject({ label: "Demande créée", detail: "Claire Lemoine · saisie dans Iris" });
   });
+  it("lit une mention comme un humain : « @Nom », jamais le jeton et l'identifiant", () => {
+    const items = activityItems({
+      events: [],
+      notes: [{
+        id: "n2", author_id: "u1", created_at: "2026-08-22T09:30:00",
+        body: "Vu avec @[jacquotlaurent@gmail.com](d7dc64e2-9903-4497-a7d2-8959ac51ab5a), on attend le devis.",
+      }],
+      nameOf,
+    });
+    expect(items[0].detail).toBe("Karim Belkacem · Vu avec @jacquotlaurent@gmail.com, on attend le devis.");
+  });
   it("décrit désaffectation, motif de clôture, ingestion et événements inconnus", () => {
     const items = activityItems({
       events: [

@@ -20,6 +20,7 @@ import {
 } from "@fn/_shared/identity/declared";
 import { civilityLabel } from "@/features/contacts/usager";
 import { displayFieldValue, formatIsoDate } from "../creation/model";
+import { plainBody } from "./mentions";
 import {
   MOTIF_LABELS,
   STATUS_LABELS,
@@ -777,7 +778,9 @@ export function activityItems(input: ActivityInput): ActivityItem[] {
     items.push({
       id: `note-${note.id}`,
       label: "Note interne ajoutée",
-      detail: `${input.nameOf(note.author_id)} · ${excerpt(note.body)}`,
+      // Le corps privé de ses jetons de mention : « @Nom » (ou « @adresse »
+      // pour un compte sans nom), jamais `@[…](uuid)` (constaté le 2026-09-19).
+      detail: `${input.nameOf(note.author_id)} · ${excerpt(plainBody(note.body))}`,
       at: note.created_at,
     });
   }
