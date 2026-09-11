@@ -13,6 +13,7 @@ import {
   humanizeKey,
   initials,
   linkReason,
+  originResource,
   firstInstructionAt,
   requesterIdentity,
   requesterView,
@@ -525,5 +526,44 @@ describe("pièces et liens", () => {
     expect(linkReason({ link_type: "liee_a", external_type: null })).toBe("liée par un agent");
     expect(linkReason({ link_type: "externe", external_type: "clara_courrier" })).toBe("référence clara_courrier");
     expect(linkReason({ link_type: "autre_chose", external_type: null })).toBe("autre chose");
+  });
+});
+
+describe("originResource — la ressource d'origine ne double pas un lien externe", () => {
+  const clara = {
+    external_ref: "0ec055f6-action",
+    external_url: "https://clara.edilumen.fr/courrier/a7753f77",
+    source: "clara",
+  };
+  const courrier = {
+    target_request_id: null,
+    external_id: "a7753f77",
+    external_url: "https://clara.edilumen.fr/courrier/a7753f77",
+  };
+
+  it("s'efface quand un lien externe mène au même permalien (Clara : action + courrier)", () => {
+    expect(originResource(clara, [courrier])).toBeNull();
+  });
+
+  it("reste quand aucun lien ne couvre l'origine — seule trace pour un partenaire sans liens", () => {
+    expect(originResource(clara, [])).toEqual({
+      reference: "0ec055f6-action",
+      source: "clara",
+      url: "https://clara.edilumen.fr/courrier/a7753f77",
+    });
+    expect(
+      originResource(clara, [{ ...courrier, external_url: "https://ailleurs.example/x" }]),
+    ).not.toBeNull();
+  });
+
+  it("sans URL, se rabat sur l'identifiant", () => {
+    const sansUrl = { external_ref: "dossier-42", external_url: null, source: "portail-citoyen" };
+    expect(originResource(sansUrl, [{ target_request_id: null, external_id: "dossier-42", external_url: null }])).toBeNull();
+    expect(originResource(sansUrl, [{ target_request_id: null, external_id: "autre", external_url: null }])).not.toBeNull();
+  });
+
+  it("ignore les liens internes et les demandes créées dans Iris", () => {
+    expect(originResource(clara, [{ target_request_id: "x", external_id: null, external_url: clara.external_url }])).not.toBeNull();
+    expect(originResource({ external_ref: null, external_url: null, source: "iris" }, [])).toBeNull();
   });
 });

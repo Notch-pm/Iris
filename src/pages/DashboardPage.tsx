@@ -11,6 +11,7 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { CheckCircle2, Clock, FileText, Inbox, UserCheck } from "lucide-react";
+import { useWideLayout } from "@/components/layout/shellLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -152,6 +153,10 @@ function RequestList({ title, Icon, list, loading, emptyText, moreHref, showStat
 // ─── Page ───
 
 export function DashboardPage() {
+  // Gabarit LARGE, comme la liste et les statistiques : deux colonnes de
+  // demandes et six cartes se servent de tout l'écran (retour PO 2026-09-19 —
+  // la colonne centrée à 1240 px paraissait étroite sur un grand écran).
+  useWideLayout();
   const { profile, session } = useAuth();
   const { current, rightsLoading, hasAnyProfile } = useTenant();
   const orgId = current?.organizationId ?? "";

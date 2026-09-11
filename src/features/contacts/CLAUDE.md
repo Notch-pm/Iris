@@ -48,7 +48,8 @@ navigateur le 2026-08-20 dans le parcours de création.
     serveur pose l'anomalie `usager_a_creer_dans_socle` (jamais sur un drapeau du navigateur).
 - **Fiche usager** (`/usagers/:contactId`, `UsagerPage.tsx`, 2026-08-22 — reprise de la
   représentation de la fiche contact de Clara) : pile verticale de cartes pleine largeur,
-  sans onglets ni rail. **Carte d'identité** (icône du public, nom, badges public / statut
+  sans onglets ni rail — en **gabarit large** (`useWideLayout`, comme l'annuaire) depuis le
+  2026-09-19, la colonne centrée paraissant étroite sur un grand écran. **Carte d'identité** (icône du public, nom, badges public / statut
   non actif / « Référentiel Socle », grille libellé-valeur identité + coordonnées, puis
   adresse et quartier — pastille à la couleur libre du référentiel, texte adapté par
   `isDarkColor`) puis **carte « Demandes de cet usager »** (tableau référence / objet /

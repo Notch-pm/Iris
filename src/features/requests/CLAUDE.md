@@ -254,7 +254,12 @@ note interne → résolution avec texte de clôture → journal.
   transitions, copier la référence). **Onglets** : Résumé (clôture, informations saisies
   étiquetées par `procedure_snapshot.form_schema` avec conditions rejouées — `formAnswers` —,
   description, **lieu d'intervention** (carte + itinéraire, ci-dessous), demandes liées via
-  `useRequestSummaries`), Documents
+  `useRequestSummaries` — ⚠️ la ligne « Ressource d'origine » (`external_ref` +
+  `external_url`) **s'efface dès qu'un lien externe mène au même endroit** (`originResource`,
+  pur/testé, 2026-09-19) : Clara envoie `external_id` = son ticket d'ACTION et
+  `links = [courrier]` avec le même permalien, et l'agent lisait deux lignes pour un seul
+  courrier (DEM-2026-000054). Sans lien qui la couvre, la ligne reste : c'est la seule trace
+  de l'origine pour un partenaire qui ne déclare que son identifiant), Documents
   (pièces de la demande **groupées par exigence du formulaire**, avec leur qualification et
   l'historique de leurs remplacements — vignette, taille, état de copie, « Voir » (PDF et
   images raster seulement : `inlineViewable`, une seule liste avec la reconnaissance des
@@ -281,6 +286,11 @@ note interne → résolution avec texte de clôture → journal.
     `shrink-0`. **Règle générale : tout enfant d'un flex à hauteur contrainte qui porte
     un `overflow-*` doit porter `shrink-0`, sauf s'il est justement celui qui doit
     absorber la place.** `RailTabs` n'a pas d'`overflow` et n'est donc pas concerné.
+    Depuis le 2026-09-19 (retour PO), **le défilement vit dans le `tabpanel`**
+    (`lg:min-h-0 lg:flex-1 lg:overflow-y-auto`) et plus dans la colonne : la barre
+    d'onglets reste fixe et seul le contenu défile sous elle — le même partage qu'à
+    droite entre `RailTabs` et son contenu. La règle du `shrink-0` sur la barre tient
+    toujours : la colonne reste un flex à hauteur contrainte.
   - **Lieu d'intervention** (`instruction/lieu.ts` pur/testé, `LieuIntervention.tsx`,
     `useGeocode.ts`, 2026-08-23) : affiché **uniquement si la démarche pose la question**.
     Le Socle propose un bloc prêt à l'emploi qui est une **section ORDINAIRE** du

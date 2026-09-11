@@ -10,7 +10,7 @@ import { StatusBadge } from "../StatusBadge";
 import { MOTIF_LABELS, type ClosureMotif } from "../statuts";
 import type { RequestLink, RequestRow, RequestSummary } from "../useRequests";
 import { InfoCell, Surface, SurfaceHead } from "@/components/ui/surface";
-import { channelLabel, linkReason, type AnswerRow } from "./instruction";
+import { channelLabel, linkReason, originResource, type AnswerRow } from "./instruction";
 import { LieuIntervention } from "./LieuIntervention";
 import type { InterventionLocation } from "./lieu";
 
@@ -36,7 +36,10 @@ export function ResumePane({
   const channel = channelLabel(r.channel);
   const internalLinks = links.filter((l) => l.target_request_id);
   const externalLinks = links.filter((l) => !l.target_request_id);
-  const hasLinks = internalLinks.length > 0 || externalLinks.length > 0 || Boolean(r.external_ref);
+  // La ressource d'origine (external_ref) ne double jamais un lien externe qui
+  // mène au même endroit — Clara envoie action + courrier, un seul courrier.
+  const origin = originResource(r, links);
+  const hasLinks = internalLinks.length > 0 || externalLinks.length > 0 || origin !== null;
 
   return (
     <div className="flex flex-col gap-4">
@@ -128,15 +131,15 @@ export function ResumePane({
             ) : null}
           />
         ))}
-        {r.external_ref ? (
+        {origin ? (
           <LinkRow
-            reference={r.external_ref}
-            label={`Ressource d'origine (${r.source})`}
+            reference={origin.reference}
+            label={`Ressource d'origine (${origin.source})`}
             status={null}
             why="référence d'origine"
-            action={r.external_url ? (
+            action={origin.url ? (
               <Button asChild variant="ghost" size="sm" className="h-7 px-2.5 text-xs">
-                <a href={r.external_url} target="_blank" rel="noreferrer">
+                <a href={origin.url} target="_blank" rel="noreferrer">
                   Ouvrir <ExternalLink className="size-3" aria-hidden="true" />
                 </a>
               </Button>

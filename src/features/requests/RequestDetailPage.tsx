@@ -789,7 +789,10 @@ export function RequestDetailPage() {
           sur un écran étroit n'auraient plus de place pour rien. */}
       <div className="min-h-0 flex-1 overflow-auto px-5 pb-7 pt-[18px] lg:overflow-hidden">
         <div className="flex flex-wrap items-start gap-[18px] lg:h-full lg:flex-nowrap lg:items-stretch">
-          <div className="flex min-w-0 flex-[1_1_540px] flex-col gap-4 lg:min-h-0 lg:overflow-y-auto">
+          {/* Le DÉFILEMENT vit dans le panneau, pas dans la colonne (retour PO
+              2026-09-19) : la barre d'onglets reste en place, comme `RailTabs`
+              à droite, et seul le contenu de l'onglet défile sous elle. */}
+          <div className="flex min-w-0 flex-[1_1_540px] flex-col gap-4 lg:min-h-0">
             {/* ⚠️ `shrink-0` OBLIGATOIRE. `overflow-x-auto` fait tomber à 0 la taille
                 minimale automatique de l'AUTRE axe (dès qu'un axe d'overflow n'est
                 plus `visible`, l'autre l'est aussi) : la barre devient le seul enfant
@@ -828,7 +831,7 @@ export function RequestDetailPage() {
               })}
             </div>
 
-            <div id={`pane-${tab}`} role="tabpanel">
+            <div id={`pane-${tab}`} role="tabpanel" className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               {tab === "resume" ? (
                 <ResumePane
                   request={r}

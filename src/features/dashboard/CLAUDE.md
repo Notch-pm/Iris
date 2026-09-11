@@ -38,5 +38,8 @@ décision PO. Le mobile garde son propre accueil (`MobileHome`).
 - `useDashboard.ts` — `useMonthlyFlows` (RPC), `useAwaitingRequests`, `useMyAssignedRequests`
   (même projection `RequestListItem` que la liste : mêmes colonnes, même fiche à l'arrivée).
 - La page conserve l'écran « Aucun droit attribué » (RM-45) et l'attente de `my_rights`.
+- **Gabarit large** (`useWideLayout`), comme la liste des demandes et les statistiques :
+  la colonne centrée par défaut (1240 px) paraissait étroite sur un grand écran (retour PO
+  2026-09-19).
 - Base : `supabase/migrations/20260919100000_dashboard_flux_mensuels.sql`, scénario S9n/S9o de
   `supabase/tests/statistiques.test.sql`.

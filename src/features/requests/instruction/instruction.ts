@@ -800,6 +800,35 @@ export function linkReason(link: { link_type: string; external_type: string | nu
   return LINK_REASONS[link.link_type] ?? humanizeKey(link.link_type).toLowerCase();
 }
 
+export interface OriginResource {
+  reference: string;
+  source: string;
+  url: string | null;
+}
+
+/**
+ * La « ressource d'origine » d'une demande ingérée : `external_ref` (l'identifiant chez
+ * l'émetteur, clé d'idempotence — pour Clara, le ticket d'ACTION, pas le courrier) et
+ * `external_url`. Elle n'est montrée que si aucun lien externe ne mène déjà au même
+ * endroit : Clara envoie `external_id` = action ET `links = [courrier]` avec le MÊME
+ * permalien, et l'agent voyait deux lignes pour un seul courrier (2026-09-19). Sans lien
+ * doublon — partenaire qui ne déclare que son identifiant —, la ligne reste : c'est alors
+ * la seule trace de l'origine.
+ */
+export function originResource(
+  request: { external_ref: string | null; external_url: string | null; source: string },
+  links: readonly { target_request_id: string | null; external_id: string | null; external_url: string | null }[],
+): OriginResource | null {
+  if (!request.external_ref) return null;
+  const covered = links.some((l) => {
+    if (l.target_request_id) return false;
+    if (request.external_url && l.external_url) return l.external_url === request.external_url;
+    return l.external_id === request.external_ref;
+  });
+  if (covered) return null;
+  return { reference: request.external_ref, source: request.source, url: request.external_url };
+}
+
 export type PriorityTone = "muted" | "warn" | "danger";
 
 export interface PriorityOption {

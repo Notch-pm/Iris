@@ -13,6 +13,7 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Building2, Check, HeartHandshake, Landmark, Mail, Pencil, Plus, User } from "lucide-react";
+import { useWideLayout } from "@/components/layout/shellLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { InfoCell, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
@@ -47,6 +48,10 @@ const TYPE_ICONS: Record<string, typeof User> = {
 const COLUMNS = ["Référence", "Objet", "Démarche", "Statut", "Déposée le"];
 
 export function UsagerPage() {
+  // Gabarit LARGE, comme l'annuaire, la liste des demandes et le tableau de
+  // bord : la colonne centrée à 1240 px paraissait étroite sur un grand écran
+  // (retour PO 2026-09-19).
+  useWideLayout();
   const { contactId } = useParams<{ contactId: string }>();
   const { current, rights } = useTenant();
   const orgId = current?.organizationId ?? "";
