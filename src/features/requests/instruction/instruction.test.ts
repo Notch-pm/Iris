@@ -52,7 +52,7 @@ describe("headerSubtitle", () => {
       requesterName: "Dépôt anonyme", channel: null, source: "clara",
       receivedAt: "2026-08-21T10:00:00", dueAt: null,
     });
-    expect(text).toBe("Dépôt anonyme · reçue de clara le 21 août 2026");
+    expect(text).toBe("Dépôt anonyme · reçue de Clara le 21 août 2026");
   });
   it("tolère un canal inconnu et omet une échéance invalide", () => {
     const text = headerSubtitle({
@@ -60,11 +60,18 @@ describe("headerSubtitle", () => {
     });
     expect(text).toBe("X · déposée via « pigeon » le 21 août 2026");
   });
-  it("parle français pour les canaux de Clara et du portail", () => {
-    const base = { requesterName: "X", source: "clara", receivedAt: "2026-08-21T10:00:00", dueAt: null };
-    expect(headerSubtitle({ ...base, channel: "paper" })).toBe("X · déposée par courrier le 21 août 2026");
-    expect(headerSubtitle({ ...base, channel: "manual" })).toBe("X · déposée par saisie d'un agent le 21 août 2026");
-    expect(headerSubtitle({ ...base, channel: "portail" })).toBe("X · déposée sur le portail usagers le 21 août 2026");
+  it("une demande ingérée dit son canal ET son émetteur, en français", () => {
+    const base = { requesterName: "X", receivedAt: "2026-08-21T10:00:00", dueAt: null };
+    expect(headerSubtitle({ ...base, source: "clara", channel: "paper" }))
+      .toBe("X · reçue par courrier via Clara le 21 août 2026");
+    expect(headerSubtitle({ ...base, source: "clara", channel: "manual" }))
+      .toBe("X · reçue par saisie d'un agent via Clara le 21 août 2026");
+    // Le portail ne se nomme qu'une fois.
+    expect(headerSubtitle({ ...base, source: "portail-citoyen", channel: "portail" }))
+      .toBe("X · reçue sur le portail usagers le 21 août 2026");
+    // Émetteur inconnu du catalogue : son code, entre guillemets.
+    expect(headerSubtitle({ ...base, source: "connecteur-x", channel: "api" }))
+      .toBe("X · reçue par une application partenaire via « connecteur-x » le 21 août 2026");
   });
   it("omet le nom tant que l'identité n'est pas arrêtée (relecture Socle en cours)", () => {
     // Afficher le nom du dépôt puis le remplacer par celui de la fiche ferait

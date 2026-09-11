@@ -150,18 +150,36 @@ export interface SubtitleInput {
   dueAt: string | null;
 }
 
+// Noms d'affichage des sources d'ingestion connues (`source` = code de
+// l'émetteur, registre `integration_sources`). Une source absente d'ici
+// s'affiche entre guillemets.
+const SOURCE_LABELS: Record<string, string> = {
+  clara: "Clara",
+  "portail-citoyen": "le portail usagers",
+};
+
+function sourceLabel(source: string): string {
+  return SOURCE_LABELS[source] ?? `« ${source} »`;
+}
+
 /** « Marie Durand · déposée au guichet le 21 août 2026 · échéance le 28 août 2026 ».
- *  Sans nom (`requesterName: null`), le segment est simplement absent. */
+ *  Une demande INGÉRÉE dit d'où elle vient : « reçue par courrier via Clara le … »
+ *  (décision PO 2026-09-19) ; le portail ne se nomme qu'une fois (« reçue sur le
+ *  portail usagers le … »). Sans nom (`requesterName: null`), le segment est absent. */
 export function headerSubtitle(input: SubtitleInput): string {
   const received = formatDayMonth(input.receivedAt, true);
+  const phrase = input.channel
+    ? (CHANNEL_PHRASES[input.channel] ?? `via « ${input.channel} »`)
+    : null;
   let deposit: string;
-  if (input.channel) {
-    const phrase = CHANNEL_PHRASES[input.channel] ?? `via « ${input.channel} »`;
-    deposit = `déposée ${phrase} le ${received}`;
-  } else if (input.source !== "iris") {
-    deposit = `reçue de ${input.source} le ${received}`;
+  if (input.source === "iris") {
+    deposit = phrase ? `déposée ${phrase} le ${received}` : `déposée le ${received}`;
+  } else if (!phrase) {
+    deposit = `reçue de ${sourceLabel(input.source)} le ${received}`;
+  } else if (phrase === CHANNEL_PHRASES.portail && input.source === "portail-citoyen") {
+    deposit = `reçue ${phrase} le ${received}`;
   } else {
-    deposit = `déposée le ${received}`;
+    deposit = `reçue ${phrase} via ${sourceLabel(input.source)} le ${received}`;
   }
   const parts = [input.requesterName, deposit].filter((p): p is string => Boolean(p));
   if (input.dueAt && asDate(input.dueAt)) parts.push(`échéance le ${formatDayMonth(input.dueAt, true)}`);

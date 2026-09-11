@@ -369,6 +369,10 @@ note interne → résolution avec texte de clôture → journal.
     d'Iris, ceux de **Clara** (`paper` = courrier papier scanné, `email`, `portal`, `manual`
     = saisi par un agent) et celui du portail (`portail`) ; un code inconnu s'affiche entre
     guillemets (« déposée via paper » mélangeait les langues, DEM-2026-000053, 2026-09-19).
+    Une demande **ingérée** nomme aussi son émetteur (`SOURCE_LABELS`, décision PO) :
+    « reçue par courrier via Clara le … », « reçue de Clara le … » sans canal, et le portail
+    une seule fois (« reçue sur le portail usagers le … ») ; une demande d'Iris reste
+    « déposée au guichet le … ».
     Un nouvel émetteur = ses codes à ajouter ICI, pas une normalisation à l'ingestion (la
     valeur reçue reste celle de l'émetteur, comme `source`).
   - **`TransitionActions.tsx`** = `useTransitionRunner` (transition active, application
