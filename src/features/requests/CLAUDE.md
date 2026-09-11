@@ -639,6 +639,19 @@ note interne → résolution avec texte de clôture → journal.
   **Échanges**, l'agent écrit un e-mail à l'usager, avec un modèle ou à la main, pièces
   jointes comprises. L'échange est enregistré dans `request_emails` (expéditeur, date et heure
   d'envoi, objet, corps réellement parti, pièces, modèle utilisé).
+  - **Mise en page du fil** (2026-09-19, maquette Claude Design « Échange usager »,
+    projet `da078641-cb80-4cff-ac9c-b26ba5009fec`) : les envois se lisent en ordre
+    **chronologique**, chacun est un **tour** (`ThreadItem`) — gouttière d'avatar 36 px et
+    **rail vertical continu**, ligne de méta « Nom · agent · envoyé le … · à adresse »,
+    message encadré — et **le composeur est le dernier tour du fil**, avatar de l'agent
+    cerclé, méta « Vous · adresse » : plus de carte détachée. Le composeur porte en barre
+    haute les **puces de variables avec leur valeur résolue**, le sélecteur de modèle, le
+    bouton « Pièce jointe » et, s'il y en a, les documents du dossier ; objet et message
+    sans cadre propre (le cadre, c'est le composeur) ; pied « Variables fusionnées avec la
+    fiche de … » + « Envoyer l'échange ». Un envoi impossible (anonyme, sans adresse,
+    archivée, sans droit) occupe la place du composeur, avec sa raison. Ce qui n'est PAS
+    repris de la maquette : les accusés de lecture et les réponses de l'usager (Iris n'a ni
+    l'un ni l'autre — l'usager ne peut pas répondre).
   - **Le composeur résout les variables à l'INSERTION, pas à l'envoi.** Choisir un modèle
     remplit l'objet et le corps déjà personnalisés ; cliquer une pastille insère la **valeur**
     au curseur, pas le jeton `{{…}}`. C'est la différence assumée avec l'éditeur de modèles des

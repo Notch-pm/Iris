@@ -15,10 +15,10 @@
 import * as React from "react";
 import { Loader2, Mail, Paperclip, Send, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { Avatar, Pill, Surface, SurfaceHead } from "@/components/ui/surface";
+import { Avatar, Pill } from "@/components/ui/surface";
+import { useAuth } from "@/features/auth/AuthProvider";
+import { cn } from "@/lib/utils";
 import { renderTemplate, TEMPLATE_VARIABLES } from "@/features/templates/templates";
 import { useActiveEmailTemplates } from "@/features/templates/useEmailTemplates";
 import type { Tables } from "@/types/database.types";
@@ -95,6 +95,7 @@ export function EchangesPane({
   canInstruct, archived, sending, draft, onDraftApplied, onSend, onDownload,
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
+  const { session } = useAuth();
   const bodyRef = React.useRef<HTMLTextAreaElement>(null);
   const subjectRef = React.useRef<HTMLInputElement>(null);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -155,7 +156,8 @@ export function EchangesPane({
   }, [attachments]);
 
   const ordered = React.useMemo(
-    () => [...emails].sort((a, b) => b.created_at.localeCompare(a.created_at)),
+    // Chronologique : le fil se lit du premier envoi au composeur, en bas.
+    () => [...emails].sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [emails],
   );
 
@@ -229,289 +231,321 @@ export function EchangesPane({
   // sans issue, c'est l'identité déclarée SANS rapprochement — il n'y a alors
   // aucune fiche de référentiel à compléter.
   const completable = Boolean(request.socle_contact_id);
+  const me = memberName(members, session?.user.id ?? null);
+  const lastSent = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+  const usagerName = identity.anonymous ? "l'usager" : identity.name;
+
+  const closedReason = !recipient
+    ? identity.anonymous
+      ? "Ce dépôt est anonyme : aucune adresse ne permet d'écrire à l'usager."
+      : completable
+        ? "La fiche de cet usager ne porte aucune adresse de courriel. Complétez-la depuis le bloc « Usager » du rail, bouton « Modifier » : la correction est enregistrée dans le Socle et l'envoi devient possible."
+        : "L'identité retenue au dépôt ne comporte pas d'adresse de courriel, et cette demande n'est rattachée à aucune fiche du référentiel : il n'y a pas de fiche à compléter."
+    : archived
+      ? "Cette demande est archivée : aucun nouvel échange ne peut partir."
+      : "Écrire à l'usager exige le droit d'instruction sur cette demande.";
 
   return (
-    <div className="flex flex-col gap-3.5">
-      <Surface>
-        <SurfaceHead
-          title="Échanges avec l'usager"
-          sub={
-            recipient
-              ? `Courriel ${recipient}`
-              : identity.anonymous
-                ? "Dépôt anonyme — aucun canal de contact"
-                : completable
-                  ? "Aucune adresse de courriel dans la fiche de l'usager"
-                  : "Aucune adresse de courriel dans l'identité déposée"
+    <div className="flex flex-col">
+      {/* ── En-tête du fil (maquette « Échange usager », 2026-09-19) ── */}
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-3.5">
+        <span className="flex items-center gap-[7px] text-[13px] font-semibold text-muted-foreground">
+          <Mail className="size-3.5 shrink-0" aria-hidden="true" />
+          <span>
+            Échanges par courriel avec{" "}
+            <span className="text-foreground">{usagerName}</span>
+          </span>
+        </span>
+        <span className="text-xs text-muted-foreground">
+          {lastSent
+            ? `Dernier envoi le ${formatTimeline(lastSent.sent_at ?? lastSent.created_at)}`
+            : "Aucun échange enregistré"}
+        </span>
+      </div>
+
+      {/* ── Le fil : chaque envoi, puis le composeur comme DERNIER message ── */}
+      <div className="flex flex-col">
+        {ordered.map((mail) => {
+          const who = memberName(members, mail.sent_by);
+          return (
+            <ThreadItem
+              key={mail.id}
+              initials={initials(who)}
+              meta={
+                <>
+                  <strong className="text-sm text-foreground">{who}</strong>
+                  <span>agent · envoyé le {formatTimeline(mail.sent_at ?? mail.created_at)}</span>
+                  <span className="truncate">à {mail.to_email}</span>
+                  {mail.status === "echec" ? (
+                    <Pill tone="error">Non envoyé</Pill>
+                  ) : mail.status === "en_cours" ? (
+                    <Pill tone="pending">Envoi en cours</Pill>
+                  ) : null}
+                </>
+              }
+            >
+              <ExchangeMessage mail={mail} pieces={piecesOf.get(mail.id) ?? []} onDownload={onDownload} />
+            </ThreadItem>
+          );
+        })}
+
+        <ThreadItem
+          last
+          ring={!closed}
+          initials={initials(me)}
+          meta={
+            <>
+              <strong className="text-sm text-foreground">Vous</strong>
+              {recipient ? <span className="whitespace-nowrap">· {recipient}</span> : null}
+            </>
           }
-          action={
-            ordered.length > 0
-              ? <Pill tone="neutral" className="h-6">{ordered.length} envoyé{ordered.length > 1 ? "s" : ""}</Pill>
-              : null
-          }
-        />
-
-        {ordered.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border p-3.5 text-[13px] leading-relaxed text-muted-foreground">
-            Aucun échange enregistré.
-          </p>
-        ) : (
-          <ul className="flex flex-col gap-2.5">
-            {ordered.map((mail) => (
-              <ExchangeCard
-                key={mail.id}
-                mail={mail}
-                pieces={piecesOf.get(mail.id) ?? []}
-                who={memberName(members, mail.sent_by)}
-                onDownload={onDownload}
-              />
-            ))}
-          </ul>
-        )}
-      </Surface>
-
-      {closed ? (
-        <Surface>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">
-            {!recipient
-              ? identity.anonymous
-                ? "Ce dépôt est anonyme : aucune adresse ne permet d'écrire à l'usager."
-                : completable
-                  ? "La fiche de cet usager ne porte aucune adresse de courriel. Complétez-la depuis le bloc « Usager » du rail, bouton « Modifier » : la correction est enregistrée dans le Socle et l'envoi devient possible."
-                  : "L'identité retenue au dépôt ne comporte pas d'adresse de courriel, et cette demande n'est rattachée à aucune fiche du référentiel : il n'y a pas de fiche à compléter."
-              : archived
-                ? "Cette demande est archivée : aucun nouvel échange ne peut partir."
-                : "Écrire à l'usager exige le droit d'instruction sur cette demande."}
-          </p>
-        </Surface>
-      ) : (
-        <Surface>
-          <SurfaceHead
-            title="Écrire à l'usager"
-            sub={`Le message partira à ${recipient}`}
-          />
-          <form className="flex flex-col gap-2.5" onSubmit={(e) => void submit(e)}>
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="text-[11px] font-semibold text-muted-foreground" htmlFor="echange-modele">
-                Modèle
-              </label>
-              <Select
-                id="echange-modele"
-                className="h-9 w-auto min-w-[220px] text-[13px]"
-                value={templateId}
-                disabled={sending}
-                onChange={(e) => applyTemplate(e.target.value)}
-              >
-                <option value="">Aucun modèle — rédiger à la main</option>
-                {(templates.data ?? []).map((t) => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </Select>
-              {templates.isLoading ? (
-                <span className="text-[11px] text-muted-foreground">Chargement…</span>
-              ) : (templates.data ?? []).length === 0 ? (
-                <span className="text-[11px] text-muted-foreground">
-                  Aucun modèle activé pour cette organisation.
-                </span>
-              ) : (
-                <span className="text-[11px] text-muted-foreground">
-                  Choisir un modèle remplace l'objet et le message.
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Input
-                ref={subjectRef}
-                className="h-10 text-sm"
-                placeholder="Objet du message"
-                value={subject}
-                disabled={sending}
-                onFocus={() => setFocused("subject")}
-                onChange={(e) => setSubject(e.target.value)}
-                aria-label="Objet du message"
-              />
-              {submitted && errors.subject ? (
-                <span role="alert" className="text-[11.5px] text-destructive">{errors.subject}</span>
-              ) : null}
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Textarea
-                ref={bodyRef}
-                className="min-h-[140px] text-sm"
-                placeholder="Message à l'usager"
-                value={body}
-                disabled={sending}
-                onFocus={() => setFocused("body")}
-                onChange={(e) => setBody(e.target.value)}
-                aria-label="Message à l'usager"
-              />
-              {submitted && errors.body ? (
-                <span role="alert" className="text-[11.5px] text-destructive">{errors.body}</span>
-              ) : null}
-            </div>
-
-            <VariableChips values={values} disabled={sending} onInsert={insertValue} />
-
-            <AttachmentPicker
-              files={files}
-              total={total}
-              tooHeavy={tooHeavy}
-              disabled={sending}
-              inputRef={fileRef}
-              onAdd={addFiles}
-              onRemove={(index) => setFiles((c) => c.filter((_, i) => i !== index))}
-            />
-            {submitted && errors.attachments ? (
-              <span role="alert" className="text-[11.5px] text-destructive">{errors.attachments}</span>
-            ) : null}
-
-            {/* Documents du dossier — externes et courriers seulement. */}
-            {sendable.length > 0 ? (
-              <div className="flex flex-col gap-1.5">
-                <div className="flex flex-wrap items-center gap-2">
-                  <label
-                    className="text-[11px] font-semibold text-muted-foreground"
-                    htmlFor="echange-document"
-                  >
-                    Documents du dossier
-                  </label>
+        >
+          {closed ? (
+            <p className="rounded-xl border border-dashed border-border px-4 py-3.5 text-[13px] leading-relaxed text-muted-foreground">
+              {closedReason}
+            </p>
+          ) : (
+            <form
+              className="overflow-hidden rounded-xl border-[1.5px] border-primary/45 bg-card shadow-airbnb-md"
+              onSubmit={(e) => void submit(e)}
+            >
+              {/* Barre haute : variables (jeton + valeur résolue), modèle, pièce jointe. */}
+              <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/35 px-3 py-2.5">
+                <VariableChips values={values} disabled={sending} onInsert={insertValue} />
+                <div className="ml-auto flex flex-wrap items-center gap-1.5">
                   <Select
-                    id="echange-document"
-                    className="h-8 w-auto min-w-[240px] text-[12.5px]"
-                    value=""
-                    disabled={sending || availableDocs.length === 0}
-                    onChange={(e) => {
-                      if (e.target.value) setDocIds((current) => [...current, e.target.value]);
-                    }}
+                    aria-label="Modèle d'e-mail"
+                    title={
+                      templates.isLoading
+                        ? "Chargement des modèles…"
+                        : (templates.data ?? []).length === 0
+                          ? "Aucun modèle activé pour cette organisation."
+                          : "Choisir un modèle remplace l'objet et le message."
+                    }
+                    className="h-8 w-auto max-w-[220px] text-xs font-semibold"
+                    value={templateId}
+                    disabled={sending || (templates.data ?? []).length === 0}
+                    onChange={(e) => applyTemplate(e.target.value)}
                   >
                     <option value="">
-                      {availableDocs.length === 0 ? "Tous déjà joints" : "Joindre un document…"}
+                      {(templates.data ?? []).length === 0 ? "Aucun modèle" : "Modèle…"}
                     </option>
-                    {availableDocs.map((doc) => (
-                      <option key={doc.id} value={doc.id}>
-                        {doc.file_name} — {kindLabel(doc.kind)}
-                      </option>
+                    {(templates.data ?? []).map((t) => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </Select>
+                  <input
+                    ref={fileRef}
+                    type="file"
+                    multiple
+                    accept={acceptAttribute()}
+                    className="hidden"
+                    disabled={sending}
+                    onChange={(e) => addFiles(e.target.files)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    disabled={sending}
+                    onClick={() => fileRef.current?.click()}
+                  >
+                    <Paperclip />
+                    Pièce jointe
+                  </Button>
+                  {sendable.length > 0 ? (
+                    <Select
+                      aria-label="Joindre un document du dossier"
+                      className="h-8 w-auto max-w-[220px] text-xs font-semibold"
+                      value=""
+                      disabled={sending || availableDocs.length === 0}
+                      onChange={(e) => {
+                        if (e.target.value) setDocIds((current) => [...current, e.target.value]);
+                      }}
+                    >
+                      <option value="">
+                        {availableDocs.length === 0 ? "Documents tous joints" : "Document du dossier…"}
+                      </option>
+                      {availableDocs.map((doc) => (
+                        <option key={doc.id} value={doc.id}>
+                          {doc.file_name} — {kindLabel(doc.kind)}
+                        </option>
+                      ))}
+                    </Select>
+                  ) : null}
                 </div>
-                {joinedDocs.length > 0 ? (
-                  <ul className="flex flex-wrap gap-1.5">
-                    {joinedDocs.map((doc) => (
-                      <li
-                        key={doc.id}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/[0.06] px-2 py-1 text-[11.5px]"
-                      >
-                        <span className="font-semibold">{doc.file_name}</span>
-                        <span className="text-muted-foreground">{formatBytes(doc.file_size)}</span>
-                        <button
-                          type="button"
-                          className="text-muted-foreground transition-colors hover:text-destructive"
+              </div>
+
+              {/* Corps : objet puis message, sans cadre — le cadre, c'est le composeur. */}
+              <div className="flex flex-col">
+                <input
+                  ref={subjectRef}
+                  className="w-full border-b border-border bg-transparent px-4 py-2.5 text-sm font-semibold text-foreground placeholder:font-normal placeholder:text-muted-foreground focus:outline-none"
+                  placeholder="Objet du message"
+                  value={subject}
+                  disabled={sending}
+                  onFocus={() => setFocused("subject")}
+                  onChange={(e) => setSubject(e.target.value)}
+                  aria-label="Objet du message"
+                />
+                {submitted && errors.subject ? (
+                  <span role="alert" className="px-4 pt-1.5 text-[11.5px] text-destructive">{errors.subject}</span>
+                ) : null}
+                <textarea
+                  ref={bodyRef}
+                  className="min-h-[160px] w-full resize-y bg-transparent px-4 py-3.5 text-sm leading-[1.65] text-foreground placeholder:text-muted-foreground focus:outline-none"
+                  placeholder="Message à l'usager"
+                  value={body}
+                  disabled={sending}
+                  onFocus={() => setFocused("body")}
+                  onChange={(e) => setBody(e.target.value)}
+                  aria-label="Message à l'usager"
+                />
+                {submitted && errors.body ? (
+                  <span role="alert" className="px-4 pb-2 text-[11.5px] text-destructive">{errors.body}</span>
+                ) : null}
+
+                {files.length > 0 || joinedDocs.length > 0 ? (
+                  <div className="flex flex-col gap-1.5 px-4 pb-3">
+                    <ul className="flex flex-wrap gap-1.5">
+                      {files.map((file, index) => (
+                        <AttachmentChip
+                          key={`${file.name}-${index}`}
+                          name={file.name}
+                          size={file.size}
                           disabled={sending}
-                          onClick={() => setDocIds((current) => current.filter((id) => id !== doc.id))}
-                          aria-label={`Retirer ${doc.file_name}`}
-                        >
-                          <X className="size-3.5" aria-hidden="true" />
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
+                          onRemove={() => setFiles((c) => c.filter((_, i) => i !== index))}
+                        />
+                      ))}
+                      {joinedDocs.map((doc) => (
+                        <AttachmentChip
+                          key={doc.id}
+                          name={doc.file_name}
+                          size={doc.file_size}
+                          fromDossier
+                          disabled={sending}
+                          onRemove={() => setDocIds((current) => current.filter((id) => id !== doc.id))}
+                        />
+                      ))}
+                    </ul>
+                    <span className={tooHeavy ? "text-[11.5px] font-semibold text-destructive" : "text-[11.5px] text-muted-foreground"}>
+                      {formatBytes(total)} de pièces jointes (maximum {formatBytes(MAX_EMAIL_ATTACHMENT_BYTES)})
+                    </span>
+                    {submitted && errors.attachments ? (
+                      <span role="alert" className="text-[11.5px] text-destructive">{errors.attachments}</span>
+                    ) : null}
+                  </div>
                 ) : null}
               </div>
-            ) : null}
 
-            {error ? (
-              <p role="alert" className="rounded-xl bg-destructive/10 p-2.5 text-[13px] text-destructive">
-                {error}
-              </p>
-            ) : null}
+              {error ? (
+                <p role="alert" className="mx-4 mb-3 rounded-xl bg-destructive/10 p-2.5 text-[13px] text-destructive">
+                  {error}
+                </p>
+              ) : null}
 
-            <div className="flex flex-wrap items-center gap-2.5 border-t border-border pt-3">
-              <span className="min-w-[180px] flex-1 text-[11.5px] leading-relaxed text-muted-foreground">
-                L'usager ne pourra pas répondre à ce message : le pied de l'e-mail le lui indique.
-                L'échange est joint à la demande.
-              </span>
-              <Button type="submit" size="sm" disabled={sending}>
-                {sending ? <Loader2 className="animate-spin" /> : <Send />}
-                {sending ? "Envoi…" : "Envoyer"}
-              </Button>
-            </div>
-          </form>
-        </Surface>
-      )}
+              {/* Pied : ce que l'usager recevra, et l'envoi. */}
+              <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border bg-muted/40 py-2.5 pl-4 pr-3">
+                <span className="flex min-w-[200px] flex-1 items-center gap-[7px] text-xs leading-relaxed text-muted-foreground">
+                  <Mail className="size-3.5 shrink-0" aria-hidden="true" />
+                  <span>
+                    Variables fusionnées avec la fiche de {usagerName} — l'usager reçoit le texte
+                    affiché, et ne pourra pas y répondre.
+                  </span>
+                </span>
+                <Button type="submit" size="md" className="shrink-0" disabled={sending}>
+                  {sending ? "Envoi…" : "Envoyer l'échange"}
+                  {sending ? <Loader2 className="animate-spin" /> : <Send />}
+                </Button>
+              </div>
+            </form>
+          )}
+        </ThreadItem>
+      </div>
     </div>
   );
 }
 
 // ---------------------------------------------------------------------------
 
-function ExchangeCard({ mail, pieces, who, onDownload }: {
-  mail: RequestEmail;
-  pieces: RequestAttachment[];
-  who: string;
-  onDownload: (attachment: RequestAttachment) => void;
+/**
+ * Un tour du fil : gouttière (avatar + rail continu jusqu'au tour suivant),
+ * ligne de méta, contenu. Le composeur est un tour comme les autres — c'est
+ * tout l'objet de la maquette : plus de rupture entre le fil et l'envoi.
+ */
+function ThreadItem({ initials: letters, meta, children, last = false, ring = false }: {
+  initials: string;
+  meta: React.ReactNode;
+  children: React.ReactNode;
+  last?: boolean;
+  ring?: boolean;
 }) {
-  const failed = mail.status === "echec";
   return (
-    <li className="flex gap-[11px] rounded-xl border border-border bg-background p-[13px]">
-      <Avatar initials={initials(who)} muted />
-      <div className="flex min-w-0 flex-1 flex-col gap-1.5">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <span className="flex flex-wrap items-baseline gap-2">
-            <strong className="text-[13px]">{who}</strong>
-            <span className="text-[11.5px] text-muted-foreground">
-              à {mail.to_email} · {formatTimeline(mail.sent_at ?? mail.created_at)}
-            </span>
-          </span>
-          {failed ? (
-            <Pill tone="error">Non envoyé</Pill>
-          ) : mail.status === "en_cours" ? (
-            <Pill tone="pending">Envoi en cours</Pill>
-          ) : null}
-        </div>
-
-        <span className="text-[13.5px] font-bold">{mail.subject}</span>
-        <p className="whitespace-pre-wrap break-words text-[13px] leading-relaxed">{mail.body}</p>
-
-        {failed && mail.error ? (
-          <p role="alert" className="text-[11.5px] text-destructive">{mail.error}</p>
-        ) : null}
-
-        {pieces.length > 0 ? (
-          <ul className="flex flex-wrap gap-1.5">
-            {pieces.map((piece) => (
-              <li key={piece.id}>
-                <button
-                  type="button"
-                  onClick={() => onDownload(piece)}
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2 py-1 text-[11.5px] font-semibold hover:bg-secondary"
-                >
-                  <Paperclip className="size-3" aria-hidden="true" />
-                  {piece.file_name}
-                  <span className="font-normal text-muted-foreground">
-                    {attachmentExt(piece.file_name, piece.mime_type)}
-                    {formatBytes(piece.file_size) ? ` · ${formatBytes(piece.file_size)}` : ""}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        ) : null}
-
-        {mail.template_name ? (
-          <span className="text-[11px] text-muted-foreground">
-            <Mail className="mr-1 inline size-3" aria-hidden="true" />
-            Modèle « {mail.template_name} »
-          </span>
-        ) : null}
+    <div className="flex items-stretch gap-3.5">
+      <div className="flex w-9 shrink-0 flex-col items-center">
+        <Avatar
+          initials={letters}
+          size="lg"
+          className={cn("bg-sidebar text-primary-foreground", ring && "ring-[3px] ring-primary/20")}
+        />
+        {!last ? <div className="mt-2 w-0.5 flex-1 bg-border" aria-hidden="true" /> : null}
       </div>
-    </li>
+      <div className={cn("min-w-0 flex-1", !last && "pb-5")}>
+        <div className="flex flex-wrap items-baseline gap-2 pb-1.5 text-xs text-muted-foreground">{meta}</div>
+        {children}
+      </div>
+    </div>
   );
 }
 
-/** Les variables qui ONT une valeur pour cette demande. Les autres ne sont pas
- *  proposées : offrir d'insérer du vide n'aiderait personne. */
+function ExchangeMessage({ mail, pieces, onDownload }: {
+  mail: RequestEmail;
+  pieces: RequestAttachment[];
+  onDownload: (attachment: RequestAttachment) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-border px-4 py-3.5">
+      <span className="text-sm font-bold">{mail.subject}</span>
+      <p className="whitespace-pre-wrap break-words text-sm leading-[1.6]">{mail.body}</p>
+
+      {mail.status === "echec" && mail.error ? (
+        <p role="alert" className="text-[11.5px] text-destructive">{mail.error}</p>
+      ) : null}
+
+      {pieces.length > 0 ? (
+        <ul className="flex flex-wrap gap-1.5 pt-1">
+          {pieces.map((piece) => (
+            <li key={piece.id}>
+              <button
+                type="button"
+                onClick={() => onDownload(piece)}
+                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-[11.5px] font-semibold transition-colors hover:bg-secondary"
+              >
+                <Paperclip className="size-3.5" aria-hidden="true" />
+                {piece.file_name}
+                <span className="font-normal text-muted-foreground">
+                  {attachmentExt(piece.file_name, piece.mime_type)}
+                  {formatBytes(piece.file_size) ? ` · ${formatBytes(piece.file_size)}` : ""}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {mail.template_name ? (
+        <span className="text-[11px] text-muted-foreground">Modèle « {mail.template_name} »</span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Les variables qui ONT une valeur pour cette demande, chacune avec sa valeur
+ * résolue (motif de la maquette : le jeton ET ce qu'il vaut ici). Les autres
+ * ne sont pas proposées : offrir d'insérer du vide n'aiderait personne.
+ */
 function VariableChips({ values, disabled, onInsert }: {
   values: Record<string, string>;
   disabled: boolean;
@@ -520,83 +554,53 @@ function VariableChips({ values, disabled, onInsert }: {
   const available = TEMPLATE_VARIABLES.filter((v) => values[v.key]);
   if (available.length === 0) return null;
   return (
-    <div className="flex flex-wrap items-center gap-1.5">
-      <span className="text-[11px] font-semibold text-muted-foreground">Insérer :</span>
+    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+      <span className="shrink-0 text-xs font-semibold text-muted-foreground">Insérer une variable</span>
       {available.map((v) => (
         <button
           key={v.key}
           type="button"
           disabled={disabled}
           onClick={() => onInsert(v.key)}
-          title={`Insérer « ${values[v.key]} »`}
-          className="rounded-full border border-border bg-muted/60 px-2 py-[3px] text-[11px] font-semibold hover:bg-secondary disabled:opacity-50"
+          title={`{{${v.key}}}`}
+          className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-card pl-2.5 pr-1 text-[11px] font-semibold transition-colors hover:border-primary hover:bg-primary/[0.08] active:scale-[0.98] disabled:opacity-50"
         >
           {v.label}
+          <span className="max-w-[200px] truncate rounded-full bg-muted px-[7px] py-[3px] font-normal leading-[14px] text-muted-foreground">
+            {values[v.key]}
+          </span>
         </button>
       ))}
     </div>
   );
 }
 
-function AttachmentPicker({ files, total, tooHeavy, disabled, inputRef, onAdd, onRemove }: {
-  files: File[];
-  total: number;
-  tooHeavy: boolean;
+function AttachmentChip({ name, size, fromDossier = false, disabled, onRemove }: {
+  name: string;
+  size: number | null;
+  fromDossier?: boolean;
   disabled: boolean;
-  inputRef: React.RefObject<HTMLInputElement>;
-  onAdd: (list: FileList | null) => void;
-  onRemove: (index: number) => void;
+  onRemove: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept={acceptAttribute()}
-          className="hidden"
-          disabled={disabled}
-          onChange={(e) => onAdd(e.target.files)}
-        />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={disabled}
-          onClick={() => inputRef.current?.click()}
-        >
-          <Paperclip />
-          Parcourir
-        </Button>
-        {files.length > 0 ? (
-          <span className={tooHeavy ? "text-[11.5px] font-semibold text-destructive" : "text-[11.5px] text-muted-foreground"}>
-            {files.length} pièce{files.length > 1 ? "s" : ""} · {formatBytes(total)} (maximum {formatBytes(MAX_EMAIL_ATTACHMENT_BYTES)})
-          </span>
-        ) : null}
-      </div>
-      {files.length > 0 ? (
-        <ul className="flex flex-wrap gap-1.5">
-          {files.map((file, index) => (
-            <li
-              key={`${file.name}-${index}`}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-2 py-1 text-[11.5px]"
-            >
-              <span className="font-semibold">{file.name}</span>
-              <span className="text-muted-foreground">{formatBytes(file.size)}</span>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onRemove(index)}
-                aria-label={`Retirer ${file.name}`}
-                className="text-muted-foreground hover:text-destructive"
-              >
-                <X className="size-3" aria-hidden="true" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
+    <li
+      className={cn(
+        "inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-[11.5px]",
+        fromDossier ? "border-primary/30 bg-primary/[0.06]" : "border-border bg-card",
+      )}
+    >
+      <Paperclip className="size-3.5 text-muted-foreground" aria-hidden="true" />
+      <span className="font-semibold">{name}</span>
+      <span className="text-muted-foreground">{formatBytes(size)}</span>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={onRemove}
+        aria-label={`Retirer ${name}`}
+        className="text-muted-foreground transition-colors hover:text-destructive"
+      >
+        <X className="size-3" aria-hidden="true" />
+      </button>
+    </li>
   );
 }
