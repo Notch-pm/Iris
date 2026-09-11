@@ -165,7 +165,12 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `sandbox`), et une route catch-all 404 (`NotFoundPage`) — dette assumée chez Socle, pas
   répliquée ici.
 - **Zone authentifiée** : `ProtectedRoute` › `AppShell` (rail latéral forêt + header), page
-  d'accueil `DashboardPage` (placeholder).
+  d'accueil `DashboardPage` (**tableau de bord**, 2026-09-19, motif Clara `Dashboard.tsx` :
+  trois grands indicateurs et leur équivalent M−1 — reçues, mises en instruction, instruites,
+  des FLUX datés par leur jalon, lus par `stats_monthly_flows` dans les faits insensibles à la
+  purge —, puis deux colonnes : demandes en attente d'instruction, demandes affectées à
+  l'utilisateur. Périmètre = ce que le RLS laisse lire, aucun filtre d'écran →
+  [`src/features/dashboard/CLAUDE.md`](src/features/dashboard/CLAUDE.md)).
 - **Le schéma des fondations est appliqué** (miroirs dans `supabase/migrations/`) : tenants,
   membres/rôles, `requests` + satellites, storage privé, **modèle multi-source d'ingestion**
   (`integration_sources`/`integration_credentials`/`integration_api_logs`, registre de sources

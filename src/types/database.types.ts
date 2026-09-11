@@ -2535,6 +2535,15 @@ export type Database = {
           requested_count: number
         }[]
       }
+      stats_monthly_flows: {
+        Args: { p_months?: number; p_org_id: string; p_socle_org_id?: string }
+        Returns: {
+          instruction_count: number
+          month_key: string
+          received_count: number
+          resolved_count: number
+        }[]
+      }
       stats_outcomes: {
         Args: { p_org_id: string; p_since: string; p_socle_org_id?: string }
         Returns: {

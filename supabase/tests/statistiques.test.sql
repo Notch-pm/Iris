@@ -372,6 +372,22 @@ begin
   if has_function_privilege('authenticated', 'public.rebuild_request_stats(uuid)', 'execute') then
     v_fail := v_fail || 'S9m: rebuild_request_stats est executable par authenticated'::text; end if;
 
+  -- Flux mensuels du tableau de bord (20260919100000) : Alex voit req1, reçue
+  -- en mars (hors des deux mois rendus), mise en instruction et résolue
+  -- « maintenant » — donc 0 reçue, 1 instruction, 1 instruite sur le mois courant.
+  perform set_config('request.jwt.claims',
+    jsonb_build_object('sub', u_alex, 'role', 'authenticated')::text, true);
+  execute 'set local role authenticated';
+  select count(*) into v_int from public.stats_monthly_flows(orgA, 2, null);
+  select received_count, instruction_count, resolved_count into v_int2, v_json, v_num
+    from (select received_count, instruction_count::text::jsonb, resolved_count
+            from public.stats_monthly_flows(orgA, 2, null)
+           order by month_key desc limit 1) x;
+  execute 'reset role';
+  if v_int <> 2 then v_fail := v_fail || format('S9n: %s mois au lieu de 2', v_int); end if;
+  if v_int2 <> 0 or (v_json #>> '{}') <> '1' or v_num <> 1 then
+    v_fail := v_fail || format('S9o: flux du mois courant inattendus (recues %s, instruction %s, instruites %s)', v_int2, v_json, v_num); end if;
+
   -- ==========================================================================
   -- S10. Interventions : sollicitation puis réalisation
   -- ==========================================================================

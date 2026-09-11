@@ -1314,7 +1314,11 @@ demande** (UUID nu) : la purge supprimera des dossiers, pas leurs chiffres.
   `resolue_*` seulement), `stats_outcomes` (compteurs ; le taux se calcule à l'écran),
   `stats_top_resolvers`, `stats_interventions` (demandées / réalisées sur la période, délai
   moyen sollicitation → réalisation), `stats_top_intervenants`. Période toujours sur
-  `received_at` (décision PO).
+  `received_at` (décision PO). Une neuvième le 2026-09-19 (`20260919100000`), pour le
+  **tableau de bord** : `stats_monthly_flows(p_org_id, p_months=2, p_socle_org_id)` — par
+  mois, `received_count` (réception), `instruction_count` (première instruction),
+  `resolved_count` (`resolue_*`) : trois FLUX datés par leur jalon, seuls comparables d'un
+  mois à l'autre (un stock « en cours » n'a pas d'équivalent M−1 sans historique).
 - ⚠️ **La purge RGPD ne touche PAS ces deux tables.** À l'inverse, les scripts de nettoyage
   e2e et la purge du jeu ACCM (`supabase/rollback/20260828_demandes_exemple_accm_purge.sql`)
   suppriment des demandes qui ne sont pas des dossiers réels : ils doivent vider

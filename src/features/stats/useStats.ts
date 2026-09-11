@@ -47,7 +47,7 @@ type RpcClient = {
   ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
 };
 
-async function callStats<T>(fn: string, params: Record<string, unknown>): Promise<T[]> {
+export async function callStats<T>(fn: string, params: Record<string, unknown>): Promise<T[]> {
   const { data, error } = await (supabase as unknown as RpcClient).rpc(fn, params);
   if (error) throw new Error(error.message);
   return (data ?? []) as T[];
