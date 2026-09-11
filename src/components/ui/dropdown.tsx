@@ -15,12 +15,16 @@ interface DropdownProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Déclencheur — reçoit les attributs d'accessibilité à poser sur le bouton. */
-  trigger: (props: { "aria-expanded": boolean; "aria-haspopup": "menu"; onClick: () => void }) => React.ReactNode;
+  trigger: (props: { "aria-expanded": boolean; "aria-haspopup": "menu" | "dialog"; onClick: () => void }) => React.ReactNode;
   align?: "left" | "right";
   /** Côté d'ouverture — `top` pour un déclencheur en bas d'une zone défilante. */
   side?: "bottom" | "top";
   /** Menu détaché dans le `body` : indispensable en zone défilante, inutile ailleurs. */
   portal?: boolean;
+  /** Rôle ARIA du panneau — `menu` par défaut ; `dialog` pour un panneau de filtres à cases. */
+  role?: "menu" | "dialog";
+  /** Libellé accessible du panneau (utile avec `role="dialog"`). */
+  ariaLabel?: string;
   className?: string;
   menuClassName?: string;
   children: React.ReactNode;
@@ -31,7 +35,7 @@ const MENU_BASE =
 
 export function Dropdown({
   open, onOpenChange, trigger, align = "right", side = "bottom",
-  portal = false, className, menuClassName, children,
+  portal = false, role = "menu", ariaLabel, className, menuClassName, children,
 }: DropdownProps) {
   const ref = React.useRef<HTMLDivElement>(null);
   // Le menu détaché sort du conteneur : le clic extérieur doit l'épargner lui aussi.
@@ -84,7 +88,8 @@ export function Dropdown({
   const menu = open ? (
     <div
       ref={menuRef}
-      role="menu"
+      role={role}
+      aria-label={ariaLabel}
       style={anchor ?? undefined}
       className={cn(
         MENU_BASE,
@@ -104,7 +109,7 @@ export function Dropdown({
 
   return (
     <div ref={ref} className={cn("relative", className)}>
-      {trigger({ "aria-expanded": open, "aria-haspopup": "menu", onClick: () => onOpenChange(!open) })}
+      {trigger({ "aria-expanded": open, "aria-haspopup": role, onClick: () => onOpenChange(!open) })}
       {portal ? (menu && anchor ? createPortal(menu, document.body) : null) : menu}
     </div>
   );

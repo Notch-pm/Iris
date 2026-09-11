@@ -11,14 +11,43 @@ const STYLES: Record<RequestStatus, string> = {
   archivee: "bg-muted text-muted-foreground border-border",
 };
 
+/** Encre de la variante « point + texte » (ligne de liste) : la même teinte que la pastille, sans fond. */
+const INKS: Record<RequestStatus, string> = {
+  a_traiter: "text-foreground",
+  en_instruction: "text-primary",
+  en_attente: "text-warning",
+  annulee: "text-muted-foreground",
+  resolue_positive: "text-success",
+  resolue_negative: "text-destructive",
+  archivee: "text-muted-foreground",
+};
+
 interface Props {
   status: string;
   /** Pastille d'en-tête : plus grande, avec un point de couleur. */
   size?: "sm" | "md";
+  /**
+   * `pill` (défaut) : pastille à fond. `dot` : point de couleur + libellé sans
+   * fond — la ligne d'une liste dense (maquette « Liste — en-tête compacté »).
+   */
+  variant?: "pill" | "dot";
 }
 
-export function StatusBadge({ status, size = "sm" }: Props) {
+export function StatusBadge({ status, size = "sm", variant = "pill" }: Props) {
   const code = status as RequestStatus;
+  if (variant === "dot") {
+    return (
+      <span
+        className={cn(
+          "inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold",
+          INKS[code] ?? "text-foreground",
+        )}
+      >
+        <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
+        {STATUS_LABELS[code] ?? status}
+      </span>
+    );
+  }
   return (
     <span
       className={cn(

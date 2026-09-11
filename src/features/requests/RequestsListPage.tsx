@@ -1,15 +1,21 @@
-// Liste des demandes du tenant — filtres, tri serveur par colonne, « Grouper
-// par » (page courante, pré-triée par la clé de groupe côté serveur), export
-// CSV de toute la sélection filtrée (motif des listes Clara). Le RLS borne ce
-// que l'utilisateur voit ; l'UI ne fait que présenter.
+// Liste des demandes du tenant — maquette Claude Design « Liste — en-tête
+// compacté » (2026-09-11) : une seule barre collante de 56 px (titre, compteur,
+// recherche par objet, « Grouper », « Filtres » en popover, densité, autres vues,
+// export, CTA), chips des critères actifs, en-tête de tableau figé — seules les
+// lignes défilent —, pied de pagination fixe. Tri serveur par colonne,
+// regroupement de la page courante, export CSV de toute la sélection filtrée
+// (motif des listes Clara). Le RLS borne ce que l'utilisateur voit ; l'UI ne
+// fait que présenter.
 
 import * as React from "react";
-import { Link, useSearchParams } from "react-router-dom";
-import { ChevronDown, ChevronRight, Columns3, Download, Map, Plus } from "lucide-react";
-import { useWideLayout } from "@/components/layout/shellLayout";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import {
+  Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Download, Layers, Map, Plus,
+  Rows3, Search, SlidersHorizontal, X,
+} from "lucide-react";
+import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Select } from "@/components/ui/select";
+import { Dropdown, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { ariaSort, SortableHeader } from "@/components/ui/sortable-header";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import {
@@ -27,63 +33,228 @@ import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
 import {
-  DEFAULT_SORT, EXPORT_MAX_ROWS, exportFilename, GROUP_KEYS, GROUP_LABELS, groupRows, isGroupKey,
-  requestCsvColumns, toggleSort, type GroupKey, type SortKey, type SortState,
+  activeFilterCount, DEFAULT_SORT, EXPORT_MAX_ROWS, exportFilename, filterChips, GROUP_KEYS,
+  GROUP_LABELS, groupRows, pageWindow, removeFilterChip, requestCsvColumns, toggleFilterValue,
+  toggleSort, type FilterKey, type GroupKey, type SortKey, type SortState,
 } from "./listing";
 import {
   EMPTY_FILTERS, fetchRequestsForExport, PAGE_SIZE, useRequestFacets, useRequestsList,
   useTenantMembers, type RequestFilters, type RequestListItem,
 } from "./useRequests";
 
+const SEARCH_DEBOUNCE_MS = 300;
+const DENSITY_STORAGE_KEY = "iris.demandes.liste.dense";
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-const COLUMNS: { key: SortKey | null; title: string; align?: "right" }[] = [
-  { key: "reference", title: "Référence" },
-  { key: "subject", title: "Objet" },
-  { key: "status", title: "Statut" },
-  { key: "destinataire", title: "Organisme" },
-  { key: "procedure", title: "Démarche" },
-  { key: null, title: "Priorité" },
-  { key: "source", title: "Source" },
-  { key: "received_at", title: "Reçue le" },
+/** Valeur retardée (motif `useGlobalSearch`) : une requête par pause de frappe, pas par caractère. */
+function useDebounced<T>(value: T, delay: number): T {
+  const [debounced, setDebounced] = React.useState(value);
+  React.useEffect(() => {
+    const timer = window.setTimeout(() => setDebounced(value), delay);
+    return () => window.clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
+function readDensity(): boolean {
+  try {
+    return window.localStorage.getItem(DENSITY_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const COLUMNS: { key: SortKey | null; title: string; className: string; align?: "right" }[] = [
+  { key: "reference", title: "Référence", className: "w-[132px]" },
+  { key: "subject", title: "Objet", className: "" },
+  { key: "destinataire", title: "Organisme", className: "w-[180px]" },
+  { key: null, title: "Priorité", className: "w-[96px]" },
+  { key: "source", title: "Source", className: "w-[104px]" },
+  { key: "status", title: "Statut", className: "w-[176px]" },
+  { key: "received_at", title: "Reçue le", className: "w-[104px]", align: "right" },
+  { key: null, title: "", className: "w-[36px]" },
 ];
 
-function RequestRow({ r }: { r: RequestListItem }) {
+// ---- Barre : boutons ronds ----------------------------------------------------
+
+const PILL =
+  "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border text-[13px] font-semibold transition-colors " +
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 active:scale-[0.98]";
+const PILL_IDLE = "border-border bg-background text-foreground hover:bg-secondary hover:border-secondary";
+const PILL_ACTIVE = "border-primary bg-primary/10 text-primary";
+
+/** Bouton rond à icône seule (densité, vues, export) : le libellé passe en info-bulle et en texte caché. */
+function IconPill({
+  label, active, className, children, ...props
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }) {
   return (
-    <tr className="border-b border-border/60 last:border-0 hover:bg-muted/50">
-      <td className="px-4 py-3 font-medium">
-        <Link to={`/demandes/${r.id}`} className="text-primary hover:underline">
+    <button
+      type="button"
+      title={label}
+      className={cn(PILL, "w-9 justify-center px-0", active ? PILL_ACTIVE : PILL_IDLE, "text-muted-foreground", active && "text-primary", className)}
+      {...props}
+    >
+      {children}
+      <span className="sr-only">{label}</span>
+    </button>
+  );
+}
+
+// ---- Ligne ----------------------------------------------------------------------
+
+function RequestRow({ r, dense }: { r: RequestListItem; dense: boolean }) {
+  const navigate = useNavigate();
+  const href = `/demandes/${r.id}`;
+  return (
+    <tr
+      className={cn(
+        "cursor-pointer border-b border-border/70 bg-card transition-colors hover:bg-muted/50",
+        dense ? "h-9" : "h-12",
+      )}
+      onClick={() => navigate(href)}
+    >
+      <td className="px-3 font-mono text-xs tabular-nums text-muted-foreground">
+        <Link
+          to={href}
+          className="rounded text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+          onClick={(e) => e.stopPropagation()}
+        >
           {r.reference}
         </Link>
       </td>
-      <td className="max-w-[280px] truncate px-4 py-3 xl:max-w-[560px]">{r.subject}</td>
-      <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-      <td className="px-4 py-3">{r.socle_organization_label ?? "—"}</td>
-      <td className="px-4 py-3">{r.socle_procedure_label ?? "Demande libre"}</td>
-      <td className="px-4 py-3">{PRIORITY_LABELS[r.priority] ?? r.priority}</td>
-      <td className="px-4 py-3"><Badge variant="outline">{r.source}</Badge></td>
-      <td className="px-4 py-3 text-muted-foreground">{formatDate(r.received_at)}</td>
+      <td className="max-w-0 px-3">
+        <div className="truncate text-[13.5px] font-semibold text-foreground">{r.subject}</div>
+        {dense ? null : (
+          <div className="truncate text-xs text-muted-foreground">
+            {r.socle_procedure_label ?? "Sans démarche"}
+          </div>
+        )}
+      </td>
+      <td className="max-w-0 truncate px-3 text-[13px] text-muted-foreground">{r.socle_organization_label ?? "—"}</td>
+      <td className="px-3 text-[13px] text-muted-foreground">{PRIORITY_LABELS[r.priority] ?? r.priority}</td>
+      <td className="px-3">
+        <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-[11.5px] font-semibold text-muted-foreground">
+          {r.source}
+        </span>
+      </td>
+      <td className="px-3"><StatusBadge status={r.status} variant="dot" /></td>
+      <td className="px-3 text-right text-[12.5px] font-medium tabular-nums text-muted-foreground">{formatDate(r.received_at)}</td>
+      <td className="pr-4 text-right text-muted-foreground">
+        <ChevronRight className="ml-auto size-4" aria-hidden="true" />
+      </td>
     </tr>
   );
 }
 
+// ---- Popover « Filtres » ---------------------------------------------------------
+
+interface FilterOption { value: string; label: string }
+
+function ChipGroup({
+  label, options, selected, onToggle,
+}: { label: string; options: FilterOption[]; selected: string[]; onToggle: (value: string) => void }) {
+  return (
+    <fieldset className="flex flex-col gap-1.5">
+      <legend className="mb-1.5 text-[11.5px] font-semibold text-muted-foreground">{label}</legend>
+      <div className="flex flex-wrap gap-1.5">
+        {options.map((o) => {
+          const on = selected.includes(o.value);
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              onClick={() => onToggle(o.value)}
+              className={cn(
+                "inline-flex h-[30px] items-center gap-1.5 whitespace-nowrap rounded-full border px-[11px] text-[12.5px] font-semibold transition-colors hover:border-primary/50",
+                on ? PILL_ACTIVE : "border-border bg-background text-foreground",
+              )}
+            >
+              {on ? <Check className="size-3" aria-hidden="true" /> : null}
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+function CheckList({
+  label, options, selected, onToggle,
+}: { label: string; options: FilterOption[]; selected: string[]; onToggle: (value: string) => void }) {
+  return (
+    <fieldset className="flex flex-col gap-0.5">
+      <legend className="mb-1.5 text-[11.5px] font-semibold text-muted-foreground">{label}</legend>
+      {options.length === 0 ? (
+        <span className="px-2 py-1 text-xs text-muted-foreground">Aucune valeur</span>
+      ) : null}
+      <div className="flex max-h-[176px] flex-col gap-0.5 overflow-auto">
+        {options.map((o) => {
+          const on = selected.includes(o.value);
+          return (
+            <button
+              key={o.value}
+              type="button"
+              role="checkbox"
+              aria-checked={on}
+              onClick={() => onToggle(o.value)}
+              className={cn(
+                "flex h-[34px] w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted/70",
+                on && "bg-primary/[0.07]",
+              )}
+            >
+              <span
+                className={cn(
+                  "flex size-4 shrink-0 items-center justify-center rounded border",
+                  on ? "border-primary bg-primary text-primary-foreground" : "border-input",
+                )}
+                aria-hidden="true"
+              >
+                {on ? <Check className="size-3" /> : null}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{o.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </fieldset>
+  );
+}
+
+// ---- Page -------------------------------------------------------------------------
+
 export function RequestsListPage() {
-  useWideLayout();
+  useFullBleedLayout();
   const { current, rights } = useTenant();
-  // Filtre initial depuis l'URL (fil d'Ariane de la fiche : `/demandes?status=…`).
+  // Filtre initial depuis l'URL (fil d'Ariane de la fiche, tableau, tableau de bord : `/demandes?status=…`).
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = React.useState<RequestFilters>(() => {
     const status = searchParams.get("status") ?? "";
-    return { ...EMPTY_FILTERS, status: status in STATUS_LABELS ? status : "" };
+    return { ...EMPTY_FILTERS, status: status in STATUS_LABELS ? [status] : [] };
   });
+  const [q, setQ] = React.useState("");
+  const debouncedQ = useDebounced(q, SEARCH_DEBOUNCE_MS);
   const [page, setPage] = React.useState(1);
   const [sort, setSort] = React.useState<SortState>(DEFAULT_SORT);
   const [groupKey, setGroupKey] = React.useState<GroupKey | null>(null);
   const [collapsed, setCollapsed] = React.useState<Set<string>>(new Set());
+  const [dense, setDense] = React.useState(readDensity);
+  const [groupOpen, setGroupOpen] = React.useState(false);
+  const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
   const [exportNote, setExportNote] = React.useState<{ text: string; error: boolean } | null>(null);
+
+  // La saisie ne devient un critère qu'après une pause de frappe ; chaque
+  // changement de critère ramène en page 1.
+  React.useEffect(() => {
+    setFilters((f) => (f.q === debouncedQ ? f : { ...f, q: debouncedQ }));
+    setPage(1);
+  }, [debouncedQ]);
 
   const orgId = current?.organizationId ?? "";
   const list = useRequestsList(orgId, filters, page, sort, groupKey);
@@ -111,6 +282,7 @@ export function RequestsListPage() {
     (procCatalog.data?.length ?? 0) > 0
       ? procCatalog.data!.filter((o) => rights.is_platform_admin || canViewProcedure(rights, o.value))
       : (facets.data?.procedures ?? []);
+  const sourceOptions = facets.data?.sources ?? [];
   // « Nouvelle demande » : au moins un couple (organisme, démarche) à la fois
   // ACTIVÉ dans le Socle et dans mes droits (RM-58 + activation, 2026-08-31) —
   // reflet de confort, le serveur revalide le couple et le trigger t18 refuse
@@ -125,23 +297,28 @@ export function RequestsListPage() {
 
   if (!current) {
     return (
-      <p className="text-sm text-muted-foreground">
+      <p className="p-6 text-sm text-muted-foreground">
         Aucun tenant accessible — contactez votre administrateur.
       </p>
     );
   }
 
-  const setFilter = (key: keyof RequestFilters) => (e: React.ChangeEvent<HTMLSelectElement>) => {
-    setFilters((f) => ({ ...f, [key]: e.target.value }));
+  const toggleFilter = (key: FilterKey) => (value: string) => {
+    setFilters((f) => toggleFilterValue(f, key, value));
+    setPage(1);
+  };
+  const resetFilters = () => {
+    setQ("");
+    setFilters(EMPTY_FILTERS);
     setPage(1);
   };
   // Trier ou regrouper depuis la page 7 laisserait une page vide : retour en page 1.
   const onSort = (key: SortKey) => { setSort((s) => toggleSort(s, key)); setPage(1); };
-  const onGroup = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const v = e.target.value;
-    setGroupKey(isGroupKey(v) ? v : null);
+  const onGroup = (key: GroupKey | null) => {
+    setGroupKey(key);
     setCollapsed(new Set());
     setPage(1);
+    setGroupOpen(false);
   };
   const toggleGroup = (id: string) =>
     setCollapsed((prev) => {
@@ -149,10 +326,20 @@ export function RequestsListPage() {
       if (next.has(id)) next.delete(id); else next.add(id);
       return next;
     });
+  const toggleDensity = () => {
+    setDense((d) => {
+      try { window.localStorage.setItem(DENSITY_STORAGE_KEY, d ? "0" : "1"); } catch { /* stockage indisponible : réglage de session */ }
+      return !d;
+    });
+  };
 
   const memberList = members.data ?? [];
   const nameOf = (userId: string | null) =>
     memberList.find((m) => m.userId === userId)?.displayName ?? "";
+  const resolveLabel = (key: FilterKey, value: string): string | undefined => {
+    const pool = key === "destinataire" ? destinataireOptions : key === "procedure" ? procedureOptions : key === "source" ? sourceOptions : [];
+    return pool.find((o) => o.value === value)?.label;
+  };
 
   async function exportCsv() {
     setExporting(true);
@@ -177,106 +364,237 @@ export function RequestsListPage() {
   const pageCount = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const items = list.data?.items ?? [];
   const groups = groupRows(items, groupKey);
+  const chips = filterChips(filters, resolveLabel);
+  const nFilters = activeFilterCount(filters);
+  const nResults = `${total} demande${total > 1 ? "s" : ""}`;
+  const first = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+  const last = Math.min(page * PAGE_SIZE, total);
 
   return (
-    <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Demandes</h1>
-          <Badge variant="muted">{total}</Badge>
+    <div className="flex min-h-0 flex-1 flex-col bg-background">
+      {/* Barre collante : titre, compteur, recherche, actions — 56 px. */}
+      <header className="flex h-14 shrink-0 items-center gap-3 border-b border-border bg-card px-5">
+        <div className="flex shrink-0 items-center gap-2.5">
+          <h1 className="whitespace-nowrap text-[17px] font-bold tracking-tight">Demandes</h1>
+          <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-bold tabular-nums text-muted-foreground">
+            {total}
+          </span>
         </div>
-        <div className="flex items-center gap-2">
-          <Button asChild variant="outline">
-            <Link to="/demandes/tableau">
-              <Columns3 />
-              Tableau
-            </Link>
-          </Button>
-          <Button asChild variant="outline">
-            <Link to="/carte">
-              <Map />
-              Carte
-            </Link>
-          </Button>
-          {canCreate ? (
-            <Button asChild>
-              <Link to="/demandes/nouvelle">
-                <Plus />
-                Nouvelle demande
-              </Link>
-            </Button>
-          ) : null}
+
+        <div className="flex min-w-0 flex-1 justify-center">
+          <label className="relative flex h-9 w-full max-w-[360px] items-center">
+            <Search className="pointer-events-none absolute left-3 size-[15px] text-muted-foreground" aria-hidden="true" />
+            <input
+              type="search"
+              aria-label="Rechercher par objet ou référence"
+              placeholder="Rechercher par objet…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              className="h-9 w-full rounded-full border border-border bg-background pl-9 pr-3 text-[13.5px] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+            />
+          </label>
         </div>
-      </div>
 
-      <div className="grid grid-cols-2 gap-2 md:max-w-[1240px] md:grid-cols-5" aria-label="Filtres">
-        <Select aria-label="Filtrer par statut" value={filters.status} onChange={setFilter("status")}>
-          <option value="">Tous les statuts</option>
-          {Object.entries(STATUS_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </Select>
-        <Select aria-label="Filtrer par organisme" value={filters.destinataire} onChange={setFilter("destinataire")}>
-          <option value="">Tous les organismes</option>
-          {destinataireOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </Select>
-        <Select aria-label="Filtrer par démarche" value={filters.procedure} onChange={setFilter("procedure")}>
-          <option value="">Toutes les démarches</option>
-          {procedureOptions.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </Select>
-        <Select aria-label="Filtrer par priorité" value={filters.priority} onChange={setFilter("priority")}>
-          <option value="">Toutes les priorités</option>
-          {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>{label}</option>
-          ))}
-        </Select>
-        <Select aria-label="Filtrer par source" value={filters.source} onChange={setFilter("source")}>
-          <option value="">Toutes les sources</option>
-          {(facets.data?.sources ?? []).map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </Select>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <label className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span className="whitespace-nowrap">Grouper par</span>
-          <Select aria-label="Grouper par" className="h-9 w-[180px]" value={groupKey ?? ""} onChange={onGroup}>
-            <option value="">Aucun</option>
+        <div className="flex shrink-0 items-center gap-1.5">
+          <Dropdown
+            open={groupOpen}
+            onOpenChange={setGroupOpen}
+            align="right"
+            trigger={(props) => (
+              <button
+                type="button"
+                {...props}
+                title="Grouper par"
+                className={cn(PILL, "px-3", groupKey ? PILL_ACTIVE : PILL_IDLE)}
+              >
+                <Layers className="size-[15px]" aria-hidden="true" />
+                <span className="hidden max-w-[120px] truncate lg:inline">
+                  {groupKey ? GROUP_LABELS[groupKey] : "Grouper"}
+                </span>
+                <ChevronDown className="hidden size-3.5 opacity-60 lg:inline" aria-hidden="true" />
+              </button>
+            )}
+          >
+            <DropdownLabel>Grouper par</DropdownLabel>
+            <DropdownItem role="menuitemradio" aria-checked={groupKey === null} active={groupKey === null} onClick={() => onGroup(null)}>
+              Aucun
+            </DropdownItem>
             {GROUP_KEYS.map((k) => (
-              <option key={k} value={k}>{GROUP_LABELS[k]}</option>
+              <DropdownItem key={k} role="menuitemradio" aria-checked={groupKey === k} active={groupKey === k} onClick={() => onGroup(k)}>
+                {GROUP_LABELS[k]}
+              </DropdownItem>
             ))}
-          </Select>
-        </label>
-        <div className="flex items-center gap-3">
-          {exportNote ? (
-            <span role={exportNote.error ? "alert" : "status"}
-              className={cn("text-xs", exportNote.error ? "text-destructive" : "text-muted-foreground")}>
-              {exportNote.text}
-            </span>
-          ) : null}
-          <Button variant="outline" size="sm" onClick={() => void exportCsv()}
-            disabled={exporting || total === 0} aria-busy={exporting}>
-            <Download className="size-4" aria-hidden="true" />
-            {exporting ? "Export en cours…" : "Exporter en CSV"}
-          </Button>
-        </div>
-      </div>
+          </Dropdown>
 
-      <div className="overflow-x-auto rounded-lg border border-border bg-card shadow-iris-sm">
-        <table className="w-full text-sm">
+          <Dropdown
+            open={filtersOpen}
+            onOpenChange={setFiltersOpen}
+            align="right"
+            role="dialog"
+            ariaLabel="Filtrer les demandes"
+            menuClassName="w-[340px] gap-0 p-0"
+            trigger={(props) => (
+              <button
+                type="button"
+                {...props}
+                title="Filtres"
+                className={cn(PILL, "px-3", nFilters > 0 ? PILL_ACTIVE : PILL_IDLE)}
+              >
+                <SlidersHorizontal className="size-[15px]" aria-hidden="true" />
+                <span className="hidden lg:inline">Filtres</span>
+                {nFilters > 0 ? (
+                  <span className="rounded-full bg-primary px-[7px] py-px text-[11px] font-bold tabular-nums text-primary-foreground">
+                    {nFilters}
+                  </span>
+                ) : null}
+              </button>
+            )}
+          >
+            <div className="flex items-center justify-between px-3.5 pb-2.5 pt-3">
+              <span className="text-[13.5px] font-bold">Filtrer les demandes</span>
+              <button
+                type="button"
+                onClick={() => setFiltersOpen(false)}
+                className="flex size-6 items-center justify-center rounded-full text-muted-foreground hover:bg-muted"
+              >
+                <X className="size-3.5" aria-hidden="true" />
+                <span className="sr-only">Fermer</span>
+              </button>
+            </div>
+            <div className="flex max-h-[420px] flex-col gap-3.5 overflow-auto px-3.5 pb-3">
+              <ChipGroup
+                label="Statut"
+                options={Object.entries(STATUS_LABELS).map(([value, label]) => ({ value, label }))}
+                selected={filters.status}
+                onToggle={toggleFilter("status")}
+              />
+              <ChipGroup
+                label="Priorité"
+                options={Object.entries(PRIORITY_LABELS).map(([value, label]) => ({ value, label }))}
+                selected={filters.priority}
+                onToggle={toggleFilter("priority")}
+              />
+              <ChipGroup label="Source" options={sourceOptions} selected={filters.source} onToggle={toggleFilter("source")} />
+              <CheckList label="Organisme" options={destinataireOptions} selected={filters.destinataire} onToggle={toggleFilter("destinataire")} />
+              <CheckList label="Démarche" options={procedureOptions} selected={filters.procedure} onToggle={toggleFilter("procedure")} />
+            </div>
+            <div className="flex items-center justify-between border-t border-border bg-muted/40 px-3.5 py-2.5">
+              <button
+                type="button"
+                onClick={resetFilters}
+                disabled={nFilters === 0}
+                className="text-[12.5px] font-semibold text-muted-foreground underline underline-offset-[3px] disabled:no-underline disabled:opacity-50"
+              >
+                Tout effacer
+              </button>
+              <span className="text-[12.5px] font-semibold tabular-nums text-primary">{nResults}</span>
+            </div>
+          </Dropdown>
+
+          <IconPill label={dense ? "Affichage confortable" : "Affichage compact"} active={dense} onClick={toggleDensity} aria-pressed={dense}>
+            <Rows3 className="size-[15px]" aria-hidden="true" />
+          </IconPill>
+          <Link to="/demandes/tableau" title="Tableau des demandes" className={cn(PILL, PILL_IDLE, "w-9 justify-center px-0 text-muted-foreground")}>
+            <Columns3 className="size-[15px]" aria-hidden="true" />
+            <span className="sr-only">Tableau des demandes</span>
+          </Link>
+          <Link to="/carte" title="Carte des interventions" className={cn(PILL, PILL_IDLE, "w-9 justify-center px-0 text-muted-foreground")}>
+            <Map className="size-[15px]" aria-hidden="true" />
+            <span className="sr-only">Carte des interventions</span>
+          </Link>
+          <IconPill
+            label={exporting ? "Export en cours…" : "Exporter en CSV"}
+            onClick={() => void exportCsv()}
+            disabled={exporting || total === 0}
+            aria-busy={exporting}
+            className="disabled:opacity-50"
+          >
+            <Download className="size-[15px]" aria-hidden="true" />
+          </IconPill>
+
+          {canCreate ? (
+            <>
+              <span className="mx-1 h-[22px] w-px bg-border" aria-hidden="true" />
+              <Button asChild size="sm" className="rounded-full px-3.5 text-[13px] font-bold">
+                <Link to="/demandes/nouvelle">
+                  <Plus />
+                  <span className="hidden lg:inline">Nouvelle demande</span>
+                  <span className="sr-only lg:hidden">Nouvelle demande</span>
+                </Link>
+              </Button>
+            </>
+          ) : null}
+        </div>
+      </header>
+
+      {chips.length > 0 ? (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 border-b border-border bg-muted/60 px-5 py-2" aria-label="Filtres actifs">
+          <span className="whitespace-nowrap text-xs font-semibold text-muted-foreground">Filtres actifs</span>
+          {chips.map((c) => (
+            <button
+              key={`${c.key}:${c.value}`}
+              type="button"
+              onClick={() => {
+                if (c.key === "q") setQ("");
+                setFilters((f) => removeFilterChip(f, c));
+                setPage(1);
+              }}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-primary/10 py-1 pl-[11px] pr-[7px] text-[12.5px] font-semibold text-primary transition-colors hover:bg-primary/[0.18]"
+            >
+              {c.label}
+              <X className="size-[13px]" aria-hidden="true" />
+              <span className="sr-only">Retirer</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={resetFilters}
+            className="whitespace-nowrap text-[12.5px] font-semibold text-muted-foreground underline underline-offset-[3px]"
+          >
+            Tout effacer
+          </button>
+        </div>
+      ) : null}
+
+      {exportNote ? (
+        <div
+          role={exportNote.error ? "alert" : "status"}
+          className={cn(
+            "flex shrink-0 items-center justify-between gap-3 border-b px-5 py-2 text-xs",
+            exportNote.error ? "border-destructive/30 bg-destructive/10 text-destructive" : "border-border bg-muted/40 text-muted-foreground",
+          )}
+        >
+          <span>{exportNote.text}</span>
+          <button type="button" onClick={() => setExportNote(null)} className="rounded p-0.5 hover:bg-muted">
+            <X className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">Masquer</span>
+          </button>
+        </div>
+      ) : null}
+
+      {/* En-tête figé, lignes défilantes. */}
+      <div className="min-h-0 flex-1 overflow-auto">
+        <table className="w-full table-fixed border-collapse text-sm">
           <thead>
-            <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
+            <tr>
               {COLUMNS.map((c) => (
-                <th key={c.title} className="px-4 py-2"
-                  aria-sort={c.key ? ariaSort(sort.key === c.key ? sort.dir : false) : undefined}>
+                <th
+                  key={c.title || "actions"}
+                  scope="col"
+                  className={cn(
+                    "sticky top-0 z-10 h-[38px] border-b border-border bg-muted/[0.45] px-3 text-left text-xs font-semibold text-muted-foreground backdrop-blur-sm",
+                    c.className,
+                    c.align === "right" && "text-right",
+                  )}
+                  aria-sort={c.key ? ariaSort(sort.key === c.key ? sort.dir : false) : undefined}
+                >
                   {c.key ? (
-                    <SortableHeader title={c.title} direction={sort.key === c.key ? sort.dir : false}
-                      onToggle={() => onSort(c.key!)} />
+                    <SortableHeader
+                      title={c.title}
+                      direction={sort.key === c.key ? sort.dir : false}
+                      onToggle={() => onSort(c.key!)}
+                      className={cn("normal-case tracking-normal", c.align === "right" && "-mr-2 ml-0 flex-row-reverse")}
+                    />
                   ) : (
                     <span className="inline-flex h-8 items-center">{c.title}</span>
                   )}
@@ -286,52 +604,93 @@ export function RequestsListPage() {
           </thead>
           <tbody>
             {list.isLoading ? (
-              <tr><td colSpan={COLUMNS.length} className="px-4 py-8 text-center text-muted-foreground">Chargement…</td></tr>
+              <tr><td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-[13.5px] text-muted-foreground">Chargement…</td></tr>
+            ) : list.isError ? (
+              <tr><td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-[13.5px] text-destructive">Les demandes n'ont pas pu être chargées.</td></tr>
             ) : items.length === 0 ? (
-              <tr><td colSpan={COLUMNS.length} className="px-4 py-8 text-center text-muted-foreground">Aucune demande.</td></tr>
+              <tr>
+                <td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-[13.5px] text-muted-foreground">
+                  {nFilters > 0 ? "Aucune demande ne correspond aux filtres actifs." : "Aucune demande."}
+                </td>
+              </tr>
             ) : groupKey ? (
               groups.map((g) => {
                 const isCollapsed = collapsed.has(g.id);
                 return (
                   <React.Fragment key={g.id}>
-                    <tr className="border-b border-border/60 bg-muted/30">
-                      <td colSpan={COLUMNS.length} className="px-3 py-2">
-                        <button type="button" onClick={() => toggleGroup(g.id)} aria-expanded={!isCollapsed}
-                          className="flex w-full items-center gap-2 text-left">
+                    <tr>
+                      <td colSpan={COLUMNS.length} className="sticky top-[38px] z-[5] h-8 border-b border-border bg-muted/[0.75] px-3 backdrop-blur-sm">
+                        <button
+                          type="button"
+                          onClick={() => toggleGroup(g.id)}
+                          aria-expanded={!isCollapsed}
+                          className="flex w-full items-center gap-2 text-left"
+                        >
                           {isCollapsed
                             ? <ChevronRight className="size-4 text-muted-foreground" aria-hidden="true" />
                             : <ChevronDown className="size-4 text-muted-foreground" aria-hidden="true" />}
-                          <span className="text-sm font-semibold">{g.label}</span>
-                          <Badge variant="secondary">{g.items.length}</Badge>
+                          <span className="text-[12.5px] font-bold">{g.label}</span>
+                          <span className="text-[11.5px] tabular-nums text-muted-foreground">
+                            {g.items.length} demande{g.items.length > 1 ? "s" : ""}
+                          </span>
                         </button>
                       </td>
                     </tr>
-                    {isCollapsed ? null : g.items.map((r) => <RequestRow key={r.id} r={r} />)}
+                    {isCollapsed ? null : g.items.map((r) => <RequestRow key={r.id} r={r} dense={dense} />)}
                   </React.Fragment>
                 );
               })
             ) : (
-              items.map((r) => <RequestRow key={r.id} r={r} />)
+              items.map((r) => <RequestRow key={r.id} r={r} dense={dense} />)
             )}
           </tbody>
         </table>
       </div>
 
-      <div className="flex items-center justify-between text-sm text-muted-foreground">
-        <span>
-          Page {page} sur {pageCount}
+      <footer className="flex h-11 shrink-0 items-center justify-between border-t border-border bg-card px-5 text-[12.5px] text-muted-foreground">
+        <span className="tabular-nums">
+          {total === 0 ? "Aucune demande" : `${first}–${last} sur ${nResults}`}
           {groupKey ? " — regroupement sur la page affichée" : ""}
         </span>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage((p) => p - 1)}>
-            Précédente
-          </Button>
-          <Button variant="outline" size="sm" disabled={page >= pageCount} onClick={() => setPage((p) => p + 1)}>
-            Suivante
-          </Button>
-        </div>
-      </div>
-
+        <nav className="flex items-center gap-1" aria-label="Pagination">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => setPage((p) => p - 1)}
+            className="flex size-7 items-center justify-center rounded-lg border border-border transition-colors hover:bg-secondary disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <ChevronLeft className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">Page précédente</span>
+          </button>
+          {pageWindow(page, pageCount).map((p, i) =>
+            p === null ? (
+              <span key={`gap-${i}`} className="w-5 text-center" aria-hidden="true">…</span>
+            ) : (
+              <button
+                key={p}
+                type="button"
+                onClick={() => setPage(p)}
+                aria-current={p === page ? "page" : undefined}
+                className={cn(
+                  "flex size-7 items-center justify-center rounded-lg text-xs font-semibold tabular-nums transition-colors",
+                  p === page ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-secondary",
+                )}
+              >
+                {p}
+              </button>
+            ),
+          )}
+          <button
+            type="button"
+            disabled={page >= pageCount}
+            onClick={() => setPage((p) => p + 1)}
+            className="flex size-7 items-center justify-center rounded-lg border border-border transition-colors hover:bg-secondary disabled:opacity-40 disabled:hover:bg-transparent"
+          >
+            <ChevronRight className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">Page suivante</span>
+          </button>
+        </nav>
+      </footer>
     </div>
   );
 }

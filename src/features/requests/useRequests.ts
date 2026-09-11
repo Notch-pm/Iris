@@ -4,7 +4,9 @@ import type { Tables } from "@/types/database.types";
 import { buildRequestFacets, type RequestFacets } from "./facets";
 import type { ClosureMotif, TransitionSpec } from "./statuts";
 import { buildTransitionUpdate } from "./statuts";
-import { EXPORT_MAX_ROWS, orderClauses, type GroupKey, type SortState } from "./listing";
+import {
+  EXPORT_MAX_ROWS, orderClauses, searchClause, type GroupKey, type SortState,
+} from "./listing";
 
 export type RequestRow = Tables<"requests">;
 export type RequestEvent = Tables<"request_events">;
@@ -16,20 +18,28 @@ export type RequestLink = Tables<"request_links">;
 
 export const PAGE_SIZE = 20;
 
+/**
+ * Filtres de la liste (2026-09-11, maquette « Liste — en-tête compacté ») :
+ * chaque critère est une SÉLECTION MULTIPLE (vide = tout), posée depuis le
+ * popover « Filtres » et rappelée en chips ; `q` est la recherche par objet
+ * et référence, appliquée côté serveur.
+ */
 export interface RequestFilters {
-  status: string;
-  destinataire: string;
-  procedure: string;
-  priority: string;
-  source: string;
+  q: string;
+  status: string[];
+  destinataire: string[];
+  procedure: string[];
+  priority: string[];
+  source: string[];
 }
 
 export const EMPTY_FILTERS: RequestFilters = {
-  status: "",
-  destinataire: "",
-  procedure: "",
-  priority: "",
-  source: "",
+  q: "",
+  status: [],
+  destinataire: [],
+  procedure: [],
+  priority: [],
+  source: [],
 };
 
 const LIST_SELECT =
@@ -60,11 +70,13 @@ function listQuery(orgId: string, filters: RequestFilters, sort: SortState, grou
     .from("requests")
     .select(LIST_SELECT, { count: "exact" })
     .eq("organization_id", orgId);
-  if (filters.status) query = query.eq("status", filters.status);
-  if (filters.destinataire) query = query.eq("socle_organization_id", filters.destinataire);
-  if (filters.procedure) query = query.eq("socle_procedure_id", filters.procedure);
-  if (filters.priority) query = query.eq("priority", filters.priority);
-  if (filters.source) query = query.eq("source", filters.source);
+  if (filters.status.length > 0) query = query.in("status", filters.status);
+  if (filters.destinataire.length > 0) query = query.in("socle_organization_id", filters.destinataire);
+  if (filters.procedure.length > 0) query = query.in("socle_procedure_id", filters.procedure);
+  if (filters.priority.length > 0) query = query.in("priority", filters.priority);
+  if (filters.source.length > 0) query = query.in("source", filters.source);
+  const search = searchClause(filters.q);
+  if (search) query = query.or(search);
   for (const clause of orderClauses(sort, groupKey)) {
     query = query.order(clause.column, { ascending: clause.ascending, nullsFirst: false });
   }

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  DEFAULT_SORT, exportFilename, GROUP_LABELS, groupLabelOf, groupRows, orderClauses,
-  requestCsvColumns, toggleSort,
+  activeFilterCount, DEFAULT_SORT, exportFilename, filterChips, GROUP_LABELS, groupLabelOf, groupRows,
+  orderClauses, pageWindow, removeFilterChip, requestCsvColumns, searchClause, toggleFilterValue,
+  toggleSort,
 } from "./listing";
-import type { RequestListItem } from "./useRequests";
+import { EMPTY_FILTERS, type RequestListItem } from "./useRequests";
 
 function item(partial: Partial<RequestListItem>): RequestListItem {
   return {
@@ -69,6 +70,68 @@ describe("regroupement", () => {
     const g = groupRows([item({})], null);
     expect(g).toHaveLength(1);
     expect(g[0].label).toBe("");
+  });
+});
+
+describe("filtres", () => {
+  const resolve = (key: string, value: string) =>
+    key === "destinataire" && value === "org-1" ? "Voirie" : undefined;
+
+  it("bascule une valeur, compte les critères (recherche comprise)", () => {
+    let f = toggleFilterValue(EMPTY_FILTERS, "status", "a_traiter");
+    f = toggleFilterValue(f, "status", "en_attente");
+    expect(f.status).toEqual(["a_traiter", "en_attente"]);
+    expect(activeFilterCount(f)).toBe(2);
+    f = toggleFilterValue(f, "status", "a_traiter");
+    expect(f.status).toEqual(["en_attente"]);
+    expect(activeFilterCount({ ...f, q: "  " })).toBe(1);
+    expect(activeFilterCount({ ...f, q: "élagage" })).toBe(2);
+  });
+
+  it("chips : recherche d'abord, statuts et priorités traduits, catalogue pour le reste", () => {
+    const f = {
+      ...EMPTY_FILTERS, q: " arbre ", status: ["a_traiter"], priority: ["haute"],
+      destinataire: ["org-1", "org-2"],
+    };
+    expect(filterChips(f, resolve).map((c) => c.label)).toEqual([
+      "Recherche : « arbre »",
+      "Statut : À traiter",
+      "Organisme : Voirie",
+      "Organisme : org-2",
+      "Priorité : Haute",
+    ]);
+  });
+
+  it("retirer une chip ôte la valeur de son critère ; la chip de recherche vide la saisie", () => {
+    const f = { ...EMPTY_FILTERS, q: "arbre", status: ["a_traiter", "en_attente"] };
+    const chips = filterChips(f, resolve);
+    expect(removeFilterChip(f, chips[0]).q).toBe("");
+    expect(removeFilterChip(f, chips[1]).status).toEqual(["en_attente"]);
+  });
+});
+
+describe("recherche", () => {
+  it("rien à chercher sous deux caractères", () => {
+    expect(searchClause("")).toBeNull();
+    expect(searchClause(" a ")).toBeNull();
+  });
+
+  it("cherche l'objet ET la référence, jokers neutralisés, valeur citée", () => {
+    expect(searchClause("élagage")).toBe('subject.ilike."%élagage%",reference.ilike."%élagage%"');
+    expect(searchClause("50%_a")).toBe('subject.ilike."%50\\%\\_a%",reference.ilike."%50\\%\\_a%"');
+    expect(searchClause('rue "A", (b)')).toBe(
+      'subject.ilike."%rue \\"A\\", (b)%",reference.ilike."%rue \\"A\\", (b)%"',
+    );
+  });
+});
+
+describe("pagination", () => {
+  it("toutes les pages jusqu'à 7, fenêtre avec ellipses au-delà", () => {
+    expect(pageWindow(1, 1)).toEqual([1]);
+    expect(pageWindow(3, 7)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(pageWindow(1, 20)).toEqual([1, 2, 3, 4, 5, null, 20]);
+    expect(pageWindow(10, 20)).toEqual([1, null, 9, 10, 11, null, 20]);
+    expect(pageWindow(20, 20)).toEqual([1, null, 16, 17, 18, 19, 20]);
   });
 });
 

@@ -234,9 +234,11 @@ note interne → résolution avec texte de clôture → journal.
   test de `listing.test.ts` fige le libellé. ⚠️ La variable d'e-mail
   `{{demande.destinataire}}` ne se renomme PAS non plus : son catalogue est FIGÉ, avec
   jumeau SQL et garde serveur `t03`.
-- **Pages** : `RequestsListPage` (filtres statut/organisme/démarche/priorité/source,
-  pagination 20, filtre initial depuis `?status=`, bouton « Nouvelle demande » →
-  `/demandes/nouvelle`), le **tableau des demandes** `/demandes/tableau` et la **fiche
+- **Pages** : `RequestsListPage` (recherche par objet/référence, filtres MULTIPLES
+  statut/organisme/démarche/priorité/source en popover et en chips, pagination 20, filtre
+  initial depuis `?status=`, bouton « Nouvelle demande » → `/demandes/nouvelle` — maquette
+  « Liste — en-tête compacté », cf. « Liste : tri, regroupement, export » plus bas), le
+  **tableau des demandes** `/demandes/tableau` et la **fiche
   d'instruction** ci-dessous. Les trois vues d'une même sélection — liste, tableau, carte —
   ont chacune leur **entrée de rail** (le tableau juste au-dessus de la liste) et se
   renvoient l'une à l'autre par des boutons d'en-tête.
@@ -999,9 +1001,28 @@ note interne → résolution avec texte de clôture → journal.
   de TOUTE la sélection filtrée dans l'ordre affiché (`fetchRequestsForExport`, lots de 1000,
   borné à 5000 lignes — tronçon signalé ; `src/lib/csv.ts` : `;`, BOM UTF-8 Excel FR).
   En-tête triable `src/components/ui/sortable-header.tsx` (+ `aria-sort`).
-  La page est en **gabarit large** (`useWideLayout`) : le tableau prend toute la largeur
-  de l'écran, seule la barre de filtres reste bornée (1240px) pour que les listes déroulantes
-  gardent une taille utile.
+  - **En-tête compacté** (2026-09-11, maquette Claude Design « Liste Courriers —
+    Proposition », projet `44db0c7a`) : la page est en **pleine hauteur**
+    (`useFullBleedLayout`). Une **seule barre collante de 56 px** porte le titre, le compteur,
+    la **recherche par objet** (centrée), « Grouper » (menu radio), « Filtres » (popover à
+    cases avec pastille du nombre de critères), la **densité** (48 px / 36 px, mémorisée sur
+    l'appareil — non critique), les liens Tableau et Carte, l'export CSV et le CTA. Les
+    critères actifs se rappellent en **chips supprimables** sous la barre (« Tout effacer »).
+    L'**en-tête du tableau est figé** (`sticky`), les en-têtes de groupe aussi, seules les
+    lignes défilent ; le pied porte la pagination **numérotée** (`pageWindow`, 7 entrées au
+    plus) et « x–y sur N demandes ». Ligne : référence en mono, objet sur deux niveaux (objet
+    + démarche), statut en **point + libellé** (`StatusBadge variant="dot"`), date tabulaire
+    à droite, ligne entière cliquable.
+  - **Filtres multiples** : `RequestFilters` porte des TABLEAUX (`.in()` serveur, vide =
+    tout) et `q`, la recherche ; les modules purs `toggleFilterValue`, `filterChips`,
+    `removeFilterChip`, `activeFilterCount` vivent dans `listing.ts` (testés).
+  - ⚠️ **La recherche de la liste est sensible aux accents** (`searchClause` : clause
+    PostgREST `or=(subject.ilike…,reference.ilike…)`, jokers LIKE neutralisés, valeur citée),
+    contrairement à la recherche globale du header qui passe par la RPC `search_requests`
+    et `unaccent`. PostgREST ne sait pas appliquer une fonction à la valeur cherchée, et un
+    jumeau JavaScript d'`unaccent` est exclu (migration `20260901130000`) : le jour où cela
+    gêne, la porte est une RPC de liste, pas un repli client. Deux caractères minimum,
+    temporisation de 300 ms.
 
 - **Documents d'instruction et courriers** (2026-09-01, onglet Documents, edge function
   `generate-request-document`, modules purs `supabase/functions/_shared/document/`,
