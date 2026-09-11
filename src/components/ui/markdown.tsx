@@ -42,6 +42,8 @@ function InlineRun({ items }: { items: Inline[] }) {
   );
 }
 
+const LIST_DEPTH_CLASS = ["", "ml-4", "ml-8", "ml-12"] as const;
+
 const HEADING_CLASS = {
   1: "text-[13.5px] font-bold",
   2: "text-[12.5px] font-bold",
@@ -61,8 +63,17 @@ function BlockView({ block }: { block: Block }) {
       return (
         <Tag className={cn("flex flex-col gap-1 pl-4", block.ordered ? "list-decimal" : "list-disc")}>
           {block.items.map((item, i) => (
-            <li key={i} className="leading-relaxed marker:text-muted-foreground">
-              <InlineRun items={item} />
+            // La profondeur vient de l'indentation du texte source : un cran
+            // = une marge de plus, sans ré-imbriquer de listes (un `<ul>` dans
+            // un `<li>` ne dirait rien de plus à l'œil).
+            <li
+              key={i}
+              className={cn(
+                "whitespace-pre-line leading-relaxed marker:text-muted-foreground",
+                LIST_DEPTH_CLASS[Math.min(item.depth, 3)],
+              )}
+            >
+              <InlineRun items={item.content} />
             </li>
           ))}
         </Tag>

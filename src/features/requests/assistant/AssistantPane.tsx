@@ -45,12 +45,25 @@ function ContextChip({ label }: { label: string }) {
 export function AssistantPane({ emptyHint }: { emptyHint: string }) {
   const { thread, draft, setDraft, send, reset, pending, canSend, lastContext, disabled } =
     useAssistantThread();
-  const endRef = React.useRef<HTMLDivElement>(null);
+  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const lastMessageRef = React.useRef<HTMLDivElement>(null);
 
   React.useEffect(() => {
-    // `block: "nearest"` fait défiler le conteneur du fil, pas la page — c'est
-    // ce qui empêche la fiche entière de sauter à chaque réponse.
-    endRef.current?.scrollIntoView({ block: "nearest" });
+    // Le défilement se règle sur le CONTENEUR du fil, jamais par
+    // `scrollIntoView` : celui-ci ferait aussi sauter la fiche entière.
+    const box = scrollRef.current;
+    if (!box) return;
+    const last = thread.messages[thread.messages.length - 1];
+    if (pending || !last || last.role !== "assistant") {
+      // Question envoyée, attente, erreur : on suit le bas du fil.
+      box.scrollTop = box.scrollHeight;
+      return;
+    }
+    // Réponse arrivée : on la lit depuis sa PREMIÈRE ligne (retour PO
+    // 2026-09-19) — son début est calé en haut du fil, pas sa fin en bas.
+    const el = lastMessageRef.current;
+    if (!el) return;
+    box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top;
   }, [thread.messages.length, pending]);
 
   if (disabled) {
@@ -64,7 +77,7 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
       {/* ── La zone qui DÉFILE : amorces, fil, et ce que le serveur a lu ── */}
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
+      <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         {isFresh(thread) ? (
           <div className="flex flex-col gap-2.5">
             <p className="flex items-start gap-2 text-[11.5px] leading-relaxed text-muted-foreground">
@@ -92,7 +105,8 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
         ) : null}
 
         <div className="flex flex-col gap-2.5">
-          {thread.messages.map((message) => {
+          {thread.messages.map((message, index) => {
+            const isLast = index === thread.messages.length - 1;
             if (message.role === "error") {
               return (
                 <p
@@ -107,7 +121,11 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
             }
             const mine = message.role === "user";
             return (
-              <div key={message.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
+              <div
+                key={message.id}
+                ref={isLast ? lastMessageRef : undefined}
+                className={cn("flex", mine ? "justify-end" : "justify-start")}
+              >
                 <div
                   className={cn(
                     "max-w-[88%] rounded-xl px-3 py-2",
@@ -171,7 +189,6 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
         {/* Le repère d'auto-défilement se pose APRÈS les pastilles : elles sont
             le dernier élément du fil, et s'arrêter avant reviendrait à les
             cacher au moment précis où elles renseignent. */}
-        <div ref={endRef} />
       </div>
 
       {/* ── Le SOCLE : insensible au défilement du fil ── */}

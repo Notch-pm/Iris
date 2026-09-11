@@ -319,7 +319,11 @@ note interne → résolution avec texte de clôture → journal.
       fréquentes (dépliables), documents d'aide, liens utiles. Les deux textes sont du
       **Markdown** rendu par `src/lib/markdown.ts` (pur, testé) + `components/ui/markdown.tsx` :
       aucune dépendance, **aucun HTML injecté** — un champ du référentiel ne devient jamais
-      exécutable, et un lien `javascript:` retombe en texte.
+      exécutable, et un lien `javascript:` retombe en texte. Depuis le 2026-09-19, les
+      **listes lisent leur profondeur dans l'indentation** (`ListItem.depth`, 2 à 4 espaces =
+      un cran, plafonné à 3, rendu en marge) et une ligne indentée sans puce est la SUITE de
+      l'élément précédent, pas un paragraphe orphelin — l'assistant IA écrit couramment les
+      deux, et ses puces arrivaient à plat.
     - **Ce qui n'est PAS affiché** : `trainingDocuments` et `aiSources` — la matière de
       l'assistant IA, retirée par la whitelist serveur `parseAgentKnowledge`. Elle est lue
       côté serveur seulement, par `@fn/_shared/ai/knowledge.ts` (`parseAiKnowledge`), que
@@ -333,6 +337,11 @@ note interne → résolution avec texte de clôture → journal.
       TanStack « pour qu'il survive » serait une porte dérobée de persistance.
       ⚠️ `trimForSend` ne renvoie **jamais** un tour en erreur — sinon le modèle relit « Le
       plafond est atteint » comme sa propre réponse et enchaîne dessus.
+      **Défilement** (retour PO 2026-09-19) : une réponse se lit depuis sa PREMIÈRE ligne —
+      son début est calé en haut du fil, jamais sa fin en bas ; on ne suit le bas du fil
+      qu'à l'envoi d'une question, pendant l'attente et sur une erreur. Réglé sur le
+      `scrollTop` du conteneur, jamais par `scrollIntoView` (qui ferait sauter la fiche).
+      La mention « Socle » en haut à droite du panneau Procédure a été retirée le même jour.
     - **Rien n'est stocké** : `useProcedureKnowledge` relit le Socle à chaque visite
       (`socle-proxy /v1/procedures/get`, 5 min de fraîcheur). La base de connaissances
       n'entre pas dans le `procedure_snapshot` — le snapshot fige le *formulaire du dépôt*,

@@ -84,6 +84,22 @@ describe("parseMarkdown", () => {
     expect(ordered.items).toHaveLength(2);
   });
 
+  it("lit la profondeur d'un élément dans son indentation, plafonnée à 3", () => {
+    const blocks = parseMarkdown("- Pièces :\n  - CNI\n    - recto\n\t- verso\n            - trop profond\n- Suite");
+    const list = blocks[0] as Extract<Block, { kind: "list" }>;
+    expect(blocks).toHaveLength(1);
+    expect(list.items.map((i) => i.depth)).toEqual([0, 1, 1, 1, 3, 0]);
+    expect(list.items[1].content).toEqual([{ kind: "text", text: "CNI" }]);
+  });
+
+  it("rattache une ligne indentée sans puce à l'élément précédent", () => {
+    const blocks = parseMarkdown("- Un élément long\n  qui continue\n- Deux\n\nparagraphe");
+    const list = blocks[0] as Extract<Block, { kind: "list" }>;
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0].content).toEqual([{ kind: "text", text: "Un élément long\nqui continue" }]);
+    expect(blocks[1].kind).toBe("paragraph");
+  });
+
   it("changer de type de liste ouvre une nouvelle liste, sans ligne vide", () => {
     const blocks = parseMarkdown("- puce\n1. numéro");
     expect(blocks.map((b) => (b as Extract<Block, { kind: "list" }>).ordered)).toEqual([false, true]);

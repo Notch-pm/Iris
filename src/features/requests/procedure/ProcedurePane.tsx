@@ -134,10 +134,6 @@ export function ProcedurePane({
             {tab === "fiches" ? "Fiches" : "Assistant"}
           </button>
         ))}
-        <span className="flex-1" />
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
-          Socle
-        </span>
       </div>
 
       {context ? (

@@ -24,10 +24,22 @@ export type Inline =
   | { kind: "code"; text: string }
   | { kind: "link"; text: string; href: string };
 
+/**
+ * Un élément de liste et sa PROFONDEUR (0 = premier niveau). L'indentation
+ * du texte source la porte : 2 à 4 espaces = un cran, et ainsi de suite,
+ * plafonnée à 3 — ce que l'assistant IA et les rédacteurs de fiches écrivent
+ * couramment (« - Pièces :\n  - CNI\n  - justificatif »). Une ligne indentée
+ * SANS puce sous un élément en est la suite, pas un nouveau paragraphe.
+ */
+export interface ListItem {
+  content: Inline[];
+  depth: number;
+}
+
 export type Block =
   | { kind: "heading"; level: 1 | 2 | 3; content: Inline[] }
   | { kind: "paragraph"; content: Inline[] }
-  | { kind: "list"; ordered: boolean; items: Inline[][] }
+  | { kind: "list"; ordered: boolean; items: ListItem[] }
   | { kind: "quote"; content: Inline[] }
   | { kind: "rule" };
 
@@ -86,8 +98,15 @@ export function parseInline(source: string): Inline[] {
 }
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
-const BULLET_RE = /^\s*[-*+]\s+(.*)$/;
-const ORDERED_RE = /^\s*\d+[.)]\s+(.*)$/;
+const BULLET_RE = /^(\s*)[-*+]\s+(.*)$/;
+const ORDERED_RE = /^(\s*)\d+[.)]\s+(.*)$/;
+const MAX_LIST_DEPTH = 3;
+
+/** Profondeur d'un élément d'après son indentation (tabulation = 4 espaces). */
+function listDepth(indent: string): number {
+  const width = indent.replace(/\t/g, "    ").length;
+  return Math.min(MAX_LIST_DEPTH, Math.ceil(width / 4));
+}
 const QUOTE_RE = /^\s*>\s?(.*)$/;
 const RULE_RE = /^\s*(-{3,}|\*{3,}|_{3,})\s*$/;
 
@@ -97,7 +116,7 @@ export function parseMarkdown(source: string): Block[] {
 
   let paragraph: string[] = [];
   let quote: string[] = [];
-  let list: { ordered: boolean; items: string[] } | null = null;
+  let list: { ordered: boolean; items: { text: string; depth: number }[] } | null = null;
 
   const flushParagraph = () => {
     if (paragraph.length === 0) return;
@@ -113,7 +132,11 @@ export function parseMarkdown(source: string): Block[] {
   };
   const flushList = () => {
     if (!list) return;
-    blocks.push({ kind: "list", ordered: list.ordered, items: list.items.map(parseInline) });
+    blocks.push({
+      kind: "list",
+      ordered: list.ordered,
+      items: list.items.map((item) => ({ content: parseInline(item.text), depth: item.depth })),
+    });
     list = null;
   };
   const flushAll = () => { flushParagraph(); flushQuote(); flushList(); };
@@ -142,7 +165,17 @@ export function parseMarkdown(source: string): Block[] {
       // Changer de type de liste ferme la précédente.
       if (list && list.ordered !== isOrdered) flushList();
       if (!list) list = { ordered: isOrdered, items: [] };
-      list.items.push((ordered ? ordered[1] : bullet![1]).trim());
+      const match = ordered ?? bullet!;
+      list.items.push({ text: match[2].trim(), depth: listDepth(match[1]) });
+      continue;
+    }
+
+    // Une ligne INDENTÉE sous un élément de liste en est la suite (l'assistant
+    // IA coupe volontiers un élément long sur deux lignes) : la rattacher
+    // plutôt que de fermer la liste et d'ouvrir un paragraphe orphelin.
+    if (list && /^\s+\S/.test(line)) {
+      const last = list.items[list.items.length - 1];
+      last.text = `${last.text}\n${line.trim()}`;
       continue;
     }
 
