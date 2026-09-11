@@ -28,7 +28,7 @@ import {
 } from "@/lib/carto";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
-import { cardAnchor, locationHint, mapCard, spreadByPoint, type LocatedRequest } from "./carte";
+import { cardAnchor, isResolved, locationHint, mapCard, spreadByPoint, type LocatedRequest } from "./carte";
 
 export interface MapMarker {
   item: LocatedRequest;
@@ -43,7 +43,9 @@ const PIN_COLOR: Record<string, string> = {
   basse: "bg-muted-foreground",
 };
 
-export function pinColor(priority: string): string {
+/** Une demande RÉSOLUE est grise, quelle que soit son urgence : elle n'attend plus rien. */
+export function pinColor(priority: string, resolved = false): string {
+  if (resolved) return "bg-muted-foreground/60";
   return PIN_COLOR[priority] ?? "bg-muted-foreground";
 }
 
@@ -254,7 +256,7 @@ export function InterventionMap({
             className={cn(
               "absolute z-10 size-[18px] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background shadow-airbnb-md transition-transform",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-              pinColor(row.priority),
+              pinColor(row.priority, isResolved(row)),
               current && "z-20 scale-[1.35]",
             )}
             aria-label={`${row.reference} — ${row.subject}`}
@@ -377,7 +379,7 @@ function RequestCard({ marker, nameOf, anchor, pinned, onEnter, onLeave, onClose
             <dd className="min-w-0 truncate text-right text-[12px] font-semibold">
               {detail.label === "Urgence" ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <span className={cn("size-2 rounded-full", pinColor(card.priorityKey))} aria-hidden="true" />
+                  <span className={cn("size-2 rounded-full", pinColor(card.priorityKey, card.resolved))} aria-hidden="true" />
                   {detail.value}
                 </span>
               ) : (

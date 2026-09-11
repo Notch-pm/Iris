@@ -9,7 +9,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Check, ChevronDown, Columns3, Layers, List, MapPin } from "lucide-react";
+import { Check, CheckCircle2, ChevronDown, Columns3, Layers, List, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
@@ -28,6 +28,9 @@ import {
   MAP_MAX_ROWS,
   priorityCounts,
   procedureFacets,
+  RECENT_RESOLVED_DAYS,
+  recentResolvedSince,
+  resolvedCount,
   toggleValue,
   type MapFilters,
 } from "./carte";
@@ -40,7 +43,10 @@ export function CartePage() {
   useFullBleedLayout();
   const { current } = useTenant();
   const orgId = current?.organizationId ?? "";
-  const requests = useOpenRequestsForMap(orgId);
+  // Fenêtre des résolues récentes : figée au montage (minuit local, il y a
+  // 30 jours), stable donc pour la clé de requête.
+  const resolvedSince = React.useMemo(() => recentResolvedSince(new Date()), []);
+  const requests = useOpenRequestsForMap(orgId, resolvedSince);
   const members = useTenantMembers(orgId);
   const [filters, setFilters] = React.useState<MapFilters>(EMPTY_MAP_FILTERS);
   const [procMenu, setProcMenu] = React.useState(false);
@@ -60,6 +66,7 @@ export function CartePage() {
 
   const facets = React.useMemo(() => procedureFacets(located), [located]);
   const counts = React.useMemo(() => priorityCounts(located), [located]);
+  const resolved = React.useMemo(() => resolvedCount(located), [located]);
   const visible = React.useMemo(() => filterRequests(located, filters), [located, filters]);
 
   const markers: MapMarker[] = React.useMemo(
@@ -89,7 +96,7 @@ export function CartePage() {
             <p className="text-xs text-muted-foreground">
               {requests.isLoading
                 ? "Chargement des demandes en cours…"
-                : `${markers.length} demande${markers.length > 1 ? "s" : ""} située${markers.length > 1 ? "s" : ""} sur ${located.length} en cours avec un lieu d'intervention`}
+                : `${markers.length} demande${markers.length > 1 ? "s" : ""} située${markers.length > 1 ? "s" : ""} sur ${located.length} avec un lieu d'intervention (en cours, ou résolues depuis moins de ${RECENT_RESOLVED_DAYS} jours)`}
               {unlocated > 0 ? ` · ${unlocated} adresse${unlocated > 1 ? "s" : ""} non localisée${unlocated > 1 ? "s" : ""}` : ""}
               {withoutAddress > 0 ? ` · ${withoutAddress} sans lieu d'intervention` : ""}
               {truncated ? ` · ${MAP_MAX_ROWS} demandes les plus récentes seulement` : ""}
@@ -209,6 +216,26 @@ export function CartePage() {
           ) : null}
 
           <div className="flex-1" />
+
+          {/* Les résolues de moins de 30 jours, en gris — visibles par défaut,
+              débrayables (retour PO 2026-09-19). Le compteur dit combien
+              d'épingles le commutateur ajoute ou retire. */}
+          <button
+            type="button"
+            aria-pressed={filters.showResolved}
+            title={`Demandes résolues depuis moins de ${RECENT_RESOLVED_DAYS} jours, en gris sur la carte`}
+            onClick={() => setFilters((f) => ({ ...f, showResolved: !f.showResolved }))}
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
+              filters.showResolved
+                ? "border-primary/30 bg-primary/[0.07] text-primary"
+                : "border-border bg-background hover:bg-secondary",
+            )}
+          >
+            <CheckCircle2 className="size-3.5" aria-hidden="true" />
+            Voir les demandes résolues récemment
+            <span className="text-[11px] font-bold text-muted-foreground">{resolved}</span>
+          </button>
 
           {/* Option d'AFFICHAGE, pas un filtre : elle ne change pas la
               sélection de demandes, seulement ce qu'on voit sous elles.

@@ -19,31 +19,43 @@ import {
   type BatchAddress,
   type GeoPoint,
 } from "@/lib/carto";
-import { geocodeBatchPlan, MAP_MAX_ROWS, OPEN_STATUSES, type MapRequestRow } from "./carte";
+import {
+  geocodeBatchPlan,
+  MAP_MAX_ROWS,
+  OPEN_STATUSES,
+  RESOLVED_STATUSES,
+  type MapRequestRow,
+} from "./carte";
 
 // `procedure_snapshot->form_schema` : le snapshot entier (base de connaissances,
 // config demandeur) pèserait lourd × 500 demandes, pour rien ici.
 const MAP_SELECT =
   "id, reference, subject, status, priority, socle_procedure_id, socle_procedure_label, " +
-  "socle_category_label, socle_organization_label, assigned_to, received_at, identity_status, " +
+  "socle_category_label, socle_organization_label, assigned_to, received_at, closed_at, identity_status, " +
   "requester_snapshot, form_data, form_schema:procedure_snapshot->form_schema";
 
 export interface MapRequestsResult {
   rows: MapRequestRow[];
-  /** Total des demandes en cours (au-delà du plafond chargé, s'il y a lieu). */
+  /** Total des demandes retenues (au-delà du plafond chargé, s'il y a lieu). */
   total: number;
 }
 
-export function useOpenRequestsForMap(orgId: string) {
+/**
+ * Les demandes EN COURS, plus celles RÉSOLUES depuis `resolvedSince` (ISO,
+ * stable sur la journée — il entre dans la clé de requête). Le RLS borne.
+ */
+export function useOpenRequestsForMap(orgId: string, resolvedSince: string) {
   return useQuery({
-    queryKey: ["requests-map", orgId],
+    queryKey: ["requests-map", orgId, resolvedSince],
     enabled: Boolean(orgId),
     queryFn: async (): Promise<MapRequestsResult> => {
+      const open = OPEN_STATUSES.join(",");
+      const resolved = RESOLVED_STATUSES.join(",");
       const { data, error, count } = await supabase
         .from("requests")
         .select(MAP_SELECT, { count: "exact" })
         .eq("organization_id", orgId)
-        .in("status", [...OPEN_STATUSES])
+        .or(`status.in.(${open}),and(status.in.(${resolved}),closed_at.gte.${resolvedSince})`)
         .order("received_at", { ascending: false })
         .limit(MAP_MAX_ROWS);
       if (error) throw error;

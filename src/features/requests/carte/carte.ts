@@ -17,6 +17,24 @@ export { OPEN_STATUSES } from "../statuts";
 /** Plafond de demandes chargées : une carte au-delà n'est plus lisible. */
 export const MAP_MAX_ROWS = 500;
 
+/**
+ * Les demandes RÉSOLUES récemment restent sur la carte (retour PO 2026-09-19) :
+ * une intervention faite la semaine dernière éclaire celles qui restent à
+ * faire à côté. Résolue = issue positive ou négative ; une annulation n'a pas
+ * eu lieu, elle ne figure pas. Fenêtre : 30 jours depuis la clôture.
+ */
+export const RESOLVED_STATUSES = ["resolue_positive", "resolue_negative"] as const;
+export const RECENT_RESOLVED_DAYS = 30;
+
+/** Borne basse ISO (minuit local, il y a 30 jours) — stable sur la journée. */
+export function recentResolvedSince(now: Date, days = RECENT_RESOLVED_DAYS): string {
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate() - days).toISOString();
+}
+
+export function isResolved(row: { status: string }): boolean {
+  return (RESOLVED_STATUSES as readonly string[]).includes(row.status);
+}
+
 export interface MapRequestRow {
   id: string;
   reference: string;
@@ -29,6 +47,8 @@ export interface MapRequestRow {
   socle_organization_label: string | null;
   assigned_to: string | null;
   received_at: string;
+  /** Date de clôture (posée par la garde serveur) — renseignée sur une résolue. */
+  closed_at: string | null;
   identity_status: string;
   requester_snapshot: unknown;
   form_data: unknown;
@@ -118,9 +138,11 @@ export interface MapFilters {
   procedures: string[];
   /** Urgences retenues — vide = toutes. */
   priorities: string[];
+  /** Montrer les demandes résolues récemment (épingles grises) — vrai par défaut. */
+  showResolved: boolean;
 }
 
-export const EMPTY_MAP_FILTERS: MapFilters = { procedures: [], priorities: [] };
+export const EMPTY_MAP_FILTERS: MapFilters = { procedures: [], priorities: [], showResolved: true };
 
 export function procedureKey(row: MapRequestRow): string {
   return row.socle_procedure_id ?? NO_PROCEDURE;
@@ -131,9 +153,15 @@ export function filterRequests(located: LocatedRequest[], filters: MapFilters): 
   const priorities = new Set(filters.priorities);
   return located.filter(
     (item) =>
+      (filters.showResolved || !isResolved(item.row)) &&
       (procedures.size === 0 || procedures.has(procedureKey(item.row))) &&
       (priorities.size === 0 || priorities.has(item.row.priority)),
   );
+}
+
+/** Demandes résolues récemment parmi les situables (le compteur du commutateur). */
+export function resolvedCount(located: LocatedRequest[]): number {
+  return located.filter((item) => isResolved(item.row)).length;
 }
 
 export interface CountedOption {
@@ -161,10 +189,15 @@ export function procedureFacets(located: LocatedRequest[]): CountedOption[] {
   return [...counts.values()].sort((a, b) => a.label.localeCompare(b.label, "fr", { sensitivity: "base" }));
 }
 
-/** Volume par urgence parmi les demandes situées (pour la légende filtrante). */
+/**
+ * Volume par urgence parmi les demandes situées EN COURS (pour la légende
+ * filtrante). Les résolues n'y entrent pas : elles sont grises sur la carte,
+ * les compter sous une couleur d'urgence ferait mentir la légende.
+ */
 export function priorityCounts(located: LocatedRequest[]): Record<string, number> {
   const counts: Record<string, number> = {};
   for (const item of located) {
+    if (isResolved(item.row)) continue;
     counts[item.row.priority] = (counts[item.row.priority] ?? 0) + 1;
   }
   return counts;
@@ -278,6 +311,8 @@ export interface MapCard {
   subject: string;
   status: string;
   priorityKey: string;
+  /** Résolue récemment : épingle et point grisés. */
+  resolved: boolean;
   priorityLabel: string;
   usager: string;
   address: string[];
@@ -299,6 +334,7 @@ export function mapCard(item: LocatedRequest, agentName: string | null): MapCard
     subject: row.subject,
     status: row.status,
     priorityKey: row.priority,
+    resolved: isResolved(row),
     priorityLabel: priority.label,
     usager: identity.name,
     address: [...item.lieu.lines, ...item.lieu.details.map((d) => `${d.label} : ${d.value}`)],

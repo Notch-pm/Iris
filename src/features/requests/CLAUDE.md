@@ -470,6 +470,15 @@ note interne → résolution avec texte de clôture → journal.
     Recadrage automatique à l'arrivée des points et à chaque changement de filtre.
   - **Filtres** : démarches en **multi-sélection** (menu à cases, volumes) et urgences en
     pastilles colorées — la légende EST le filtre, puisque la couleur porte l'urgence.
+  - **Résolues récemment** (retour PO 2026-09-19) : la carte charge aussi les demandes
+    **résolues** (`resolue_positive` / `resolue_negative` — jamais une annulée, qui n'a pas
+    eu lieu) dont `closed_at` a moins de **30 jours** (`RESOLVED_STATUSES`,
+    `recentResolvedSince`, requête `.or(...)` de `useOpenRequestsForMap`, borne figée au
+    montage et dans la clé). Elles sont **grises** (`pinColor(priority, resolved)`), visibles
+    par défaut, débrayables par le commutateur « Voir les demandes résolues récemment »
+    (`filters.showResolved`, compteur `resolvedCount`). Elles **n'entrent pas dans la légende
+    des urgences** (`priorityCounts` les saute) : compter une résolue sous une couleur
+    d'urgence ferait mentir la légende, puisque son épingle est grise.
   - **Quartiers** (2026-08-28) : le découpage du territoire se superpose aux épingles,
     chaque quartier tracé et **nommé en son centre** à la couleur du référentiel
     (`QuartierLayer`, brique partagée avec la carte du champ d'adresse). Bascule

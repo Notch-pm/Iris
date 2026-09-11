@@ -3,9 +3,13 @@ import {
   addressKey,
   cardAnchor,
   distinctAddresses,
+  EMPTY_MAP_FILTERS,
   filterRequests,
   geocodeBatchPlan,
+  isResolved,
   locatableRequests,
+  recentResolvedSince,
+  resolvedCount,
   locationHint,
   mapCard,
   NO_PROCEDURE,
@@ -47,6 +51,7 @@ function row(over: Partial<MapRequestRow> = {}): MapRequestRow {
     socle_organization_label: "Services techniques",
     assigned_to: null,
     received_at: "2026-08-21T09:00:00Z",
+    closed_at: null,
     identity_status: "rapprochee",
     requester_snapshot: { declared: { display_name: "Marie Durand" } },
     form_data: {
@@ -138,23 +143,50 @@ describe("filterRequests", () => {
   ]);
 
   it("ne filtre rien quand aucune valeur n'est retenue", () => {
-    expect(filterRequests(located, { procedures: [], priorities: [] })).toHaveLength(3);
+    expect(filterRequests(located, { showResolved: true, procedures: [], priorities: [] })).toHaveLength(3);
   });
   it("combine démarches (multi) et urgences (multi)", () => {
     expect(
-      filterRequests(located, { procedures: ["proc-voirie", "proc-eclairage"], priorities: [] })
+      filterRequests(located, { showResolved: true, procedures: ["proc-voirie", "proc-eclairage"], priorities: [] })
         .map((l) => l.row.id),
     ).toEqual(["r1", "r2"]);
     expect(
-      filterRequests(located, { procedures: [], priorities: ["urgente", "basse"] }).map((l) => l.row.id),
+      filterRequests(located, { showResolved: true, procedures: [], priorities: ["urgente", "basse"] }).map((l) => l.row.id),
     ).toEqual(["r2", "r3"]);
     expect(
-      filterRequests(located, { procedures: ["proc-voirie"], priorities: ["urgente"] }),
+      filterRequests(located, { showResolved: true, procedures: ["proc-voirie"], priorities: ["urgente"] }),
     ).toEqual([]);
   });
   it("range les demandes historiques sans démarche sous une valeur propre", () => {
-    expect(filterRequests(located, { procedures: [NO_PROCEDURE], priorities: [] }).map((l) => l.row.id))
+    expect(filterRequests(located, { showResolved: true, procedures: [NO_PROCEDURE], priorities: [] }).map((l) => l.row.id))
       .toEqual(["r3"]);
+  });
+});
+
+describe("demandes résolues récemment sur la carte", () => {
+  const located = locatableRequests([
+    row({ id: "open", status: "en_instruction", priority: "urgente" }),
+    row({ id: "done", status: "resolue_positive", priority: "urgente", closed_at: "2026-09-10T10:00:00Z" }),
+    row({ id: "refused", status: "resolue_negative", priority: "basse", closed_at: "2026-09-12T10:00:00Z" }),
+  ]).located;
+
+  it("les montre par défaut, et les retire quand le commutateur est éteint", () => {
+    expect(filterRequests(located, EMPTY_MAP_FILTERS).map((l) => l.row.id)).toEqual(["open", "done", "refused"]);
+    expect(filterRequests(located, { ...EMPTY_MAP_FILTERS, showResolved: false }).map((l) => l.row.id))
+      .toEqual(["open"]);
+  });
+  it("les compte pour le commutateur, mais pas dans la légende des urgences", () => {
+    expect(resolvedCount(located)).toBe(2);
+    expect(priorityCounts(located)).toEqual({ urgente: 1 });
+  });
+  it("reconnaît une résolue, jamais une annulée", () => {
+    expect(isResolved({ status: "resolue_negative" })).toBe(true);
+    expect(isResolved({ status: "annulee" })).toBe(false);
+    expect(isResolved({ status: "archivee" })).toBe(false);
+  });
+  it("borne la fenêtre à minuit local, 30 jours en arrière", () => {
+    const since = new Date(recentResolvedSince(new Date(2026, 8, 19, 15, 30)));
+    expect([since.getFullYear(), since.getMonth(), since.getDate(), since.getHours()]).toEqual([2026, 7, 20, 0]);
   });
 });
 
