@@ -460,6 +460,13 @@ note interne → résolution avec texte de clôture → journal.
     adresse, usager, dépôt, urgence, démarche, catégorie, destinataire, agent instructeur,
     « Ouvrir la fiche »), clic = fiche épinglée, Échap ferme. Déplacement à la souris, zoom
     molette (listener non passif — sinon la roue est ignorée) et boutons, « Recadrer ».
+    **Molette** (retour PO 2026-09-19, `wheelSteps` / `wheelDeltaPixels` / `zoomAround` dans
+    `carto.ts`, purs et testés) : **un cran par 100 px de défilement cumulés** — un pavé
+    tactile envoie des dizaines de micro-événements par geste et chacun valait un niveau
+    entier, d'où des sauts de 3 ou 4 niveaux — et le zoom se fait **autour du curseur** :
+    le point géographique sous la souris y reste. Le zoom reste entier (les tuiles OSM
+    n'existent qu'à des niveaux entiers) ; un zoom fractionnaire demanderait de mettre la
+    mosaïque à l'échelle entre deux niveaux — pas fait.
     Recadrage automatique à l'arrivée des points et à chaque changement de filtre.
   - **Filtres** : démarches en **multi-sélection** (menu à cases, volumes) et urgences en
     pastilles colorées — la légende EST le filtre, puisque la couleur porte l'urgence.

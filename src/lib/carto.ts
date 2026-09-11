@@ -188,6 +188,54 @@ export function panView(view: MapView, dx: number, dy: number): LatLon {
   return worldPixelToLatLon(center.x - dx, center.y - dy, view.zoom);
 }
 
+/**
+ * Nouveau centre pour passer à `zoom` en gardant SOUS LE CURSEUR le point
+ * géographique qui s'y trouvait (cursor = pixels depuis le coin haut-gauche
+ * du conteneur). C'est ce qui rend la molette pilotable : on zoome sur ce
+ * qu'on regarde, pas sur le centre de l'écran (retour PO 2026-09-19).
+ */
+export function zoomAround(
+  view: MapView,
+  zoom: number,
+  cursor: { x: number; y: number },
+): { lat: number; lon: number; zoom: number } {
+  const next = clampZoom(zoom);
+  if (next === view.zoom) return { lat: view.lat, lon: view.lon, zoom: view.zoom };
+  const dx = cursor.x - view.width / 2;
+  const dy = cursor.y - view.height / 2;
+  const center = worldPixel(view.lat, view.lon, view.zoom);
+  const underCursor = worldPixelToLatLon(center.x + dx, center.y + dy, view.zoom);
+  const target = worldPixel(underCursor.lat, underCursor.lon, next);
+  const moved = worldPixelToLatLon(target.x - dx, target.y - dy, next);
+  return { lat: moved.lat, lon: moved.lon, zoom: next };
+}
+
+/**
+ * Molette : UN cran de zoom par `WHEEL_STEP` pixels de défilement, cumulés.
+ * Une souris classique envoie ±100 par cran (un cran = un niveau) ; un pavé
+ * tactile envoie des dizaines de petits événements par geste — traités un par
+ * un, chacun valait un niveau entier, d'où des sauts de 3 ou 4 niveaux.
+ */
+export const WHEEL_STEP = 100;
+
+/** Cumul du défilement ; rend les crans franchis (négatif = zoom avant) et le reste. */
+export function wheelSteps(
+  accumulated: number,
+  deltaY: number,
+  step = WHEEL_STEP,
+): { steps: number; rest: number } {
+  const total = accumulated + deltaY;
+  const steps = Math.trunc(total / step) || 0;   // `|| 0` : jamais −0
+  return { steps, rest: total - steps * step };
+}
+
+/** Normalise `deltaY` selon `deltaMode` (0 = pixels, 1 = lignes, 2 = pages). */
+export function wheelDeltaPixels(deltaY: number, deltaMode: number): number {
+  if (deltaMode === 1) return deltaY * 16;
+  if (deltaMode === 2) return deltaY * 100;
+  return deltaY;
+}
+
 /** Boîte englobante géographique — les quatre bords, rien d'autre. */
 export interface GeoBounds {
   south: number;

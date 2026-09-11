@@ -15,6 +15,9 @@ import { QuartierLayer } from "@/components/map/QuartierLayer";
 import { quartiersBounds, type QuartierShape } from "@/lib/quartiers";
 import {
   clampZoom,
+  wheelDeltaPixels,
+  wheelSteps,
+  zoomAround,
   fitAround,
   fitBounds,
   fitBox,
@@ -88,6 +91,8 @@ export function InterventionMap({
   const [pinned, setPinned] = React.useState(false);
   const closeTimer = React.useRef<number | undefined>(undefined);
   const drag = React.useRef<{ x: number; y: number; moved: boolean } | null>(null);
+  /** Défilement de molette cumulé, en attente du prochain cran. */
+  const wheelAcc = React.useRef(0);
 
   // Étendue du territoire — calculée que les limites soient dessinées ou non :
   // basculer leur affichage ne doit pas déplacer la carte.
@@ -136,9 +141,21 @@ export function InterventionMap({
   React.useEffect(() => {
     const element = ref.current;
     if (!element) return;
+    // Un cran par WHEEL_STEP pixels cumulés (un pavé tactile envoie des
+    // dizaines de micro-événements par geste), et le zoom se fait AUTOUR DU
+    // CURSEUR : ce qu'on regarde reste sous la souris (retour PO 2026-09-19).
     const onWheel = (event: WheelEvent) => {
       event.preventDefault();
-      setCenter((c) => (c ? { ...c, zoom: clampZoom(c.zoom + (event.deltaY < 0 ? 1 : -1)) } : c));
+      const { steps, rest } = wheelSteps(wheelAcc.current, wheelDeltaPixels(event.deltaY, event.deltaMode));
+      wheelAcc.current = rest;
+      if (steps === 0) return;
+      const rect = element.getBoundingClientRect();
+      const cursor = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+      setCenter((c) =>
+        c
+          ? zoomAround({ ...c, width: rect.width, height: rect.height }, c.zoom - steps, cursor)
+          : c,
+      );
     };
     element.addEventListener("wheel", onWheel, { passive: false });
     return () => element.removeEventListener("wheel", onWheel);

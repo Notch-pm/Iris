@@ -23,8 +23,11 @@ import {
   parseGeocodeResponse,
   readCartoConfig,
   TILE_SIZE,
+  wheelDeltaPixels,
+  wheelSteps,
   worldPixel,
   worldPixelToLatLon,
+  zoomAround,
   zoomForPrecision,
 } from "./carto";
 
@@ -191,6 +194,62 @@ describe("worldPixelToLatLon", () => {
     const back = worldPixelToLatLon(x, y, 15);
     expect(back.lat).toBeCloseTo(LAT, 6);
     expect(back.lon).toBeCloseTo(LON, 6);
+  });
+});
+
+describe("zoomAround — le point sous le curseur ne bouge pas", () => {
+  const view = { lat: LAT, lon: LON, zoom: 15, width: 800, height: 400 };
+
+  it("garde sous le curseur le point qui s'y trouvait, en avant comme en arrière", () => {
+    const cursor = { x: 650, y: 90 };
+    const before = worldPixelToLatLon(
+      worldPixel(LAT, LON, 15).x + (cursor.x - 400),
+      worldPixel(LAT, LON, 15).y + (cursor.y - 200),
+      15,
+    );
+    for (const zoom of [16, 13]) {
+      const next = zoomAround(view, zoom, cursor);
+      expect(next.zoom).toBe(zoom);
+      const after = markerPosition(before, { ...next, width: 800, height: 400 });
+      expect(after.left).toBeCloseTo(cursor.x, 6);
+      expect(after.top).toBeCloseTo(cursor.y, 6);
+    }
+  });
+  it("au centre du conteneur, c'est un zoom ordinaire : le centre ne bouge pas", () => {
+    const next = zoomAround(view, 16, { x: 400, y: 200 });
+    expect(next.lat).toBeCloseTo(LAT, 9);
+    expect(next.lon).toBeCloseTo(LON, 9);
+  });
+  it("respecte les bornes et ne bouge pas si le zoom ne change pas", () => {
+    expect(zoomAround(view, 99, { x: 0, y: 0 }).zoom).toBe(MAX_ZOOM);
+    expect(zoomAround(view, 15, { x: 0, y: 0 })).toEqual({ lat: LAT, lon: LON, zoom: 15 });
+  });
+});
+
+describe("molette — un cran par WHEEL_STEP pixels cumulés", () => {
+  it("une souris classique : un cran par événement de ±100", () => {
+    expect(wheelSteps(0, -100)).toEqual({ steps: -1, rest: 0 });
+    expect(wheelSteps(0, 100)).toEqual({ steps: 1, rest: 0 });
+  });
+  it("un pavé tactile : les micro-événements s'additionnent, sans saut", () => {
+    let acc = 0;
+    let steps = 0;
+    for (let i = 0; i < 12; i++) {
+      const r = wheelSteps(acc, -30);
+      acc = r.rest;
+      steps += r.steps;
+    }
+    expect(steps).toBe(-3);       // 360 px de défilement = 3 crans, pas 12
+    expect(acc).toBeCloseTo(-60);
+  });
+  it("un changement de sens repart du cumul, pas d'un cran entier", () => {
+    const r = wheelSteps(-60, 40);
+    expect(r).toEqual({ steps: 0, rest: -20 });
+  });
+  it("normalise les lignes et les pages en pixels", () => {
+    expect(wheelDeltaPixels(3, 1)).toBe(48);
+    expect(wheelDeltaPixels(1, 2)).toBe(100);
+    expect(wheelDeltaPixels(-53, 0)).toBe(-53);
   });
 });
 
