@@ -263,8 +263,10 @@ export function EchangesPane({
         </span>
       </div>
 
-      {/* ── Le fil : chaque envoi, puis le composeur comme DERNIER message ── */}
-      <div className="flex flex-col">
+      {/* ── Le fil : chaque envoi, puis le composeur comme DERNIER message ──
+          `pl-1` : la place du cercle de 3 px autour de l'avatar du composeur,
+          que le bord du panneau défilant rognerait sinon. */}
+      <div className="flex flex-col pl-1">
         {ordered.map((mail) => {
           const who = memberName(members, mail.sent_by);
           return (
@@ -483,7 +485,9 @@ function ThreadItem({ initials: letters, meta, children, last = false, ring = fa
 }) {
   return (
     <div className="flex items-stretch gap-3.5">
-      <div className="flex w-9 shrink-0 flex-col items-center">
+      {/* Gouttière à la largeur de l'avatar (40 px) : plus étroite, le rond
+          débordait à gauche et le panneau défilant le rognait. */}
+      <div className="flex w-10 shrink-0 flex-col items-center">
         <Avatar
           initials={letters}
           size="lg"
