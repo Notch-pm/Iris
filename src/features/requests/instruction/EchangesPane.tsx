@@ -264,9 +264,10 @@ export function EchangesPane({
       </div>
 
       {/* ── Le fil : chaque envoi, puis le composeur comme DERNIER message ──
-          `pl-1` : la place du cercle de 3 px autour de l'avatar du composeur,
-          que le bord du panneau défilant rognerait sinon. */}
-      <div className="flex flex-col pl-1">
+          `pl-1` : la place du cercle de 3 px autour de l'avatar du composeur ;
+          `pb-3` : celle de la bordure basse et de l'ombre du composeur — le
+          bord du panneau défilant rognait l'une et l'autre. */}
+      <div className="flex flex-col pb-3 pl-1">
         {ordered.map((mail) => {
           const who = memberName(members, mail.sent_by);
           return (
