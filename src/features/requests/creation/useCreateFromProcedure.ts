@@ -14,6 +14,7 @@ import {
   type FormValues,
   type RequesterSubmission,
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
+import type { ConsentKind } from "@fn/_shared/consents/catalog";
 import { discardUploads, stageFile } from "../uploads";
 
 export interface CreateFromProcedureInput {
@@ -29,6 +30,13 @@ export interface CreateFromProcedureInput {
   values: FormValues;
   /** Fichiers choisis, par id de champ pièce. */
   files: Record<string, File[]>;
+  /**
+   * Consentements RGPD recueillis au dépôt — `kind` et `granted` SEULEMENT.
+   * Le libellé consigné est recomposé côté serveur depuis le catalogue et le
+   * nom de l'organisme principal : l'envoyer d'ici permettrait à un client de
+   * faire signer autre chose que ce qui a été lu.
+   */
+  consents: { kind: ConsentKind; granted: boolean }[];
 }
 
 export function useCreateFromProcedure() {
@@ -65,6 +73,7 @@ export function useCreateFromProcedure() {
             socle_organization_id: input.destinationId,
             requester: input.requester,
             form_values: input.values,
+            consents: input.consents,
             attachments,
           },
         );

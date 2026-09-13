@@ -10,6 +10,12 @@ import { cn } from "@/lib/utils";
 import type { FacetOption } from "@/features/requests/facets";
 import type { RequesterResolution } from "@/features/contacts/rapprochement";
 import type { FormValues } from "@fn/create-request-from-procedure/_shared/procedureForm";
+import {
+  CONSENTS,
+  consentsSatisfied,
+  consentStatement,
+  type ConsentKind,
+} from "@fn/_shared/consents/catalog";
 import { PRIORITY_LABELS } from "../statuts";
 import { activeFields, fieldIsRequired } from "./fiche";
 import { displayFieldValue, requesterRows, type CreationStep, type LinkedRequests, type LoadedProcedure } from "./model";
@@ -31,6 +37,11 @@ interface Props {
   onDismissDup: () => void;
   linked: LinkedRequests;
   onToggleLink: (id: string, reference: string) => void;
+  /** Réponses aux consentements RGPD — état d'écran, la garde vit au serveur. */
+  consents: Record<ConsentKind, boolean>;
+  onToggleConsent: (kind: ConsentKind, granted: boolean) => void;
+  /** Organisme principal, interpolé dans le libellé du consentement au partage. */
+  organismName: string | null;
   onEdit: (step: CreationStep) => void;
   now: Date;
 }
@@ -77,9 +88,71 @@ function Group({ title, onEdit, rows, children }: {
   );
 }
 
+/**
+ * Consentements RGPD — les DEUX questions posées à l'usager, à chaque dépôt,
+ * quelle que soit la démarche.
+ *
+ * Elles ne sont pas dans `form_schema` et ne le seront pas : un consentement
+ * qu'un service pourrait décocher dans son paramétrage ne vaudrait rien. Le
+ * catalogue est fermé (`@fn/_shared/consents/catalog`), partagé avec les edge
+ * functions, et c'est le SERVEUR qui recompose la phrase consignée — l'écran
+ * l'affiche ici à l'identique pour que l'agent lise à l'usager exactement ce
+ * qui sera enregistré.
+ *
+ * Sa place est au récapitulatif : c'est le moment du dépôt, pas celui de la
+ * saisie. L'obligatoire ferme les boutons de création tant qu'il n'est pas
+ * coché (reflet — la garde est dans `create-request-from-procedure`).
+ */
+function ConsentGroup({ consents, onToggle, organismName }: {
+  consents: Record<ConsentKind, boolean>;
+  onToggle: (kind: ConsentKind, granted: boolean) => void;
+  organismName: string | null;
+}) {
+  const missing = !consentsSatisfied(consents);
+  return (
+    <section className="flex flex-col gap-3 rounded-[14px] border border-border bg-card px-[18px] py-4 shadow-airbnb-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h4 className="text-sm font-bold">Consentements de l'usager</h4>
+        <span className="text-[11px] font-semibold text-muted-foreground">
+          À lire à l'usager — enregistrés au référentiel
+        </span>
+      </div>
+      {CONSENTS.map((def) => (
+        <label
+          key={def.kind}
+          className="flex items-start gap-2.5 rounded-[10px] border border-border bg-muted/30 p-3"
+        >
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 rounded border-input text-primary"
+            checked={consents[def.kind] === true}
+            onChange={(e) => onToggle(def.kind, e.target.checked)}
+          />
+          <span className="flex flex-col gap-0.5">
+            <span className="text-[13px] font-semibold leading-relaxed">
+              {consentStatement(def.kind, organismName)}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {def.required
+                ? "Obligatoire — sans ce consentement, la demande ne peut pas être déposée."
+                : "Facultatif — l'usager peut le refuser sans conséquence sur sa demande."}
+            </span>
+          </span>
+        </label>
+      ))}
+      {missing ? (
+        <p role="alert" className="text-sm font-semibold text-destructive">
+          Le consentement au traitement des informations est obligatoire pour valider le dépôt.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 export function RequestSummary({
   procedure, categoryLabel, destination, channelLabel, priority, subject, body, resolution,
-  values, files, duplicates, dupDismissed, onDismissDup, linked, onToggleLink, onEdit, now,
+  values, files, duplicates, dupDismissed, onDismissDup, linked, onToggleLink,
+  consents, onToggleConsent, organismName, onEdit, now,
 }: Props) {
   const topDup = duplicates[0];
   const showBanner = !dupDismissed && duplicates.length > 0 && topDup !== undefined;
@@ -176,6 +249,12 @@ export function RequestSummary({
           <p className="text-sm text-muted-foreground">Cette démarche n'a pas de formulaire.</p>
         ) : null}
       </Group>
+
+      <ConsentGroup
+        consents={consents}
+        onToggle={onToggleConsent}
+        organismName={organismName}
+      />
 
       {linkedCount > 0 ? (
         <p className="text-sm text-muted-foreground">

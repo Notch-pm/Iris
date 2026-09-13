@@ -42,6 +42,7 @@ import {
   hasStrongMatch,
   matchIdentityFromDeclared,
 } from "../_shared/identity/declared.ts";
+import { normalizeConsents, type ConsentRecord } from "../_shared/consents/catalog.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -216,6 +217,8 @@ interface AuthContext {
   sourceCode: string;
   organizationId: string;  // tenant Iris (organizations.id)
   socleRootOrgId: string;  // UUID Socle de la racine du tenant
+  /** Nom de l'organisme principal — interpolé dans le libellé du consentement au partage. */
+  organismName: string | null;
   scopes: string[];
 }
 
@@ -230,7 +233,7 @@ async function authenticate(req: Request): Promise<AuthContext | Response> {
     .select(
       "id, scopes, expires_at, revoked_at, " +
       "source:integration_sources!inner(id, code, status, organization_id, " +
-      "organization:organizations!inner(id, socle_org_id))",
+      "organization:organizations!inner(id, socle_org_id, name))",
     )
     .eq("key_hash", keyHash)
     .maybeSingle();
@@ -258,6 +261,7 @@ async function authenticate(req: Request): Promise<AuthContext | Response> {
     sourceCode: source.code,
     organizationId: source.organization_id,
     socleRootOrgId: source.organization.socle_org_id,
+    organismName: (source.organization.name as string | null) ?? null,
     scopes: data.scopes as string[],
   };
 }
@@ -594,6 +598,42 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
   const requester = await resolveRequester(env, auth.socleRootOrgId);
   if (requester.anomaly) anomalies.push({ code: requester.anomaly });
 
+  // Consentements RGPD. FACULTATIFS ici, à la différence du guichet — le
+  // contrat 2.x n'évolue qu'en additif, et les exiger casserait toutes les
+  // intégrations en place. Absents, la demande le DIT (anomalie) au lieu de
+  // laisser croire que la question a été posée. Présents, ils sont validés
+  // comme au guichet : catalogue fermé, libellé recomposé côté serveur.
+  let consents: ConsentRecord[] = [];
+  if (env.consents === undefined) {
+    anomalies.push({ code: "consentement_absent" });
+  } else {
+    const check = normalizeConsents(env.consents, auth.organismName);
+    if (!check.ok) return fail("bad_request", check.message);
+    consents = check.consents;
+  }
+
+  // Le consentement d'une PERSONNE appartient au référentiel. `source_app` est
+  // le code de l'ÉMETTEUR (`nora`, un partenaire…) et non « iris » : c'est lui
+  // qui a affiché la case et recueilli la réponse — Iris n'a fait que la
+  // transporter. `external_id` porte l'idempotence : un rejeu du même dépôt met
+  // la ligne à jour au lieu d'en créer une seconde.
+  // Jamais un refus (doctrine de l'ingestion) : la demande porte déjà la preuve.
+  if (consents.length > 0 && requester.socleContactId) {
+    const res = await socleContactsFetch(
+      `/v1/contacts/${requester.socleContactId}/consents`,
+      auth.socleRootOrgId,
+      {
+        source_app: auth.sourceCode,
+        source_reference: env.external_id,
+        consents: consents.map((c) => ({ kind: c.kind, granted: c.granted, statement: c.statement })),
+      },
+    );
+    if (!res?.ok) {
+      console.error("requests-api: consentements non transmis au Socle", res?.status ?? "réseau");
+      anomalies.push({ code: "consentement_non_transmis_au_socle" });
+    }
+  }
+
   // Permaliens du partenaire : Iris les stocke tels quels — mais seulement
   // ceux qui ont un sens depuis le navigateur d'un agent. Un `localhost` vient
   // d'une edge function de partenaire configurée sur un poste de dev : cliqué
@@ -627,6 +667,7 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
       body: env.body ?? null,
       form_data: env.form_data ?? {},
       anomalies,
+      consents,
       idempotency_key: env.idempotency_key ?? null,
       ingest_fingerprint: fingerprint,
     })

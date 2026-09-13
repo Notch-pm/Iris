@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fingerprintPayload,
   slugifyFileName,
   validateAttachmentList,
   validateEnvelope,
@@ -129,5 +130,30 @@ describe("validateAttachmentList", () => {
 describe("slugifyFileName (ré-exporté depuis _shared/files/names)", () => {
   it("reste disponible pour les appelants historiques", () => {
     expect(slugifyFileName("Pièce jointe n°1.pdf")).toBe("Piece-jointe-n-1.pdf");
+  });
+});
+
+describe("enveloppe — consentements RGPD", () => {
+  const consents = [{ kind: "traitement", granted: true }, { kind: "partage", granted: false }];
+
+  it("les accepte, et les accepte tout autant ABSENTS (évolution additive du contrat 2.x)", () => {
+    const avec = validateEnvelope({ ...valid, consents });
+    expect(avec.ok).toBe(true);
+    if (avec.ok) expect(avec.value.consents).toEqual(consents);
+    // Une intégration écrite avant la 2.2.0 doit continuer de passer.
+    const sans = validateEnvelope(valid);
+    expect(sans.ok).toBe(true);
+    if (sans.ok) expect(sans.value.consents).toBeUndefined();
+  });
+
+  it("entrent dans l'empreinte : rejouer un dépôt en changeant une réponse est un CONFLIT", () => {
+    const a = fingerprintPayload({ ...valid, consents } as never);
+    const b = fingerprintPayload({
+      ...valid,
+      consents: [{ kind: "traitement", granted: true }, { kind: "partage", granted: true }],
+    } as never);
+    expect(JSON.stringify(a)).not.toBe(JSON.stringify(b));
+    // Le même dépôt rejoué à l'identique garde la même empreinte.
+    expect(JSON.stringify(fingerprintPayload({ ...valid, consents } as never))).toBe(JSON.stringify(a));
   });
 });

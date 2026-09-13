@@ -1,7 +1,8 @@
 // Sanitisation des réponses Socle avant transmission au navigateur —
 // WHITELIST STRICTE (tolérante aux champs inconnus : tout ce qui n'est pas
-// listé est ignoré). internal_notes, consentements et relations ne sont
-// JAMAIS transmis. Logique pure, testée par vitest.
+// listé est ignoré). internal_notes et relations ne sont JAMAIS transmis ;
+// les consentements RGPD, eux, le sont depuis le 2026-09-20 (Iris les recueille
+// à chaque dépôt, cf. `sanitizeContact`). Logique pure, testée par vitest.
 
 // deno-lint-ignore-file no-explicit-any
 
@@ -18,14 +19,49 @@ import {
   type ProcedureStatus,
 } from "../../_shared/procedures/publication.ts";
 
-/** Champs d'une fiche usager transmis aux agents Iris. */
+/**
+ * Champs d'une fiche usager transmis aux agents Iris.
+ *
+ * ⚠️ Les consentements RGPD (`consent_traitement`, `consent_partage`, leurs
+ * dates et l'historique `consents`) franchissent la frontière DEPUIS le
+ * 2026-09-20, et c'est un changement de doctrine délibéré : Iris pose lui-même
+ * ces deux questions à chaque dépôt, un agent doit donc pouvoir lire ce que
+ * l'usager a accepté. Ce qui reste exclu l'est toujours : `internal_notes`,
+ * relations, rôles, références externes — et les consentements OBSOLÈTES
+ * `consent_email` / `consent_sms`, qu'aucun écran d'Iris ne montre.
+ */
 const CONTACT_FIELDS = [
   "id", "contact_type", "status", "display_name",
   "civility", "first_name", "last_name", "usage_name", "birth_date",
   "legal_name", "siret",
   "email", "mobile_phone", "landline_phone", "preferred_channel",
   "address_line1", "address_line2", "postal_code", "city", "country",
+  "consent_traitement", "consent_traitement_at",
+  "consent_partage", "consent_partage_at",
 ] as const;
+
+/** Champs d'un recueil de consentement transmis au navigateur. */
+const CONSENT_FIELDS = ["kind", "granted", "statement", "source_app", "collected_at"] as const;
+
+/**
+ * Historique des consentements — whitelist stricte, NOMS DU SOCLE à la lettre
+ * (la sanitisation doit rester idempotente : renommer au passage ferait
+ * disparaître au second tour ce que le premier avait gardé).
+ *
+ * `source_reference` ne passe PAS : c'est l'identifiant d'un dépôt chez
+ * l'émetteur, sans usage pour un écran, et dans un cas au moins (un partenaire
+ * qui y met une référence de dossier parlante) il en dirait plus que le
+ * périmètre du lecteur ne l'autorise. `id` non plus : rien ne s'y rattache.
+ */
+function sanitizeConsent(raw: any): Record<string, unknown> | null {
+  if (typeof raw !== "object" || raw === null || typeof raw.kind !== "string") return null;
+  const out: Record<string, unknown> = {};
+  for (const key of CONSENT_FIELDS) {
+    out[key] = raw[key] ?? null;
+  }
+  out.granted = raw.granted === true;
+  return out;
+}
 
 export function sanitizeContact(raw: any): Record<string, unknown> | null {
   if (typeof raw !== "object" || raw === null || typeof raw.id !== "string") return null;
@@ -33,6 +69,11 @@ export function sanitizeContact(raw: any): Record<string, unknown> | null {
   for (const key of CONTACT_FIELDS) {
     out[key] = raw[key] ?? null;
   }
+  out.consent_traitement = raw.consent_traitement === true;
+  out.consent_partage = raw.consent_partage === true;
+  out.consents = Array.isArray(raw.consents)
+    ? raw.consents.map(sanitizeConsent).filter((c: unknown) => c !== null)
+    : [];
   // Quartier résolu (id, name, color) — seul objet imbriqué conservé.
   const q = raw.quartier;
   out.quartier =

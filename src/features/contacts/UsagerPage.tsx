@@ -12,7 +12,10 @@
 
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Building2, Check, HeartHandshake, Landmark, Mail, Pencil, Plus, User } from "lucide-react";
+import {
+  ArrowLeft, Building2, Check, CheckCircle2, HeartHandshake, Landmark, Mail, MinusCircle,
+  Pencil, Plus, User, XCircle,
+} from "lucide-react";
 import { useWideLayout } from "@/components/layout/shellLayout";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,8 +36,9 @@ import { useSocleContact } from "./useContacts";
 import { UsagerEditDialog } from "./UsagerEditDialog";
 import { groupAttachmentsByRequest, usagerDocumentsSummary, type UsagerDocumentGroup } from "./documents";
 import {
-  addressRows, contactName, contactRows, contactStatusLabel, contactTypeLabel,
-  identityRows, isDarkColor, isInactive, usagerStats, type FieldRow,
+  addressRows, consentsSummary, consentViews, contactName, contactRows, contactStatusLabel,
+  contactTypeLabel, identityRows, isDarkColor, isInactive, parseSocleConsents, usagerStats,
+  type FieldRow,
 } from "./usager";
 import type { SocleContact } from "./rapprochement";
 
@@ -159,6 +163,8 @@ export function UsagerPage() {
         </Surface>
       )}
 
+      {contact ? <ConsentementsCard contact={contact} organismName={current.organizationName} /> : null}
+
       <Surface>
         <SurfaceHead title="Demandes de cet usager" sub={summary} />
         {requestsQuery.isError ? (
@@ -261,6 +267,102 @@ function IdentiteCard({ contact }: { contact: SocleContact }) {
 
       <p className="truncate font-mono text-[10.5px] text-muted-foreground" title={contact.id}>
         Socle · {contact.id}
+      </p>
+    </Surface>
+  );
+}
+
+/**
+ * Consentements RGPD — ce que l'usager a accepté, et quand.
+ *
+ * Trois états et non deux : accordé, refusé, **jamais demandé**. Une fiche
+ * antérieure au 2026-09-20, ou jamais passée par un dépôt, porte `false` sans
+ * que personne ne lui ait rien demandé — l'afficher « Refusé » serait faux, et
+ * sur un consentement c'est le genre de faux qui se paie.
+ *
+ * Lecture seule : le consentement se recueille au DÉPÔT, il ne se coche pas
+ * depuis une fiche. Un retrait à la demande de l'usager est un geste distinct,
+ * qui n'est pas livré ici.
+ */
+function ConsentementsCard({ contact, organismName }: {
+  contact: SocleContact;
+  organismName: string | null;
+}) {
+  const views = consentViews(contact, organismName);
+  const history = parseSocleConsents(contact.consents);
+
+  return (
+    <Surface className="gap-3">
+      <SurfaceHead title="Consentements RGPD" sub={consentsSummary(views)} />
+      <ul className="flex flex-col gap-2.5">
+        {views.map((v) => (
+          <li
+            key={v.kind}
+            className="flex flex-col gap-1.5 rounded-[10px] border border-border px-3.5 py-3"
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              {v.neverCollected ? (
+                <MinusCircle className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              ) : v.granted ? (
+                <CheckCircle2 className="size-4 shrink-0 text-primary" aria-hidden="true" />
+              ) : (
+                <XCircle className="size-4 shrink-0 text-destructive" aria-hidden="true" />
+              )}
+              <span className="text-sm font-bold">{v.label}</span>
+              {v.required ? <Badge variant="secondary">Obligatoire au dépôt</Badge> : null}
+              <span
+                className={cn(
+                  "ml-auto text-xs font-semibold",
+                  v.neverCollected ? "text-muted-foreground"
+                    : v.granted ? "text-primary" : "text-destructive",
+                )}
+              >
+                {v.neverCollected ? "Jamais demandé"
+                  : `${v.granted ? "Accordé" : "Refusé"} le ${formatDateTime(v.at!)}`}
+              </span>
+            </div>
+            <p className="text-[13px] leading-relaxed text-muted-foreground">
+              {/* La phrase du DERNIER recueil, telle qu'elle a été lue — pas
+                  celle d'aujourd'hui : le nom de la collectivité peut avoir
+                  changé depuis, ce qui a été accepté non. */}
+              « {v.statement} »
+            </p>
+          </li>
+        ))}
+      </ul>
+
+      {history.length > 0 ? (
+        <details className="text-sm">
+          <summary className="cursor-pointer font-semibold text-muted-foreground">
+            Historique des recueils ({history.length})
+          </summary>
+          <ul className="mt-2 flex flex-col divide-y divide-border/60 rounded-[10px] border border-border">
+            {history.map((row, i) => (
+              <li key={`${row.kind}-${row.at}-${i}`} className="flex flex-wrap items-center gap-2 px-3 py-2 text-[13px]">
+                <span className="min-w-[150px] flex-1 font-semibold">{row.label}</span>
+                <span className={cn("font-semibold", row.granted ? "text-primary" : "text-destructive")}>
+                  {row.granted ? "Accordé" : "Refusé"}
+                </span>
+                {/* Le nom de l'application est celui du référentiel, affiché
+                    tel quel : le catalogue des applications ne nous appartient
+                    pas, et en inventer un libellé le ferait mentir un jour. */}
+                {row.source ? (
+                  <span className="rounded-full bg-muted px-2 py-[2px] text-[11px] font-semibold text-muted-foreground">
+                    {row.source}
+                  </span>
+                ) : null}
+                <span className="text-xs text-muted-foreground">
+                  {row.at ? formatDateTime(row.at) : "—"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
+
+      <p className="text-xs text-muted-foreground">
+        Recueillis au dépôt d'une demande et conservés par le référentiel Socle. Ils ne se
+        modifient pas depuis cette fiche.
       </p>
     </Surface>
   );

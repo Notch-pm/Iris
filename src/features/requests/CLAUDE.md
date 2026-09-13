@@ -182,6 +182,29 @@ note interne → résolution avec texte de clôture → journal.
       démarches en production. L'état vide le DIT et renvoie au référentiel, plutôt que de
       laisser croire à une panne. Détail : [`docs/data-model.md`](../../../docs/data-model.md)
       § « Publication des démarches ».
+  - **Consentements RGPD au récapitulatif** (2026-09-20, `ConsentGroup` dans
+    `RequestSummary.tsx`, catalogue `@fn/_shared/consents/catalog` pur/testé) : les **deux**
+    questions posées à l'usager, quelle que soit la démarche — traitement (obligatoire) et
+    partage aux services de l'organisme principal (facultatif, **coché** d'office). L'agent les
+    lit à l'usager et coche ; sans l'obligatoire, « Créer la demande » et « Créer et imprimer »
+    restent fermés, avec la raison en pied d'écran.
+    - **Leur place est au RÉCAPITULATIF**, pas au formulaire : c'est le moment du dépôt, pas
+      celui de la saisie. Et surtout **pas dans `form_schema`** : un consentement qu'un service
+      pourrait décocher dans son paramétrage ne vaudrait rien — le catalogue est fermé, en code.
+    - **L'écran affiche la phrase que le SERVEUR consignera**, à l'identique
+      (`consentStatement(kind, current.organizationName)` ↔ `organizations.name`, que la synchro
+      tient égal au nom de la racine Socle). Le navigateur n'envoie que `kind` et `granted` — un
+      `statement` venu d'un client est refusé par `normalizeConsents`, qui est la vraie garde.
+    - ⚠️ **Non persistés dans le brouillon**, et `DRAFT_VERSION` reste à 1 : un consentement est
+      un acte de l'usager présent à cet instant. Le restaurer d'une session vieille de trois
+      jours ferait valider un dépôt sur une case que personne n'a cochée. À la reprise, la
+      question est reposée — c'est le prix, et il est juste.
+    - **Le parcours MOBILE pose les mêmes questions**, au même catalogue, dans un bloc propre
+      au-dessus des doublons (`MobileNewRequestPage`) : il crée de vraies demandes, il ne peut
+      pas sauter la garde.
+    - Écriture : `requests.consents` (immuable, `t10`) **et** le référentiel Socle quand
+      l'usager y a une fiche (`POST /v1/contacts/{id}/consents`, idempotent par demande).
+      Échec côté Socle ⇒ anomalie `consentement_non_transmis_au_socle`, jamais un refus.
   - **Brouillon local** (`draft.ts` pur/testé, `useCreationDraft`) : localStorage, un par
     tenant et utilisateur, enregistré en différé à chaque saisie ; ne transporte que des
     identifiants et saisies (usager rapproché = id seul, **relu via `socle-proxy
@@ -261,7 +284,12 @@ note interne → résolution avec texte de clôture → journal.
   pur/testé, 2026-09-19) : Clara envoie `external_id` = son ticket d'ACTION et
   `links = [courrier]` avec le même permalien, et l'agent lisait deux lignes pour un seul
   courrier (DEM-2026-000054). Sans lien qui la couvre, la ligne reste : c'est la seule trace
-  de l'origine pour un partenaire qui ne déclare que son identifiant), Documents
+  de l'origine pour un partenaire qui ne déclare que son identifiant), **et — depuis le
+  2026-09-20 — « Consentements au dépôt »** : la trace IMMUABLE de `requests.consents`, avec la
+  phrase soumise ce jour-là. Elle ne double pas la carte de la fiche usager, qui montre l'état
+  COURANT du référentiel ; elle existe pour le cas où il n'y a PAS de fiche — dépôt anonyme,
+  identité non rapprochée —, où elle est la seule preuve. Bloc absent sur les demandes
+  antérieures à la migration (`[]`)), Documents
   (pièces de la demande **groupées par exigence du formulaire**, avec leur qualification et
   l'historique de leurs remplacements — vignette, taille, état de copie, « Voir » (PDF et
   images raster seulement : `inlineViewable`, une seule liste avec la reconnaissance des

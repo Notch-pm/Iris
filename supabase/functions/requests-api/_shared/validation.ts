@@ -55,6 +55,15 @@ export interface IngestEnvelope {
   attachments?: AttachmentRef[];
   context?: EnvelopeContext;
   links?: LinkRef[];
+  /**
+   * Consentements RGPD recueillis par le partenaire : `[{ kind, granted }]`.
+   * **Facultatif** — le contrat 2.x n'évolue qu'en ADDITIF : les rendre
+   * obligatoires casserait toutes les intégrations en place. Absents, la
+   * demande porte l'anomalie `consentement_absent` : l'agent voit le trou
+   * plutôt que de le supposer comblé. Validés (et leur libellé composé) par
+   * `normalizeConsents` dans `index.ts`.
+   */
+  consents?: unknown;
 }
 
 export type Validation<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -72,7 +81,7 @@ const ENVELOPE_KEYS = new Set([
   "socle_root_organization_id", "socle_organization_id",
   "socle_procedure_id", "socle_contact_id",
   "subject", "body", "requester", "form_data",
-  "attachments", "context", "links",
+  "attachments", "context", "links", "consents",
 ]);
 const ATTACHMENT_KEYS = new Set(["upload_id", "form_field_key"]);
 /** Clés du contrat 1.x : refusées avec un message qui dit quoi faire à la place. */
@@ -191,6 +200,13 @@ export function validateEnvelope(body: unknown): Validation<IngestEnvelope> {
     if (!isPlainObject(body.requester)) return fail("requester : objet attendu.");
     env.requester = body.requester;
   }
+
+  // Transmis tel quel : la validation de FOND (catalogue fermé, libellé
+  // recomposé) appartient à `normalizeConsents`, qui a besoin du nom de
+  // l'organisme principal — inconnu de cette logique pure.
+  if (body.consents !== undefined && body.consents !== null) {
+    env.consents = body.consents;
+  }
   // Identité : un contact Socle, OU une identité déclarée (y compris
   // { anonymous: true } — l'anonymat est un choix assumé, pas un oubli).
   if (!env.socle_contact_id && (!env.requester || Object.keys(env.requester).length === 0)) {
@@ -288,6 +304,10 @@ export function fingerprintPayload(
     subject: env.subject,
     body: env.body ?? null,
     requester: env.requester ?? null,
+    // Les consentements entrent dans l'empreinte : rejouer un dépôt en ayant
+    // changé une réponse de l'usager n'est pas le même dépôt — c'est un 409,
+    // pas un 200 silencieux.
+    consents: env.consents ?? null,
     form_data: env.form_data ?? {},
     attachments: sortFingerprints(attachments),
     context: {

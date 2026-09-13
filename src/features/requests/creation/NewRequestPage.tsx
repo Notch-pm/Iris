@@ -68,6 +68,12 @@ import {
   parseAgentKnowledge,
   type KnowledgeDocument,
 } from "@fn/socle-proxy/_shared/knowledge";
+import {
+  CONSENTS,
+  consentsSatisfied,
+  defaultConsentAnswers,
+  type ConsentKind,
+} from "@fn/_shared/consents/catalog";
 import { CreationRail, type FicheLine, type NearbyState } from "./CreationRail";
 import { CreationStepper, type StepDef } from "./CreationStepper";
 import { OrganismePicker } from "./OrganismePicker";
@@ -169,6 +175,12 @@ export function NewRequestPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [linked, setLinked] = React.useState<LinkedRequests>({});
   const [dupDismissed, setDupDismissed] = React.useState(false);
+  // Consentements RGPD — questions SYSTÉMATIQUES du dépôt, hors `form_schema`.
+  // Volontairement ABSENTS du brouillon local : un consentement est un acte de
+  // l'usager présent à cet instant. Le restaurer d'une session vieille de trois
+  // jours ferait valider un dépôt sur une case que personne n'a cochée. À la
+  // reprise, la question est reposée — c'est le prix, et il est juste.
+  const [consents, setConsents] = React.useState<Record<ConsentKind, boolean>>(defaultConsentAnswers);
   const [created, setCreated] = React.useState<{ id: string; reference: string; at: Date } | null>(null);
   const [linkError, setLinkError] = React.useState<string | null>(null);
   const [documentError, setDocumentError] = React.useState<string | null>(null);
@@ -641,6 +653,9 @@ export function NewRequestPage() {
         schema: procedure.schema,
         values,
         files,
+        // Le catalogue décide de ce qui part, pas l'état d'écran : un `kind`
+        // absent de `consents` vaut refus explicite, jamais une omission.
+        consents: CONSENTS.map((c) => ({ kind: c.kind, granted: consents[c.kind] === true })),
       });
       setCreated({ id: result.id, reference: result.reference, at: new Date() });
       draft.clear();
@@ -689,6 +704,7 @@ export function NewRequestPage() {
     setError(null);
     setLinked({});
     setDupDismissed(false);
+    setConsents(defaultConsentAnswers());
     setCreated(null);
     setLinkError(null);
   }
@@ -780,6 +796,9 @@ export function NewRequestPage() {
   // récapitulatif, qui n'a pas de suivante (le bouton y devient « Créer »), ni
   // sur l'écran de confirmation.
   const canAdvance = !created && step !== 5 && step !== 4 && !nextDisabled;
+  // Reflet d'écran du catalogue : la garde qui compte est celle de
+  // `create-request-from-procedure` (`normalizeConsents`), pas ce booléen.
+  const consentsMissing = !consentsSatisfied(consents);
   const footHint = step === 0
       ? "L'organisme porte la demande : il décide de qui pourra l'instruire et la clore"
     : step === 1 ? "Choisissez la démarche Socle qui fonde la demande"
@@ -787,7 +806,9 @@ export function NewRequestPage() {
         ? "Usager imposé par sa fiche — il n'est pas modifiable dans ce parcours"
         : "Renseignez l'usager : ses homonymes du Socle sont proposés automatiquement")
     : step === 3 ? (missing === 0 ? "Tous les champs obligatoires sont renseignés" : `${missing} champ${missing > 1 ? "s" : ""} obligatoire${missing > 1 ? "s" : ""} restant${missing > 1 ? "s" : ""}`)
-    : "Vérifiez le récapitulatif avant création";
+    : consentsMissing
+      ? "Le consentement au traitement des informations est obligatoire pour déposer la demande"
+      : "Vérifiez le récapitulatif avant création";
 
   // Entrée « depuis la fiche usager » : pas de reprise de brouillon (il
   // porterait un autre usager, que le parcours imposé ne peut pas remplacer).
@@ -1006,6 +1027,9 @@ export function NewRequestPage() {
               onDismissDup={() => setDupDismissed(true)}
               linked={linked}
               onToggleLink={toggleLink}
+              consents={consents}
+              onToggleConsent={(kind, granted) => setConsents((c) => ({ ...c, [kind]: granted }))}
+              organismName={current.organizationName}
               onEdit={(n) => { setStep(n); setError(null); }}
               now={now}
             />
@@ -1071,11 +1095,12 @@ export function NewRequestPage() {
           ) : (
             <>
               <Button type="button" variant="outline"
-                disabled={create.isPending || destinationMissing(destinationId)}
+                disabled={create.isPending || destinationMissing(destinationId) || consentsMissing}
                 onClick={() => void submit(true)}>
                 Créer et imprimer
               </Button>
-              <Button type="button" disabled={create.isPending || destinationMissing(destinationId)}
+              <Button type="button"
+                disabled={create.isPending || destinationMissing(destinationId) || consentsMissing}
                 onClick={() => void submit(false)}>
                 <Check />
                 {create.isPending ? "Création…" : "Créer la demande"}

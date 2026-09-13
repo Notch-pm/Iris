@@ -93,9 +93,30 @@ navigateur le 2026-08-20 dans le parcours de création.
   - **Droit requis** : le même que « Nouvelle demande » (au moins une démarche créable) —
     c'est exactement la garde que `socle-proxy` applique déjà à toutes les routes
     `/v1/contacts/*`. L'UI ne fait que la refléter.
-  - Les blocs Clara qui n'existent pas ici (consentements, rôles, références externes, notes
+  - **Carte « Consentements RGPD »** (2026-09-20, `consentViews` / `parseSocleConsents` /
+    `consentsSummary` dans `usager.ts`, purs et testés) : les deux consentements du catalogue
+    (`@fn/_shared/consents/catalog`), leur état, leur date, **la phrase exactement soumise** au
+    dernier recueil, et un dépliant d'historique (application d'origine, date, verdict).
+    - ⚠️ **TROIS états, pas deux** : accordé, refusé, et **jamais demandé**. Une fiche
+      antérieure au 2026-09-20, ou jamais passée par un dépôt, porte `false` sans que personne
+      ne lui ait rien demandé — l'afficher « Refusé » serait faux, et sur un consentement c'est
+      le genre de faux qui se paie. C'est la **DATE** qui tranche (`neverCollected`), jamais
+      l'historique : celui-ci n'est chargé que sur la fiche, l'état voyage partout.
+    - **La phrase affichée est celle du recueil**, pas celle d'aujourd'hui : la collectivité
+      peut avoir été renommée depuis, ce qui a été accepté non.
+    - **Lecture seule** : un consentement se recueille au DÉPÔT. Le retrait à la demande de
+      l'usager est un geste distinct, **non livré** — `filterContactUpdate` continue de refuser
+      toute clé `consent_*`, alors que le référentiel, lui, accepte `granted: false` : la porte
+      existe côté Socle, il manque l'écran et sa garde.
+    - Le nom de l'application d'origine (`source_app`) est affiché **tel quel** : le catalogue
+      des applications de la gamme ne nous appartient pas, en inventer un libellé le ferait
+      mentir un jour.
+  - Les blocs Clara qui n'existent toujours pas ici (rôles, références externes, notes
     internes, relations) sont ceux que la sanitisation du proxy ne transmet jamais — ils ne
-    sont donc ni lus ni écrits. « Contacter » reste grisé (`SOON`).
+    sont donc ni lus ni écrits. Les **consentements**, eux, ont quitté cette liste le
+    2026-09-20 : Iris pose lui-même la question à chaque dépôt, il doit pouvoir montrer la
+    réponse. Les OBSOLÈTES `consent_email`/`consent_sms` restent dehors.
+    « Contacter » reste grisé (`SOON`).
   - **« Nouvelle demande »** ouvre le parcours de création avec l'usager IMPOSÉ
     (`/demandes/nouvelle?usager=<id Socle>` — l'identifiant seul transite, jamais l'identité) ;
     le bouton n'apparaît qu'avec un droit de création sur au moins une démarche du cache

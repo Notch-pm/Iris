@@ -41,11 +41,20 @@ export interface CreatePayload {
   requester: RequesterSubmission;
   formValues: Record<string, unknown>;
   attachments: UploadRef[];
+  /**
+   * Consentements RGPD tels que le navigateur les envoie : `[{ kind, granted }]`,
+   * et rien de plus. Validés — et leur LIBELLÉ composé — par `normalizeConsents`
+   * dans `index.ts`, qui seul connaît le nom de l'organisme principal. Laissés
+   * bruts ici : cette validation-ci est de forme, et le catalogue n'a pas à
+   * être dupliqué dans deux modules.
+   */
+  rawConsents: unknown;
 }
 
 const PAYLOAD_KEYS = new Set([
   "organization_id", "request_id", "socle_procedure_id", "subject", "body",
   "priority", "channel", "socle_organization_id", "requester", "form_values", "attachments",
+  "consents",
 ]);
 const REQUESTER_KEYS = new Set(["kind", "audience", "socle_contact_id", "declared"]);
 
@@ -148,5 +157,6 @@ export function parsePayload(raw: any): CreatePayload | { error: string } {
     requester,
     formValues: formValues as Record<string, unknown>,
     attachments,
+    rawConsents: raw.consents,
   };
 }

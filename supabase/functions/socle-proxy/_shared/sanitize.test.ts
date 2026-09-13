@@ -40,7 +40,7 @@ const rawContact = {
 };
 
 describe("sanitizeContact — whitelist stricte", () => {
-  it("ne transmet jamais internal_notes, consentements, relations ni champs inconnus", () => {
+  it("ne transmet jamais internal_notes, relations, consentements obsolètes ni champs inconnus", () => {
     const c = sanitizeContact(rawContact)!;
     expect(c.display_name).toBe("Marie Dupont");
     expect(c.email).toBe("marie@exemple.fr");
@@ -419,5 +419,48 @@ describe("sanitizeBranding — le logo du client dans le header, rien de plus", 
   it("rend null sur une réponse qui n'est pas un objet", () => {
     expect(sanitizeBranding(null)).toBeNull();
     expect(sanitizeBranding("x")).toBeNull();
+  });
+});
+
+describe("sanitizeContact — consentements RGPD", () => {
+  const withConsents = {
+    id: "c-3",
+    contact_type: "personne",
+    consent_traitement: true,
+    consent_traitement_at: "2026-09-20T08:00:00Z",
+    consent_partage: false,
+    consent_partage_at: "2026-09-20T08:00:00Z",
+    consents: [
+      {
+        id: "cc-1", kind: "traitement", granted: true, statement: "J'accepte…",
+        source_app: "iris", source_reference: "DOSSIER-INTERNE-4711",
+        collected_at: "2026-09-20T08:00:00Z", created_at: "2026-09-20T08:00:01Z",
+      },
+      { pas_de_kind: true },
+    ],
+  };
+
+  it("transmet l'état courant et l'historique, sans la référence du dépôt", () => {
+    const c = sanitizeContact(withConsents)!;
+    expect(c.consent_traitement).toBe(true);
+    expect(c.consent_partage).toBe(false);
+    expect(c.consent_traitement_at).toBe("2026-09-20T08:00:00Z");
+    expect(c.consents).toEqual([{
+      kind: "traitement", granted: true, statement: "J'accepte…",
+      source_app: "iris", collected_at: "2026-09-20T08:00:00Z",
+    }]);
+  });
+
+  it("reste idempotente — repasser la sortie dans le filtre ne perd rien", () => {
+    const once = sanitizeContact(withConsents)!;
+    expect(sanitizeContact(once)).toEqual(once);
+  });
+
+  it("rend un état faux et un historique vide sur une fiche qui n'en porte pas", () => {
+    const c = sanitizeContact({ id: "c-4", contact_type: "personne" })!;
+    expect(c.consent_traitement).toBe(false);
+    expect(c.consent_partage).toBe(false);
+    expect(c.consents).toEqual([]);
+    expect(c.consent_partage_at).toBeNull();
   });
 });

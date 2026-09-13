@@ -226,7 +226,7 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
 | `t08_requests_fill_organization_label` (DEFINER) | BEFORE INSERT | **Libellé d'organisme au dépôt (2026-09-17)** : même fonction que `t08_requests_apply_transfer` — quand `socle_organization_id` est fourni, `socle_organization_label` est **relu dans le miroir** (le soumis ne compte que si le miroir est muet, et `t21` pose alors `destinataire_inconnu`). Sans ce trigger, l'ingestion partenaire, qui n'envoie que l'identifiant, déposait des demandes rattachées à un organisme mais affichées « Aucun organisme désigné » (DEM-2026-000050). Le parcours agent passait le libellé dans la RPC, d'où l'angle mort. **Avant** `t10`/`t16`/`t18`/`t21` |
 | `t08_requests_apply_transfer` (DEFINER) | BEFORE UPDATE | **Transfert d'organisme (2026-09-01)** : quand `socle_organization_id` change, le **libellé est relu dans le miroir** (jamais celui soumis — sinon un transfert pourrait mentir sur sa destination) et l'**affectation est retirée** si l'agent affecté n'a pas l'instruction sur le couple d'arrivée (RM-16 : on retire l'affectation, on ne refuse pas le transfert). Nommé `t08` pour passer **avant** `t09`/`t10`/`t11`, qui doivent voir ce qu'il pose. Aucun `is_service_context()` (fonction DEFINER, piège du 2026-08-22) : la règle vaut pour tout le monde |
 | `t09_requests_set_scope_org` (DEFINER) | BEFORE UPDATE | Même calcul, **inconditionnel** à chaque UPDATE (pas seulement `OF socle_organization_id` — correctif de sécurité 2026-08-22 : un client omettant cette colonne de son `SET` ne pouvait sinon pas en survivre l'ancienne valeur) ; repart toujours de `old.anomalies`, jamais de `new.anomalies` (même motif) ; **avant** `t10`/`t11` |
-| `t10_requests_protect_immutable` (INVOKER) | BEFORE UPDATE | `id` (2026-08-22 : une clé primaire ne se réécrit jamais, service_role compris), `reference`, `organization_id`, `socle_root_org_id`, `source`, `external_ref`, `received_at`, `created_at`, **`requester_snapshot`** immuables ; demande **archivée gelée** (seul le statut peut changer, pour désarchiver — `procedure_snapshot` compris) — **dérogation service (2026-08-22)** : en contexte de service uniquement, une demande archivée peut recevoir un simple recalcul de `socle_scope_org_id`/`anomalies` (reparentage Socle post-sync) sans que ce soit traité comme une modification interdite |
+| `t10_requests_protect_immutable` (INVOKER) | BEFORE UPDATE | `id` (2026-08-22 : une clé primaire ne se réécrit jamais, service_role compris), `reference`, `organization_id`, `socle_root_org_id`, `source`, `external_ref`, `received_at`, `created_at`, **`requester_snapshot`** et **`consents`** (2026-09-20) immuables ; demande **archivée gelée** (seul le statut peut changer, pour désarchiver — `procedure_snapshot` compris) — **dérogation service (2026-08-22)** : en contexte de service uniquement, une demande archivée peut recevoir un simple recalcul de `socle_scope_org_id`/`anomalies` (reparentage Socle post-sync) sans que ce soit traité comme une modification interdite |
 | `t11_requests_guard_write` (INVOKER, **remplace `t11_requests_guard_transition` le 2026-08-22**) | BEFORE UPDATE | **Porte unique** (fusion garde de transition + garde d'édition, ADR-07) : matrice fixe + exigences de données **inchangées** (ci-dessous) ; en plus, portes **par droit** : édition du dossier = **instruction** sur le couple actuel (liste exhaustive de colonnes « métier », `closure_*` compris hors changement de statut) ; affectation (RM-16) = le destinataire doit détenir l'**instruction** sur le couple retenu ; requalification (RM-18) = instruction sur le couple **actuel et cible** ; transfert d'organisation (RM-19) = instruction sur le couple actuel, cible libre dans le sous-arbre du tenant ; transitions courantes = **instruction**, transitions terminales/archivage = **clôture**, réouverture/archivage/désarchivage = **administration** (`has_admin_scope`) **en plus** de la clôture ; `closed_at` **neutralisée en entrée** (`new.closed_at := old.closed_at` avant tout calcul — seule la section Effets, plus bas dans la même fonction, la fait évoluer) ; pose/purge `closed_at` ; purge la clôture à la réouverture. Contournement `is_service_context()` conservé intégralement (fonction restée `SECURITY INVOKER`, voir piège DEFINER ci-dessus) |
 | `t12_requests_transfer_procedure_active` (DEFINER) | BEFORE UPDATE | **Jumeau UPDATE de `t18` (2026-09-01)** : un transfert choisit un organisme aujourd'hui, comme un dépôt — la cible doit donc assurer la démarche (`socle_procedure_organizations`, non obsolète). S'applique à tout le monde, service_role compris. Deux échappatoires symétriques de `t18` : demande **historique sans démarche** (`socle_procedure_id` nul) et demande sans organisme désigné (repli sur la racine). ⚠️ `t18` reste **INSERT seulement** : une démarche désactivée après coup ne gèle pas les demandes déjà déposées |
 | `t17_requests_require_pieces_conformes` (DEFINER) | BEFORE UPDATE | **Qualification des pièces (2026-08-28)** : refuse `en_instruction → resolue_positive` tant qu'une exigence de pièce **obligatoire** n'est pas conforme (manquante, pas encore qualifiée, ou non conforme) — `request_pieces_blocking`, qui relit `procedure_snapshot -> form_schema` et rejoue les conditions sur `form_data`. **Elle seule** est fermée : mise en attente, annulation et résolution négative restent ouvertes (on refuse souvent PARCE QU'une pièce manque). Ne vise pas le désarchivage (`archivee → resolue_positive`), qui restaure un état déjà jugé. S'applique à tout le monde, service_role compris (règle métier, motif `t16`) |
@@ -268,10 +268,50 @@ chaînes — corrigé le 2026-08-26, avant qu'une anomalie n'ait jamais été po
 | `destinataire_inconnu` | trigger `requests_set_scope_org` | Le destinataire n'est pas (ou plus) dans le miroir du tenant ; le périmètre retombe sur la racine Socle |
 | `referentiel_indisponible` | `requests-api` | Socle injoignable au dépôt : `procedure_snapshot` minimal issu du cache |
 | `usager_a_creer_dans_socle` | `create-request-from-procedure`, `requests-api` | L'usager n'a pu être ni rapproché ni créé dans le Socle (panne avérée) : la demande est passée quand même, en `non_rapprochee`, et reste à régulariser |
+| `consentement_absent` | `requests-api` | Le partenaire n'a transmis aucun `consents` : la question RGPD n'a pas été posée, ou pas transmise. La demande passe (le contrat 2.x n'évolue qu'en additif — l'exiger casserait toutes les intégrations en place), mais l'agent VOIT le trou plutôt que de supposer la question posée |
+| `consentement_non_transmis_au_socle` | `create-request-from-procedure`, `requests-api` | Le consentement a bien été recueilli et consigné sur la demande, mais l'écriture au référentiel (`POST /v1/contacts/{id}/consents`) a échoué. Jamais un refus : la demande porte déjà la preuve. Le geste restant est de rejouer l'écriture — elle est idempotente |
 | `permalien_non_public` | `requests-api` | Le partenaire a transmis un permalien (`context.external_url`, `links[].url`) qui ne résout que sur son réseau — `localhost`, IP privée, TLD réservé, hôte sans point. Il est ÉCARTÉ, jamais réécrit : Iris ne sait pas où vit vraiment le partenaire. La demande passe, sans lien cliquable, et le geste restant est chez l'émetteur — presque toujours sa variable d'origine publique |
 
 Les anomalies décrivent un **geste restant à faire**, jamais un refus : la doctrine de la
 gamme est qu'un référentiel muet ne fait pas perdre une demande.
+
+### Consentements RGPD au dépôt (`20260920100000`)
+
+`requests.consents` — `jsonb not null default '[]'`, CHECK
+`coalesce(jsonb_typeof(consents), '') = 'array'` (le `coalesce` n'est pas décoratif : sur un
+NULL, `jsonb_typeof` rend NULL, le CHECK vaut NULL, **et un CHECK NULL passe** — une garde qui
+dépend d'une autre garde n'en est pas une).
+
+Forme : `[{ "kind": "traitement"|"partage", "granted": bool, "statement": "la phrase lue" }]`,
+dans l'ordre du catalogue, **toujours les deux** — un refus se consigne, il ne disparaît pas.
+
+**Pourquoi ici ALORS QUE le Socle les possède déjà.** Les deux écritures ne disent pas la même
+chose, et aucune ne remplace l'autre :
+
+| | Socle `contact_consents` | Iris `requests.consents` |
+|---|---|---|
+| Objet | Le consentement d'une **personne**, état courant compris | Le consentement de **ce dépôt** |
+| Dépôt anonyme / identité non rapprochée | Rien à écrire — aucune fiche | La **seule** trace qui existe |
+| Retrait ultérieur | Met l'état à jour | **Ne réécrit rien** : ce qui a été accepté ce jour-là ne change pas |
+| Mutabilité | Historique + état dérivé | **Immuable** (`t10_requests_protect_immutable`) |
+
+**Ce que le navigateur peut dire** : `kind` et `granted`, rien d'autre. Le `statement` est
+recomposé côté serveur (`_shared/consents/catalog.ts`, `normalizeConsents`) depuis le nom de
+l'organisme principal — `organizations.name`, que la synchro du référentiel tient égal au nom
+de la racine Socle (`tenantNames`), donc **exactement** ce que l'écran a affiché. Un
+`statement` fourni par un client est refusé explicitement : sans cela, un client pourrait faire
+signer autre chose que ce qui a été lu.
+
+**La garde du dépôt** vit dans `normalizeConsents`, appelée par
+`create-request-from-procedure` : `traitement` absent ou refusé ⇒ 400. Elle n'est **pas** en
+SQL — délibérément : la contrainte porte sur le *catalogue* (quels consentements existent,
+lesquels sont obligatoires), qui vit en TypeScript et évoluerait mal en jumeau SQL. Les
+demandes historiques, elles, gardent `[]` sans qu'aucune migration n'ait à les toucher.
+
+⚠️ **Le brouillon local du parcours de création ne porte PAS les consentements**, et
+`DRAFT_VERSION` reste à 1. Un consentement est un acte de l'usager présent à cet instant : le
+restaurer d'une session vieille de trois jours ferait valider un dépôt sur une case que
+personne n'a cochée. À la reprise, la question est reposée.
 
 ### Pourquoi figer l'identité au dépôt (question PO du 2026-08-26)
 
@@ -1405,6 +1445,15 @@ migrations versionnées (le `db dump` ne couvre pas le schéma `storage` — con
 [`../supabase/tests/storage-pieces.test.sql`](../supabase/tests/storage-pieces.test.sql).
 
 ## Tests
+
+[`../supabase/tests/consentements-rgpd.test.sql`](../supabase/tests/consentements-rgpd.test.sql) —
+**6 groupes, tous passés le 2026-09-13** : `consents` naît à `[]` et jamais NULL · ce qui est consigné au dépôt est relu à
+l'identique, phrase et refus compris · `t10` refuse de le réécrire ET de le vider · le CHECK de
+forme refuse un objet comme le jsonb `null` · la RPC `create_request_from_procedure` consigne la
+trace, et retombe sur `[]` quand la clé est absente.
+⚠️ **Ce que ce fichier ne teste PAS** : l'OBLIGATION du consentement au traitement n'est pas une
+garde SQL — elle vit dans `normalizeConsents` (`_shared/consents/catalog.ts`), couverte par
+`catalog.test.ts`. La base enregistre un fait, elle n'arbitre pas le catalogue.
 
 [`../supabase/tests/documents-instruction.test.sql`](../supabase/tests/documents-instruction.test.sql) —
 **6 groupes, tous passés le 2026-09-01** : la nature est un registre fermé · le TRIGGER refuse

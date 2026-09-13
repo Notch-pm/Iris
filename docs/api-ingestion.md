@@ -14,7 +14,7 @@ simples *sources enregistrées*.
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
 | Documentation lisible | `https://<app-iris>/api-doc` — le même contrat rendu par Redoc, consultable **sans compte** (motif `/api-doc` du Socle) |
-| Version | `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
+| Version | `2.2.0` (2026-09-20 : **consentements RGPD** facultatifs dans l'enveloppe) — précédemment `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -57,6 +57,10 @@ simples *sources enregistrées*.
   "body": "Description libre.",
   "requester": { "last_name": "Dupont", "first_name": "Marie", "email": "marie@exemple.fr" },
   "form_data": { "urgence": "haute" },
+  "consents": [
+    { "kind": "traitement", "granted": true },
+    { "kind": "partage", "granted": false }
+  ],
   "attachments": [
     { "upload_id": "<uuid rendu par POST /v1/uploads>", "form_field_key": "photo_du_probleme" }
   ],
@@ -102,6 +106,29 @@ Points de contrat :
   sait pas où vous vivez. ⚠️ **Le coupable est presque toujours la variable d'environnement
   d'où vous tirez votre origine publique**, pas votre code — un `http://localhost:8080/…`
   poussé depuis un poste de développement désigne, une fois cliqué, la machine de l'agent.
+- **`consents` — les deux consentements RGPD de l'usager** (contrat 2.2.0). Ils sont posés
+  systématiquement, quelle que soit la démarche, et ne font **pas** partie de `form_data` :
+
+  | `kind` | Ce que l'usager accepte | Régime |
+  |---|---|---|
+  | `traitement` | Que les informations fournies servent à instruire sa demande | **Obligatoire** — un dépôt ne se valide pas sans lui |
+  | `partage` | Que ces informations soient partagées aux services de la collectivité, pour cette demande et les suivantes | Facultatif, à proposer **coché** |
+
+  - **N'envoyez que `kind` et `granted`.** La phrase exacte consignée est recomposée par Iris
+    depuis le nom de l'organisme principal ; un `statement` fourni est **refusé** (400). C'est
+    ce qui garantit que ce qui est archivé est bien ce qui a été lu.
+  - **Un `kind` du catalogue omis vaut REFUS.** L'absence de case cochée n'est jamais un
+    consentement. `traitement` présent avec `granted: false` → 400.
+  - **Facultatif, et ça le restera** : une enveloppe sans `consents` est acceptée (le contrat
+    2.x n'évolue qu'en additif — l'exiger casserait toutes les intégrations en place). La
+    demande porte alors l'anomalie **`consentement_absent`** : l'agent voit que la question
+    n'a pas été posée, plutôt que de le supposer.
+  - **Ils entrent dans l'empreinte d'idempotence** : rejouer un dépôt en ayant changé une
+    réponse est un **409**, pas un 200 silencieux.
+  - Quand l'usager est rapproché d'une fiche, ils sont **aussi consignés au référentiel
+    Socle**, sous VOTRE code d'émetteur (`source_app`) et avec votre `external_id` comme
+    référence — c'est vous qui avez affiché la case. L'échec de cette écriture ne refuse
+    jamais la demande : anomalie `consentement_non_transmis_au_socle`.
 - **`external_id`** = l'identifiant de la demande **chez vous** — l'unité qui devient UNE
   demande Iris (pour un futur connecteur Clara : l'id du *ticket d'action*, jamais celui du
   courrier — un courrier peut engendrer plusieurs demandes).

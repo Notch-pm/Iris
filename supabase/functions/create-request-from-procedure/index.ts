@@ -19,6 +19,7 @@ import {
   type AttachmentDeclaration,
 } from "./_shared/procedureForm.ts";
 import { whitelistProcedureSnapshot } from "./_shared/snapshots.ts";
+import { normalizeConsents, type ConsentRecord } from "../_shared/consents/catalog.ts";
 import { parseProcedureStatus } from "../_shared/procedures/publication.ts";
 import { contactIdentitySnapshot } from "../_shared/identity/declared.ts";
 import { parsePayload } from "./_shared/payload.ts";
@@ -72,6 +73,49 @@ async function socleFetch(url: string, socleOrgId?: string): Promise<Response | 
   return await fetch(url, { headers, signal: AbortSignal.timeout(15_000) }).catch(() => null);
 }
 
+/**
+ * Consigne les consentements au RÉFÉRENTIEL — le Socle est propriétaire du
+ * consentement d'une personne, Iris de celui d'un dépôt.
+ *
+ * Idempotent côté Socle par (`source_app`, `source_reference`) : un rejeu de
+ * CE dépôt met la ligne à jour au lieu d'en créer une seconde.
+ *
+ * Rend `true` en cas de succès. Un échec n'est JAMAIS fatal au dépôt : la
+ * demande porte déjà la preuve (colonne `consents`, immuable), et refuser la
+ * saisie d'un agent parce que le référentiel tousse ferait perdre le travail
+ * d'un usager qui est en face de lui. L'appelant pose l'anomalie.
+ */
+async function pushConsentsToSocle(
+  contactId: string,
+  socleRootId: string,
+  requestId: string,
+  consents: ConsentRecord[],
+): Promise<boolean> {
+  const res = await fetch(`${contactsApiBase()}/v1/contacts/${contactId}/consents`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${Deno.env.get("SOCLE_API_KEY")}`,
+      "Content-Type": "application/json",
+      "X-Organization-Id": socleRootId,
+    },
+    body: JSON.stringify({
+      source_app: "iris",
+      source_reference: requestId,
+      consents: consents.map((c) => ({ kind: c.kind, granted: c.granted, statement: c.statement })),
+    }),
+    signal: AbortSignal.timeout(15_000),
+  }).catch(() => null);
+  if (!res?.ok) {
+    console.error(
+      "create-request-from-procedure: consentements non transmis au Socle",
+      res?.status ?? "réseau",
+      await res?.text().catch(() => "") ?? "",
+    );
+    return false;
+  }
+  return true;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
@@ -99,13 +143,20 @@ Deno.serve(async (req) => {
   // Appartenance au tenant (hors périmètre = 404, jamais révélé).
   const { data: membership } = await supabase
     .from("organization_members")
-    .select("organization:organizations(socle_org_id)")
+    .select("organization:organizations(socle_org_id, name)")
     .eq("user_id", agentId)
     .eq("organization_id", p.organizationId)
     .maybeSingle();
   // deno-lint-ignore no-explicit-any
   const socleRootId = (membership as any)?.organization?.socle_org_id as string | undefined;
   if (!membership || !socleRootId) return fail(req, 404, "not_found", "Ressource introuvable.");
+  // Nom de l'organisme PRINCIPAL, interpolé dans le libellé du consentement au
+  // partage. `organizations.name` est le nom de la racine Socle du tenant,
+  // rafraîchi par la synchro du référentiel (`tenantNames`) — c'est exactement
+  // ce que le navigateur affiche, donc la phrase consignée est celle qui a été
+  // lue. Le déduire autrement rouvrirait l'écart entre les deux.
+  // deno-lint-ignore no-explicit-any
+  const organismName = (membership as any)?.organization?.name as string | null ?? null;
 
   // Organisation destinataire OBLIGATOIRE (RM-29) : doit être connue du
   // miroir du tenant (non obsolète) — jamais un simple repli silencieux.
@@ -193,6 +244,15 @@ Deno.serve(async (req) => {
   // Demandeur : gouverné par le requester_config de la démarche rechargée.
   const requesterCheck = validateRequesterSubmission(requesterConfig, p.requester);
   if (!requesterCheck.ok) return fail(req, 400, "bad_request", requesterCheck.message);
+
+  // Consentements RGPD — question SYSTÉMATIQUE, hors de `form_schema`, donc
+  // hors de `validateFormSubmission`. La garde vit ICI et pas seulement dans
+  // l'écran : sans le consentement au traitement, le dépôt n'existe pas.
+  // Le libellé est recomposé côté serveur — le navigateur n'envoie que
+  // `kind` et `granted`.
+  const consentCheck = normalizeConsents(p.rawConsents, organismName);
+  if (!consentCheck.ok) return fail(req, 400, "bad_request", consentCheck.message);
+  const consents = consentCheck.consents;
 
   let declared: Record<string, unknown> | null = null;
   let socleContactId: string | null = null;
@@ -293,6 +353,18 @@ Deno.serve(async (req) => {
     row.storage_path = dest;
   }
 
+  // Le consentement va au RÉFÉRENTIEL, qui est propriétaire de celui d'une
+  // PERSONNE — Iris ne garde que celui de ce dépôt. Avant la RPC, pour que
+  // l'échec éventuel puisse encore entrer dans les anomalies de la demande :
+  // l'agent voit alors que le référentiel n'a pas été mis à jour, au lieu de
+  // le découvrir des mois plus tard sur une fiche muette.
+  // Aucun consentement n'est poussé pour une identité SANS fiche (dépôt
+  // anonyme, ou sortie de secours « sans rapprochement ») : il n'y a rien où
+  // l'écrire, et c'est précisément pourquoi la demande le consigne aussi.
+  if (socleContactId && !(await pushConsentsToSocle(socleContactId, socleRootId, p.requestId, consents))) {
+    anomalies.push({ code: "consentement_non_transmis_au_socle" });
+  }
+
   // Écriture ATOMIQUE (RPC = une transaction : demande + pièces + événement).
   const { data: created, error: rpcError } = await supabase.rpc("create_request_from_procedure", {
     p: {
@@ -311,6 +383,7 @@ Deno.serve(async (req) => {
       requester_snapshot: { declared, socle_contact_id: socleContactId },
       identity_status: identityStatus,
       anomalies,
+      consents,
       form_data: form.formData,
       audience: p.requester.kind === "anonyme" ? null : p.requester.audience,
       attachments: p.attachments,

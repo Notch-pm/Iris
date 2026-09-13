@@ -12,6 +12,31 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
+  graphql_public: {
+    Tables: {
+      [_ in never]: never
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      graphql: {
+        Args: {
+          extensions?: Json
+          operationName?: string
+          query?: string
+          variables?: Json
+        }
+        Returns: Json
+      }
+    }
+    Enums: {
+      [_ in never]: never
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
   public: {
     Tables: {
       attachment_uploads: {
@@ -1545,6 +1570,7 @@ export type Database = {
           closed_at: string | null
           closure_motif: string | null
           closure_text: string | null
+          consents: Json
           created_at: string
           due_at: string | null
           external_ref: string | null
@@ -1587,6 +1613,7 @@ export type Database = {
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null
+          consents?: Json
           created_at?: string
           due_at?: string | null
           external_ref?: string | null
@@ -1629,6 +1656,7 @@ export type Database = {
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null
+          consents?: Json
           created_at?: string
           due_at?: string | null
           external_ref?: string | null
@@ -2626,6 +2654,7 @@ export type Database = {
         }
         Returns: undefined
       }
+      tenant_has_root_admin: { Args: { p_org_id: string }; Returns: boolean }
       transfer_request: {
         Args: { p_request_id: string; p_socle_org_id: string }
         Returns: Json
@@ -2774,6 +2803,9 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
+  graphql_public: {
+    Enums: {},
+  },
   public: {
     Enums: {},
   },

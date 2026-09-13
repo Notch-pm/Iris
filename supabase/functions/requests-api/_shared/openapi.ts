@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.1.0";
+export const CONTRACT_VERSION = "2.2.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -176,6 +176,43 @@ const envelopeSchema = {
     form_data: {
       type: "object",
       description: "Réponses au formulaire de la démarche (clé machine = key). Jamais validé à l'ingestion.",
+    },
+    consents: {
+      type: "array",
+      maxItems: 2,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "granted"],
+        properties: {
+          kind: {
+            type: "string",
+            enum: ["traitement", "partage"],
+            description:
+              "`traitement` — utilisation des informations pour instruire la demande ; "
+              + "`partage` — partage aux services de la collectivité.",
+          },
+          granted: { type: "boolean" },
+        },
+      },
+      description: [
+        "**Consentements RGPD recueillis auprès de l'usager**, posés systématiquement quelle que "
+        + "soit la démarche (ils ne font pas partie de `form_data`).",
+
+        "N'envoyez **que** `kind` et `granted` : la phrase exacte consignée est recomposée côté "
+        + "Iris depuis le nom de l'organisme principal. Un `statement` fourni est refusé.",
+
+        "Le type `traitement`, s'il est fourni, doit être `granted: true` — un dépôt ne se valide "
+        + "pas sans lui. Un type du catalogue omis vaut **refus** : l'absence de case cochée n'est "
+        + "jamais un consentement.",
+
+        "**Facultatif** (évolution additive du contrat 2.x) : une enveloppe sans `consents` est "
+        + "acceptée, et la demande porte l'anomalie `consentement_absent` — l'agent voit que la "
+        + "question n'a pas été posée, plutôt que de le supposer. Quand l'usager est rapproché "
+        + "d'une fiche, les consentements sont aussi consignés **au référentiel Socle**, à votre "
+        + "nom d'émetteur ; l'échec de cette écriture ne refuse jamais la demande (anomalie "
+        + "`consentement_non_transmis_au_socle`).",
+      ].join("\n\n"),
     },
     attachments: { type: "array", maxItems: 50, items: attachmentRefSchema },
     context: {

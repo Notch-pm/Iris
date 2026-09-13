@@ -116,3 +116,26 @@ describe("parsePayload", () => {
     })).toHaveProperty("error");
   });
 });
+
+describe("parsePayload — consentements", () => {
+  it("laisse passer `consents` tel quel : la validation de fond appartient au catalogue", () => {
+    const consents = [{ kind: "traitement", granted: true }];
+    const r = parsePayload({ ...valid, consents });
+    expect(r).not.toHaveProperty("error");
+    if ("error" in r) return;
+    // Brut, non normalisé : `normalizeConsents` a besoin du nom de l'organisme,
+    // que cette validation de FORME ne connaît pas.
+    expect(r.rawConsents).toEqual(consents);
+  });
+
+  it("rend `rawConsents` indéfini quand la clé est absente — le refus vient d'ailleurs", () => {
+    const r = parsePayload(valid);
+    expect(r).not.toHaveProperty("error");
+    if ("error" in r) return;
+    expect(r.rawConsents).toBeUndefined();
+  });
+
+  it("continue de refuser toute clé hors whitelist", () => {
+    expect(parsePayload({ ...valid, consentements: [] })).toHaveProperty("error");
+  });
+});

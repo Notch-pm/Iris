@@ -72,6 +72,13 @@ import { useCreateFromProcedure } from "../useCreateFromProcedure";
 import { nearbyBasisFromResolution, useNearbyRequests } from "../useCreationData";
 import { useCreationDraft, type DraftBody } from "../useCreationDraft";
 import { draftBanner, photoBlockState, procedureChips, readinessLine, sectionNumbers } from "./mobileCreation";
+import {
+  CONSENTS,
+  consentsSatisfied,
+  consentStatement,
+  defaultConsentAnswers,
+  type ConsentKind,
+} from "@fn/_shared/consents/catalog";
 
 function toSubmission(resolution: RequesterResolution): RequesterSubmission {
   if (resolution.kind === "contact") {
@@ -171,6 +178,10 @@ export function MobileNewRequestPage() {
   const [created, setCreated] = React.useState<{ id: string; reference: string } | null>(null);
   const [assignError, setAssignError] = React.useState<string | null>(null);
   const [assignToMe, setAssignToMe] = React.useState(false);
+  // Consentements RGPD — mêmes questions qu'au bureau, même catalogue fermé.
+  // Non persistés dans le brouillon : un consentement est un acte de l'usager
+  // présent à cet instant, pas un réglage qui se reprend trois jours plus tard.
+  const [consents, setConsents] = React.useState<Record<ConsentKind, boolean>>(defaultConsentAnswers);
   const [leaveOpen, setLeaveOpen] = React.useState(false);
   const [orgSheetOpen, setOrgSheetOpen] = React.useState(false);
   const [procedureExpanded, setProcedureExpanded] = React.useState(false);
@@ -470,6 +481,7 @@ export function MobileNewRequestPage() {
         schema: procedure.schema,
         values,
         files,
+        consents: CONSENTS.map((c) => ({ kind: c.kind, granted: consents[c.kind] === true })),
       });
       draft.clear();
       setCreated({ id: created2.id, reference: created2.reference });
@@ -497,6 +509,7 @@ export function MobileNewRequestPage() {
     setSubject("");
     setBodyText("");
     setPriority("normale");
+    setConsents(defaultConsentAnswers());
     setValues({});
     setFiles({});
     setFieldErrors({});
@@ -560,7 +573,10 @@ export function MobileNewRequestPage() {
   const existingDraftName = existingDraft
     ? (procRows.data ?? []).find((r) => r.socle_id === existingDraft.procedureId)?.name ?? null
     : null;
-  const submitDisabled = !procedure || !resolution || destinationMissing(destinationId) || create.isPending;
+  // Reflet d'écran : la garde qui compte est `normalizeConsents`, côté serveur.
+  const consentsMissing = !consentsSatisfied(consents);
+  const submitDisabled = !procedure || !resolution || destinationMissing(destinationId)
+    || consentsMissing || create.isPending;
 
   return (
     <div className="flex min-h-full flex-col">
@@ -734,6 +750,37 @@ export function MobileNewRequestPage() {
             {canAssignSelf ? (
               <Toggle checked={assignToMe} onChange={() => setAssignToMe((v) => !v)} label="M'affecter cette demande" />
             ) : null}
+          </section>
+        ) : null}
+
+        {procedure ? (
+          <section className="flex flex-col gap-2.5">
+            <h2 className="text-[13px] font-extrabold uppercase tracking-wide text-muted-foreground">
+              Consentements de l'usager
+            </h2>
+            {CONSENTS.map((def) => (
+              <label
+                key={def.kind}
+                className="flex items-start gap-3 rounded-[14px] border border-border bg-card px-3.5 py-3 shadow-airbnb-sm"
+              >
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-5 shrink-0 rounded border-input text-primary"
+                  checked={consents[def.kind] === true}
+                  onChange={(e) => setConsents((c) => ({ ...c, [def.kind]: e.target.checked }))}
+                />
+                <span className="flex flex-col gap-1">
+                  <span className="text-[14px] font-semibold leading-relaxed">
+                    {consentStatement(def.kind, current.organizationName)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {def.required
+                      ? "Obligatoire — sans ce consentement, la demande ne peut pas être déposée."
+                      : "Facultatif — l'usager peut le refuser sans conséquence sur sa demande."}
+                  </span>
+                </span>
+              </label>
+            ))}
           </section>
         ) : null}
 

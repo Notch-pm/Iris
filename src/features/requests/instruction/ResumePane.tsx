@@ -3,7 +3,7 @@
 // démarche pose la question) et demandes liées.
 
 import { Link } from "react-router-dom";
-import { ExternalLink, Pencil } from "lucide-react";
+import { Check, ExternalLink, Pencil, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "../StatusBadge";
@@ -13,6 +13,8 @@ import { InfoCell, Surface, SurfaceHead } from "@/components/ui/surface";
 import { channelLabel, linkReason, originResource, type AnswerRow } from "./instruction";
 import { LieuIntervention } from "./LieuIntervention";
 import type { InterventionLocation } from "./lieu";
+import { parseConsentRecords } from "@fn/_shared/consents/catalog";
+import { cn } from "@/lib/utils";
 
 interface Props {
   request: RequestRow;
@@ -96,6 +98,8 @@ export function ResumePane({
 
       {lieu ? <LieuIntervention lieu={lieu} /> : null}
 
+      <ConsentementsDepot request={r} />
+
       <Surface>
         <SurfaceHead title="Demandes liées" sub={hasLinks ? undefined : "Aucune demande liée"} />
         {internalLinks.map((l) => {
@@ -166,5 +170,51 @@ function LinkRow({ reference, label, status, why, action }: {
       <span className="text-[11.5px] text-muted-foreground">{why}</span>
       {action}
     </div>
+  );
+}
+
+/**
+ * Consentements RGPD recueillis AU DÉPÔT — la trace immuable de la demande,
+ * distincte de l'état courant du référentiel (fiche usager).
+ *
+ * Sa raison d'être tient dans un cas : un dépôt **anonyme** ou une identité
+ * **non rapprochée** n'a aucune fiche au référentiel. Sans ce bloc, la preuve
+ * existerait en base sans que personne ne puisse la lire — exactement pour les
+ * dossiers où elle est la seule.
+ *
+ * La phrase affichée est celle qui a été SOUMISE ce jour-là, jamais recomposée
+ * avec le nom d'organisme d'aujourd'hui.
+ */
+function ConsentementsDepot({ request }: { request: RequestRow }) {
+  // Les demandes antérieures à la migration portent `[]` (défaut de la
+  // colonne) : le bloc ne s'affiche alors pas du tout, plutôt que d'annoncer
+  // une absence de consentement qui n'a jamais été une réponse.
+  const consents = parseConsentRecords(request.consents);
+  if (consents.length === 0) return null;
+
+  return (
+    <Surface>
+      <SurfaceHead
+        title="Consentements au dépôt"
+        sub="Ce que l'usager a accepté ce jour-là — trace du dossier, non modifiable"
+      />
+      <ul className="flex flex-col gap-2">
+        {consents.map((c) => (
+          <li key={c.kind} className="flex items-start gap-2.5 text-[13px]">
+            {c.granted ? (
+              <Check className="mt-0.5 size-4 shrink-0 text-primary" aria-hidden="true" />
+            ) : (
+              <X className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+            )}
+            <span className="flex flex-col gap-0.5">
+              <span className="font-semibold leading-relaxed">« {c.statement} »</span>
+              <span className={cn("text-xs font-semibold", c.granted ? "text-primary" : "text-muted-foreground")}>
+                {c.granted ? "Accepté" : "Refusé"}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Surface>
   );
 }

@@ -8,8 +8,15 @@
 // demandes sont des données Iris, bornées par le RLS.
 
 import { isFinal, type RequestStatus } from "@/features/requests/statuts";
-import type { SocleContact } from "./rapprochement";
+import type { SocleConsent, SocleContact } from "./rapprochement";
 import { civilityLabel } from "@fn/_shared/identity/declared";
+import {
+  CONSENTS,
+  consentDef,
+  consentStatement,
+  isConsentKind,
+  type ConsentKind,
+} from "@fn/_shared/consents/catalog";
 
 /** Ligne « libellé / valeur » d'un bloc d'informations. */
 export interface FieldRow {
@@ -166,4 +173,106 @@ export function usagerStats(rows: UsagerRequestLike[]): UsagerStats {
     if (lastAt === null || r.created_at > lastAt) lastAt = r.created_at;
   }
   return { total: rows.length, open, closed: rows.length - open, lastAt };
+}
+
+// ---- Consentements RGPD -----------------------------------------------------
+//
+// Deux questions posées systématiquement à l'usager à chaque dépôt (catalogue
+// FERMÉ, partagé avec les edge functions : `@fn/_shared/consents/catalog`).
+// Ce qui est affiché ici est l'état du RÉFÉRENTIEL : le Socle est propriétaire
+// du consentement d'une personne, et le dérive du recueil le plus récent.
+
+/** État d'un consentement du catalogue pour une fiche donnée. */
+export interface ConsentView {
+  kind: ConsentKind;
+  label: string;
+  purpose: string;
+  required: boolean;
+  granted: boolean;
+  /** Recueil le plus récent (ISO), null si la question n'a jamais été posée. */
+  at: string | null;
+  /**
+   * Jamais recueilli. ⚠️ À distinguer d'un refus : une fiche antérieure au
+   * 2026-09-20, ou jamais passée par un dépôt, porte `granted: false` sans que
+   * personne ne lui ait rien demandé. Afficher « Refusé » serait un mensonge —
+   * et sur un consentement, un mensonge coûteux.
+   */
+  neverCollected: boolean;
+  /** Phrase soumise au dernier recueil ; celle du catalogue à défaut. */
+  statement: string;
+}
+
+/** Lecture de l'état courant, dans l'ordre du catalogue (l'obligatoire d'abord). */
+export function consentViews(contact: SocleContact, organismName?: string | null): ConsentView[] {
+  const history = parseSocleConsents(contact.consents);
+  return CONSENTS.map((def) => {
+    const granted = def.kind === "traitement"
+      ? contact.consent_traitement === true
+      : contact.consent_partage === true;
+    const at = (def.kind === "traitement" ? contact.consent_traitement_at : contact.consent_partage_at) ?? null;
+    const last = history.find((h) => h.kind === def.kind);
+    return {
+      kind: def.kind,
+      label: def.label,
+      purpose: def.purpose,
+      required: def.required,
+      granted,
+      at,
+      // Le référentiel peut porter l'état sans que l'historique ait été chargé
+      // (liste, rapprochement) : la DATE seule tranche, jamais l'historique.
+      neverCollected: at === null,
+      statement: last?.statement ?? consentStatement(def.kind, organismName),
+    };
+  });
+}
+
+/** Une ligne d'historique, prête à afficher. */
+export interface ConsentHistoryRow {
+  kind: ConsentKind;
+  label: string;
+  granted: boolean;
+  at: string | null;
+  /** Application qui a recueilli — telle quelle, le catalogue ne lui appartient pas. */
+  source: string | null;
+  statement: string;
+}
+
+/**
+ * Historique relu du Socle — tolérant : un `kind` hors catalogue (une version
+ * ultérieure du référentiel, un partenaire inventif) est IGNORÉ plutôt que
+ * rendu tel quel, pour qu'aucun écran ne se retrouve à afficher une phrase
+ * dont il ne sait pas ce qu'elle engage.
+ */
+export function parseSocleConsents(rows: SocleConsent[] | undefined): ConsentHistoryRow[] {
+  if (!Array.isArray(rows)) return [];
+  const out: ConsentHistoryRow[] = [];
+  for (const row of rows) {
+    if (!isConsentKind(row?.kind)) continue;
+    const def = consentDef(row.kind)!;
+    out.push({
+      kind: row.kind,
+      label: def.label,
+      granted: row.granted === true,
+      at: row.collected_at ?? null,
+      source: row.source_app && row.source_app.trim() !== "" ? row.source_app.trim() : null,
+      statement: row.statement && row.statement.trim() !== ""
+        ? row.statement.trim()
+        : consentStatement(row.kind),
+    });
+  }
+  // Le plus récent d'abord — le Socle trie déjà ainsi, mais un écran ne se
+  // repose pas sur l'ordre d'une réponse HTTP.
+  return out.sort((a, b) => (b.at ?? "").localeCompare(a.at ?? ""));
+}
+
+/** Résumé d'une carte : « Traitement accordé · Partage refusé », ou l'absence. */
+export function consentsSummary(views: ConsentView[]): string {
+  if (views.every((v) => v.neverCollected)) {
+    return "Aucun consentement recueilli à ce jour";
+  }
+  return views
+    .map((v) => v.neverCollected
+      ? `${v.label} : jamais demandé`
+      : `${v.label} : ${v.granted ? "accordé" : "refusé"}`)
+    .join(" · ");
 }

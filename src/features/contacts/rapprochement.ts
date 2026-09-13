@@ -34,6 +34,29 @@ export interface SocleContact {
   city: string | null;
   country: string | null;
   quartier: { id: string; name: string | null; color: string | null } | null;
+  /**
+   * Consentements RGPD — état courant dérivé par le Socle du recueil le plus
+   * récent. ⚠️ `false` ne veut pas dire « refusé » : une fiche antérieure au
+   * 2026-09-20, ou jamais passée par un dépôt, n'a jamais été interrogée. C'est
+   * la DATE qui distingue les deux (`consentViews`, pur et testé).
+   */
+  consent_traitement?: boolean;
+  consent_traitement_at?: string | null;
+  consent_partage?: boolean;
+  consent_partage_at?: string | null;
+  /** Historique des recueils, du plus récent au plus ancien (fiche seule). */
+  consents?: SocleConsent[];
+}
+
+/** Un recueil de consentement, tel que `socle-proxy` le transmet. */
+export interface SocleConsent {
+  kind: string;
+  granted: boolean;
+  /** Phrase exacte soumise à l'usager ce jour-là. */
+  statement: string | null;
+  /** Application qui a recueilli (iris, nora, un partenaire…). */
+  source_app: string | null;
+  collected_at: string | null;
 }
 
 export interface MatchCandidate {
