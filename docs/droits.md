@@ -3,8 +3,10 @@
 > **Public** : administrateurs fonctionnels d'un tenant et développeuses/développeurs
 > Iris · **Question traitée** : comment fonctionnent les profils de droits qui
 > gouvernent la visibilité et l'instruction des demandes ? · **Dernière mise à jour** :
-> 2026-08-22 · Schéma appliqué au projet Supabase `tqcoqlneybtbrrcvpkpk`
-> (migrations `20260822100000` à `20260822100900`, miroirs dans `supabase/migrations/`).
+> 2026-09-13 · Schéma appliqué au projet Supabase `tqcoqlneybtbrrcvpkpk`
+> (migrations `20260822100000` à `20260822100900`, puis `20260921100000` —
+> invariant du dernier administrateur rendu différentiel ; miroirs dans
+> `supabase/migrations/`).
 
 Remplace le rôle binaire `agent | administrateur` (décision PO du 2026-08-20,
 documentée en historique dans [`architecture-proposee.md`](architecture-proposee.md)
@@ -137,9 +139,9 @@ Socle du tenant sinon — voir [`data-model.md`](data-model.md#tables)) et
   tenant** (`socle_scope_org_id`) + anomalie `destinataire_inconnu` posée sur la
   demande — jamais d'invisibilité totale. Recalculé après chaque synchronisation
   par `refresh_request_scope_org` (appelée par `sync-socle-referentiel`).
-- **Dernier administrateur** (invariant de tenant) : il doit toujours rester, dans
-  un tenant, au moins un utilisateur détenant l'administration sur la **racine
-  Socle**. Toute opération qui le violerait est refusée avec un message français
+- **Dernier administrateur** (invariant de tenant) : un tenant qui compte au moins
+  un utilisateur détenant l'administration sur la **racine Socle** n'en perd jamais
+  le dernier. Toute opération qui le violerait est refusée avec un message français
   explicite — vérifié à **deux** endroits distincts, sans contournement, admin
   plateforme compris : `assert_tenant_keeps_root_admin` (appelée par
   `save_permission_profile`, `set_permission_profile_status`,
@@ -147,6 +149,19 @@ Socle du tenant sinon — voir [`data-model.md`](data-model.md#tables)) et
   `t05_organization_members_protect_last_admin`
   (`organization_members_protect_last_admin`, BEFORE DELETE, contourné en contexte
   de service uniquement) pour le chemin « retrait du membre lui-même ».
+  L'invariant est **différentiel** (2026-09-13, `20260921100000`) : chacune des
+  trois RPC mesure l'état d'avant (`tenant_has_root_admin`, interne) et ne joue
+  l'assertion que s'il était satisfait. Écrit en post-condition absolue, il
+  interdisait au **premier profil d'un tenant neuf** de naître — aucun profil sans
+  administrateur attribué, aucun administrateur sans profil : verrou circulaire
+  constaté à l'ouverture de SNA27, sans contournement possible puisque c'est la
+  seule garde du projet qu'un admin plateforme ne lève pas. « Conserver » un
+  administrateur, c'est interdire le passage de ≥ 1 à 0 ; un tenant à 0 n'a rien à
+  conserver, et la propriété garantie est inchangée. Le chemin « retrait du membre »
+  (`is_last_root_admin`) était déjà différentiel par construction. Deux scénarios
+  de `profils-droits.test.sql` couvrent désormais le geste réel (par la RPC, sur un
+  tenant vierge) — les autres sèment leurs profils par `insert` direct, ce qui
+  explique que le verrou n'ait pas été vu.
 - **Verrou optimiste** : `permission_profiles.version` est vérifiée
   (`expected_version`) et incrémentée à chaque écriture composite ; divergence →
   refus avec invitation à recharger, jamais de fusion silencieuse.
@@ -238,7 +253,10 @@ dans chaque garde), y compris pour dépanner un tenant verrouillé — **sauf**
 l'invariant du dernier administrateur (`assert_tenant_keeps_root_admin`), qui
 s'applique sans aucune exception : un admin plateforme qui retirerait le dernier
 administrateur racine sans en ajouter un autre casserait quand même la propriété
-que cet invariant garantit.
+que cet invariant garantit. C'est précisément pourquoi cet invariant doit rester
+**différentiel** (§ « Dernier administrateur ») : n'ayant pas de contournement, une
+post-condition absolue rendait un tenant neuf définitivement inadministrable — y
+compris pour l'admin plateforme, seul à pouvoir l'ouvrir.
 
 ## RPC — seule porte d'écriture des profils
 

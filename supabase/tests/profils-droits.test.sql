@@ -924,6 +924,108 @@ begin
   end;
 
   -- ==========================================================================
+  -- Tenant NEUF — le PREMIER profil doit pouvoir naître (RM-42 différentiel).
+  -- Régression du verrou circulaire constaté le 2026-09-13 (tenant SNA27) :
+  -- sur un tenant sans aucun administrateur racine, save_permission_profile
+  -- refusait TOUT premier profil au nom de l'invariant du dernier
+  -- administrateur — donc aucun administrateur ne pouvait jamais être
+  -- attribué, donc aucun profil ne pouvait naître. Le décor de ce fichier ne
+  -- pouvait pas le voir : ses profils sont tous semés par `insert` direct en
+  -- contexte postgres, et la RPC n'était appelée que sur un tenant qui avait
+  -- DÉJÀ son administrateur racine. On rejoue donc le geste RÉEL — par la RPC,
+  -- sur un tenant vierge — puis on vérifie que l'invariant s'arme dès qu'il
+  -- est satisfait.
+  -- ==========================================================================
+  declare
+    s_root3  uuid := gen_random_uuid();
+    proc_t3  uuid := gen_random_uuid();
+    org3     uuid;
+    u_neuf   uuid := gen_random_uuid();  -- admin plateforme qui ouvre le tenant
+    u_agent3 uuid := gen_random_uuid();
+    p_admin3 uuid;
+    v_r      jsonb;
+  begin
+    insert into auth.users (id, email, created_at, updated_at) values
+      (u_neuf,   'plateforme@t3.test', now(), now()),
+      (u_agent3, 'agent@t3.test',      now(), now());
+    update public.users set is_platform_admin = true where id = u_neuf;
+
+    insert into public.organizations (socle_org_id, name)
+    values (s_root3, 'Tenant Neuf') returning id into org3;
+    insert into public.socle_organizations (organization_id, socle_id, socle_parent_id, name)
+    values (org3, s_root3, null, 'Racine Tenant Neuf');
+    insert into public.socle_procedure_cache (socle_id, organization_id, socle_root_org_id, name)
+    values (proc_t3, org3, s_root3, 'Démarche tenant neuf');
+    insert into public.organization_members (organization_id, user_id, role)
+    values (org3, u_agent3, 'agent');
+
+    if public.tenant_has_root_admin(org3) then
+      v_fail := v_fail || 'Tenant neuf : un administrateur racine est détecté alors que le tenant est vierge';
+    end if;
+
+    perform set_config('request.jwt.claims', jsonb_build_object('sub', u_neuf, 'role', 'authenticated')::text, true);
+    execute 'set local role authenticated';
+
+    -- 1. Le tout premier profil (administrateur) doit être ACCEPTÉ.
+    begin
+      select public.save_permission_profile(jsonb_build_object(
+        'organization_id', org3, 'name', 'Administrateur', 'is_admin', true,
+        'default_rights', jsonb_build_array('consultation', 'creation', 'instruction', 'cloture'),
+        'organizations', jsonb_build_array(s_root3), 'procedures', '[]'::jsonb)) into v_r;
+      p_admin3 := (v_r ->> 'id')::uuid;
+    exception when others then
+      v_fail := v_fail || ('Tenant neuf : le premier profil a été refusé (' || sqlerrm || ')');
+    end;
+
+    if p_admin3 is not null then
+      -- 2. Un second profil, non administrateur, AVANT toute attribution : le
+      --    tenant n'a toujours aucun administrateur racine, ce n'est pas un
+      --    motif de refus.
+      begin
+        perform public.save_permission_profile(jsonb_build_object(
+          'organization_id', org3, 'name', 'Agent', 'is_admin', false,
+          'default_rights', jsonb_build_array('consultation', 'creation', 'instruction', 'cloture'),
+          'organizations', jsonb_build_array(s_root3), 'procedures', '[]'::jsonb));
+      exception when others then
+        v_fail := v_fail || ('Tenant neuf : le second profil a été refusé (' || sqlerrm || ')');
+      end;
+
+      -- 3. L'attribution : le tenant acquiert son administrateur racine.
+      perform public.assign_permission_profile(p_admin3, u_agent3);
+
+      -- Vérifications en contexte postgres : tenant_has_root_admin est interne
+      -- (EXECUTE révoqué d'authenticated), l'appeler sous ce rôle échouerait.
+      execute 'reset role';
+      if not public.tenant_has_root_admin(org3) then
+        v_fail := v_fail || 'Tenant neuf : l''attribution du profil administrateur ne donne pas d''administrateur racine';
+      end if;
+      select version into v_version from public.permission_profiles where id = p_admin3;
+      execute 'set local role authenticated';
+
+      -- 4. L'invariant est DÈS LORS armé : retirer ce seul administrateur est refusé.
+      begin
+        perform public.revoke_permission_profile(p_admin3, u_agent3);
+        v_fail := v_fail || 'Tenant neuf : le dernier administrateur racine a pu être retiré';
+      exception when others then null;
+      end;
+
+      -- 5. ... et désactiver son profil est refusé de la même manière.
+      begin
+        perform public.set_permission_profile_status(p_admin3, 'inactive', v_version);
+        v_fail := v_fail || 'Tenant neuf : le profil du dernier administrateur racine a pu être désactivé';
+      exception when others then null;
+      end;
+
+      execute 'reset role';
+      if not public.tenant_has_root_admin(org3) then
+        v_fail := v_fail || 'Tenant neuf : l''administrateur racine a disparu malgré les deux refus attendus';
+      end if;
+    else
+      execute 'reset role';
+    end if;
+  end;
+
+  -- ==========================================================================
   -- CA-14 / CL-16 — dernier administrateur. DERNIER bloc à toucher
   -- l'administration d'Alex : le retrait, une fois réussi, le prive
   -- durablement de is_org_admin_anywhere pour le reste du script.

@@ -1,7 +1,7 @@
 # Dette technique — backlog
 
 > **Public** : équipe Iris · **Question traitée** : qu'est-ce qui est assumé comme dette, et
-> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-08-30
+> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-09-13
 
 Ce document ne recopie rien : il ne porte que la dette **sans autre domicile** (outillage,
 conventions, transverse). La dette de modèle de données et d'API vit là où elle se constate :
@@ -167,3 +167,31 @@ ce que le sélecteur en dit — vraisemblablement une facette « externe / inter
 mélange muet, puisque les deux publics ne se déposent pas de la même façon. **Aucune garde
 serveur n'est à défaire** : elle n'a volontairement jamais été posée sur le type, contrairement
 au statut `brouillon`.
+
+## O8 — Ouvrir un client n'a aucun geste applicatif
+
+**Constat (2026-09-13, ouverture de SNA27)** : rien dans Iris ne crée un **tenant**.
+`/superadmin` › Organisations est consultation seule (« la hiérarchie se gère dans le Socle »),
+et `sync-socle-referentiel` n'itère que sur les tenants **déjà** présents dans
+`public.organizations` (`index.ts:247`) : une racine créée dans le Socle n'apparaît donc jamais
+d'elle-même. Les trois premiers tenants avaient été posés à la main le 2026-08-20, sans seed
+au dépôt ; le quatrième l'a été de la même façon.
+
+**Pourquoi c'est de la dette** : l'ouverture d'un client tient aujourd'hui en quatre gestes
+dont **un seul** a un écran — (1) `insert into public.organizations` (racine Socle),
+(2) « Synchroniser maintenant », (3) `organization_members` pour chaque compte, y compris un
+admin plateforme (le sélecteur d'organisation lit les appartenances, pas le RLS),
+(4) les profils de droits, qu'aucun trigger ne crée pour un tenant neuf — ceux des trois
+premiers viennent de la migration de reprise `20260822*`. Tant que (4) n'est pas fait, le
+tenant est **en lecture seule à l'écran** même pour un admin plateforme : le SQL le laisserait
+tout faire (`is_platform_admin()` court-circuite `requests_*` et `user_has_request_right`),
+mais l'UI reflète les couples et est *fail closed* — `/demandes/nouvelle` répond « Vous n'avez
+pas de droit de création de demande ». C'est aussi ce chemin qui a révélé le verrou circulaire
+du dernier administrateur (corrigé par `20260921100000`, cf.
+[`droits.md`](droits.md) § « Dernier administrateur »).
+
+**Ce qu'il faudra faire** : un geste « Ouvrir un client » dans la zone superadmin — racine
+Socle choisie dans le référentiel (proxy, jamais un UUID saisi), synchro immédiate,
+rattachement de l'ouvrant, et **création des deux profils de reprise** (Administrateur, Agent)
+dans la même transaction, par la RPC existante. Décision PO du 2026-09-13 : à faire plus tard,
+le provisioning manuel tient pour l'instant.
