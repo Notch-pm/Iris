@@ -40,6 +40,30 @@ note interne → résolution avec texte de clôture → journal.
   en sélecteur inline, bannière de doublon
   probable) → **edge function `create-request-from-procedure`** → écran « Demande créée »
   (ouvrir la fiche, **récépissé imprimable** `.print-receipt`, nouvelle saisie).
+  - **Fiche démarche** (2026-09-18, maquette Claude Design « Écran agent — fiche
+    démarche » ; `procedure/FicheDemarcheDialog.tsx`, module pur `procedure/ficheDemarche.ts`,
+    hook `useProcedureFiche`) : un bouton **« i »** sur chaque carte de l'étape Démarche —
+    et la touche `i` sur une carte — ouvre une fenêtre de 1 080 px en trois familles :
+    **Côté usager** (ce que la collectivité écrit pour ses usagers, contrat Socle 1.24.0 :
+    descriptif, délai d'instruction annoncé, public, pièces annoncées, FAQ usager),
+    **Interne — agent** (la part agent de la base de connaissances, une rubrique par bloc
+    NON VIDE) et **Aide** (l'assistant, en mode démarche seule). « Choisir cette démarche »
+    en pied fait le même geste que la carte. Relue dans le Socle à l'ouverture, rien de
+    conservé.
+    - ⚠️ **La carte n'est plus un `<button>`** (un bouton n'en contient pas un autre) : un
+      `<li>` cliquable à la souris, et deux vrais boutons, « i » et « Choisir », qui
+      arrêtent la propagation — le clavier n'a jamais dépendu du clic sur la carte.
+    - ⚠️ **Les pièges du contrat sont tenus À L'ÉCRAN** : « Temps de saisie du formulaire »
+      et « Délai d'instruction annoncé » nommés pour ne pas se confondre, et aucune carte
+      quand la valeur manque ; la note sur le public est dite « ne restreint pas le dépôt »
+      à côté des publics admis ; pièces ANNONCÉES et pièces du FORMULAIRE en deux listes,
+      jamais fusionnées ; « FAQ usager » et « FAQ agent » dans deux familles.
+    - **Rien d'écrit ≠ non relayé** : `user_communication: null` dit que la collectivité
+      n'a rien écrit ; une clé ABSENTE dit que `socle-proxy` n'est pas à jour — l'écran ne
+      confond pas les deux (`userCommunicationRelayed`).
+    - **Fil d'assistant** : quand la démarche consultée est la démarche CHOISIE, la fiche
+      reprend le fil de la page (celui du rail) ; sinon elle ouvre le sien, qui disparaît à
+      sa fermeture.
   - **Organisme d'abord** (étape 0, décision PO du 2026-08-31 — backlog B4 ; modules purs
     `creation/organismes.ts`, `rights.creationOrganizations` / `creatableProceduresOn`,
     écran `OrganismePicker`) : quand l'agent détient le droit de **création sur plusieurs
@@ -365,6 +389,13 @@ note interne → résolution avec texte de clôture → journal.
       rechargement, **par décision** (conversation éphémère), et le panneau le dit.
       ⚠️ `useAssistant` est une `useMutation` SANS `queryKey` : ranger le fil dans le cache
       TanStack « pour qu'il survive » serait une porte dérobée de persistance.
+      Depuis le 2026-09-18, l'assistant lit aussi **ce que la collectivité publie pour ses
+      usagers** (`user_communication` + `user_description`, Socle 1.24.0) — pastille
+      « communication usager » quand il l'a lu. Le panneau « Procédure » ne l'affiche pas ;
+      c'est la **Fiche démarche** du guichet qui le montre à l'agent (ci-dessus), relayé par
+      `sanitizeProcedureFull` avec la whitelist partagée
+      `@fn/_shared/procedures/userCommunication.ts`. Détail :
+      [`docs/assistant-ia.md`](../../../docs/assistant-ia.md) §2.
       ⚠️ `trimForSend` ne renvoie **jamais** un tour en erreur — sinon le modèle relit « Le
       plafond est atteint » comme sa propre réponse et enchaîne dessus.
       **Défilement** (retour PO 2026-09-19) : une réponse se lit depuis sa PREMIÈRE ligne —

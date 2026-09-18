@@ -21,6 +21,10 @@
  * Toute troncature est ANNONCÉE dans le texte (le modèle doit savoir qu'il ne
  * voit pas tout) et remontée dans `skipped` / `truncated`, jusqu'à l'écran.
  *
+ * Depuis le 2026-09-18, la base de connaissances comprend aussi ce que la
+ * collectivité PUBLIE pour ses usagers (`userCommunication.ts`) : un bloc à
+ * part, après la matière du service et avant les documents.
+ *
  * Sortie DÉTERMINISTE : même entrée, même chaîne. C'est ce qui rendra un cache
  * de prompt possible le jour où on en voudra un.
  *
@@ -29,6 +33,10 @@
 
 import { estimateTokens } from "./tokens.ts";
 import type { AiKnowledge } from "./knowledge.ts";
+import {
+  isUserCommunicationEmpty,
+  type UserCommunicationKnowledge,
+} from "./userCommunication.ts";
 
 /** Enveloppe par défaut laissée à la base de connaissances. */
 export const KNOWLEDGE_BUDGET_TOKENS = 20000;
@@ -42,6 +50,13 @@ const LIMITS = {
   faqEntries: 8,
   faqQuestion: 200,
   faqAnswer: 600,
+  /** Communication aux usagers, bloc entier (jetons). */
+  userCommunication: 4000,
+  /** Dont le descriptif usager (jetons) — le plus long, rendu en dernier. */
+  userDescription: 1500,
+  pieces: 20,
+  pieceText: 300,
+  audienceNote: 500,
 } as const;
 
 const TRUNCATION_MARK = " […] (extrait tronqué)";
@@ -99,16 +114,130 @@ export interface CondenseResult {
   skipped: { name: string; reason: string }[];
   /** Vrai si au moins un bloc a été rogné. */
   truncated: boolean;
+  /** Vrai si le bloc « Communication aux usagers » a été injecté. */
+  userCommunication: boolean;
 }
 
 function block(title: string, body: string): string {
   return body.trim() === "" ? "" : `### ${title}\n${body.trim()}\n`;
 }
 
+/**
+ * Descend d'un cran de plus que nos blocs (`###`) les titres d'un texte
+ * Markdown venu du référentiel : le descriptif usager en porte, et un `# Titre`
+ * au milieu du contexte se lirait comme un bloc voisin de la base de
+ * connaissances. C'est aussi la consigne du contrat aux portails (« descendez
+ * ses titres d'un niveau »).
+ */
+export function demoteHeadings(markdown: string): string {
+  return markdown.replace(
+    /^(#{1,6})(?=\s)/gm,
+    (hashes) => "#".repeat(Math.min(6, hashes.length + 3)),
+  );
+}
+
+/**
+ * Le bloc « Communication aux usagers ». Les libellés sont composés par Iris et
+ * portent le SENS de chaque donnée, parce que c'est là que le contrat prévient
+ * qu'on se trompe (voir `userCommunication.ts`) : un délai annoncé n'est pas
+ * une échéance, une note sur le public n'est pas une règle, une pièce annoncée
+ * n'est pas une pièce à déposer, la FAQ des usagers n'est pas celle du service.
+ */
+function userCommunicationBody(
+  uc: UserCommunicationKnowledge,
+  onTruncate: () => void,
+): string {
+  // Toute coupe est signalée : le marqueur rallonge le texte, donc on compare
+  // les chaînes, pas les longueurs.
+  const clip = (value: string, maxChars: number): string => {
+    const out = truncateAtBoundary(value, maxChars);
+    if (out !== value) onTruncate();
+    return out;
+  };
+  const lines: string[] = [
+    "Textes PUBLICS : ils disent ce que la collectivité annonce à l'usager, pas comment instruire.",
+  ];
+
+  if (uc.processingTime) {
+    lines.push(
+      `- Durée habituelle d'instruction annoncée à l'usager : ${uc.processingTime}. ` +
+        "C'est un délai de réponse indicatif : il ne dit rien de l'échéance d'un dossier " +
+        "ni d'un délai réglementaire, et ce n'est pas le temps de saisie du formulaire.",
+    );
+  }
+
+  if (uc.audienceNote) {
+    const note = clip(uc.audienceNote, LIMITS.audienceNote);
+    // La citation en fin de ligne : la note finit souvent par un point, qu'un
+    // « ». » redoublerait.
+    lines.push(
+      "- Précision sur le public concerné (phrase d'information : elle ne restreint pas le " +
+        `dépôt) : « ${note} »`,
+    );
+    if (uc.admittedAudiences.length > 0) {
+      lines.push(
+        `- Publics admis au dépôt (paramétrage du formulaire — fait foi en cas de ` +
+          `contradiction avec la phrase ci-dessus) : ${uc.admittedAudiences.join(", ")}.`,
+      );
+    }
+  }
+
+  if (uc.announcedPieces.length > 0) {
+    const pieces = uc.announcedPieces.slice(0, LIMITS.pieces);
+    if (uc.announcedPieces.length > pieces.length) onTruncate();
+    lines.push(
+      "- Pièces ANNONCÉES à l'usager (texte de présentation, pas la liste de dépôt : il peut " +
+        "recouper le formulaire, ou citer une pièce à présenter au guichet) :",
+    );
+    for (const p of pieces) {
+      const label = clip(p.label, LIMITS.pieceText);
+      const detail = p.description ? ` — ${clip(p.description, LIMITS.pieceText)}` : "";
+      lines.push(`  - ${label}${detail}`);
+    }
+    // Le contrepoids : sans lui, le modèle prendrait l'annonce pour la liste
+    // complète, et « n'afficher que items en cacherait certaines du dépôt ».
+    // `null` : formulaire illisible, on n'en dit rien plutôt que « aucune ».
+    if (uc.formPieces !== null) {
+      const formPieces = uc.formPieces.slice(0, LIMITS.pieces);
+      if (uc.formPieces.length > formPieces.length) onTruncate();
+      if (formPieces.length === 0) {
+        lines.push("- Pièces demandées par le formulaire de dépôt en ligne : aucune.");
+      } else {
+        lines.push("- Pièces demandées par le formulaire de dépôt en ligne (font foi pour le dépôt) :");
+        for (const p of formPieces) {
+          lines.push(`  - ${clip(p.label, LIMITS.pieceText)} — ${p.requirement}`);
+        }
+      }
+    }
+  }
+
+  if (uc.faq.length > 0) {
+    const entries = uc.faq.slice(0, LIMITS.faqEntries);
+    if (uc.faq.length > entries.length) onTruncate();
+    lines.push(
+      "",
+      "Questions fréquentes DES USAGERS (réponses publiées par la collectivité — distinctes " +
+        "des questions fréquentes du service) :",
+    );
+    entries.forEach((f, i) => {
+      if (i > 0) lines.push("");
+      lines.push(`Q. ${clip(f.question, LIMITS.faqQuestion)}`, `R. ${clip(f.answer, LIMITS.faqAnswer)}`);
+    });
+  }
+
+  if (uc.description) {
+    const description = clip(demoteHeadings(uc.description), tokensToChars(LIMITS.userDescription));
+    lines.push("", "Descriptif de la démarche présenté à l'usager :", description);
+  }
+
+  return lines.join("\n");
+}
+
 export function condenseKnowledge(
   kb: AiKnowledge,
   extracts: DocumentExtract[] = [],
   budgetTokens: number = KNOWLEDGE_BUDGET_TOKENS,
+  userCommunication: UserCommunicationKnowledge | null = null,
 ): CondenseResult {
   const parts: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
@@ -147,7 +276,24 @@ export function condenseKnowledge(
         return `Q. ${q}\nR. ${a}`;
       })
       .join("\n\n");
-    parts.push(block("Questions fréquentes", spend(body, remaining)));
+    parts.push(block("Questions fréquentes du service", spend(body, remaining)));
+  }
+
+  // 4 bis. Ce que la collectivité publie pour ses usagers (contrat Socle
+  // 1.24.0). APRÈS la matière du service — une consigne d'instruction pèse
+  // plus qu'une page de présentation — et AVANT les documents, qui prennent le
+  // reliquat. Bloc distinct de la FAQ du service : le contrat interdit de
+  // fusionner les deux FAQ.
+  let userCommunicationIncluded = false;
+  if (userCommunication && !isUserCommunicationEmpty(userCommunication)) {
+    const body = spend(
+      userCommunicationBody(userCommunication, () => { truncated = true; }),
+      LIMITS.userCommunication,
+    );
+    if (body !== "") {
+      parts.push(block("Communication aux usagers (textes publiés par la collectivité)", body));
+      userCommunicationIncluded = true;
+    }
   }
 
   // 5. Documents d'entraînement — le reliquat, EN TOURNIQUET.
@@ -204,5 +350,6 @@ export function condenseKnowledge(
     included,
     skipped,
     truncated,
+    userCommunication: userCommunicationIncluded,
   };
 }

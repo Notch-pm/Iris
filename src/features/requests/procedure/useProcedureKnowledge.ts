@@ -20,6 +20,7 @@ import {
   parseProcedureDocuments,
   type ProcedureDocuments,
 } from "@fn/_shared/document/templates";
+import { parseProcedureFiche, type ProcedureFiche } from "./ficheDemarche";
 
 export function useProcedureKnowledge(organizationId: string, socleProcedureId: string | null) {
   return useQuery({
@@ -37,6 +38,28 @@ export function useProcedureKnowledge(organizationId: string, socleProcedureId: 
       );
       if (!data.procedure) return emptyKnowledge();
       return parseAgentKnowledge(data.procedure.knowledge_base);
+    },
+  });
+}
+
+/**
+ * « Fiche démarche » — la démarche entière telle qu'un agent la consulte avant
+ * de la choisir : communication usager, base de connaissances agent, publics
+ * admis, pièces du formulaire. Même route que ci-dessus, relue à l'ouverture
+ * (cinq minutes de fraîcheur), rien n'est conservé dans Iris.
+ */
+export function useProcedureFiche(organizationId: string, socleProcedureId: string | null) {
+  return useQuery({
+    queryKey: ["procedure-fiche", organizationId, socleProcedureId],
+    enabled: Boolean(organizationId && socleProcedureId),
+    staleTime: 300_000,
+    retry: false,
+    queryFn: async (): Promise<ProcedureFiche | null> => {
+      const data = await invokeEdge<{ procedure: unknown }>(
+        "socle-proxy/v1/procedures/get",
+        { organization_id: organizationId, socle_procedure_id: socleProcedureId },
+      );
+      return data.procedure ? parseProcedureFiche(data.procedure) : null;
     },
   });
 }

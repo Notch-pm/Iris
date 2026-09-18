@@ -18,6 +18,10 @@ import {
   type ProcedurePublication,
   type ProcedureStatus,
 } from "../../_shared/procedures/publication.ts";
+import {
+  parseUserCommunication,
+  type UserCommunication,
+} from "../../_shared/procedures/userCommunication.ts";
 
 /**
  * Champs d'une fiche usager transmis aux agents Iris.
@@ -187,7 +191,8 @@ export function sanitizeProcedureSummary(raw: any): Record<string, unknown> | nu
 
 /**
  * Démarche complète pour le dépôt et l'instruction : + descriptions,
- * formulaire, et la **part agent** de la base de connaissances.
+ * formulaire, la **part agent** de la base de connaissances et, depuis le
+ * 2026-09-18, la **communication usager** (`user_communication`, publique).
  *
  * `knowledge_base` a longtemps été exclue par principe (« hors besoin Iris ») ;
  * elle ne l'est plus, parce que le besoin a un nom : l'agent qui saisit ou
@@ -207,6 +212,11 @@ export function sanitizeProcedureFull(raw: any): Record<string, unknown> | null 
     form_schema: raw.form_schema ?? null,
     requester_config: raw.requester_config ?? null,
     knowledge_base: parseAgentKnowledge(raw.knowledge_base) satisfies AgentKnowledge,
+    // Ce que la collectivité écrit POUR SES USAGERS (contrat public-api 1.24.0,
+    // 2026-09-18) — la « Fiche démarche » le montre à l'agent. Tout y est
+    // PUBLIC par invariant du Socle ; la whitelist ne relaie que le contrat, et
+    // `null` (rien d'écrit) reste `null`.
+    user_communication: parseUserCommunication(raw.user_communication) satisfies UserCommunication | null,
     // Modèles de document et de courrier de la démarche (contrat public-api
     // 1.6.0, 2026-09-01). L'écran en a besoin pour PROPOSER ; le fichier, lui,
     // ne transite jamais par le navigateur — l'edge function de génération le

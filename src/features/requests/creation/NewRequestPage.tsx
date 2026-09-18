@@ -44,6 +44,7 @@ import {
   useSocleProcedureActivations,
   useSocleProcedureRows,
   type ProcedureSnapshot,
+  type SocleProcedureRow,
 } from "@/features/socle/useSocleCatalog";
 import { RequesterIdentification } from "@/features/contacts/RequesterIdentification";
 import { useGetContact, useSocleContact } from "@/features/contacts/useContacts";
@@ -64,6 +65,7 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "../statuts";
 import { useLinkRequests } from "../useRequests";
 import { useProcedureDocumentUrl } from "../procedure/useProcedureKnowledge";
 import { AssistantThreadProvider } from "../assistant/AssistantThreadProvider";
+import { FicheDemarcheDialog } from "../procedure/FicheDemarcheDialog";
 import {
   parseAgentKnowledge,
   type KnowledgeDocument,
@@ -174,6 +176,9 @@ export function NewRequestPage() {
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
   const [error, setError] = React.useState<string | null>(null);
   const [linked, setLinked] = React.useState<LinkedRequests>({});
+  // « Fiche démarche » ouverte depuis le bouton « i » d'une carte — la démarche
+  // CONSULTÉE, qui n'est pas forcément la démarche choisie.
+  const [ficheRow, setFicheRow] = React.useState<SocleProcedureRow | null>(null);
   const [dupDismissed, setDupDismissed] = React.useState(false);
   // Consentements RGPD — questions SYSTÉMATIQUES du dépôt, hors `form_schema`.
   // Volontairement ABSENTS du brouillon local : un consentement est un acte de
@@ -936,6 +941,7 @@ export function NewRequestPage() {
                   loadingId={loadingId}
                   scopeLabel={needsOrgStep ? destinationLabel : null}
                   onSelect={(id) => void selectProcedure(id)}
+                  onOpenFiche={setFicheRow}
                 />
               )}
             </div>
@@ -1128,6 +1134,21 @@ export function NewRequestPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Sous le fournisseur de la page : quand la démarche consultée est la
+          démarche choisie, la fiche reprend le fil du rail au lieu d'en
+          ouvrir un second. */}
+      <FicheDemarcheDialog
+        organizationId={orgId}
+        row={ficheRow}
+        onClose={() => setFicheRow(null)}
+        chosen={ficheRow?.socle_id === procedureId}
+        shareThread={ficheRow !== null && ficheRow.socle_id === procedureId}
+        onChoose={(id) => {
+          setFicheRow(null);
+          void selectProcedure(id);
+        }}
+      />
     </div>
     </AssistantThreadProvider>
   );

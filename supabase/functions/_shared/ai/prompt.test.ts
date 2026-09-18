@@ -104,6 +104,14 @@ describe("buildAssistantPrompt", () => {
     expect(p).not.toContain("n'a pas documenté");
   });
 
+  // Une FAQ usager suffit à rendre la base non vide : sans cette phrase, le
+  // modèle instruirait d'après une page de présentation sans le savoir.
+  it("seulement des textes publiés aux usagers : dit qu'il n'y a aucune consigne interne", () => {
+    const p = buildAssistantPrompt({ ...base, noInternalGuidance: true });
+    expect(p).toContain("aucune consigne interne");
+    expect(buildAssistantPrompt(base)).not.toContain("aucune consigne interne");
+  });
+
   it("nomme les documents non fournis faute de place", () => {
     const p = buildAssistantPrompt({ ...base, skippedDocuments: ["Barème 2026.pdf"] });
     expect(p).toContain("Barème 2026.pdf");

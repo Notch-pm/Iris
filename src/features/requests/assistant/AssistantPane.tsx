@@ -42,7 +42,18 @@ function ContextChip({ label }: { label: string }) {
   );
 }
 
-export function AssistantPane({ emptyHint }: { emptyHint: string }) {
+interface Props {
+  emptyHint: string;
+  /** Amorces propres à l'écran hôte — par défaut, celles de l'instruction. */
+  starters?: readonly string[];
+  /**
+   * Rendu LARGE (fiche démarche, fenêtre de 1 080 px) : corps de texte à 14 px
+   * au lieu des 12,5 px du rail de 372 px. Le comportement ne change pas.
+   */
+  wide?: boolean;
+}
+
+export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: Props) {
   const { thread, draft, setDraft, send, reset, pending, canSend, lastContext, disabled } =
     useAssistantThread();
   const scrollRef = React.useRef<HTMLDivElement>(null);
@@ -80,22 +91,28 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
       <div ref={scrollRef} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         {isFresh(thread) ? (
           <div className="flex flex-col gap-2.5">
-            <p className="flex items-start gap-2 text-[11.5px] leading-relaxed text-muted-foreground">
+            <p className={cn(
+              "flex items-start gap-2 leading-relaxed text-muted-foreground",
+              wide ? "text-[13px]" : "text-[11.5px]",
+            )}>
               <Sparkles className="mt-px size-3.5 shrink-0 text-primary" aria-hidden="true" />
               <span>
-                Je réponds à partir de la base de connaissances de la démarche et du dossier
-                ouvert. <strong className="font-semibold">L'identité de l'usager ne m'est pas
-                transmise</strong>, et cette conversation n'est pas enregistrée : elle disparaît
-                si vous rechargez la page.
+                Je réponds à partir de la base de connaissances de la démarche — et du dossier,
+                quand il y en a un ouvert. <strong className="font-semibold">L'identité de
+                l'usager ne m'est pas transmise</strong>, et cette conversation n'est pas
+                enregistrée : elle disparaît si vous rechargez la page.
               </span>
             </p>
             <div className="flex flex-wrap gap-1.5">
-              {STARTERS.map((question) => (
+              {starters.map((question) => (
                 <button
                   key={question}
                   type="button"
                   onClick={() => send(question)}
-                  className="rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-semibold transition-colors hover:border-secondary hover:bg-secondary"
+                  className={cn(
+                    "rounded-full border border-border bg-card font-semibold transition-colors hover:border-primary hover:text-primary",
+                    wide ? "h-[30px] px-3 text-xs" : "px-2.5 py-1 text-[11px]",
+                  )}
                 >
                   {question}
                 </button>
@@ -128,16 +145,20 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
               >
                 <div
                   className={cn(
-                    "max-w-[88%] rounded-xl px-3 py-2",
+                    "rounded-xl",
+                    wide ? "max-w-[78%] px-4 py-3" : "max-w-[88%] px-3 py-2",
                     mine
                       ? "bg-primary text-primary-foreground"
                       : "border border-border bg-card text-foreground",
+                    wide && !mine && "shadow-airbnb-sm",
                   )}
                 >
                   {mine ? (
-                    <p className="whitespace-pre-line text-[12.5px] leading-relaxed">{message.content}</p>
+                    <p className={cn("whitespace-pre-line leading-relaxed", wide ? "text-sm" : "text-[12.5px]")}>
+                      {message.content}
+                    </p>
                   ) : (
-                    <Markdown source={message.content} />
+                    <Markdown source={message.content} className={wide ? "text-sm leading-relaxed" : undefined} />
                   )}
                 </div>
               </div>
@@ -164,6 +185,9 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
                   ? "référentiel indisponible"
                   : "démarche non documentée"}
             />
+            {lastContext.userCommunication ? (
+              <ContextChip label="communication usager" />
+            ) : null}
             {lastContext.answers > 0 ? (
               <ContextChip label={`${lastContext.answers} réponse${lastContext.answers > 1 ? "s" : ""} du dossier`} />
             ) : null}
@@ -197,7 +221,9 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
           <Textarea
             rows={2}
             value={draft}
-            placeholder="Poser une question sur la démarche ou le dossier"
+            placeholder={wide
+              ? "Posez votre question — l'assistant ne voit pas les données de l'usager."
+              : "Poser une question sur la démarche ou le dossier"}
             aria-label="Question à l'assistant"
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
@@ -207,7 +233,7 @@ export function AssistantPane({ emptyHint }: { emptyHint: string }) {
                 send();
               }
             }}
-            className="min-h-[58px] resize-none text-[12.5px]"
+            className={cn("min-h-[58px] resize-none", wide ? "text-sm" : "text-[12.5px]")}
           />
           <button
             type="button"

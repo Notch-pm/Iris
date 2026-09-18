@@ -15,6 +15,12 @@ export interface AssistantContextInfo {
   knowledge: boolean;
   knowledgeUnavailable: boolean;
   truncated: boolean;
+  /**
+   * Ce que la collectivité publie pour ses usagers (délai, pièces annoncées,
+   * FAQ usager…) a été lu. Facultatif : une fonction déployée avant le
+   * 2026-09-18 ne l'envoie pas.
+   */
+  userCommunication?: boolean;
   documents: { used: string[]; skipped: { name: string; reason: string }[] };
   answers: number;
   removedIdentityKeys: string[];

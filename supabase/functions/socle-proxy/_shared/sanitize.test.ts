@@ -150,6 +150,33 @@ describe("sanitizeProcedure*", () => {
     expect(serialized).not.toContain("llm");
   });
 
+  // Contrat 1.24.0 : ce que la collectivité écrit pour ses usagers est PUBLIC,
+  // il traverse — mais seulement le contrat, et `null` reste `null`.
+  it("relaie la communication usager, whitelistée", () => {
+    const f = sanitizeProcedureFull({
+      ...rawProc,
+      user_communication: {
+        delays: { processingTimeValue: 3, processingTimeUnit: "semaine" },
+        audience: { note: "Résidents" },
+        attachments: { items: [{ label: "RIB", description: "" }] },
+        faq: { items: [{ question: "Q ?", answer: "R" }] },
+        futur: "SECRET",
+      },
+    })!;
+    expect(f.user_communication).toEqual({
+      delays: { processingTimeValue: 3, processingTimeUnit: "semaine" },
+      audience: { note: "Résidents" },
+      attachments: { items: [{ label: "RIB", description: "" }] },
+      faq: { items: [{ question: "Q ?", answer: "R" }] },
+    });
+    expect(JSON.stringify(f)).not.toContain("SECRET");
+  });
+
+  it("une démarche où la collectivité n'a rien écrit rend `user_communication: null`", () => {
+    const f = sanitizeProcedureFull(rawProc)!;
+    expect(f).toHaveProperty("user_communication", null);
+  });
+
   it("une démarche sans base de connaissances rend une structure vide, jamais null", () => {
     const f = sanitizeProcedureFull({ ...rawProc, knowledge_base: null })!;
     expect(f.knowledge_base).toEqual({

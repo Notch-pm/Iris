@@ -96,6 +96,13 @@ export interface PromptInput {
   truncated?: boolean;
   /** La base de connaissances n'a pas pu être lue (Socle muet). */
   knowledgeUnavailable?: boolean;
+  /**
+   * Le service n'a rédigé AUCUNE consigne (knowledge_base vide), mais la
+   * démarche publie des textes pour ses usagers. Sans cette phrase, le modèle
+   * perdrait l'avertissement « démarche non documentée » dès qu'une FAQ
+   * usager existe, et instruirait d'après une page de présentation.
+   */
+  noInternalGuidance?: boolean;
 }
 
 function contextBlock(ctx: RequestContext): string {
@@ -148,6 +155,13 @@ export function buildAssistantPrompt(input: PromptInput): string {
 
   if (input.knowledge.trim() !== "") {
     parts.push(fenced("Base de connaissances de la démarche (référentiel du service) :", input.knowledge));
+    if (input.noInternalGuidance) {
+      parts.push(
+        "Le service n'a rédigé aucune consigne interne pour cette démarche : tu ne disposes " +
+          "que des textes qu'il publie pour ses usagers. Dis-le si la question appelait une " +
+          "consigne d'instruction.\n",
+      );
+    }
   } else if (input.knowledgeUnavailable) {
     parts.push(
       "La base de connaissances n'a pas pu être lue. Dis-le si la question " +

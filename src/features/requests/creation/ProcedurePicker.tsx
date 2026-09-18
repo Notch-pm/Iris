@@ -12,9 +12,16 @@
 // liste du tout.
 // La liste, elle, ne contient que des démarches PROPOSABLES : ni brouillon, ni
 // interne (`useSocleProcedureRows`).
+//
+// Chaque carte porte aussi un bouton « i » (2026-09-18) : la FICHE de la
+// démarche — ce que voit l'usager, les consignes internes, l'assistant — pour
+// choisir en connaissance de cause. La carte n'est donc plus UN bouton (un
+// bouton n'en contient pas un autre) : le choix passe par « Choisir », et un
+// clic ailleurs sur la carte fait la même chose, à la souris seulement — le
+// clavier a ses deux boutons. La touche « i » sur une carte ouvre sa fiche.
 
 import * as React from "react";
-import { CalendarRange, EyeOff, Loader2, Search } from "lucide-react";
+import { CalendarRange, EyeOff, Info, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { SocleProcedureRow } from "@/features/socle/useSocleCatalog";
@@ -48,9 +55,13 @@ interface Props {
    */
   scopeLabel?: string | null;
   onSelect: (socleProcedureId: string) => void;
+  /** Ouvre la fiche de la démarche (bouton « i », touche « i »). */
+  onOpenFiche: (row: SocleProcedureRow) => void;
 }
 
-export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, scopeLabel, onSelect }: Props) {
+export function ProcedurePicker({
+  rows, loading, counts, selectedId, loadingId, scopeLabel, onSelect, onOpenFiche,
+}: Props) {
   const [query, setQuery] = React.useState("");
   const [category, setCategory] = React.useState(ALL_CATEGORIES);
 
@@ -136,40 +147,68 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 min-[1400px]:grid-cols-3" role="listbox" aria-label="Démarches">
+      <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 min-[1400px]:grid-cols-3" aria-label="Démarches">
         {visible.map((row) => {
           const selected = row.socle_id === selectedId;
           const isLoading = row.socle_id === loadingId;
+          const busy = loadingId !== null;
           const meta = [row.category_name, procedureTypeLabel(row.type)].filter(Boolean);
           const volume = volumeLabel(counts ? (counts[row.socle_id] ?? 0) : undefined);
           const horsPortail = portalAbsenceLabel(row.publication);
           const periode = publicationPeriodLabel(row.publication);
           return (
-            <button
+            <li
               key={row.socle_id}
-              type="button"
-              role="option"
-              aria-selected={selected}
-              disabled={loadingId !== null}
-              onClick={() => onSelect(row.socle_id)}
+              // Clic sur la carte = « Choisir », à la souris. Les deux boutons
+              // arrêtent la propagation : chacun fait son geste, pas deux.
+              onClick={() => { if (!busy) onSelect(row.socle_id); }}
+              onKeyDown={(e) => {
+                if ((e.key === "i" || e.key === "I") && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                  e.preventDefault();
+                  onOpenFiche(row);
+                }
+              }}
               className={cn(
-                "flex flex-col gap-1.5 rounded-[14px] border bg-card p-3.5 text-left transition-shadow",
+                "flex cursor-pointer flex-col gap-1.5 rounded-[14px] border bg-card p-3.5 text-left transition-shadow",
                 selected
                   ? "border-primary bg-primary/[0.04] shadow-airbnb-md"
                   : "border-border shadow-airbnb-sm hover:shadow-airbnb-md",
-                "disabled:cursor-wait",
+                busy && "cursor-wait",
               )}
             >
-              <span className="flex items-center justify-between gap-2.5">
+              <span className="flex items-start justify-between gap-2.5">
                 <span className="text-[15px] font-bold leading-tight">{row.name}</span>
-                <span
-                  className={cn(
-                    "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-bold",
-                    selected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {isLoading ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : null}
-                  {isLoading ? "Chargement" : selected ? "Choisie" : "Choisir"}
+                <span className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    title="Fiche démarche (touche i)"
+                    aria-label={`Fiche de la démarche « ${row.name} »`}
+                    onClick={(e) => { e.stopPropagation(); onOpenFiche(row); }}
+                    className={cn(
+                      "flex size-[30px] items-center justify-center rounded-full border bg-card transition-[background-color,color,border-color,transform] active:scale-[0.94]",
+                      selected
+                        ? "border-primary/35 text-primary hover:bg-primary hover:text-primary-foreground"
+                        : "border-border text-muted-foreground hover:border-primary hover:text-primary",
+                    )}
+                  >
+                    <Info className="size-4" aria-hidden="true" />
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={selected ? `Démarche choisie : ${row.name}` : `Choisir la démarche « ${row.name} »`}
+                    disabled={busy}
+                    onClick={(e) => { e.stopPropagation(); onSelect(row.socle_id); }}
+                    className={cn(
+                      "inline-flex h-[26px] items-center gap-1 rounded-full px-[11px] text-xs font-bold transition-colors disabled:cursor-wait",
+                      selected
+                        ? "bg-primary text-primary-foreground"
+                        : "border border-border bg-card text-foreground hover:border-secondary hover:bg-secondary",
+                    )}
+                  >
+                    {isLoading ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : null}
+                    {isLoading ? "Chargement" : selected ? "Choisie" : "Choisir"}
+                  </button>
                 </span>
               </span>
               {meta.length > 0 ? (
@@ -199,10 +238,10 @@ export function ProcedurePicker({ rows, loading, counts, selectedId, loadingId, 
                   {volume}
                 </span>
               ) : null}
-            </button>
+            </li>
           );
         })}
-      </div>
+      </ul>
     </div>
   );
 }

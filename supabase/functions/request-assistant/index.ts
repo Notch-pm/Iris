@@ -52,11 +52,20 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 
 import { buildRequestContext, REQUEST_CONTEXT_COLUMNS, type RequestContext } from "../_shared/ai/context.ts";
 import { condenseKnowledge, KNOWLEDGE_BUDGET_TOKENS } from "../_shared/ai/condense.ts";
-import { emptyAiKnowledge, parseAiKnowledge, type AiKnowledge } from "../_shared/ai/knowledge.ts";
+import {
+  emptyAiKnowledge,
+  isAiKnowledgeEmpty,
+  parseAiKnowledge,
+  type AiKnowledge,
+} from "../_shared/ai/knowledge.ts";
 import { parseClientHistory, type ChatMessage } from "../_shared/ai/messages.ts";
 import { buildAssistantPrompt } from "../_shared/ai/prompt.ts";
 import { estimateCall, MAX_OUTPUT_TOKENS } from "../_shared/ai/tokens.ts";
 import { mapSocleFailure } from "../_shared/ai/socleErrors.ts";
+import {
+  parseUserCommunicationKnowledge,
+  type UserCommunicationKnowledge,
+} from "../_shared/ai/userCommunication.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -112,11 +121,17 @@ function publicApiBase(): string {
  * Base de connaissances COMPLÈTE, lue dans le Socle avec la clé de service.
  * `undefined` = référentiel muet : l'appelant répond quand même, en le disant.
  * Un Socle injoignable ne doit pas faire taire l'assistant.
+ *
+ * La même réponse porte, depuis le contrat 1.24.0, ce que la collectivité
+ * publie pour ses usagers (`user_communication`, `user_description`) : aucun
+ * second appel, et la même défense de périmètre.
  */
 async function socleKnowledge(
   procedureId: string,
   socleRootId: string,
-): Promise<{ kb: AiKnowledge; name: string | null } | undefined> {
+): Promise<
+  { kb: AiKnowledge; userCommunication: UserCommunicationKnowledge; name: string | null } | undefined
+> {
   const base = publicApiBase();
   const key = Deno.env.get("SOCLE_API_KEY");
   if (base === "" || !key) return undefined;
@@ -137,6 +152,7 @@ async function socleKnowledge(
   }
   return {
     kb: parseAiKnowledge(procedure.knowledge_base),
+    userCommunication: parseUserCommunicationKnowledge(procedure),
     name: typeof procedure.name === "string" ? procedure.name : null,
   };
 }
@@ -366,12 +382,14 @@ Deno.serve(async (req) => {
   }
 
   let knowledge: AiKnowledge = emptyAiKnowledge();
+  let userCommunication: UserCommunicationKnowledge | null = null;
   let procedureName: string | null = null;
   let knowledgeUnavailable = false;
   if (socleProcedureId) {
     const read = await socleKnowledge(socleProcedureId, socleOrgId);
     if (read) {
       knowledge = read.kb;
+      userCommunication = read.userCommunication;
       procedureName = read.name;
     } else {
       knowledgeUnavailable = true;
@@ -382,7 +400,7 @@ Deno.serve(async (req) => {
   // ---- Composition ----------------------------------------------------------
   // Les documents d'entraînement arrivent en vague 4 : le budget les prévoit,
   // la liste est vide d'ici là.
-  const condensed = condenseKnowledge(knowledge, [], KNOWLEDGE_BUDGET_TOKENS);
+  const condensed = condenseKnowledge(knowledge, [], KNOWLEDGE_BUDGET_TOKENS, userCommunication);
   const system = buildAssistantPrompt({
     context,
     knowledge: condensed.text,
@@ -398,6 +416,7 @@ Deno.serve(async (req) => {
     skippedDocuments: condensed.skipped.map((s) => s.name),
     truncated: condensed.truncated,
     knowledgeUnavailable,
+    noInternalGuidance: condensed.userCommunication && isAiKnowledgeEmpty(knowledge),
   });
 
   // ---- L'appel : le Socle réserve, appelle et solde -----------------------
@@ -423,6 +442,7 @@ Deno.serve(async (req) => {
       knowledge: condensed.text !== "",
       knowledgeUnavailable,
       truncated: condensed.truncated,
+      userCommunication: condensed.userCommunication,
       documents: { used: condensed.included, skipped: condensed.skipped },
       answers: context?.answers.length ?? 0,
       removedIdentityKeys: context?.removedIdentityKeys ?? [],

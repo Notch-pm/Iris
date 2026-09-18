@@ -1,6 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { condenseKnowledge, truncateAtBoundary, type DocumentExtract } from "./condense";
+import {
+  condenseKnowledge,
+  demoteHeadings,
+  truncateAtBoundary,
+  type DocumentExtract,
+} from "./condense";
 import { emptyAiKnowledge, parseAiKnowledge, type AiKnowledge } from "./knowledge";
+import {
+  emptyUserCommunication,
+  parseUserCommunicationKnowledge,
+  type UserCommunicationKnowledge,
+} from "./userCommunication";
 
 const kb = (over: Partial<AiKnowledge> = {}): AiKnowledge => ({
   ...emptyAiKnowledge(),
@@ -144,5 +154,133 @@ describe("condenseKnowledge", () => {
     const r = condenseKnowledge(kb(), [{ path: "p", name: "vide.pdf", text: "   " }]);
     expect(r.included).toEqual([]);
     expect(r.text).not.toContain("vide.pdf");
+  });
+});
+
+const uc = (over: Partial<UserCommunicationKnowledge> = {}): UserCommunicationKnowledge => ({
+  ...emptyUserCommunication(),
+  description: "Pour **stationner** près de chez vous.",
+  processingTime: "3 semaines",
+  audienceNote: "Réservée aux résidents.",
+  announcedPieces: [{ label: "Original du livret de famille", description: "À présenter au guichet" }],
+  faq: [{ question: "Où retirer la carte ?", answer: "À l'accueil de la mairie." }],
+  admittedAudiences: ["Citoyen", "Entreprise"],
+  formPieces: [{ label: "Justificatif de domicile", requirement: "obligatoire", required: true }],
+  ...over,
+});
+
+describe("condenseKnowledge — communication aux usagers", () => {
+  it("n'ajoute rien quand la collectivité n'a rien écrit (piège n° 6)", () => {
+    const empty = condenseKnowledge(kb(), [], 20000, emptyUserCommunication());
+    const absent = condenseKnowledge(kb());
+    expect(empty.text).toBe(absent.text);
+    expect(empty.userCommunication).toBe(false);
+    expect(empty.text).not.toContain("Communication aux usagers");
+  });
+
+  // Le formulaire existe sur presque toutes les démarches : s'il suffisait, une
+  // démarche jamais documentée passerait pour « base de connaissances lue ».
+  it("les contrepoids seuls ne font pas un bloc", () => {
+    const r = condenseKnowledge(emptyAiKnowledge(), [], 20000, uc({
+      description: "", processingTime: null, audienceNote: "", announcedPieces: [], faq: [],
+    }));
+    expect(r.text).toBe("");
+    expect(r.userCommunication).toBe(false);
+  });
+
+  it("rend le bloc après la matière du service et avant les documents", () => {
+    const r = condenseKnowledge(kb(), [{ path: "p", name: "bareme.pdf", text: "Barème." }], 20000, uc());
+    expect(r.userCommunication).toBe(true);
+    const at = r.text.indexOf("Communication aux usagers");
+    expect(at).toBeGreaterThan(r.text.indexOf("Questions fréquentes du service"));
+    expect(at).toBeLessThan(r.text.indexOf("Document « bareme.pdf »"));
+  });
+
+  // Piège n° 5 : deux FAQ, deux destinataires — jamais fusionnées.
+  it("garde la FAQ des usagers à part de celle du service", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc());
+    const service = r.text.indexOf("Questions fréquentes du service");
+    const usagers = r.text.indexOf("Questions fréquentes DES USAGERS");
+    expect(service).toBeGreaterThanOrEqual(0);
+    expect(usagers).toBeGreaterThan(service);
+    // La question du service n'a pas migré sous le titre des usagers, ni l'inverse.
+    expect(r.text.indexOf("Quelles pièces ?")).toBeLessThan(usagers);
+    expect(r.text.indexOf("Où retirer la carte ?")).toBeGreaterThan(usagers);
+  });
+
+  // Piège n° 2 : trois durées. Celle-ci est un délai de RÉPONSE annoncé.
+  it("présente le délai comme annoncé, pas comme une échéance ni un temps de saisie", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc());
+    expect(r.text).toContain("Durée habituelle d'instruction annoncée à l'usager : 3 semaines");
+    expect(r.text).toContain("ne dit rien de l'échéance d'un dossier");
+    expect(r.text).toContain("pas le temps de saisie");
+  });
+
+  // Piège n° 3 : la note ne filtre rien, les publics admis font foi.
+  it("dit que la note sur le public ne restreint rien, et pose les publics admis", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc());
+    expect(r.text).toContain("elle ne restreint pas le dépôt) : « Réservée aux résidents. »\n");
+    expect(r.text).toContain("Publics admis au dépôt");
+    expect(r.text).toContain("Citoyen, Entreprise");
+  });
+
+  // Piège n° 4 : l'annonce n'est pas la liste de dépôt — deux listes, distinctes.
+  it("sépare les pièces annoncées des pièces du formulaire, sans les fusionner", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc());
+    const annoncees = r.text.indexOf("Pièces ANNONCÉES");
+    const formulaire = r.text.indexOf("Pièces demandées par le formulaire");
+    expect(annoncees).toBeGreaterThanOrEqual(0);
+    expect(formulaire).toBeGreaterThan(annoncees);
+    expect(r.text).toContain("  - Original du livret de famille — À présenter au guichet");
+    expect(r.text).toContain("  - Justificatif de domicile — obligatoire");
+  });
+
+  it("formulaire sans pièce : le dit ; formulaire illisible : se tait", () => {
+    expect(condenseKnowledge(kb(), [], 20000, uc({ formPieces: [] })).text)
+      .toContain("formulaire de dépôt en ligne : aucune");
+    const r = condenseKnowledge(kb(), [], 20000, uc({ formPieces: null }));
+    expect(r.text).toContain("Pièces ANNONCÉES");
+    expect(r.text).not.toContain("formulaire de dépôt en ligne");
+  });
+
+  it("descend les titres du descriptif sous ceux de la base de connaissances", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc({ description: "# Qui ?\nTout le monde." }));
+    expect(r.text).toContain("#### Qui ?");
+    expect(r.text).not.toMatch(/^# Qui/m);
+  });
+
+  it("borne la FAQ des usagers à 8 entrées et le signale", () => {
+    const faq = Array.from({ length: 12 }, (_, i) => ({ question: `uq${i}`, answer: `ur${i}` }));
+    const r = condenseKnowledge(emptyAiKnowledge(), [], 20000, uc({ faq }));
+    expect(r.truncated).toBe(true);
+    expect(r.text).toContain("uq7");
+    expect(r.text).not.toContain("uq8");
+  });
+
+  it("signale un descriptif tronqué", () => {
+    const r = condenseKnowledge(emptyAiKnowledge(), [], 20000, uc({ description: "mot ".repeat(5000) }));
+    expect(r.truncated).toBe(true);
+    expect(r.text).toContain("(extrait tronqué)");
+  });
+
+  it("les garde-fous restent le premier bloc, même avec une communication abondante", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc({ description: "mot ".repeat(5000) }));
+    expect(r.text.startsWith("### Garde-fous")).toBe(true);
+  });
+
+  it("de bout en bout depuis la réponse du Socle", () => {
+    const parsed = parseUserCommunicationKnowledge({
+      user_communication: { delays: { processingTimeValue: 10, processingTimeUnit: "jour_ouvre" } },
+    });
+    expect(condenseKnowledge(emptyAiKnowledge(), [], 20000, parsed).text)
+      .toContain("annoncée à l'usager : 10 jours ouvrés");
+  });
+});
+
+describe("demoteHeadings", () => {
+  it("descend de trois crans, plafonne à six, et ne touche pas au reste", () => {
+    expect(demoteHeadings("# A\n## B\n#### C\ntexte #1\n#hashtag")).toBe(
+      "#### A\n##### B\n###### C\ntexte #1\n#hashtag",
+    );
   });
 });

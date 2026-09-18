@@ -224,7 +224,10 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   documents d'aide, liens, FAQ, garde-fous ; `trainingDocuments` et `aiSources`, matière de
   l'assistant IA, ne franchissent PAS la frontière ; et depuis le 2026-09-01 le bloc
   **`documents`** — les modèles de document et de courrier de la démarche, pour que l'écran
-  PROPOSE : le fichier, lui, ne transite jamais par le navigateur),
+  PROPOSE : le fichier, lui, ne transite jamais par le navigateur ; et depuis le 2026-09-18
+  **`user_communication`** — ce que la collectivité écrit pour ses usagers, PUBLIC par
+  invariant du Socle, whitelisté par `_shared/procedures/userCommunication.ts`, `null` =
+  rien d'écrit),
   **`/v1/procedures/document-url`** (URL signée d'un document d'aide agent, relayée du Socle
   après vérification que le chemin est cité par CETTE démarche — sans quoi la route serait un
   lecteur libre du bucket `procedure-documents`), `/v1/contacts/search`, `/v1/contacts/list` (annuaire paginé de la page
@@ -348,7 +351,9 @@ les invariants ci-dessus restent la référence.
   menu clavier, seules les colonnes que `requests_guard_write` accepterait s'ouvrent, le
   dépôt DEMANDE la transition et passe par le dialogue commun de la fiche), transitions,
   **parcours de création guidé** (`creation/`),
-  brouillon local, demandes proches, **échanges avec l'usager** (onglet Échanges : e-mail avec
+  brouillon local, demandes proches, **fiche démarche** (2026-09-18 : bouton « i » des
+  cartes de l'étape Démarche — ce que voit l'usager, consignes internes, assistant),
+  **échanges avec l'usager** (onglet Échanges : e-mail avec
   ou sans modèle, variables résolues sur la demande, pièces jointes réelles — edge function
   `send-request-email`), edge function `create-request-from-procedure` et moteur
   partagé `@fn/create-request-from-procedure/_shared/procedureForm.ts`,
@@ -476,7 +481,12 @@ les invariants ci-dessus restent la référence.
 - **Assistant IA d'instruction** (`src/features/requests/assistant`, edge `request-assistant`,
   modules purs `supabase/functions/_shared/ai/`) : conversation avec un assistant Mistral, dans
   le sous-onglet « Assistant » du panneau Procédure — à l'instruction (contexte de la demande)
-  comme au guichet (**démarche seule**, aucune saisie en cours). **Conversation ÉPHÉMÈRE** :
+  comme au guichet (**démarche seule**, aucune saisie en cours). Depuis le 2026-09-18, sa base
+  de connaissances comprend aussi **ce que la collectivité publie pour ses usagers** (Socle
+  1.24.0 : durée d'instruction annoncée, public, pièces annoncées, FAQ usager, descriptif —
+  `_shared/ai/userCommunication.ts`), étiqueté pour que les six pièges du contrat tiennent
+  jusque dans le prompt : une pièce ANNONCÉE n'est pas une pièce à déposer, la FAQ usager
+  n'est pas celle du service. **Conversation ÉPHÉMÈRE** :
   aucune table, le fil disparaît au rechargement. Droit exigé : **instruction** sur le couple,
   ou un droit de création au guichet.
   ⚠️ **Iris n'appelle pas Mistral** : il compose le prompt — ce qu'il est seul à savoir faire,

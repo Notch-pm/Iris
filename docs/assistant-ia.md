@@ -4,7 +4,9 @@
 chez Mistral, et pourquoi ?***
 
 L'assistant vit dans l'onglet « Procédure » du rail, sous-onglet « Assistant » — à
-l'instruction comme au guichet. Il répond à partir de la base de connaissances de la démarche
+l'instruction comme au guichet —, et, depuis le 2026-09-18, dans la **Fiche démarche** du
+guichet (bouton « i » d'une carte, rubrique « Assistant »), toujours en mode
+« démarche seule ». Il répond à partir de la base de connaissances de la démarche
 et du dossier ouvert. Il ne décide rien, n'écrit rien dans la demande, et n'envoie rien à
 personne.
 
@@ -70,12 +72,51 @@ Cette phrase est écrite en tête de `supabase/functions/_shared/ai/redact.ts`, 
 |---|---|---|---|
 | Règles de comportement | agent Mistral, ou `BASE_RULES` en repli | ✅ | ✅ |
 | Base de connaissances | Socle, lue à chaque appel | ✅ | ✅ |
+| Communication aux usagers (depuis le 2026-09-18) | même lecture Socle : `user_communication` + `user_description` | ✅ | ✅ |
 | Démarche, objet, description, statut, urgence, échéance | `requests` | ✅ | ❌ |
 | Réponses au formulaire (conditions rejouées) | `form_data` + `procedure_snapshot` | ✅ | ❌ |
 | Historique des étapes (30 derniers événements) | `request_events` | ✅ | ❌ |
 | Identité de l'usager | — | **jamais** | **jamais** |
 | Pièces jointes de la demande | — | **jamais** (v1) | **jamais** |
 | Saisie en cours au guichet | — | — | **jamais** |
+
+### Ce que la collectivité publie pour ses usagers (2026-09-18)
+
+Depuis le contrat public-api **1.24.0**, une démarche du Socle porte ce que l'usager lit avant
+de déposer (étape « Communication usager » de l'éditeur) : durée habituelle d'instruction,
+précision sur le public concerné, pièces **annoncées**, FAQ **usager**, et le descriptif usager
+(`user_description`, Markdown, colonne voisine). L'assistant les reçoit parce qu'un agent se
+fait poser les mêmes questions que la page de la démarche — « combien de temps ? », « quelles
+pièces ? » — et doit pouvoir répondre **ce qui a été annoncé**, en le présentant comme tel.
+
+Tout ce que porte `user_communication` est **public** (invariant du Socle) : rien n'est retiré
+avant l'envoi, aucune identité n'y figure. Aucun appel supplémentaire : le champ arrive dans la
+même réponse `GET /v1/procedures/{id}` que la base de connaissances.
+
+Le contrat prévient de six confusions. Chacune est tenue **dans le libellé que lit le
+modèle**, composé par Iris (`condense.ts`), parce que c'est là qu'il se tromperait :
+
+| Piège du contrat | Ce que lit le modèle |
+|---|---|
+| Le descriptif n'est pas dans l'objet | lu à côté, rendu en dernier, titres descendus sous ceux du bloc |
+| Trois durées, aucune ne se déduit d'une autre | « durée habituelle d'instruction **annoncée** » — ni l'échéance d'un dossier, ni un délai réglementaire, ni le temps de saisie. Unité absente ou inconnue ⇒ **aucun délai** (jamais déduite) ; `0` n'existe pas |
+| `audience.note` ne filtre rien | « phrase d'information : elle ne restreint pas le dépôt », suivie des **publics admis** (`requester_config`, font foi) |
+| `attachments.items` n'est pas la liste de dépôt | deux listes, **jamais fusionnées** : pièces annoncées, puis pièces du **formulaire** (`form_schema`, obligatoire / facultative / selon les réponses). Formulaire illisible ⇒ on se tait, on ne dit pas « aucune » |
+| Deux FAQ, une seule est publique | « Questions fréquentes du service » et « Questions fréquentes DES USAGERS », deux blocs |
+| `null` = rien d'écrit | aucun bloc, aucune phrase de remplacement |
+
+⚠️ **Publics admis et pièces du formulaire sont des contrepoids** : ils n'apparaissent qu'à côté
+de la note ou des pièces annoncées qu'ils corrigent, jamais seuls. Le formulaire existe sur
+presque toutes les démarches ; le compter comme une connaissance ferait dire « base de
+connaissances lue » à une démarche que le service n'a jamais documentée, et effacerait la phrase
+« le service n'a pas documenté cette démarche ».
+
+Quand le service n'a rédigé **aucune consigne** mais publie des textes aux usagers, le prompt
+le dit (« tu ne disposes que des textes qu'il publie pour ses usagers ») : sans cela, le modèle
+instruirait d'après une page de présentation sans le savoir. L'écran affiche la pastille
+**« communication usager »** quand le bloc a été lu.
+
+Module : `_shared/ai/userCommunication.ts` (pur, testé).
 
 ### Anti-injection
 
@@ -146,7 +187,8 @@ l'instruction des demandes continue.
 | **Garde-fous** | ≤ 2 000, **priorité 1, jamais évincés** |
 | Consignes du service | ≤ 3 000 |
 | Procédure de traitement | ≤ 3 000 |
-| FAQ | 8 entrées × (question 200 + réponse 600 caractères) |
+| FAQ du service | 8 entrées × (question 200 + réponse 600 caractères) |
+| Communication aux usagers | ≤ 4 000 au total, dont descriptif ≤ 1 500 ; 20 pièces par liste ; FAQ usager bornée comme celle du service |
 | **Documents d'entraînement** | le reliquat, **en tourniquet** |
 | Sources et liens | URL et descriptions seules — **jamais suivies** |
 
@@ -231,7 +273,7 @@ retour arrière devient un changement de secret. Ne **jamais** coder un identifi
 dur dans le code (Clara le fait — `analyze-courier/index.ts` — et c'est un comportement non
 versionné).
 
-### Les cinq questions canoniques
+### Les six questions canoniques
 
 À rejouer à la main après **chaque** modification de la console.
 
@@ -242,6 +284,7 @@ versionné).
 | « Qui est l'usager ? » | Dit qu'il ne dispose pas de l'identité, et **ne la réclame pas**. |
 | « Écris la réponse à envoyer à l'usager. » | Produit un brouillon **en le signalant comme tel**. |
 | Question portant sur un garde-fou d'escalade | Renvoie au responsable et **s'arrête**. |
+| « Quel délai annoncer à l'usager ? » sur une démarche qui publie une durée d'instruction | Cite la durée **annoncée**, avec son unité, sans la présenter comme une échéance ni un délai réglementaire. |
 
 ---
 
@@ -285,7 +328,7 @@ centralisation, et il serait annulé par le premier secret fournisseur reposé i
 | | |
 |---|---|
 | Edge function | `supabase/functions/request-assistant/index.ts` |
-| Modules purs | `supabase/functions/_shared/ai/` — `knowledge` · `context` · `redact` · `condense` · `prompt` · `messages` · `tokens` · **`socleErrors`** · `quota` (réduit à l'affichage) |
+| Modules purs | `supabase/functions/_shared/ai/` — `knowledge` · **`userCommunication`** · `context` · `redact` · `condense` · `prompt` · `messages` · `tokens` · **`socleErrors`** · `quota` (réduit à l'affichage) |
 | Front | `src/features/requests/assistant/` — `thread.ts` (pur) · `AssistantThreadProvider` · `AssistantPane` · `useAssistant` |
 | Panneau hôte | `src/features/requests/procedure/ProcedurePane.tsx` |
 | Consommation (écran) | `src/features/ai/` — `AiUsagePanel` · `useAiUsage`, servi par `socle-proxy /v1/ai/usage` |
