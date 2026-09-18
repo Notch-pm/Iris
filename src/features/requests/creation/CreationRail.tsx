@@ -134,7 +134,7 @@ export function CreationRail({
 
         {nearby.state === "idle" ? (
           <p className="rounded-xl border border-dashed border-border p-3.5 text-xs leading-relaxed text-muted-foreground">
-            La détection s'active dès que l'usager est désigné (usager Socle rapproché, ou nom déclaré à titre indicatif).
+            La détection s'active dès que l'usager est désigné (usager rapproché du Référentiel, ou nom déclaré à titre indicatif).
           </p>
         ) : null}
         {nearby.state === "loading" ? (

@@ -239,7 +239,7 @@ export function EchangesPane({
     ? identity.anonymous
       ? "Ce dépôt est anonyme : aucune adresse ne permet d'écrire à l'usager."
       : completable
-        ? "La fiche de cet usager ne porte aucune adresse de courriel. Complétez-la depuis le bloc « Usager » du rail, bouton « Modifier » : la correction est enregistrée dans le Socle et l'envoi devient possible."
+        ? "La fiche de cet usager ne porte aucune adresse de courriel. Complétez-la depuis le bloc « Usager » du rail, bouton « Modifier » : la correction est enregistrée dans le Référentiel et l'envoi devient possible."
         : "L'identité retenue au dépôt ne comporte pas d'adresse de courriel, et cette demande n'est rattachée à aucune fiche du référentiel : il n'y a pas de fiche à compléter."
     : archived
       ? "Cette demande est archivée : aucun nouvel échange ne peut partir."

@@ -144,7 +144,7 @@ export function UsagerSection({ fiche, portalVisible, size, organismes }: {
     ? "Contenu publié sur le portail — vous pouvez le lire tel quel à l'usager."
     : "Textes écrits pour l'usager — vous pouvez les lui lire tels quels. Cette démarche n'est pas visible sur le portail.";
   const emptyLine = fiche.userCommunicationRelayed
-    ? "La collectivité n'a encore rien écrit pour les usagers sur cette démarche. Cela se renseigne dans le Socle, à l'étape « Communication usager » de la démarche."
+    ? "La collectivité n'a encore rien écrit pour les usagers sur cette démarche. Cela se renseigne dans le Référentiel, à l'étape « Communication usager » de la démarche."
     : "Les textes destinés à l'usager n'ont pas pu être lus : la passerelle vers le référentiel n'est pas encore à jour.";
 
   return (

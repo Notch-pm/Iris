@@ -98,7 +98,7 @@ describe("requesterIdentity", () => {
     expect(id.known).toBe(true);
     expect(id.name).toBe("Marie Durand");
     expect(id.initials).toBe("MD");
-    expect(id.subtitle).toBe("Né(e) le 14/03/1981 · Usager Socle rapproché");
+    expect(id.subtitle).toBe("Né(e) le 14/03/1981 · Usager rapproché du Référentiel");
     expect(id.rows).toEqual([
       { label: "Adresse", value: "12 rue des Lilas, 44210 Saint-Aubin" },
       { label: "Courriel", value: "marie@example.fr" },
@@ -501,7 +501,7 @@ describe("activityItems", () => {
     expect(items[0]).toMatchObject({ label: "Note interne ajoutée", detail: "Karim Belkacem · Vérifié avec la brigade de nuit." });
     expect(items[1]).toMatchObject({ label: "Passage à « En cours d'instruction »", detail: "Karim Belkacem · depuis « À traiter »" });
     expect(items[2]).toMatchObject({ label: "Demande affectée", detail: "Karim Belkacem · par Claire Lemoine" });
-    expect(items[3]).toMatchObject({ label: "Fondée sur une démarche Socle", detail: "2 pièces jointes · Claire Lemoine" });
+    expect(items[3]).toMatchObject({ label: "Fondée sur une démarche du Référentiel", detail: "2 pièces jointes · Claire Lemoine" });
     expect(items[4]).toMatchObject({ label: "Demande créée", detail: "Claire Lemoine · saisie dans Iris" });
   });
   it("lit une mention comme un humain : « @Nom », jamais le jeton et l'identifiant", () => {

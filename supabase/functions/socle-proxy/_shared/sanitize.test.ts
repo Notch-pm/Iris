@@ -218,7 +218,7 @@ describe("filterContactCreate", () => {
 describe("filterContactUpdate", () => {
   it("refuse les clés immuables et hors whitelist", () => {
     expect(filterContactUpdate({ contact_type: "personne" }))
-      .toMatchObject({ ok: false, message: "contact_type : immuable après la création (Socle)." });
+      .toMatchObject({ ok: false, message: "contact_type : immuable après la création (Référentiel)." });
     expect(filterContactUpdate({ status: "archived" })).toMatchObject({ ok: false });
     expect(filterContactUpdate({ internal_notes: "x" })).toMatchObject({ ok: false });
     expect(filterContactUpdate({ consent_email: true })).toMatchObject({ ok: false });

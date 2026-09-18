@@ -157,7 +157,7 @@ export function ProcedurePane({
 
       {sub === "fiches" && state === "error" ? (
         <p className="rounded-xl border border-dashed border-border p-3.5 text-xs leading-relaxed text-muted-foreground">
-          La base de connaissances n'a pas pu être lue depuis le Socle. Le travail sur la
+          La base de connaissances n'a pas pu être lue depuis le Référentiel. Le travail sur la
           demande reste possible : ce panneau est une aide, jamais une condition.
         </p>
       ) : null}
@@ -165,7 +165,7 @@ export function ProcedurePane({
       {sub === "fiches" && state === "ready" && counts.blocks === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-3.5 text-xs leading-relaxed text-muted-foreground">
           Le service n'a pas encore documenté cette démarche. Consignes, documents et
-          garde-fous se renseignent dans le Socle, à l'étape « Base de connaissances » de la
+          garde-fous se renseignent dans le Référentiel, à l'étape « Base de connaissances » de la
           démarche.
         </p>
       ) : null}

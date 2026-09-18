@@ -88,7 +88,7 @@ export function TemplateOrganisationsDialog({
                 id={`scope-${templateId}-${n.socle_org_id}`}
                 depth={n.depth}
                 label={n.name}
-                hint={n.obsolete ? "Organisation obsolète dans le Socle" : undefined}
+                hint={n.obsolete ? "Organisation obsolète dans le Référentiel" : undefined}
                 checked={active.has(n.socle_org_id)}
                 disabled={toggle.isPending}
                 onChange={(next) => void onToggle(n.socle_org_id, next)}

@@ -254,7 +254,7 @@ Deno.serve(async (req) => {
         invited: true,
         email_sent: false,
         email_error:
-          "Compte créé, mais aucun serveur d'envoi n'est configuré : renseignez-le dans le Socle "
+          "Compte créé, mais aucun serveur d'envoi n'est configuré : renseignez-le dans le Référentiel "
           + "(organisation principale, onglet « Emails (SMTP) ») puis synchronisez le référentiel.",
       });
     }
@@ -324,7 +324,7 @@ Deno.serve(async (req) => {
         req,
         400,
         "smtp_missing",
-        "Aucun serveur d'envoi configuré : renseignez-le dans le Socle (organisation "
+        "Aucun serveur d'envoi configuré : renseignez-le dans le Référentiel (organisation "
           + "principale, onglet « Emails (SMTP) ») puis synchronisez le référentiel.",
       );
     }

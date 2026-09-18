@@ -101,7 +101,7 @@ export function KnowledgeBasePage() {
       ) : all.length === 0 ? (
         <p className="max-w-3xl rounded-[14px] border border-dashed border-border p-5 text-sm text-muted-foreground">
           Aucune démarche publiée pour ce tenant. Seules les démarches <strong>externes</strong>, en
-          production dans le Socle et <strong>dans leur période de publication</strong>, figurent
+          production dans le Référentiel et <strong>dans leur période de publication</strong>, figurent
           ici.
         </p>
       ) : groups.length === 0 ? (

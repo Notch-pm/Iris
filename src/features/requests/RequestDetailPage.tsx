@@ -1089,7 +1089,7 @@ export function RequestDetailPage() {
         loadingTemplates={procedureDocuments.isLoading}
         templatesError={
           procedureDocuments.isError
-            ? "Les modèles de la démarche n'ont pas pu être lus dans le Socle."
+            ? "Les modèles de la démarche n'ont pas pu être lus dans le Référentiel."
             : null
         }
         preview={preview}

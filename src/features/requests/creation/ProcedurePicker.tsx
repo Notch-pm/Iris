@@ -132,7 +132,7 @@ export function ProcedurePicker({
           ) : (
             <>
               Aucune démarche proposable pour ce tenant. Seules les démarches <strong>externes</strong>,
-              dont le paramétrage est <strong>en production</strong> dans le Socle et qui sont
+              dont le paramétrage est <strong>en production</strong> dans le Référentiel et qui sont
               <strong> dans leur période de publication</strong>, sont proposées ici — vérifiez leur
               état dans le référentiel, puis synchronisez-le.
             </>

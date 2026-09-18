@@ -207,10 +207,10 @@ Deno.serve(async (req) => {
   // (contrairement à l'ingestion, jamais refusée : ici l'agent peut réessayer).
   const procRes = await socleFetch(`${publicApiBase()}/v1/procedures/${p.procedureId}`);
   if (procRes?.status === 404) {
-    return fail(req, 400, "bad_request", "Démarche introuvable dans le Socle — synchronisez le référentiel.");
+    return fail(req, 400, "bad_request", "Démarche introuvable dans le Référentiel — synchronisez le référentiel.");
   }
   if (!procRes?.ok) {
-    return fail(req, 502, "socle_unavailable", "Le Socle est injoignable — réessayez dans un instant.");
+    return fail(req, 502, "socle_unavailable", "Le Référentiel est injoignable — réessayez dans un instant.");
   }
   const procedureRaw = await procRes.json().catch(() => null);
 
@@ -222,7 +222,7 @@ Deno.serve(async (req) => {
   // paramétrage » sur une démarche parfaitement en production, pendant que la
   // vraie cause — une réponse malformée du Socle — resterait invisible.
   const procedureSnapshot = whitelistProcedureSnapshot(procedureRaw);
-  if (!procedureSnapshot) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+  if (!procedureSnapshot) return fail(req, 502, "socle_error", "Réponse inattendue du Référentiel.");
 
   // Démarche EN PRODUCTION uniquement : un brouillon est un paramétrage en
   // cours d'écriture, que le Socle dit ne proposer nulle part. Le sélecteur ne
@@ -235,7 +235,7 @@ Deno.serve(async (req) => {
   // lisibles et instruisables : cette garde ne concerne que la création.
   if (parseProcedureStatus(procedureRaw.status) !== "production") {
     return fail(req, 400, "bad_request",
-      "Cette démarche est en brouillon dans le Socle : son paramétrage doit être terminé avant qu'une demande puisse être consignée.");
+      "Cette démarche est en brouillon dans le Référentiel : son paramétrage doit être terminé avant qu'une demande puisse être consignée.");
   }
 
   const schema = parseFormSchema(procedureSnapshot.form_schema);
@@ -267,13 +267,13 @@ Deno.serve(async (req) => {
       socleRootId,
     );
     if (contactRes?.status === 404) {
-      return fail(req, 400, "bad_request", "Usager introuvable dans le Socle.");
+      return fail(req, 400, "bad_request", "Usager introuvable dans le Référentiel.");
     }
     if (!contactRes?.ok) {
-      return fail(req, 502, "socle_unavailable", "Le Socle est injoignable — réessayez dans un instant.");
+      return fail(req, 502, "socle_unavailable", "Le Référentiel est injoignable — réessayez dans un instant.");
     }
     declared = contactIdentitySnapshot(await contactRes.json().catch(() => null));
-    if (!declared) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+    if (!declared) return fail(req, 502, "socle_error", "Réponse inattendue du Référentiel.");
     socleContactId = p.requester.socle_contact_id;
     identityStatus = "rapprochee";
   } else if (p.requester.kind === "sans_rapprochement") {

@@ -536,7 +536,7 @@ Deno.serve(async (req) => {
       req,
       400,
       "smtp_missing",
-      "Aucun serveur d'envoi configuré : renseignez-le dans le Socle, puis synchronisez le référentiel.",
+      "Aucun serveur d'envoi configuré : renseignez-le dans le Référentiel, puis synchronisez le référentiel.",
     );
   }
 

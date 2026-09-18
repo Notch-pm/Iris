@@ -329,7 +329,7 @@ export function MobileNewRequestPage() {
     try {
       const snapshot = await fetchProcedureSnapshot(orgId, id);
       if (!snapshot) {
-        setError("La démarche n'a pas pu être chargée depuis le Socle — réessayez dans un instant.");
+        setError("La démarche n'a pas pu être chargée depuis le Référentiel — réessayez dans un instant.");
         return;
       }
       applyProcedure(id, snapshot, id !== procedureId);
@@ -347,7 +347,7 @@ export function MobileNewRequestPage() {
     try {
       const snapshot = await fetchProcedureSnapshot(orgId, d.procedureId);
       if (!snapshot) {
-        setError("Le brouillon ne peut pas être repris : la démarche n'a pas pu être rechargée depuis le Socle.");
+        setError("Le brouillon ne peut pas être repris : la démarche n'a pas pu être rechargée depuis le Référentiel.");
         return;
       }
       draftIdRef.current = d.draftId;
@@ -376,7 +376,7 @@ export function MobileNewRequestPage() {
           });
           res = { kind: "contact", audience: d.requester.audience, contact };
         } catch {
-          setError("L'usager du brouillon n'a pas pu être relu depuis le Socle — à désigner de nouveau.");
+          setError("L'usager du brouillon n'a pas pu être relu depuis le Référentiel — à désigner de nouveau.");
         }
       } else if (d.requester?.kind === "sans_rapprochement") {
         res = { kind: "sans_rapprochement", audience: d.requester.audience, declared: d.requester.declared };

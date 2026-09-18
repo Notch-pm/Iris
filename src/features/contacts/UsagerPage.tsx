@@ -152,7 +152,7 @@ export function UsagerPage() {
           <div className="flex flex-col items-center gap-1 py-6 text-center">
             <p className="text-sm font-bold">
               {(contactQuery.error as EdgeError | null)?.code === "not_found"
-                ? "Usager introuvable dans le référentiel Socle."
+                ? "Usager introuvable dans le Référentiel."
                 : "Fiche usager indisponible."}
             </p>
             {/* Message du serveur affiché tel quel (proxy ou Socle). */}
@@ -257,7 +257,7 @@ function IdentiteCard({ contact }: { contact: SocleContact }) {
         <h1 className="text-xl font-bold leading-tight tracking-tight">{contactName(contact)}</h1>
         <Badge variant="secondary">{contactTypeLabel(contact.contact_type)}</Badge>
         {inactive ? <Badge variant="destructive">{contactStatusLabel(contact.status)}</Badge> : null}
-        <Badge variant="outline" className="ml-auto">Référentiel Socle</Badge>
+        <Badge variant="outline" className="ml-auto">Référentiel</Badge>
       </div>
       <Grid rows={[...identityRows(contact), ...contactRows(contact)]} />
 
@@ -266,7 +266,7 @@ function IdentiteCard({ contact }: { contact: SocleContact }) {
       </div>
 
       <p className="truncate font-mono text-[10.5px] text-muted-foreground" title={contact.id}>
-        Socle · {contact.id}
+        Référentiel · {contact.id}
       </p>
     </Surface>
   );
@@ -361,7 +361,7 @@ function ConsentementsCard({ contact, organismName }: {
       ) : null}
 
       <p className="text-xs text-muted-foreground">
-        Recueillis au dépôt d'une demande et conservés par le référentiel Socle. Ils ne se
+        Recueillis au dépôt d'une demande et conservés par le Référentiel. Ils ne se
         modifient pas depuis cette fiche.
       </p>
     </Surface>

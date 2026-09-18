@@ -244,7 +244,7 @@ export function CartePage() {
             <button
               type="button"
               aria-pressed={showQuartiers}
-              title="Superposer le découpage du territoire (référentiel Socle)"
+              title="Superposer le découpage du territoire (Référentiel)"
               onClick={() => setShowQuartiers((v) => !v)}
               className={cn(
                 "flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
@@ -268,7 +268,7 @@ export function CartePage() {
         ) : located.length === 0 ? (
           <Notice>
             Aucune demande en cours ne porte de lieu d'intervention. Le bloc « Lieu d'intervention »
-            se pose sur le formulaire de la démarche, dans le Socle.
+            se pose sur le formulaire de la démarche, dans le Référentiel.
           </Notice>
         ) : (
           <>

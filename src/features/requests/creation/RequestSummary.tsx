@@ -211,7 +211,7 @@ export function RequestSummary({
             label="Organisme"
             htmlFor="rs-destination"
             required
-            hint="Organisation Socle qui porte la demande et décide de qui pourra l'instruire."
+            hint="Organisation du Référentiel qui porte la demande et décide de qui pourra l'instruire."
             error={
               destination.options.length === 0
                 ? "Aucune organisation de votre périmètre n'autorise la création sur cette démarche — contactez votre administrateur."

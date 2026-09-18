@@ -74,7 +74,7 @@ export function UsagerEditDialog({ open, onOpenChange, organizationId, contact, 
     try {
       await update.mutateAsync({ organizationId, socleContactId: contact.id, patch });
       onOpenChange(false);
-      onSaved(`Fiche usager mise à jour dans le Socle — ${changed} champ${changed > 1 ? "s" : ""}`);
+      onSaved(`Fiche usager mise à jour dans le Référentiel — ${changed} champ${changed > 1 ? "s" : ""}`);
     } catch (err) {
       // Message du Socle relayé tel quel (SIRET en doublon, invariant de type…).
       setError(err instanceof Error ? err.message : "Modification refusée.");
@@ -88,7 +88,7 @@ export function UsagerEditDialog({ open, onOpenChange, organizationId, contact, 
           <DialogTitle>Modifier l'usager</DialogTitle>
           <DialogDescription>
             {contactTypeLabel(contact.contact_type)} · la modification est enregistrée dans le
-            référentiel Socle, pour toute la gamme. Le type d'usager n'est pas modifiable.
+            Référentiel, pour toute la gamme. Le type d'usager n'est pas modifiable.
           </DialogDescription>
         </DialogHeader>
 
@@ -168,7 +168,7 @@ export function UsagerEditDialog({ open, onOpenChange, organizationId, contact, 
           <section className="flex flex-col gap-3 border-t border-border pt-4">
             <h3 className="text-sm font-bold">Adresse</h3>
             <p className="text-xs text-muted-foreground">
-              Le quartier est recalculé par le Socle à partir de l'adresse — il ne se saisit pas ici.
+              Le quartier est recalculé par le Référentiel à partir de l'adresse — il ne se saisit pas ici.
             </p>
             {/* Contacts-api ne porte QU'UN complément (`address_line2`) : ni
                 bâtiment ni appartement séparés. Les y écrire inventerait un

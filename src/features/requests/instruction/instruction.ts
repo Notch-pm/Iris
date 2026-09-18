@@ -325,7 +325,7 @@ export function requesterIdentity(
 
   const subtitleParts: string[] = [];
   if (birth) subtitleParts.push(`Né(e) le ${formatIsoDate(birth)}`);
-  subtitleParts.push(identityStatus === "rapprochee" ? "Usager Socle rapproché" : "Identité déclarée, sans rapprochement");
+  subtitleParts.push(identityStatus === "rapprochee" ? "Usager rapproché du Référentiel" : "Identité déclarée, sans rapprochement");
 
   return {
     anonymous: false,
@@ -689,7 +689,7 @@ function describeEvent(
     case "request_created_from_procedure": {
       const n = typeof p.attachments === "number" ? p.attachments : 0;
       return {
-        label: "Fondée sur une démarche Socle",
+        label: "Fondée sur une démarche du Référentiel",
         detail: `${n === 0 ? "sans pièce jointe" : `${n} pièce${n > 1 ? "s" : ""} jointe${n > 1 ? "s" : ""}`} · ${who}`,
       };
     }

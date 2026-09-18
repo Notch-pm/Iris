@@ -100,7 +100,7 @@ export function GenererDocumentDialog({
             hint={
               documents.restrict_visibility
                 ? "Les modèles proposés sont ceux que la démarche autorise à ce stade du dossier."
-                : "Modèles paramétrés sur la démarche, dans le Socle."
+                : "Modèles paramétrés sur la démarche, dans le Référentiel."
             }
             error={templatesError ?? undefined}
           >
@@ -138,7 +138,7 @@ export function GenererDocumentDialog({
             <p className="text-[12.5px] text-muted-foreground">
               {documents.items.length > 0
                 ? "Les modèles de cette démarche sont réservés à un autre stade du dossier (par exemple une clôture positive ou négative)."
-                : "Aucun modèle n'a été paramétré sur cette démarche dans le Socle."}
+                : "Aucun modèle n'a été paramétré sur cette démarche dans le Référentiel."}
             </p>
           ) : null}
 

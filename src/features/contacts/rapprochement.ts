@@ -382,7 +382,7 @@ export type RequesterResolution =
 export function resolutionSummary(resolution: RequesterResolution): string {
   if (resolution.kind === "anonyme") return "Dépôt anonyme (assumé)";
   if (resolution.kind === "contact") {
-    return `${candidateSummary(resolution.contact).title} — usager Socle rapproché`;
+    return `${candidateSummary(resolution.contact).title} — usager rapproché du Référentiel`;
   }
   const d = resolution.declared;
   const name = [d.nom_naissance || d.nom_usuel, d.prenoms].filter(Boolean).join(" ")

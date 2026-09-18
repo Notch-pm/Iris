@@ -56,7 +56,7 @@ export function OrganisationsPanel({ orgId, sync, onOpenCoverage }: Props) {
   return (
     <div className="flex flex-col gap-4">
       <p className="max-w-[640px] text-sm text-muted-foreground">
-        Les organisations du Socle que vous administrez. Depuis chacune, choisissez les
+        Les organisations du Référentiel que vous administrez. Depuis chacune, choisissez les
         modèles d'e-mail qui y sont utilisables.
       </p>
 

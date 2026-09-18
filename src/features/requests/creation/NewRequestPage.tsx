@@ -309,13 +309,13 @@ export function NewRequestPage() {
 
   /** Pourquoi l'étape 2 ne propose rien (usager imposé inutilisable), ou null. */
   const imposedMessage: string | null = !imposedContactId ? null
-    : imposedContact.isLoading ? "Lecture de la fiche usager dans le référentiel Socle…"
+    : imposedContact.isLoading ? "Lecture de la fiche usager dans le Référentiel…"
     : imposedContact.isError || !imposedContact.data
-      ? `La fiche usager n'a pas pu être relue depuis le Socle${
+      ? `La fiche usager n'a pas pu être relue depuis le Référentiel${
           imposedContact.error instanceof Error ? ` — ${imposedContact.error.message}` : "."
         } Reprenez depuis la fiche de l'usager, ou créez la demande sans point d'entrée imposé.`
     : imposedResolution === null
-      ? "Cet usager est enregistré comme administration dans le Socle : aucun public de démarche Iris ne lui correspond."
+      ? "Cet usager est enregistré comme administration dans le Référentiel : aucun public de démarche Iris ne lui correspond."
     : imposedRefused
       ? `La démarche « ${procedure!.snapshot.name} » ne propose pas le public « ${
           imposedResolution.audience === "citoyen" ? "Citoyen"
@@ -408,7 +408,7 @@ export function NewRequestPage() {
           {mirrorEmpty
             ? "Vos droits autorisent la création, mais aucune des organisations de votre "
               + "périmètre n'est connue du référentiel de ce tenant — signalez-le à votre "
-              + "administrateur, une synchronisation du Socle est probablement en attente."
+              + "administrateur, une synchronisation du Référentiel est probablement en attente."
             : "Vous n'avez pas de droit de création de demande — contactez votre administrateur."}
         </p>
         <Button type="button" variant="outline" onClick={() => navigate("/demandes")}>
@@ -465,7 +465,7 @@ export function NewRequestPage() {
     try {
       const snapshot = await fetchProcedureSnapshot(orgId, id);
       if (!snapshot) {
-        setError("La démarche n'a pas pu être chargée depuis le Socle — réessayez dans un instant.");
+        setError("La démarche n'a pas pu être chargée depuis le Référentiel — réessayez dans un instant.");
         return;
       }
       applyProcedure(id, snapshot, id !== procedureId);
@@ -482,7 +482,7 @@ export function NewRequestPage() {
     try {
       const snapshot = await fetchProcedureSnapshot(orgId, d.procedureId);
       if (!snapshot) {
-        setError("Le brouillon ne peut pas être repris : la démarche n'a pas pu être rechargée depuis le Socle.");
+        setError("Le brouillon ne peut pas être repris : la démarche n'a pas pu être rechargée depuis le Référentiel.");
         return;
       }
       draftIdRef.current = d.draftId;
@@ -515,7 +515,7 @@ export function NewRequestPage() {
           });
           res = { kind: "contact", audience: d.requester.audience, contact };
         } catch {
-          flash("L'usager du brouillon n'a pas pu être relu depuis le Socle — à désigner de nouveau.");
+          flash("L'usager du brouillon n'a pas pu être relu depuis le Référentiel — à désigner de nouveau.");
         }
       } else if (d.requester?.kind === "sans_rapprochement") {
         res = { kind: "sans_rapprochement", audience: d.requester.audience, declared: d.requester.declared };
@@ -806,10 +806,10 @@ export function NewRequestPage() {
   const consentsMissing = !consentsSatisfied(consents);
   const footHint = step === 0
       ? "L'organisme porte la demande : il décide de qui pourra l'instruire et la clore"
-    : step === 1 ? "Choisissez la démarche Socle qui fonde la demande"
+    : step === 1 ? "Choisissez la démarche du Référentiel qui fonde la demande"
     : step === 2 ? (imposedContactId
         ? "Usager imposé par sa fiche — il n'est pas modifiable dans ce parcours"
-        : "Renseignez l'usager : ses homonymes du Socle sont proposés automatiquement")
+        : "Renseignez l'usager : ses homonymes du Référentiel sont proposés automatiquement")
     : step === 3 ? (missing === 0 ? "Tous les champs obligatoires sont renseignés" : `${missing} champ${missing > 1 ? "s" : ""} obligatoire${missing > 1 ? "s" : ""} restant${missing > 1 ? "s" : ""}`)
     : consentsMissing
       ? "Le consentement au traitement des informations est obligatoire pour déposer la demande"

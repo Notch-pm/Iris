@@ -137,7 +137,7 @@ Deno.serve(async (req) => {
     console.error(`auth-email-hook: aucun serveur d'envoi pour ${user.id}`);
     return hookError(
       503,
-      "Aucun serveur d'envoi configuré : définissez-le dans le Socle (organisation principale) puis synchronisez le référentiel.",
+      "Aucun serveur d'envoi configuré : définissez-le dans le Référentiel (organisation principale) puis synchronisez le référentiel.",
     );
   }
 

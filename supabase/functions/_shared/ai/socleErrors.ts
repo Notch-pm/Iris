@@ -56,7 +56,7 @@ const NOT_CONFIGURED: MappedFailure = {
 const AUTH_FAILED: MappedFailure = {
   status: 502,
   code: "socle_auth_failed",
-  message: "Authentification Socle en échec — signaler à un administrateur.",
+  message: "Authentification au Référentiel en échec — signaler à un administrateur.",
 };
 
 const OUR_BUG: MappedFailure = {

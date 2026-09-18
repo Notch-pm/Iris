@@ -59,7 +59,7 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: "demande.priorite", group: "demande", label: "Priorité", sample: "Normale" },
   {
     key: "demande.demarche", group: "demande", label: "Démarche", sample: "Signalement de voirie",
-    hint: "Le « type de demande » : la démarche Socle dont elle est issue",
+    hint: "Le « type de demande » : la démarche du Référentiel dont elle est issue",
   },
   { key: "demande.categorie", group: "demande", label: "Catégorie", sample: "Cadre de vie" },
   { key: "demande.destinataire", group: "demande", label: "Organisation destinataire", sample: "Direction de la voirie" },

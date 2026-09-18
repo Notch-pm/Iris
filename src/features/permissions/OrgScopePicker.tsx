@@ -100,7 +100,7 @@ export function OrgScopePicker({ rows, selected, onChange }: OrgScopePickerProps
   if (rows.length === 0) {
     return (
       <p className="rounded-[14px] border border-dashed border-border p-4 text-sm text-muted-foreground">
-        Aucune organisation synchronisée pour ce tenant — la synchronisation avec le Socle est
+        Aucune organisation synchronisée pour ce tenant — la synchronisation avec le Référentiel est
         automatique (quotidienne). Si le problème persiste, contactez le support.
       </p>
     );

@@ -32,10 +32,10 @@ export function ReferentielPanel({ orgId, sync, onOpenCoverage }: ReferentielPan
       <CardContent className="flex flex-col gap-5 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <h2 className="text-base font-semibold">Référentiel Socle du tenant</h2>
+            <h2 className="text-base font-semibold">Référentiel du tenant</h2>
             <p className="max-w-[640px] text-sm text-muted-foreground">
-              Les organisations et les démarches viennent du Socle et sont synchronisées chaque nuit.
-              Lancez une synchronisation après une modification dans le Socle (nouvelle démarche,
+              Les organisations et les démarches viennent du Référentiel et sont synchronisées chaque nuit.
+              Lancez une synchronisation après une modification dans le Référentiel (nouvelle démarche,
               service créé ou déplacé) pour la voir ici sans attendre. Une démarche ajoutée reste
               invisible tant qu'aucun profil ne la couvre : vérifiez ensuite la{" "}
               <button type="button" onClick={onOpenCoverage} className="font-semibold text-primary hover:underline">

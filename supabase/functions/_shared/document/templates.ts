@@ -159,5 +159,5 @@ export function unmergeableReason(fileName: string): string {
   const ext = /\.([a-z0-9]+)$/i.exec(fileName.trim())?.[1]?.toLowerCase();
   const nom = ext ? `.${ext}` : "ce format";
   return `Le modèle est au format ${nom} : la fusion ne sait ouvrir que le .docx. ` +
-    "Redéposez-le en .docx dans le Socle (Enregistrer sous → Document Word).";
+    "Redéposez-le en .docx dans le Référentiel (Enregistrer sous → Document Word).";
 }

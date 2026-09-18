@@ -321,9 +321,9 @@ export function UsagerCard({
               disabled={identityPending || identityError}
               aria-disabled={identityPending || identityError}
               title={
-                identityPending ? "Lecture de la fiche dans le Socle…"
-                  : identityError ? "Fiche du Socle illisible — modification impossible"
-                    : "Corriger la fiche de l'usager dans le Socle"
+                identityPending ? "Lecture de la fiche dans le Référentiel…"
+                  : identityError ? "Fiche du Référentiel illisible — modification impossible"
+                    : "Corriger la fiche de l'usager dans le Référentiel"
               }
             >
               <Pencil className="size-3.5" aria-hidden="true" />
@@ -368,7 +368,7 @@ export function UsagerCard({
           </div>
           <p className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
             <Loader2 className="size-3 animate-spin" aria-hidden="true" />
-            Lecture de la fiche dans le Socle…
+            Lecture de la fiche dans le Référentiel…
           </p>
         </div>
       ) : (
@@ -431,13 +431,13 @@ export function UsagerCard({
       ) : null}
       {identityError ? (
         <p className="text-[11px] leading-relaxed text-muted-foreground">
-          Identité retenue au dépôt : la fiche du Socle n'a pas pu être relue.
+          Identité retenue au dépôt : la fiche du Référentiel n'a pas pu être relue.
         </p>
       ) : null}
         </>
       )}
       {socleContactId ? (
-        <p className="truncate font-mono text-[10.5px] text-muted-foreground" title={socleContactId}>Socle · {socleContactId}</p>
+        <p className="truncate font-mono text-[10.5px] text-muted-foreground" title={socleContactId}>Référentiel · {socleContactId}</p>
       ) : null}
       <div className="flex flex-wrap gap-1.5 border-t border-border pt-2.5">
         <Button type="button" variant="outline" size="sm" className="h-[30px] text-xs" {...SOON}>Contacter</Button>

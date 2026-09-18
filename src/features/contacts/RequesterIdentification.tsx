@@ -149,7 +149,7 @@ function CandidateRow({ candidate, maxScore, onPick }: {
           <span className="block h-[5px] w-[88px] overflow-hidden rounded-full bg-muted">
             <span className={cn("block h-full rounded-full", bar)} style={{ width: `${Math.round(ratio * 100)}%` }} />
           </span>
-          <span className="text-[10px] text-muted-foreground">classement Socle</span>
+          <span className="text-[10px] text-muted-foreground">classement du Référentiel</span>
         </span>
         <span className="rounded-full bg-muted px-2.5 py-1 text-[10.5px] font-bold text-muted-foreground transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
           Choisir
@@ -315,7 +315,7 @@ export function RequesterIdentification({
         : [resolution.declared.nom_naissance || resolution.declared.nom_usuel, resolution.declared.prenoms]
             .filter(Boolean).join(" ") || resolution.declared.raison_sociale || "Identité déclarée";
     const sub = resolution.kind === "contact"
-      ? candidateSummary(resolution.contact).details.join(" · ") || "Usager Socle rapproché"
+      ? candidateSummary(resolution.contact).details.join(" · ") || "Usager rapproché du Référentiel"
       : resolution.kind === "sans_rapprochement"
         ? "Sans rapprochement — identité déclarée (assumé)"
         : "Aucune identité conservée";
@@ -350,7 +350,7 @@ export function RequesterIdentification({
       <div className="flex w-full max-w-[1180px] flex-col gap-2 rounded-[14px] border border-border bg-card px-4 py-3.5 shadow-airbnb-sm">
         <span className="text-sm font-bold">Usager imposé</span>
         <p className="text-[13px] text-muted-foreground">
-          {lockedMessage ?? "Usager en cours de lecture dans le référentiel Socle…"}
+          {lockedMessage ?? "Usager en cours de lecture dans le Référentiel…"}
         </p>
         {lockedAction ? <div className="flex pt-1">{lockedAction}</div> : null}
       </div>
@@ -391,8 +391,8 @@ export function RequesterIdentification({
               <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                 {searching ? <Loader2 className="size-3.5 animate-spin text-primary" aria-hidden="true" /> : null}
                 {searching
-                  ? "Recherche d'homonymes dans le Socle…"
-                  : "Les homonymes du Socle s'affichent automatiquement au fil de la saisie."}
+                  ? "Recherche d'homonymes dans le Référentiel…"
+                  : "Les homonymes du Référentiel s'affichent automatiquement au fil de la saisie."}
               </span>
             </div>
             <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
@@ -434,7 +434,7 @@ export function RequesterIdentification({
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-baseline gap-2">
-              <h3 className="text-base font-semibold">Correspondances dans le Socle</h3>
+              <h3 className="text-base font-semibold">Correspondances dans le Référentiel</h3>
               <small className="text-xs text-muted-foreground">
                 {matches === null
                   ? (searching ? "recherche…" : "en attente de saisie")
@@ -453,22 +453,22 @@ export function RequesterIdentification({
           {matches === null && !searching ? (
             <p className="rounded-[14px] border border-dashed border-border p-4 text-sm text-muted-foreground">
               Renseignez au moins un nom, une raison sociale, un SIRET, un courriel ou un téléphone :
-              les usagers déjà connus du Socle vous seront proposés ici.
+              les usagers déjà connus du Référentiel vous seront proposés ici.
             </p>
           ) : null}
 
           {matches === null && searching ? (
             <p className="flex items-center gap-2 rounded-[14px] border border-dashed border-border p-4 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Recherche dans le Socle…
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Recherche dans le Référentiel…
             </p>
           ) : null}
 
           {noMatch ? (
             <div className="flex flex-col items-start gap-3 rounded-[14px] border border-border bg-card p-5 shadow-airbnb-sm">
               <div className="flex flex-col gap-1">
-                <span className="font-bold">Aucun usager du Socle ne correspond à cette identité</span>
+                <span className="font-bold">Aucun usager du Référentiel ne correspond à cette identité</span>
                 <small className="text-sm text-muted-foreground">
-                  C'est donc une nouvelle personne : créez sa fiche dans le Socle. Elle servira à
+                  C'est donc une nouvelle personne : créez sa fiche dans le Référentiel. Elle servira à
                   toute la gamme, et aux prochaines demandes de cet usager.
                 </small>
               </div>
@@ -510,7 +510,7 @@ export function RequesterIdentification({
         <div className="flex flex-col gap-3.5 rounded-[14px] border border-border bg-card p-4 shadow-airbnb-sm">
           <div className="flex items-center gap-2">
             <UserRoundPlus className="size-4 text-primary" aria-hidden="true" />
-            <h3 className="text-base font-semibold">Créer un usager dans le référentiel Socle</h3>
+            <h3 className="text-base font-semibold">Créer un usager dans le Référentiel</h3>
           </div>
           <div className="grid grid-cols-1 gap-x-4 gap-y-3 md:grid-cols-2 xl:grid-cols-3">
             {audience === "citoyen" ? (
@@ -578,7 +578,7 @@ export function RequesterIdentification({
           {duplicates !== null && duplicates.length > 0 ? (
             <div className="flex flex-col gap-2.5 rounded-[14px] border border-secondary bg-secondary/30 p-3.5">
               <p className="text-sm font-bold text-secondary-foreground">
-                Doublon potentiel : {duplicates.length} usager{duplicates.length > 1 ? "s" : ""} Socle
+                Doublon potentiel : {duplicates.length} usager{duplicates.length > 1 ? "s" : ""} du Référentiel
                 ressemble{duplicates.length > 1 ? "nt" : ""} à cette identité — cliquez sur la bonne
                 fiche, ou créez quand même.
               </p>
@@ -598,11 +598,11 @@ export function RequesterIdentification({
               lui-même (il ne croit aucun drapeau du navigateur). */}
           {socleDown ? (
             <div className="flex flex-col gap-2.5 rounded-[14px] border border-destructive/40 bg-destructive/[0.06] p-3.5">
-              <p className="text-sm font-bold text-destructive">Le Socle n'a pas répondu</p>
+              <p className="text-sm font-bold text-destructive">Le Référentiel n'a pas répondu</p>
               <p className="text-sm text-muted-foreground">{socleDown}</p>
               <p className="text-sm text-muted-foreground">
                 Réessayez : c'est souvent passager. Si l'usager attend, poursuivez avec l'identité
-                déclarée — la demande sera signalée comme « usager à créer dans le Socle », à
+                déclarée — la demande sera signalée comme « usager à créer dans le Référentiel », à
                 régulariser plus tard.
               </p>
               <div className="flex flex-wrap gap-2">

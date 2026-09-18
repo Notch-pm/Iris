@@ -285,7 +285,7 @@ export function filterContactUpdate(
     return { ok: false, message: "contact : objet attendu." };
   }
   if ("contact_type" in raw) {
-    return { ok: false, message: "contact_type : immuable après la création (Socle)." };
+    return { ok: false, message: "contact_type : immuable après la création (Référentiel)." };
   }
   if ("status" in raw) {
     return { ok: false, message: "status : l'archivage d'un usager ne se fait pas depuis Iris." };

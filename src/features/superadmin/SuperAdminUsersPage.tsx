@@ -146,7 +146,7 @@ export function SuperAdminUsersPage() {
           tone: "warning",
           lines: [
             result.email_error ?? "Le message n'a pas pu partir.",
-            "Vérifiez le serveur d'envoi du tenant : il est défini dans le Socle (organisation principale, onglet « Emails (SMTP) ») et descend à la synchronisation du référentiel. Renvoyez ensuite un lien depuis la liste.",
+            "Vérifiez le serveur d'envoi du tenant : il est défini dans le Référentiel (organisation principale, onglet « Emails (SMTP) ») et descend à la synchronisation du référentiel. Renvoyez ensuite un lien depuis la liste.",
           ],
         });
       }

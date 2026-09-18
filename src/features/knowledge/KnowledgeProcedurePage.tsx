@@ -187,7 +187,7 @@ export function KnowledgeProcedurePage() {
           </p>
         ) : !data ? (
           <p className="max-w-[72ch] rounded-[10px] border border-dashed border-border p-4 text-sm leading-relaxed text-muted-foreground">
-            La fiche n'a pas pu être lue depuis le Socle — réessayez dans un instant.
+            La fiche n'a pas pu être lue depuis le Référentiel — réessayez dans un instant.
           </p>
         ) : (
           <FicheTabContent

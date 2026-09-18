@@ -143,7 +143,7 @@ export function ProfileMatrix({ procedures, defaultRights, value, onChange }: Pr
 
       {rows.length === 0 ? (
         <p className="rounded-[14px] border border-dashed border-border p-4 text-sm text-muted-foreground">
-          Aucune démarche active pour ce tenant — la synchronisation avec le Socle est
+          Aucune démarche active pour ce tenant — la synchronisation avec le Référentiel est
           automatique (quotidienne). Si le problème persiste, contactez le support.
         </p>
       ) : filtered.length === 0 ? (

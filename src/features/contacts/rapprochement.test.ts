@@ -163,7 +163,7 @@ describe("résolution", () => {
   it("résume chaque issue pour le récapitulatif", () => {
     expect(resolutionSummary({ kind: "anonyme" })).toContain("anonyme");
     expect(resolutionSummary({ kind: "contact", audience: "citoyen", contact: CONTACT }))
-      .toBe("Dupont Jeanne — usager Socle rapproché");
+      .toBe("Dupont Jeanne — usager rapproché du Référentiel");
     expect(resolutionSummary({
       kind: "sans_rapprochement", audience: "citoyen",
       declared: { nom_naissance: "Martin", prenoms: "Paul" },

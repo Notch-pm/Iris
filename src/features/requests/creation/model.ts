@@ -138,7 +138,7 @@ export function requesterRows(resolution: RequesterResolution): RequesterRow[] {
     if (c.email) rows.push({ label: "Courriel", value: c.email });
     const phones = [c.mobile_phone, c.landline_phone].filter(Boolean).join(" · ");
     if (phones) rows.push({ label: "Téléphone", value: phones });
-    rows.push({ label: "Identifiant Socle", value: c.id, mono: true });
+    rows.push({ label: "Identifiant Référentiel", value: c.id, mono: true });
     return rows;
   }
   const rows = Object.entries(resolution.declared).map(([key, value]) => ({

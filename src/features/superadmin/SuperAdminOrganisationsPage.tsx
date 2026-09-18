@@ -91,8 +91,8 @@ function TenantCard({ tenant }: { tenant: TenantRow }) {
           <div>
             <CardTitle className="text-base">{tenant.name}</CardTitle>
             <CardDescription>
-              Hiérarchie synchronisée depuis le Socle — consultation uniquement, la gestion se
-              fait dans le Socle.
+              Hiérarchie synchronisée depuis le Référentiel — consultation uniquement, la gestion se
+              fait dans le Référentiel.
             </CardDescription>
           </div>
         </div>
@@ -131,7 +131,7 @@ export function SuperAdminOrganisationsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Organisations</h1>
           <p className="text-sm text-muted-foreground">
-            Un tenant Iris par organisation racine Socle.
+            Un tenant Iris par organisation racine du Référentiel.
           </p>
         </div>
         <div className="flex flex-col items-end gap-1.5">

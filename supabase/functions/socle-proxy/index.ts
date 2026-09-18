@@ -147,22 +147,22 @@ async function resolveTenant(
   const org = (data as any)?.organization;
   if (!org) return fail(req, 404, "not_found", "Ressource introuvable.");
   const roots = await getKeyRoots();
-  if (!roots) return fail(req, 502, "socle_unavailable", "Le Socle est injoignable.");
+  if (!roots) return fail(req, 502, "socle_unavailable", "Le Référentiel est injoignable.");
   if (!roots.has(org.socle_org_id)) {
     return fail(req, 403, "forbidden",
-      "Ce tenant est hors du périmètre de la clé Socle configurée pour Iris.");
+      "Ce tenant est hors du périmètre de la clé du Référentiel configurée pour Iris.");
   }
   return { organizationId, socleOrgId: org.socle_org_id };
 }
 
 function relaySocleError(req: Request, res: Response | null): Response {
-  if (!res) return fail(req, 502, "socle_unavailable", "Le Socle est injoignable.");
+  if (!res) return fail(req, 502, "socle_unavailable", "Le Référentiel est injoignable.");
   if (res.status === 401 || res.status === 403) {
     // Jamais relayer l'erreur d'auth brute du Socle (motif Clara).
-    return fail(req, 502, "socle_auth_failed", "Authentification Socle en échec — signaler à un administrateur.");
+    return fail(req, 502, "socle_auth_failed", "Authentification au Référentiel en échec — signaler à un administrateur.");
   }
   if (res.status === 404) return fail(req, 404, "not_found", "Ressource introuvable.");
-  return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+  return fail(req, 502, "socle_error", "Réponse inattendue du Référentiel.");
 }
 
 Deno.serve(async (req) => {
@@ -300,7 +300,7 @@ Deno.serve(async (req) => {
     // deno-lint-ignore no-explicit-any
     const signed = await res.json().catch(() => null) as any;
     if (typeof signed?.url !== "string") {
-      return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+      return fail(req, 502, "socle_error", "Réponse inattendue du Référentiel.");
     }
     return json(req, 200, { url: signed.url, expires_at: signed.expires_at ?? null });
   }
@@ -476,10 +476,10 @@ Deno.serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       const err = await res.json().catch(() => null) as any;
       return fail(req, res.status, res.status === 409 ? "conflict" : "bad_request",
-        err?.error?.message ?? "Création refusée par le Socle.");
+        err?.error?.message ?? "Création refusée par le Référentiel.");
     }
     const contact = sanitizeContact(await res.json().catch(() => null));
-    if (!contact) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+    if (!contact) return fail(req, 502, "socle_error", "Réponse inattendue du Référentiel.");
     return json(req, 201, { contact });
   }
 
@@ -506,10 +506,10 @@ Deno.serve(async (req) => {
       // deno-lint-ignore no-explicit-any
       const err = await res.json().catch(() => null) as any;
       return fail(req, res.status, res.status === 409 ? "conflict" : "bad_request",
-        err?.error?.message ?? "Modification refusée par le Socle.");
+        err?.error?.message ?? "Modification refusée par le Référentiel.");
     }
     const contact = sanitizeContact(await res.json().catch(() => null));
-    if (!contact) return fail(req, 502, "socle_error", "Réponse inattendue du Socle.");
+    if (!contact) return fail(req, 502, "socle_error", "Réponse inattendue du Référentiel.");
     return json(req, 200, { contact });
   }
 
