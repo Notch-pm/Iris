@@ -1,7 +1,9 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider } from "@/features/auth/AuthProvider";
 import { TenantProvider } from "@/features/tenant/TenantProvider";
-import { AdminRoute, ProtectedRoute, SuperAdminRoute } from "@/components/layout/ProtectedRoute";
+import { AdminRoute, KnowledgeBaseRoute, ProtectedRoute, SuperAdminRoute } from "@/components/layout/ProtectedRoute";
+import { KnowledgeBasePage } from "@/features/knowledge/KnowledgeBasePage";
+import { KnowledgeProcedurePage } from "@/features/knowledge/KnowledgeProcedurePage";
 import { AppShell } from "@/components/layout/AppShell";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminOrganisationsPage } from "@/features/superadmin/SuperAdminOrganisationsPage";
@@ -83,6 +85,11 @@ export function App() {
               <Route path="interventions" element={<Adaptive desktop={<MesInterventionsPage />} mobile={<MobileInterventionsPage />} />} />
               <Route path="usagers" element={<Adaptive desktop={<UsagersListPage />} />} />
               <Route path="usagers/:contactId" element={<Adaptive desktop={<UsagerPage />} />} />
+              {/* Attribut de profil `knowledge_base_access` ; bureau seul. */}
+              <Route element={<KnowledgeBaseRoute />}>
+                <Route path="base-de-connaissances" element={<Adaptive desktop={<KnowledgeBasePage />} />} />
+                <Route path="base-de-connaissances/:procedureId" element={<Adaptive desktop={<KnowledgeProcedurePage />} />} />
+              </Route>
               {/* Colonne unique, lisible telle quelle sur un téléphone. */}
               <Route path="mon-compte" element={<AccountPage />} />
               <Route element={<AdminRoute />}>

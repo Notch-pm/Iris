@@ -236,6 +236,7 @@ function profile(over: Partial<RightsProfile> = {}): RightsProfile {
     status: "active",
     is_admin: false,
     is_intervenant: false,
+    knowledge_base_access: false,
     scope_organization_ids: [SCOPE],
     procedures: {},
     default: ["instruction"],

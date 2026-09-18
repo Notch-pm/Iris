@@ -34,6 +34,7 @@ function profile(overrides: Partial<RightsProfile> & { name: string }): RightsPr
     status: "active",
     is_admin: false,
     is_intervenant: false,
+    knowledge_base_access: false,
     scope_organization_ids: [],
     procedures: {},
     default: [],

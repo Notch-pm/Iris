@@ -57,6 +57,20 @@ anticipée : la **démarche**. Détail des tables, gardes et policies :
   « Intervenant » sans autre droit est valide (modèle de reprise rapide
   « Intervenant » dans l'éditeur). Détail : [`data-model.md`](data-model.md)
   § « Interventions ».
+- **Base de connaissances** (`knowledge_base_access`, 2026-09-18) — troisième attribut
+  de profil, **marche/arrêt**, sans périmètre ni matrice : il ouvre l'écran « Base de
+  connaissances » (catalogue des démarches **publiées** du tenant, leurs fiches, et
+  l'assistant). **Activé sur tous les profils existants** à sa création ; un profil neuf
+  part de `false`, et les modèles d'agent (Guichet, Instructeur, Superviseur,
+  Consultation) le cochent. Un profil « Base de connaissances » seul est valide.
+  ⚠️ C'est le droit d'ouvrir un **écran**, pas une frontière de données : ce que l'écran
+  montre est déjà lisible par tout membre (catalogue miroité, `socle-proxy
+  /v1/procedures/get`, lu par le rail « Procédure » du guichet et de l'instruction). La
+  seule garde **serveur** qui en dépend est celle de l'assistant en mode démarche
+  (`request-assistant` : droit de création **ou** cet attribut) — une question de
+  budget IA, pas de confidentialité. ⚠️ `save_permission_profile` **conserve** la valeur
+  en place quand la clé est absente du payload : un navigateur servi avant ce lot
+  n'éteint pas l'accès des profils qu'il enregistre.
 - Un profil est `active` ou `inactive` (désactivé = zéro droit produit ; les
   attributions restent, affichées grisées).
 - Tout droit d'écriture (création, instruction, clôture) **implique** la
@@ -302,6 +316,7 @@ contraire, `EXECUTE` révoqué de `public`/`anon`, accordé à `authenticated`.
 | `can_consult_request(request_id)` | Consultation par couple **sans** la sollicitation (l'ancienne `can_read_request`) — garde des notes internes et des échanges | `authenticated` |
 | `my_intervention_request_ids()` | Demandes ouvertes à l'appelant par une sollicitation — sous-requête non corrélée de `requests_select` | `authenticated` |
 | `is_intervenant_for(user_id, org_id, socle_org_id)` | Sollicitable sur cette organisation porteuse (profil actif `is_intervenant`, périmètre en sous-arbre) | **interne** |
+| `has_knowledge_base_access_for(user_id, org_id)` | Accès à la base de connaissances (profil ACTIF `knowledge_base_access`, ou admin plateforme) — appelée par `request-assistant` en service_role (2026-09-18) | **révoquée de `authenticated`**, accordée à `service_role` |
 | `paris_today()` | Jour courant vu de France (les dates saisies sont celles d'un agent en France, le serveur est en UTC) | **interne** |
 | `request_exists(id)` | Existence brute d'une demande, **hors RLS** — distingue un vrai brouillon d'une demande existante mais invisible | `authenticated` |
 | `is_last_root_admin(org_id, user_id)` | Vrai si l'utilisateur est l'unique détenteur actif de l'administration racine | `authenticated` |

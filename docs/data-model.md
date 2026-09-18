@@ -1368,6 +1368,32 @@ demande** (UUID nu) : la purge supprimera des dossiers, pas leurs chiffres.
   plateforme, aucune écriture cliente, RPC sous `authenticated` et privilèges `anon`,
   interventions, **survie au `delete from requests`**).
 
+### Base de connaissances — l'accès à un écran (`20260922100000`)
+
+Demande PO du 2026-09-18 : un écran « Base de connaissances » (catalogue des démarches
+publiées, leurs fiches, l'assistant), ouvert par un droit **marche/arrêt** du profil.
+
+- **`permission_profiles.knowledge_base_access`** — troisième **attribut** de profil,
+  après `is_admin` et `is_intervenant`. Sans périmètre : un catalogue ne se découpe pas
+  par couple. **Activé sur tous les profils existants** par la migration (sans toucher
+  `version` : un éditeur ouvert à ce moment n'est pas renvoyé à « modifié entre-temps ») ;
+  défaut `false` ensuite. Un profil qui n'a que lui est **valide**
+  (`validate_permission_profile_shape`, `save_permission_profile`).
+- ⚠️ **`save_permission_profile` : clé absente = valeur CONSERVÉE** (création : `false`).
+  Un navigateur servi avant le lot ne connaît pas la clé ; sans cette règle, il éteindrait
+  l'accès de tout profil qu'il enregistre.
+- **`my_rights`** l'expose par profil et en tête (`knowledge_base_access` : profil ACTIF
+  quelque part dans le tenant, ou admin plateforme) → entrée de rail et route.
+  **`has_knowledge_base_access_for(user, org)`** le dit au service_role, pour la seule
+  garde serveur qui en dépend : l'assistant en mode démarche.
+- ⚠️ **Aucune table n'est protégée par cet attribut**, et c'est voulu : ce que l'écran
+  montre (cache des démarches, activations, organisations, fiche relue par `socle-proxy`)
+  est déjà lisible par tout membre du tenant. Le changer en frontière de données
+  fermerait le rail « Procédure » du guichet et de l'instruction.
+- Test : `supabase/tests/base-connaissances.test.sql` (forme, clé enregistrée et
+  journalisée, clé absente conservée, création sans clé, profil vide refusé, `my_rights`,
+  profil inactif, admin plateforme, aucune EXECUTE cliente).
+
 ## Policies RLS (rôle `authenticated` ; le `service_role` contourne par attribut)
 
 Toutes les policies par couple ci-dessous enveloppent `is_platform_admin()` en `(select …)`

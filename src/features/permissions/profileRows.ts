@@ -16,6 +16,7 @@ export interface ProfileTableRow {
   description: string | null;
   is_admin: boolean;
   is_intervenant: boolean;
+  knowledge_base_access: boolean;
   status: string;
   version: number;
   default_view: boolean;
@@ -49,6 +50,8 @@ export interface ProfileRow {
   description: string;
   isAdmin: boolean;
   isIntervenant: boolean;
+  /** Accès à la base de connaissances (2026-09-18). */
+  knowledgeBase: boolean;
   status: ProfileStatusRow;
   version: number;
   organizationIds: string[];
@@ -98,6 +101,7 @@ export function buildProfileRows(
     description: p.description ?? "",
     isAdmin: p.is_admin,
     isIntervenant: p.is_intervenant === true,
+    knowledgeBase: p.knowledge_base_access === true,
     status: p.status === "inactive" ? "inactive" : "active",
     version: p.version,
     organizationIds: orgsByProfile.get(p.id) ?? [],
@@ -109,7 +113,7 @@ export function buildProfileRows(
 
 export function emptyDraft(): ProfileDraft {
   return {
-    name: "", description: "", isAdmin: false, isIntervenant: false,
+    name: "", description: "", isAdmin: false, isIntervenant: false, knowledgeBase: false,
     defaultRights: [], organizationIds: [], procedures: {},
   };
 }
@@ -121,6 +125,7 @@ export function draftFromProfileRow(row: ProfileRow): ProfileDraft {
     description: row.description,
     isAdmin: row.isAdmin,
     isIntervenant: row.isIntervenant,
+    knowledgeBase: row.knowledgeBase,
     defaultRights: row.defaultRights,
     organizationIds: row.organizationIds,
     procedures: row.procedures,
@@ -138,6 +143,12 @@ export interface ProfileTemplate {
   presetId: PresetLevelId;
   /** Modèle « Intervenant » : l'attribut coché, aucun droit sur les demandes. */
   intervenant?: boolean;
+  /**
+   * Accès à la base de connaissances — coché sur les modèles d'AGENT : un
+   * agent qui consigne ou instruit consulte les fiches de démarche. Pas sur
+   * « Intervenant », qui ne voit que ce qu'on lui confie.
+   */
+  knowledgeBase?: boolean;
 }
 
 /**
@@ -146,10 +157,10 @@ export interface ProfileTemplate {
  * ajuste ensuite, matrice et périmètre compris).
  */
 export const PROFILE_TEMPLATES: ProfileTemplate[] = [
-  { id: "guichet", label: "Guichet", presetId: "consultation_creation" },
-  { id: "instructeur", label: "Instructeur", presetId: "instruction" },
-  { id: "superviseur", label: "Superviseur", presetId: "instruction_cloture" },
-  { id: "consultation", label: "Consultation", presetId: "consultation" },
+  { id: "guichet", label: "Guichet", presetId: "consultation_creation", knowledgeBase: true },
+  { id: "instructeur", label: "Instructeur", presetId: "instruction", knowledgeBase: true },
+  { id: "superviseur", label: "Superviseur", presetId: "instruction_cloture", knowledgeBase: true },
+  { id: "consultation", label: "Consultation", presetId: "consultation", knowledgeBase: true },
   // Sollicitable pour une intervention, sans rien voir d'autre que ce qu'on
   // lui confie (2026-09-14).
   { id: "intervenant", label: "Intervenant", presetId: "aucun", intervenant: true },
@@ -162,6 +173,7 @@ export function draftFromTemplate(templateId: string): ProfileDraft {
     ...emptyDraft(),
     name: template?.label ?? "",
     isIntervenant: template?.intervenant === true,
+    knowledgeBase: template?.knowledgeBase === true,
     defaultRights: template ? rightsForPreset(template.presetId) : [],
   };
 }

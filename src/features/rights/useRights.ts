@@ -39,6 +39,7 @@ export function parseMyRights(raw: unknown, orgId: string): MyRights {
     is_platform_admin: raw.is_platform_admin === true,
     is_admin: raw.is_admin === true,
     is_intervenant: raw.is_intervenant === true,
+    knowledge_base_access: raw.knowledge_base_access === true,
     no_procedure_id: typeof raw.no_procedure_id === "string" ? raw.no_procedure_id : fallback.no_procedure_id,
     profiles: profilesRaw.filter(isRecord).map((p) => ({
       id: typeof p.id === "string" ? p.id : "",
@@ -46,6 +47,7 @@ export function parseMyRights(raw: unknown, orgId: string): MyRights {
       status: parseStatus(p.status),
       is_admin: p.is_admin === true,
       is_intervenant: p.is_intervenant === true,
+      knowledge_base_access: p.knowledge_base_access === true,
       scope_organization_ids: Array.isArray(p.scope_organization_ids)
         ? p.scope_organization_ids.filter((v): v is string => typeof v === "string")
         : [],

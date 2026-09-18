@@ -39,6 +39,22 @@ export function SuperAdminRoute() {
  * qui n'en dépendent pas). Les droits réels restent portés par le RLS — cette
  * garde ne fait que router.
  */
+/**
+ * Zone « Base de connaissances » — réservée aux titulaires d'un profil ACTIF
+ * portant l'attribut `knowledge_base_access` (`my_rights`). ⚠️ C'est le droit
+ * d'ouvrir un ÉCRAN, pas une frontière de données : ce qu'il montre est déjà
+ * lisible par tout membre (catalogue miroité, `socle-proxy`). La seule garde
+ * serveur qui en dépend est celle de l'assistant (`request-assistant`).
+ */
+export function KnowledgeBaseRoute() {
+  const { current, rights, loading, rightsLoading } = useTenant();
+
+  if (loading || rightsLoading) return <LoadingScreen />;
+  if (!current || !rights.knowledge_base_access) return <Navigate to="/" replace />;
+
+  return <Outlet />;
+}
+
 export function AdminRoute() {
   const { current, isAdmin, loading, rightsLoading } = useTenant();
 

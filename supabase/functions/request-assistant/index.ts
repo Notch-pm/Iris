@@ -13,7 +13,9 @@
 //     guichet, où AUCUNE demande n'existe encore. L'assistant ne connaît alors
 //     que la démarche : ni saisie en cours, ni usager. Droit exigé : membre du
 //     tenant ET au moins un droit de création (`has_any_creation_right_for`,
-//     la garde que socle-proxy applique déjà à /v1/contacts/*).
+//     la garde que socle-proxy applique déjà à /v1/contacts/*) — OU l'accès à
+//     la base de connaissances (`has_knowledge_base_access_for`, 2026-09-18),
+//     dont l'écran porte le même assistant.
 //
 // ⚠️ CE QUI NE VIENT JAMAIS DU NAVIGATEUR : le prompt système, le contexte de
 // la demande, la base de connaissances. Tout est composé ICI. Le client
@@ -336,17 +338,21 @@ Deno.serve(async (req) => {
       .maybeSingle();
     if (!membership) return fail(req, 404, "not_found", "Ressource introuvable.");
 
-    const { data: canCreate, error: rightError } = await supabase.rpc(
-      "has_any_creation_right_for",
-      { p_user_id: userId, p_org_id: organizationId },
-    );
-    if (rightError) {
-      console.error("request-assistant: has_any_creation_right_for en échec", rightError);
+    // Deux portes vers le mode démarche : le GUICHET (un droit de création) et
+    // la BASE DE CONNAISSANCES (l'attribut de profil, 2026-09-18). Les deux
+    // lisent la même chose — la démarche seule —, et c'est une question de
+    // budget, pas de confidentialité : la fiche est déjà lisible par tout membre.
+    const [creation, knowledge] = await Promise.all([
+      supabase.rpc("has_any_creation_right_for", { p_user_id: userId, p_org_id: organizationId }),
+      supabase.rpc("has_knowledge_base_access_for", { p_user_id: userId, p_org_id: organizationId }),
+    ]);
+    if (creation.error || knowledge.error) {
+      console.error("request-assistant: droits du mode démarche en échec", creation.error ?? knowledge.error);
       return fail(req, 500, "rights_unavailable", "Droits indisponibles — réessayez.");
     }
-    if (canCreate !== true) {
+    if (creation.data !== true && knowledge.data !== true) {
       return fail(req, 403, "forbidden",
-        "Utiliser l'assistant au guichet exige un droit de création de demande.");
+        "Utiliser l'assistant sur une démarche exige un droit de création de demande, ou l'accès à la base de connaissances.");
     }
 
     // La démarche doit appartenir au tenant : le cache fait foi, même si le

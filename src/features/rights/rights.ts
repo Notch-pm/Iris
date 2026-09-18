@@ -36,6 +36,11 @@ export interface RightsProfile {
    * sollicitation qui ouvre (RLS `requests_select`).
    */
   is_intervenant: boolean;
+  /**
+   * Base de connaissances (2026-09-18) : attribut marche/arrêt du profil —
+   * ouvre l'écran du catalogue des démarches publiées. Aucune demande.
+   */
+  knowledge_base_access: boolean;
   /** Périmètre DÉJÀ expansé en sous-arbre par le serveur (`permission_profile_scope`). */
   scope_organization_ids: string[];
   /** Lignes explicites de la matrice, clé = `socle_procedure_id` (ou `NIL_PROCEDURE_ID`). */
@@ -51,6 +56,12 @@ export interface MyRights {
   is_admin: boolean;
   /** Intervenant quelque part dans le tenant (ouvre l'entrée « Mes interventions »). */
   is_intervenant: boolean;
+  /**
+   * Accès à la base de connaissances (profil ACTIF, ou admin plateforme) —
+   * ouvre l'entrée « Base de connaissances ». Reflet : la garde serveur qui en
+   * dépend est celle de l'assistant (`has_knowledge_base_access_for`).
+   */
+  knowledge_base_access: boolean;
   no_procedure_id: string;
   profiles: RightsProfile[];
 }
@@ -62,6 +73,7 @@ export function emptyRights(orgId: string): MyRights {
     is_platform_admin: false,
     is_admin: false,
     is_intervenant: false,
+    knowledge_base_access: false,
     no_procedure_id: NIL_PROCEDURE_ID,
     profiles: [],
   };

@@ -151,7 +151,11 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   sollicitable pour une **intervention** sur les demandes du périmètre pendant
   l'instruction ; il n'ouvre rien par lui-même, c'est la **sollicitation**
   (`request_interventions`, deux RPC seules portes) qui ouvre la demande à l'intervenant —
-  sans les notes internes ni les échanges (`can_consult_request`). Les 5 tables
+  sans les notes internes ni les échanges (`can_consult_request`). Depuis le 2026-09-18, un
+  troisième, **base de connaissances** (`knowledge_base_access`, marche/arrêt, activé sur
+  les profils existants) : il ouvre l'écran du même nom — un ÉCRAN, pas une frontière de
+  données (tout ce qu'il montre est lisible par tout membre) ; seule la garde de
+  l'assistant en mode démarche en dépend côté serveur. Les 5 tables
   `permission_*` n'ont aucune policy d'écriture cliente : les RPC
   (`save_permission_profile`…) sont l'unique porte. `organization_members.role` subsiste en
   **colonne dérivée transitoire**. Détail complet : [`docs/droits.md`](docs/droits.md).
@@ -389,6 +393,16 @@ les invariants ci-dessus restent la référence.
   quartier / volumétrie de demandes, tri par colonne, export CSV — fiches du Socle et
   compteurs Iris bornés par le RLS, rapprochés dans le navigateur) →
   [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
+- **Base de connaissances** (`src/features/knowledge`, routes `/base-de-connaissances` et
+  `/base-de-connaissances/:procedureId`, entrée de rail — 2026-09-18, maquette Claude Design
+  « Base de connaissance ») : le catalogue des démarches **publiées** du tenant (la liste
+  du guichet : production, externes, dans leur période), **par catégorie**, avec recherche ;
+  chaque carte dit qui la propose (miroir des activations, opt-in strict), si elle est
+  **ouverte temporairement** et si elle est **absente du portail**. Au clic, la fiche en
+  trois colonnes — rubriques, lecture, **assistant** élargissable —, avec les rubriques de
+  la fiche du guichet (`procedure/FicheSections.tsx`). Ouvert par l'attribut de profil
+  `knowledge_base_access` (bullet « Profils de droits ») ; bureau seul →
+  [`src/features/knowledge/CLAUDE.md`](src/features/knowledge/CLAUDE.md).
 - **Statistiques** (`src/features/stats`, route `/statistiques`, entrée de rail — 2026-09-18) :
   motif Clara **à l'identique** (ApexCharts 3.54 via `react-apexcharts`, `chartConfig.ts`
   recopié, cartes KPI, grille 2 colonnes, filtres organisme + période 7 j / 30 j / 1 an sur

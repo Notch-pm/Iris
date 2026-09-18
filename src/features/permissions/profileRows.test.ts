@@ -22,6 +22,7 @@ const PROFILE: ProfileTableRow = {
   description: "Instruction Voirie",
   is_admin: false,
   is_intervenant: false,
+  knowledge_base_access: false,
   status: "active",
   version: 2,
   default_view: false,
@@ -48,6 +49,7 @@ describe("buildProfileRows", () => {
         description: "Instruction Voirie",
         isAdmin: false,
         isIntervenant: false,
+        knowledgeBase: false,
         status: "active",
         version: 2,
         organizationIds: [MAIRIE],
@@ -85,6 +87,7 @@ describe("draftFromProfileRow / draftForDuplicate", () => {
       description: "Instruction Voirie",
       isAdmin: false,
       isIntervenant: false,
+      knowledgeBase: false,
       defaultRights: [],
       organizationIds: [MAIRIE],
       procedures: { [D1]: ["consultation", "creation"] },
@@ -101,7 +104,8 @@ describe("draftFromProfileRow / draftForDuplicate", () => {
 describe("emptyDraft / draftFromTemplate — RM-51", () => {
   it("emptyDraft n'accorde rien et ne porte aucune organisation", () => {
     expect(emptyDraft()).toEqual({
-      name: "", description: "", isAdmin: false, isIntervenant: false, defaultRights: [], organizationIds: [], procedures: {},
+      name: "", description: "", isAdmin: false, isIntervenant: false, knowledgeBase: false,
+      defaultRights: [], organizationIds: [], procedures: {},
     });
   });
 
@@ -113,11 +117,15 @@ describe("emptyDraft / draftFromTemplate — RM-51", () => {
       expect(draft.procedures).toEqual({});
       // Le modèle « Intervenant » est le seul à n'accorder AUCUN droit : c'est
       // l'attribut qui le définit, pas la matrice.
+      // Les modèles d'AGENT ouvrent la base de connaissances ; « Intervenant »
+      // ne voit que ce qu'on lui confie.
       if (template.intervenant) {
         expect(draft.isIntervenant).toBe(true);
+        expect(draft.knowledgeBase).toBe(false);
         expect(draft.defaultRights).toEqual([]);
       } else {
         expect(draft.isIntervenant).toBe(false);
+        expect(draft.knowledgeBase).toBe(true);
         expect(draft.defaultRights.length).toBeGreaterThan(0);
       }
     }

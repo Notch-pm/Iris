@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import {
-  BarChart3, ChevronsUpDown, Columns3, HardHat, Inbox, LogOut, Map, RotateCcw, ShieldCheck,
+  BarChart3, BookOpen, ChevronsUpDown, Columns3, HardHat, Inbox, LogOut, Map, RotateCcw, ShieldCheck,
   Smartphone, User, Users,
 } from "lucide-react";
 import { useDevice } from "@/features/device/DeviceProvider";
@@ -62,10 +62,21 @@ const BASE_NAV_ITEMS: NavItem[] = [
   // s'allumeraient sur `/demandes/tableau` (voir `nav.ts`).
   { to: "/demandes", label: "Demandes", icon: Inbox, end: false, except: ["/demandes/tableau"] },
   { to: "/carte", label: "Carte des interventions", icon: Map, end: false },
-  // Ouvert à tout membre : les chiffres sont bornés par le RLS (consultation
-  // par couple), exactement comme la liste — pas de garde de rail.
-  { to: "/statistiques", label: "Statistiques", icon: BarChart3, end: false },
 ];
+
+// Ouvert à tout membre : les chiffres sont bornés par le RLS (consultation par
+// couple), exactement comme la liste — pas de garde de rail.
+const STATISTIQUES_NAV_ITEM: NavItem = {
+  to: "/statistiques", label: "Statistiques", icon: BarChart3, end: false,
+};
+
+// « Base de connaissances » n'apparaît qu'aux titulaires d'un profil ACTIF qui
+// porte l'attribut (`my_rights.knowledge_base_access`, 2026-09-18) — reflet :
+// la route a sa garde (`KnowledgeBaseRoute`), l'assistant la sienne côté
+// serveur. Placée avant les statistiques, comme dans la maquette.
+const KNOWLEDGE_NAV_ITEM: NavItem = {
+  to: "/base-de-connaissances", label: "Base de connaissances", icon: BookOpen, end: false,
+};
 
 // L'annuaire des usagers exige le même droit que « Nouvelle demande » (garde de
 // socle-proxy sur /v1/contacts/*) : l'entrée n'apparaît que s'il est acquis —
@@ -114,6 +125,8 @@ function AppSidebar() {
   const { rights } = useTenant();
   const items = [
     ...BASE_NAV_ITEMS,
+    ...(rights.knowledge_base_access ? [KNOWLEDGE_NAV_ITEM] : []),
+    STATISTIQUES_NAV_ITEM,
     ...(canBrowseUsagers ? [USAGERS_NAV_ITEM] : []),
     ...(rights.is_intervenant ? [INTERVENTIONS_NAV_ITEM] : []),
   ];

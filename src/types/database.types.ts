@@ -836,6 +836,7 @@ export type Database = {
           id: string
           is_admin: boolean
           is_intervenant: boolean
+          knowledge_base_access: boolean
           name: string
           organization_id: string
           status: string
@@ -854,6 +855,7 @@ export type Database = {
           id?: string
           is_admin?: boolean
           is_intervenant?: boolean
+          knowledge_base_access?: boolean
           name: string
           organization_id: string
           status?: string
@@ -872,6 +874,7 @@ export type Database = {
           id?: string
           is_admin?: boolean
           is_intervenant?: boolean
+          knowledge_base_access?: boolean
           name?: string
           organization_id?: string
           status?: string
@@ -2261,6 +2264,10 @@ export type Database = {
         Returns: boolean
       }
       has_any_creation_right_for: {
+        Args: { p_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
+      has_knowledge_base_access_for: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
       }

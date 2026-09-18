@@ -142,6 +142,7 @@ précédentes » écrit dans une réponse de formulaire ne sort plus de son bloc
    mode démarche : appartenance + cache des démarches     → 404
 5. droit : request_right_for(…, 'instruction')            → 403
    ou has_any_creation_right_for (guichet)                → 403
+      OU has_knowledge_base_access_for (base de connaissances, 2026-09-18)
 6. tenant rattaché au Socle (socle_org_id) ?              → 503 not_configured
 7. GET Socle /v1/procedures/{id}  →  parseAiKnowledge
    Socle muet ⇒ DÉGRADÉ, jamais un refus

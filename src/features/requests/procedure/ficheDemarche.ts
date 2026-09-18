@@ -26,6 +26,13 @@ import { admittedAudiences, formPieces, type FormPiece } from "@fn/_shared/proce
 
 export type FicheTab = "usager" | "consignes" | "vigilance" | "procedure" | "faq" | "liens" | "assistant";
 
+/** Amorces de l'assistant sur la démarche seule, avant tout dossier — guichet et base de connaissances. */
+export const DEMARCHE_STARTERS = [
+  "Quelles pièces demander ?",
+  "Quel délai annoncer à l'usager ?",
+  "Y a-t-il un cas particulier à surveiller ?",
+] as const;
+
 export interface ProcedureFiche {
   name: string;
   /** Descriptif usager (Markdown) — colonne `user_description`, voisine du bloc. */

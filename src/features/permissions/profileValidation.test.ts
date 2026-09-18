@@ -25,6 +25,7 @@ function draft(overrides: Partial<ProfileDraft> = {}): ProfileDraft {
     description: "",
     isAdmin: false,
     isIntervenant: false,
+    knowledgeBase: false,
     defaultRights: [],
     organizationIds: [MAIRIE],
     procedures: { [D1]: ["instruction"] },
@@ -71,6 +72,13 @@ describe("validateProfileDraft — CA-19", () => {
 
   it("un profil d'administration pure (matrice vide, défaut aucun) est valide", () => {
     const errors = validateProfileDraft(draft({ isAdmin: true, procedures: {}, defaultRights: [] }));
+    expect(errors).toEqual([]);
+  });
+
+  // Même règle que `validate_permission_profile_shape` (2026-09-18) : l'accès à
+  // la base de connaissances est un accès réel.
+  it("un profil « Base de connaissances » seul est valide", () => {
+    const errors = validateProfileDraft(draft({ knowledgeBase: true, procedures: {}, defaultRights: [] }));
     expect(errors).toEqual([]);
   });
 
@@ -168,12 +176,19 @@ describe("toSavePayload — contrat de save_permission_profile(p)", () => {
       description: "",
       is_admin: false,
       is_intervenant: false,
+      knowledge_base_access: false,
       default_rights: [],
       organizations: [MAIRIE],
       procedures: [{ id: D1, rights: ["consultation", "instruction"] }],
     });
     expect(payload.profile_id).toBeUndefined();
     expect(payload.expected_version).toBeUndefined();
+  });
+
+  // La clé part TOUJOURS : c'est son absence que le serveur lit comme « conserver ».
+  it("porte l'accès à la base de connaissances, coché ou non", () => {
+    expect(toSavePayload(draft({ knowledgeBase: true }), ORG).knowledge_base_access).toBe(true);
+    expect(toSavePayload(draft(), ORG)).toHaveProperty("knowledge_base_access", false);
   });
 
   it("inclut profile_id et expected_version pour une mise à jour (verrou optimiste RM-56)", () => {

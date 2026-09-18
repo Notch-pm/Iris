@@ -481,6 +481,7 @@ export function PermissionsPage() {
                             {row.description ? <p className="text-xs text-muted-foreground">{row.description}</p> : null}
                             {row.isAdmin ? <Badge variant="secondary" className="mt-1">Administration</Badge> : null}
                             {row.isIntervenant ? <Badge variant="outline" className="mt-1 ml-1">Intervenant</Badge> : null}
+                            {row.knowledgeBase ? <Badge variant="outline" className="mt-1 ml-1">Base de connaissances</Badge> : null}
                           </td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">{orgSummary(row.organizationIds, orgNameById)}</td>
                           <td className="px-4 py-3 text-xs text-muted-foreground">{matrixSummary(row)}</td>

@@ -125,3 +125,14 @@ de `validate_permission_profile_shape`. Côté droits, `MyRights.is_intervenant`
 `RightsProfile.is_intervenant` sont exposés par `my_rights` ; ils n'entrent dans AUCUN
 calcul de `rightsFor` (l'attribut n'accorde rien sur les demandes). Doctrine :
 [`docs/droits.md`](../../../docs/droits.md) ; écran : `src/features/requests/interventions/`.
+
+## Attribut « Base de connaissances » (2026-09-18)
+
+`ProfileDraft.knowledgeBase` ↔ `permission_profiles.knowledge_base_access` ↔ payload
+`knowledge_base_access`. Troisième attribut, marche/arrêt, sans périmètre : case à cocher
+dans `ProfileDialog`, badge dans la table des profils, coché par les modèles d'AGENT
+(`PROFILE_TEMPLATES.knowledgeBase`), pas par « Intervenant ». `validateProfileDraft` admet
+un profil qui n'a que lui. ⚠️ `toSavePayload` envoie TOUJOURS la clé : c'est son ABSENCE
+que le serveur lit comme « conserver la valeur en place » (garde contre un navigateur servi
+avant le lot). `MyRights.knowledge_base_access` ouvre l'entrée de rail et
+`KnowledgeBaseRoute` ; aucun calcul de `rightsFor`. Écran : `src/features/knowledge/`.

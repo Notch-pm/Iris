@@ -11,7 +11,7 @@ const ETAT_CIVIL = "66666666-6666-6666-6666-666666666666";
 
 function profile(o: Partial<RightsProfile> & { name: string }): RightsProfile {
   return {
-    id: o.id ?? o.name, status: "active", is_admin: false, is_intervenant: false,
+    id: o.id ?? o.name, status: "active", is_admin: false, is_intervenant: false, knowledge_base_access: false,
     scope_organization_ids: [], procedures: {}, default: [], ...o,
   };
 }

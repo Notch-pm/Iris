@@ -64,6 +64,9 @@ note interne → résolution avec texte de clôture → journal.
     - **Fil d'assistant** : quand la démarche consultée est la démarche CHOISIE, la fiche
       reprend le fil de la page (celui du rail) ; sinon elle ouvre le sien, qui disparaît à
       sa fermeture.
+    - **Rubriques partagées** : `procedure/FicheSections.tsx` (taille `dialog` ici, `page`
+      dans la Base de connaissances — `src/features/knowledge/`). Une rubrique corrigée
+      l'est pour les deux écrans.
   - **Organisme d'abord** (étape 0, décision PO du 2026-08-31 — backlog B4 ; modules purs
     `creation/organismes.ts`, `rights.creationOrganizations` / `creatableProceduresOn`,
     écran `OrganismePicker`) : quand l'agent détient le droit de **création sur plusieurs
