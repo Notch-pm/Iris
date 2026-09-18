@@ -22,6 +22,7 @@ import {
   parseUserCommunication,
   type UserCommunication,
 } from "../../_shared/procedures/userCommunication.ts";
+import { readAudiences, type AudienceKey } from "../../_shared/procedures/audiences.ts";
 
 /**
  * Champs d'une fiche usager transmis aux agents Iris.
@@ -186,6 +187,11 @@ export function sanitizeProcedureSummary(raw: any): Record<string, unknown> | nu
     publication: parsePublication(raw.communication_config) satisfies ProcedurePublication,
     short_description: raw.short_description ?? null,
     input_duration_minutes: raw.input_duration_minutes ?? null,
+    // Publics ADMIS (2026-09-18) — la lecture que le Socle publie au portail,
+    // dérivée de `requester_config` : la tuile d'une démarche dit « public
+    // concerné » sans charger sa fiche. On sert les NOMS des publics, pas la
+    // configuration qui les porte.
+    audiences: readAudiences(raw.requester_config) satisfies AudienceKey[],
   };
 }
 

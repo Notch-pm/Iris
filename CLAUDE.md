@@ -220,7 +220,9 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
 - **`socle-proxy`** (edge, JWT vérifié en code + périmètre : membre du tenant demandé ET
   racine Socle du tenant dans le périmètre **réel** de la clé Socle — introspection
   `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches PROPOSABLES du
-  tenant : ni brouillon, ni interne, ni hors période de publication),
+  tenant : ni brouillon, ni interne, ni hors période de publication — le résumé porte depuis
+  le 2026-09-18 leurs **publics admis**, `audiences`, lecture de `requester_config` sans la
+  configuration elle-même),
   `/v1/procedures/get` (fiche complète, et **aucun de ces filtres** — une demande déjà déposée
   doit rester lisible si sa démarche repasse en brouillon ou sort de période :
   `form_schema`, `requester_config`, et —

@@ -21,18 +21,17 @@
 // clavier a ses deux boutons. La touche « i » sur une carte ouvre sa fiche.
 
 import * as React from "react";
-import { CalendarRange, EyeOff, Info, Loader2, Search } from "lucide-react";
+import { Info, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { SocleProcedureRow } from "@/features/socle/useSocleCatalog";
-import { portalAbsenceLabel, publicationPeriodLabel } from "@fn/_shared/procedures/publication";
 import {
   ALL_CATEGORIES,
   filterProcedures,
   procedureCategories,
-  procedureTypeLabel,
   volumeLabel,
 } from "./procedureSearch";
+import { ProcedureTileBody, procedureTileClass } from "./ProcedureTile";
 
 interface Props {
   rows: SocleProcedureRow[];
@@ -152,10 +151,7 @@ export function ProcedurePicker({
           const selected = row.socle_id === selectedId;
           const isLoading = row.socle_id === loadingId;
           const busy = loadingId !== null;
-          const meta = [row.category_name, procedureTypeLabel(row.type)].filter(Boolean);
           const volume = volumeLabel(counts ? (counts[row.socle_id] ?? 0) : undefined);
-          const horsPortail = portalAbsenceLabel(row.publication);
-          const periode = publicationPeriodLabel(row.publication);
           return (
             <li
               key={row.socle_id}
@@ -168,76 +164,49 @@ export function ProcedurePicker({
                   onOpenFiche(row);
                 }
               }}
-              className={cn(
-                "flex cursor-pointer flex-col gap-1.5 rounded-[14px] border bg-card p-3.5 text-left transition-shadow",
-                selected
-                  ? "border-primary bg-primary/[0.04] shadow-airbnb-md"
-                  : "border-border shadow-airbnb-sm hover:shadow-airbnb-md",
-                busy && "cursor-wait",
-              )}
+              className={cn(procedureTileClass(selected), "cursor-pointer", busy && "cursor-wait")}
             >
-              <span className="flex items-start justify-between gap-2.5">
-                <span className="text-[15px] font-bold leading-tight">{row.name}</span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  <button
-                    type="button"
-                    title="Fiche démarche (touche i)"
-                    aria-label={`Fiche de la démarche « ${row.name} »`}
-                    onClick={(e) => { e.stopPropagation(); onOpenFiche(row); }}
-                    className={cn(
-                      "flex size-[30px] items-center justify-center rounded-full border bg-card transition-[background-color,color,border-color,transform] active:scale-[0.94]",
-                      selected
-                        ? "border-primary/35 text-primary hover:bg-primary hover:text-primary-foreground"
-                        : "border-border text-muted-foreground hover:border-primary hover:text-primary",
-                    )}
-                  >
-                    <Info className="size-4" aria-hidden="true" />
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={selected}
-                    aria-label={selected ? `Démarche choisie : ${row.name}` : `Choisir la démarche « ${row.name} »`}
-                    disabled={busy}
-                    onClick={(e) => { e.stopPropagation(); onSelect(row.socle_id); }}
-                    className={cn(
-                      "inline-flex h-[26px] items-center gap-1 rounded-full px-[11px] text-xs font-bold transition-colors disabled:cursor-wait",
-                      selected
-                        ? "bg-primary text-primary-foreground"
-                        : "border border-border bg-card text-foreground hover:border-secondary hover:bg-secondary",
-                    )}
-                  >
-                    {isLoading ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : null}
-                    {isLoading ? "Chargement" : selected ? "Choisie" : "Choisir"}
-                  </button>
-                </span>
-              </span>
-              {meta.length > 0 ? (
-                <span className="text-xs text-muted-foreground">{meta.join(" · ")}</span>
-              ) : (
-                <span className="text-xs text-muted-foreground">Sans catégorie</span>
-              )}
-              {horsPortail || periode ? (
-                <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                  {horsPortail ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-bold text-muted-foreground">
-                      <EyeOff className="size-3" aria-hidden="true" />
-                      {horsPortail}
-                    </span>
-                  ) : null}
-                  {periode ? (
-                    <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
-                      <CalendarRange className="size-3" aria-hidden="true" />
-                      {periode}
-                    </span>
-                  ) : null}
-                </span>
-              ) : null}
-              {volume ? (
-                <span className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                  <span className="h-1.5 w-1.5 rounded-full bg-warning" aria-hidden="true" />
-                  {volume}
-                </span>
-              ) : null}
+              <ProcedureTileBody
+                name={row.name}
+                category={row.category_name}
+                type={row.type}
+                publication={row.publication}
+                volume={volume}
+                actions={
+                  <>
+                    <button
+                      type="button"
+                      title="Fiche démarche (touche i)"
+                      aria-label={`Fiche de la démarche « ${row.name} »`}
+                      onClick={(e) => { e.stopPropagation(); onOpenFiche(row); }}
+                      className={cn(
+                        "flex size-[30px] items-center justify-center rounded-full border bg-card transition-[background-color,color,border-color,transform] active:scale-[0.94]",
+                        selected
+                          ? "border-primary/35 text-primary hover:bg-primary hover:text-primary-foreground"
+                          : "border-border text-muted-foreground hover:border-primary hover:text-primary",
+                      )}
+                    >
+                      <Info className="size-4" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={selected}
+                      aria-label={selected ? `Démarche choisie : ${row.name}` : `Choisir la démarche « ${row.name} »`}
+                      disabled={busy}
+                      onClick={(e) => { e.stopPropagation(); onSelect(row.socle_id); }}
+                      className={cn(
+                        "inline-flex h-[26px] items-center gap-1 rounded-full px-[11px] text-xs font-bold transition-colors disabled:cursor-wait",
+                        selected
+                          ? "bg-primary text-primary-foreground"
+                          : "border border-border bg-card text-foreground hover:border-secondary hover:bg-secondary",
+                      )}
+                    >
+                      {isLoading ? <Loader2 className="size-3 animate-spin" aria-hidden="true" /> : null}
+                      {isLoading ? "Chargement" : selected ? "Choisie" : "Choisir"}
+                    </button>
+                  </>
+                }
+              />
             </li>
           );
         })}

@@ -21,6 +21,16 @@ collectivité.
 
 ## La liste (`KnowledgeBasePage`, `/base-de-connaissances`)
 
+- **Tuiles** : CELLES de l'étape « Démarche » du guichet (`requests/creation/ProcedureTile.tsx`,
+  partagé — sans « i » ni « Choisir »), avec en plus le **public concerné** et les
+  **organismes**. Volume du mois : `useProcedureMonthlyCounts`, le compte du guichet.
+  ⚠️ Le conteneur d'une tuile porte `procedureTileClass`, qui le rend `relative` : sans
+  ancêtre positionné, les libellés `sr-only` (position absolue) se plaçaient par rapport à
+  la PAGE et l'allongeaient sous la zone qui défile — un second ascenseur (2026-09-18).
+- **Public concerné** : les publics ADMIS (`requester_config`), que le cache ne porte pas —
+  une lecture de `socle-proxy /v1/procedures/list`, dont le résumé porte `audiences`
+  (`_shared/procedures/audiences.ts`, la lecture que le Socle publie au portail). Décoratif :
+  Socle muet ⇒ tuiles sans public, jamais un public supposé.
 - **Source** : `useSocleProcedureRows` — les démarches **publiées** au sens du guichet
   (production, externes, dans leur période de publication). « Publiée » veut dire la même
   chose partout dans Iris : une démarche en brouillon, interne ou hors période n'apparaît
@@ -32,7 +42,7 @@ collectivité.
 - **« Ouverte temporairement »** : la démarche a une période de publication — elle est
   dedans (sinon elle ne serait pas listée) et elle en sortira ; la période s'affiche sous la
   pastille. **« Non visible portail »** : `portalAbsenceLabel`, comme au guichet.
-- **Recherche** (`filterCatalogue`, pur, testé) : nom, catégorie et organismes, sans accents
+- **Recherche** (`filterCatalogue`, pur, testé) : nom, catégorie, organismes et public, sans accents
   ni casse ; plusieurs mots doivent TOUS se trouver, dans n'importe quel ordre.
 - **Regroupement** (`groupByCategory`) : catégories par ordre alphabétique, « Sans
   catégorie » en dernier, démarches triées par nom.
@@ -41,9 +51,11 @@ collectivité.
 
 Trois colonnes, pleine hauteur (`useFullBleedLayout`) :
 
-- **à gauche** — la démarche (catégorie, type, pastilles), « Changer de démarche » (retour
-  à la liste), et les rubriques : « Ce que voit l'usager », puis « Interne — agent » — une
-  entrée par bloc NON VIDE de la base de connaissances (`internalNav`) ;
+- **à gauche** — « Retour » (la liste), la démarche (catégorie, type, pastilles),
+  **« Changer de démarche »** — un sélecteur à recherche (`ProcedureSwitcher` : combobox
+  ARIA, ↑ ↓ Entrée Échap, mêmes filtre et regroupement que la liste, ouvert sur la
+  démarche courante) —, et les rubriques : « Ce que voit l'usager », puis « Interne —
+  agent » — une entrée par bloc NON VIDE de la base de connaissances (`internalNav`) ;
 - **au centre** — la rubrique ouverte, en typographie de page : ce sont les rubriques de la
   « Fiche démarche » du guichet (`requests/procedure/FicheSections.tsx`, taille `page`),
   avec en plus la carte « Organismes » ;

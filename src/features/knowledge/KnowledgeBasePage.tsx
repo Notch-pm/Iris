@@ -4,61 +4,41 @@
 // un temps, si elle est absente du portail. Au clic, sa fiche.
 //
 // Accès : attribut de profil `knowledge_base_access` (`KnowledgeBaseRoute`).
-// Pas de maquette pour cette liste : elle reprend la grammaire des cartes du
-// guichet (`ProcedurePicker`).
+// Pas de maquette pour cette liste : ses tuiles SONT celles de l'étape
+// « Démarche » du guichet (`ProcedureTile`, sans « i » ni « Choisir »), avec le
+// public concerné et les organismes en plus.
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, Building2, CalendarRange, EyeOff, Loader2, Search } from "lucide-react";
+import { BookOpen, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useWideLayout } from "@/components/layout/shellLayout";
+import { cn } from "@/lib/utils";
 import { useTenant } from "@/features/tenant/TenantProvider";
+import { ProcedureTileBody, procedureTileClass } from "@/features/requests/creation/ProcedureTile";
+import { volumeLabel } from "@/features/requests/creation/procedureSearch";
+import { useProcedureMonthlyCounts } from "@/features/requests/creation/useCreationData";
 import { filterCatalogue, groupByCategory, organismesLabel, type KnowledgeProcedure } from "./catalogue";
 import { useKnowledgeCatalogue } from "./useKnowledge";
 
-function ProcedureCard({ item }: { item: KnowledgeProcedure }) {
-  const organismes = organismesLabel(item.organismes);
+function ProcedureCard({ item, count }: { item: KnowledgeProcedure; count: number | undefined }) {
   return (
     <Link
       to={`/base-de-connaissances/${item.id}`}
-      className="flex w-full flex-col gap-2 rounded-[14px] border border-border bg-card p-3.5 shadow-airbnb-sm transition-shadow hover:border-primary/40 hover:shadow-airbnb-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={cn(
+        procedureTileClass(),
+        "hover:border-primary/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+      )}
     >
-      <span className="text-[15px] font-bold leading-tight">{item.name}</span>
-
-      {item.temporaryPeriod || item.portalAbsence ? (
-        <span className="flex flex-wrap items-center gap-1.5">
-          {item.temporaryPeriod ? (
-            <span
-              className="inline-flex items-center gap-1 rounded-full bg-secondary/40 px-2 py-0.5 text-[10.5px] font-bold text-secondary-foreground"
-              title={item.temporaryPeriod}
-            >
-              <CalendarRange className="size-3" aria-hidden="true" />
-              Ouverte temporairement
-            </span>
-          ) : null}
-          {item.portalAbsence ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10.5px] font-bold text-muted-foreground">
-              <EyeOff className="size-3" aria-hidden="true" />
-              {item.portalAbsence}
-            </span>
-          ) : null}
-        </span>
-      ) : null}
-      {item.temporaryPeriod ? (
-        <span className="text-[11px] text-muted-foreground">{item.temporaryPeriod}</span>
-      ) : null}
-
-      <span className="mt-auto flex items-start gap-1.5 text-xs text-muted-foreground">
-        <Building2 className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-        {organismes ? (
-          <span>
-            <span className="sr-only">Proposée par : </span>
-            {organismes}
-          </span>
-        ) : (
-          <span className="italic">Proposée par aucun organisme</span>
-        )}
-      </span>
+      <ProcedureTileBody
+        name={item.name}
+        category={item.category}
+        type={item.type}
+        publication={item.publication}
+        volume={volumeLabel(count)}
+        audiences={item.audiences}
+        organismes={organismesLabel(item.organismes)}
+      />
     </Link>
   );
 }
@@ -69,6 +49,8 @@ export function KnowledgeBasePage() {
   const { current } = useTenant();
   const orgId = current?.organizationId ?? "";
   const catalogue = useKnowledgeCatalogue(orgId);
+  // Le volume du mois, borné par le RLS — le même compte qu'au guichet.
+  const monthlyCounts = useProcedureMonthlyCounts(orgId);
   const [query, setQuery] = React.useState("");
   const sectionId = React.useId();
 
@@ -93,7 +75,7 @@ export function KnowledgeBasePage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
           <Input
             aria-label="Rechercher une démarche"
-            placeholder="Rechercher une démarche — nom, catégorie, organisme"
+            placeholder="Rechercher une démarche — nom, catégorie, organisme, public"
             className="pl-9"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -104,7 +86,7 @@ export function KnowledgeBasePage() {
           {catalogue.isLoading
             ? "chargement…"
             : `${visible.length} démarche${visible.length > 1 ? "s" : ""} sur ${all.length}`}
-          {catalogue.organismesLoading && !catalogue.isLoading ? " · organismes en cours de lecture" : ""}
+          {catalogue.detailsLoading && !catalogue.isLoading ? " · organismes et publics en cours de lecture" : ""}
         </small>
       </div>
 
@@ -141,7 +123,10 @@ export function KnowledgeBasePage() {
               <ul className="grid grid-cols-1 gap-3 md:grid-cols-2 min-[1400px]:grid-cols-3">
                 {group.procedures.map((item) => (
                   <li key={item.id} className="flex">
-                    <ProcedureCard item={item} />
+                    <ProcedureCard
+                      item={item}
+                      count={monthlyCounts.data ? (monthlyCounts.data[item.id] ?? 0) : undefined}
+                    />
                   </li>
                 ))}
               </ul>

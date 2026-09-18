@@ -193,11 +193,6 @@ function FicheBody({ organizationId, row, initialTab, onClose, onChoose, chosen 
 
           <NavGroup label="Aide" />
           <NavButton tab="assistant" label="Assistant" current={tab} onSelect={setRequested} />
-
-          <p className="mx-2 mb-1 mt-auto border-t border-border pt-3.5 text-xs leading-relaxed text-muted-foreground">
-            Fiche relue dans le référentiel à chaque ouverture : une consigne corrigée dans le
-            Socle se lit ici aussitôt.
-          </p>
         </div>
 
         <div

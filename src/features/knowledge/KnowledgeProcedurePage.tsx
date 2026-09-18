@@ -12,6 +12,9 @@
 // affichée, même par son adresse : l'écran vérifie qu'elle figure au
 // catalogue publié avant de montrer quoi que ce soit.
 //
+// « Retour » ramène à la liste ; « Changer de démarche » ouvre un sélecteur à
+// recherche sur le même catalogue (`ProcedureSwitcher`).
+//
 // Pas repris de la maquette, faute de donnée ou de chemin : la version et la
 // date de la fiche, « Voir la page publique » (Iris ne connaît pas l'adresse
 // du portail), « Consigner une demande » (le guichet ne sait pas encore
@@ -20,7 +23,7 @@
 
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
-import { CalendarRange, ChevronsUpDown, EyeOff, Loader2, Maximize2, Minimize2, Sparkles } from "lucide-react";
+import { ArrowLeft, CalendarRange, EyeOff, Loader2, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { cn } from "@/lib/utils";
 import { useTenant } from "@/features/tenant/TenantProvider";
@@ -37,6 +40,7 @@ import {
 } from "@/features/requests/procedure/ficheDemarche";
 import { useProcedureFiche } from "@/features/requests/procedure/useProcedureKnowledge";
 import type { KnowledgeProcedure } from "./catalogue";
+import { ProcedureSwitcher } from "./ProcedureSwitcher";
 import { useKnowledgeCatalogue } from "./useKnowledge";
 
 type ContentTab = Exclude<FicheTab, "assistant">;
@@ -104,7 +108,13 @@ export function KnowledgeProcedurePage() {
     <div className="flex min-h-0 flex-1">
       {/* ── Démarche et rubriques ── */}
       <aside className="flex w-[clamp(210px,20vw,268px)] min-w-0 shrink-0 flex-col border-r border-border bg-muted/40">
-        <div className="border-b border-border px-4 pb-3.5 pt-[18px]">
+        <div className="border-b border-border px-4 pb-3.5 pt-3.5">
+          <Link
+            to="/base-de-connaissances"
+            className="-ml-1 mb-2.5 inline-flex items-center gap-1.5 rounded-lg px-1 py-0.5 text-[13px] font-bold text-muted-foreground transition-colors hover:text-foreground"
+          >
+            <ArrowLeft className="size-4" aria-hidden="true" /> Retour
+          </Link>
           <p className="text-[11px] font-extrabold uppercase tracking-[0.04em] text-muted-foreground">
             Base de connaissances
           </p>
@@ -130,13 +140,7 @@ export function KnowledgeProcedurePage() {
           {item.temporaryPeriod ? (
             <p className="mt-1.5 text-[11px] text-muted-foreground">{item.temporaryPeriod}</p>
           ) : null}
-          <Link
-            to="/base-de-connaissances"
-            className="mt-3 flex h-9 w-full items-center justify-between gap-2 rounded-[10px] border border-border bg-card px-3 text-[13px] font-bold transition-colors hover:border-primary/40"
-          >
-            <span>Changer de démarche</span>
-            <ChevronsUpDown className="size-[15px] text-muted-foreground" aria-hidden="true" />
-          </Link>
+          <ProcedureSwitcher catalogue={catalogue.data ?? []} currentId={item.id} />
         </div>
 
         <div
@@ -168,10 +172,6 @@ export function KnowledgeProcedurePage() {
             ))
           )}
 
-          <p className="mx-2 mb-1 mt-auto border-t border-border pt-3.5 text-xs leading-relaxed text-muted-foreground">
-            Fiche relue dans le référentiel à chaque ouverture : une consigne corrigée dans le
-            Socle se lit ici aussitôt.
-          </p>
         </div>
       </aside>
 

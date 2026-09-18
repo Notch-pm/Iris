@@ -42,8 +42,10 @@ const ACTIVATIONS = [
   { socle_org_id: "o-disparu", socle_procedure_id: "p2" },
 ];
 
+const AUDIENCES = new Map([["p1", ["citoyen", "association"] as const], ["p2", ["entreprise"] as const]]);
+
 describe("buildCatalogue", () => {
-  const catalogue = buildCatalogue(ROWS, ACTIVATIONS, ORGS);
+  const catalogue = buildCatalogue(ROWS, ACTIVATIONS, ORGS, AUDIENCES);
   const byId = Object.fromEntries(catalogue.map((c) => [c.id, c]));
 
   it("nomme les organismes qui proposent chaque démarche, triés", () => {
@@ -63,18 +65,25 @@ describe("buildCatalogue", () => {
     expect(byId.p1.portalAbsence).toBeNull();
   });
 
+  it("libelle le public concerné ; inconnu, il reste vide", () => {
+    expect(byId.p1.audiences).toEqual(["Citoyen", "Association"]);
+    expect(byId.p3.audiences).toEqual([]);
+    expect(buildCatalogue(ROWS, ACTIVATIONS, ORGS)[0].audiences).toEqual([]);
+  });
+
   it("une catégorie blanche vaut « pas de catégorie »", () => {
     expect(byId.p4.category).toBeNull();
   });
 });
 
 describe("filterCatalogue", () => {
-  const catalogue = buildCatalogue(ROWS, ACTIVATIONS, ORGS);
+  const catalogue = buildCatalogue(ROWS, ACTIVATIONS, ORGS, AUDIENCES);
 
   it("ignore accents et casse, et cherche aussi dans la catégorie et les organismes", () => {
     expect(filterCatalogue(catalogue, "DECHETTERIE").map((c) => c.id)).toEqual(["p1"]);
     expect(filterCatalogue(catalogue, "associations").map((c) => c.id)).toEqual(["p2", "p3"]);
     expect(filterCatalogue(catalogue, "vernon").map((c) => c.id)).toEqual(["p1"]);
+    expect(filterCatalogue(catalogue, "entreprise").map((c) => c.id)).toEqual(["p2"]);
   });
 
   it("plusieurs mots : tous doivent se trouver, dans n'importe quel ordre", () => {

@@ -11,13 +11,22 @@
 //    opt-in strict : absente du miroir = proposée par personne) ;
 //  - « ouverte temporairement » : la démarche a une période de publication
 //    — elle est dedans (sinon elle ne serait pas là), et elle en sortira ;
-//  - « non visible sur le portail ».
+//  - « non visible sur le portail » ;
+//  - le PUBLIC CONCERNÉ : les publics admis au dépôt, relayés par
+//    `socle-proxy /v1/procedures/list` (le cache ne porte pas
+//    `requester_config`). Socle muet ⇒ tuiles sans public, jamais un public
+//    supposé.
 // Puis il filtre (recherche) et regroupe par CATÉGORIE de démarche.
 
 import type { ActivationPair } from "@/features/requests/creation/proposables";
 import { normalizeSearch } from "@/features/requests/creation/procedureSearch";
 import type { SocleProcedureRow } from "@/features/socle/useSocleCatalog";
-import { portalAbsenceLabel, publicationPeriodLabel } from "@fn/_shared/procedures/publication";
+import {
+  portalAbsenceLabel,
+  publicationPeriodLabel,
+  type ProcedurePublication,
+} from "@fn/_shared/procedures/publication";
+import { AUDIENCE_LABELS, type AudienceKey } from "@fn/_shared/procedures/audiences";
 
 export const UNCATEGORIZED = "Sans catégorie";
 
@@ -27,6 +36,8 @@ export interface KnowledgeProcedure {
   /** Catégorie Socle, `null` si la démarche n'en a pas. */
   category: string | null;
   type: string | null;
+  /** Publication effective — la tuile la dessine comme au guichet. */
+  publication: ProcedurePublication;
   portalVisible: boolean;
   /** « Non visible portail », `null` quand elle y est (le cas ordinaire). */
   portalAbsence: string | null;
@@ -34,6 +45,8 @@ export interface KnowledgeProcedure {
   temporaryPeriod: string | null;
   /** Organismes qui proposent la démarche, triés. */
   organismes: string[];
+  /** Publics admis au dépôt, libellés. Vide = inconnus ou aucun activé. */
+  audiences: string[];
 }
 
 export interface KnowledgeGroup {
@@ -47,6 +60,7 @@ export function buildCatalogue(
   rows: readonly SocleProcedureRow[],
   activations: readonly ActivationPair[],
   organisations: readonly { value: string; label: string }[],
+  audiencesById: ReadonlyMap<string, readonly AudienceKey[]> = new Map(),
 ): KnowledgeProcedure[] {
   const nameById = new Map(organisations.map((o) => [o.value, o.label]));
   const organismesByProcedure = new Map<string, Set<string>>();
@@ -64,23 +78,27 @@ export function buildCatalogue(
     name: row.name,
     category: row.category_name?.trim() ? row.category_name.trim() : null,
     type: row.type,
+    publication: row.publication,
     portalVisible: row.publication.portalVisible,
     portalAbsence: portalAbsenceLabel(row.publication),
     temporaryPeriod: publicationPeriodLabel(row.publication),
     organismes: [...(organismesByProcedure.get(row.socle_id) ?? [])].sort(byFrench),
+    audiences: (audiencesById.get(row.socle_id) ?? []).map((key) => AUDIENCE_LABELS[key]),
   }));
 }
 
 /**
- * Recherche tolérante (accents, casse) sur le nom, la catégorie et les
- * organismes. Plusieurs mots : TOUS doivent se trouver quelque part —
+ * Recherche tolérante (accents, casse) sur le nom, la catégorie, les
+ * organismes et le public. Plusieurs mots : TOUS doivent se trouver quelque part —
  * « carte déchetterie » trouve la démarche sans exiger l'ordre des mots.
  */
 export function filterCatalogue(items: readonly KnowledgeProcedure[], query: string): KnowledgeProcedure[] {
   const words = normalizeSearch(query).split(/\s+/).filter(Boolean);
   if (words.length === 0) return [...items];
   return items.filter((item) => {
-    const haystack = normalizeSearch([item.name, item.category ?? "", ...item.organismes].join(" "));
+    const haystack = normalizeSearch(
+      [item.name, item.category ?? "", ...item.organismes, ...item.audiences].join(" "),
+    );
     return words.every((w) => haystack.includes(w));
   });
 }

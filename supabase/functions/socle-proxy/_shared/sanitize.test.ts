@@ -120,6 +120,16 @@ describe("sanitizeProcedure*", () => {
     expect(sanitizeProcedureFull(rawProc)!).not.toHaveProperty("communication_config");
   });
 
+  it("le résumé porte les publics ADMIS, jamais la configuration qui les porte", () => {
+    const s = sanitizeProcedureSummary({
+      ...rawProc,
+      requester_config: { citoyen: { enabled: true, fields: { nom: "obligatoire" } }, entreprise: { enabled: false } },
+    })!;
+    expect(s.audiences).toEqual(["citoyen"]);
+    expect(s).not.toHaveProperty("requester_config");
+    expect(sanitizeProcedureSummary({ id: "p-3" })!.audiences).toEqual([]);
+  });
+
   it("démarche sans statut ni communication : brouillon, portail visible", () => {
     const s = sanitizeProcedureSummary({ id: "p-2", name: "Brute" })!;
     expect(s.status).toBe("brouillon");
