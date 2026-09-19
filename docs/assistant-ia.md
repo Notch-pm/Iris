@@ -25,7 +25,7 @@ rien dans la demande, et n'envoie rien à personne.
 
 ---
 
-## 1. Les cinq décisions PO (2026-08-28)
+## 1. Les décisions PO
 
 | # | Décision |
 |---|---|
@@ -34,6 +34,15 @@ rien dans la demande, et n'envoie rien à personne.
 | D3 | **Conversation éphémère** : aucune table, aucune trace. Le fil disparaît au rechargement. |
 | D4 | **Agent Mistral** créé en console, identifiant dans un secret ; repli automatique sur `chat/completions`. **Révisée le 2026-08-29** : l'alias d'agent est désormais résolu **par le Socle** — voir §5. |
 | D5 | **Au guichet, mode « démarche seule »** : l'assistant ne connaît que la démarche, jamais la saisie en cours. |
+
+**D6 (2026-09-19) — répondre d'abord, proposer ensuite.** En première intention, l'assistant se
+contente de ce que le serveur lui compose ; s'il n'a pas la réponse, il PROPOSE de consulter les
+sources déclarées pour l'IA, et **l'agent approuve à chaque fois**. Détail au §2.
+
+**Ce que D6 fait de D2** : les documents d'entraînement ne sont plus destinés à être servis
+d'office. Ils restent extraits et mis en cache **côté serveur**, et rien n'est dupliqué
+durablement chez le fournisseur — mais ils ne partent que sur accord de l'agent, et le chemin
+du budget qui leur était réservé (§4, étape 5) reste en place, vide.
 
 **Conséquence de D3 à garder en tête** : le grand livre (`ai_usage_events`, **dans le Socle**)
 dit *qui* a demandé, *quand*, *sur quelle demande* — jamais *ce qui a été répondu*. Si une

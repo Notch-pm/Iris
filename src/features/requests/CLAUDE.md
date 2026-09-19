@@ -400,7 +400,23 @@ note interne → résolution avec texte de clôture → journal.
       `@fn/_shared/procedures/userCommunication.ts`. Détail :
       [`docs/assistant-ia.md`](../../../docs/assistant-ia.md) §2.
       ⚠️ `trimForSend` ne renvoie **jamais** un tour en erreur — sinon le modèle relit « Le
-      plafond est atteint » comme sa propre réponse et enchaîne dessus.
+      plafond est atteint » comme sa propre réponse et enchaîne dessus. Depuis le 2026-09-19,
+      c'est une **liste blanche** (`user` et `assistant` seuls) : une carte de proposition
+      n'est pas un tour de conversation et ne repart jamais au serveur.
+      **Répondre d'abord, proposer ensuite** (décision PO 2026-09-19) : quand la base ne suffit
+      pas, l'assistant PROPOSE de consulter les sources que la collectivité a déclarées pour
+      l'IA (sources en ligne et documents d'entraînement de la démarche, sources recommandées
+      de la collectivité). Une **carte** dans le fil les nomme et dit ce que « Consulter »
+      implique ; l'agent approuve ou refuse. L'accord vaut pour la SUITE de la conversation —
+      `consulted` dans `AssistantThreadProvider`, renvoyé en identifiants à chaque question,
+      relu côté serveur à chaque tour — et se retire (« Ne plus consulter », « Effacer »,
+      changement de démarche, ou n'importe quel échec pendant une consultation, pour qu'une
+      source cassée ne fasse pas tomber toutes les questions suivantes). Une nouvelle question
+      fait **expirer** une carte laissée ouverte. Sous la réponse : pastille « N sources
+      consultées », liens des pages lues, et « Non lues : X (motif) ».
+      ⚠️ Le serveur ne rend au navigateur que des **identifiants opaques**, des libellés et
+      l'adresse d'une page — jamais le chemin d'un document, jamais son URL signée, jamais le
+      texte lu. Détail : [`docs/assistant-ia.md`](../../../docs/assistant-ia.md) §2.
       **Défilement** (retour PO 2026-09-19) : une réponse se lit depuis sa PREMIÈRE ligne —
       son début est calé en haut du fil, jamais sa fin en bas ; on ne suit le bas du fil
       qu'à l'envoi d'une question, pendant l'attente et sur une erreur. Réglé sur le

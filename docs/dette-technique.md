@@ -149,6 +149,18 @@ relance) brûle le mois en quelques minutes, et le refus n'arrive qu'une fois l'
 vérifier dans `reserve_ai_usage`. À arbitrer avec le PO : un plafond horaire trop bas gêne une
 journée d'instruction chargée.
 
+**c) Les LECTURES de sources ne sont pas bornées non plus** (2026-09-19, relecture de sécurité
+de « répondre d'abord, proposer ensuite »). Les sources approuvées sont lues **avant** l'appel
+au guichet : un agent qui relance en boucle une question avec quatre sources autorisées
+retélécharge jusqu'à 100 Mo depuis le Socle et resollicite les sites tiers **même quand le
+plafond IA est épuisé**, puisque le 429 n'arrive qu'après. Atténuations en place : cache des
+textes (30 min pour un document, 10 min pour une page), **cache des échecs** (2 min), échéance
+commune de 20 s, documents lus en série. Manque une vraie limite par utilisateur — en mémoire
+d'instance elle serait approximative, en base elle coûte une écriture par question.
+
+⚠️ **Le cache est en MÉMOIRE, par instance** : un démarrage à froid relit tout. C'est assumé
+tant que rien n'est mesuré ; une table d'extraits serait la suite, avec sa purge.
+
 ## O7 — Les démarches internes sont masquées, et rien ne le rappellera
 
 **Constat (2026-08-30)** : le sélecteur de démarche ne propose que les démarches
