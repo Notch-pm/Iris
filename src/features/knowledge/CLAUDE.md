@@ -66,6 +66,33 @@ Trois colonnes, pleine hauteur (`useFullBleedLayout`) :
 ⚠️ **Une démarche non publiée ne s'affiche pas, même par son adresse** : la page vérifie
 qu'elle figure au catalogue publié AVANT de demander sa fiche au Socle.
 
+## Les recommandations générales (2026-09-19)
+
+Ce que la collectivité dit à SES AGENTS pour toutes ses démarches — rôle des agents, accueil
+physique, consignes générales, FAQ des agents, sources recommandées —, rédigé dans le
+**Socle** sur l'organisation principale (onglet « Recommandations aux agents », contrat
+public-api **1.27.0**). Iris ne fait que le RELIRE, à chaque visite, sans rien stocker
+(`useAgentGuidance` → `socle-proxy /v1/organizations/agent-guidance`, ouverte à tout membre,
+aucun identifiant du navigateur). Whitelist partagée proxy / écran / assistant :
+`@fn/_shared/organizations/agentGuidance` (idempotente, noms du Socle à la lettre).
+
+- **Trois points d'entrée, un seul rendu** (`AgentGuidanceContent`) : une carte en tête du
+  catalogue, la page `/base-de-connaissances/recommandations` (`AgentGuidancePage` — segment
+  statique, il prime sur `:procedureId`), et une rubrique **« Toutes démarches » ›
+  « Recommandations générales »** dans la fiche de chaque démarche.
+- **Trois états qui ne se confondent pas** : rien d'écrit ⇒ ni carte ni rubrique (la page dédiée
+  dit où les rédiger) ; référentiel muet ⇒ « indisponible » — ⚠️ la route proxy RELAIE l'erreur,
+  à l'inverse de `/branding`, pour qu'un silence ne se lise jamais « la collectivité n'a rien
+  écrit » ; sinon le contenu, rubriques remplies seulement.
+- **La démarche l'emporte**, et l'écran le dit dans le sous-titre, comme l'assistant le lit
+  dans son prompt.
+- ⚠️ **« Consignes générales », jamais « procédures »** : le mot désigne déjà les démarches et
+  la « Procédure de traitement » d'une démarche.
+- Une source n'est un lien que si elle est en `http(s)` (`safeSourceHref`) : une adresse
+  `javascript:` venue du référentiel reste du texte.
+- La carte « Contexte » de l'assistant cite les recommandations générales quand il les lit ; la
+  pastille « recommandations générales » sous une réponse dit qu'il les a effectivement reçues.
+
 ## Pas repris de la maquette (faute de donnée ou de chemin)
 
 Version et date de la fiche ; « Voir la page publique » (Iris ne connaît pas l'adresse du

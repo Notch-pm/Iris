@@ -4,6 +4,7 @@ import { TenantProvider } from "@/features/tenant/TenantProvider";
 import { AdminRoute, KnowledgeBaseRoute, ProtectedRoute, SuperAdminRoute } from "@/components/layout/ProtectedRoute";
 import { KnowledgeBasePage } from "@/features/knowledge/KnowledgeBasePage";
 import { KnowledgeProcedurePage } from "@/features/knowledge/KnowledgeProcedurePage";
+import { AgentGuidancePage } from "@/features/knowledge/AgentGuidancePage";
 import { AppShell } from "@/components/layout/AppShell";
 import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminOrganisationsPage } from "@/features/superadmin/SuperAdminOrganisationsPage";
@@ -88,6 +89,8 @@ export function App() {
               {/* Attribut de profil `knowledge_base_access` ; bureau seul. */}
               <Route element={<KnowledgeBaseRoute />}>
                 <Route path="base-de-connaissances" element={<Adaptive desktop={<KnowledgeBasePage />} />} />
+                {/* Segment statique : prime sur `:procedureId` (classement de React Router). */}
+                <Route path="base-de-connaissances/recommandations" element={<Adaptive desktop={<AgentGuidancePage />} />} />
                 <Route path="base-de-connaissances/:procedureId" element={<Adaptive desktop={<KnowledgeProcedurePage />} />} />
               </Route>
               {/* Colonne unique, lisible telle quelle sur un téléphone. */}

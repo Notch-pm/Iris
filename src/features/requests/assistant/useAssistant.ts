@@ -21,6 +21,12 @@ export interface AssistantContextInfo {
    * 2026-09-18 ne l'envoie pas.
    */
   userCommunication?: boolean;
+  /**
+   * Les recommandations générales de la collectivité à ses agents (Socle
+   * 1.27.0) ont été lues. Facultatif : une fonction déployée avant le
+   * 2026-09-19 ne l'envoie pas.
+   */
+  agentGuidance?: boolean;
   documents: { used: string[]; skipped: { name: string; reason: string }[] };
   answers: number;
   removedIdentityKeys: string[];

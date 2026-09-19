@@ -185,6 +185,9 @@ export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: 
                   ? "référentiel indisponible"
                   : "démarche non documentée"}
             />
+            {lastContext.agentGuidance ? (
+              <ContextChip label="recommandations générales" />
+            ) : null}
             {lastContext.userCommunication ? (
               <ContextChip label="communication usager" />
             ) : null}

@@ -11,6 +11,7 @@ import {
   parseUserCommunicationKnowledge,
   type UserCommunicationKnowledge,
 } from "./userCommunication";
+import { emptyAgentGuidance, type AgentGuidance } from "../organizations/agentGuidance";
 
 const kb = (over: Partial<AiKnowledge> = {}): AiKnowledge => ({
   ...emptyAiKnowledge(),
@@ -274,6 +275,94 @@ describe("condenseKnowledge — communication aux usagers", () => {
     });
     expect(condenseKnowledge(emptyAiKnowledge(), [], 20000, parsed).text)
       .toContain("annoncée à l'usager : 10 jours ouvrés");
+  });
+});
+
+const guidance = (over: Partial<AgentGuidance> = {}): AgentGuidance => ({
+  ...emptyAgentGuidance(),
+  roleDescription: "Accueillir, orienter, instruire.",
+  physicalReception: "Guichet ouvert de 8 h 30 à 12 h.",
+  guidelines: [{ title: "Confidentialité", text: "Aucun dossier lu\nà voix haute." }],
+  faq: [{ question: "Un tiers peut-il déposer ?", answer: "Avec une procuration." }],
+  recommendedSources: [{ url: "https://www.service-public.fr", description: "Fiches pratiques" }],
+  ...over,
+});
+
+describe("condenseKnowledge — recommandations générales de la collectivité", () => {
+  it("n'ajoute rien quand la collectivité n'a rien écrit", () => {
+    const empty = condenseKnowledge(kb(), [], 20000, null, emptyAgentGuidance());
+    expect(empty.text).toBe(condenseKnowledge(kb()).text);
+    expect(empty.agentGuidance).toBe(false);
+  });
+
+  it("vient APRÈS la matière de la démarche et AVANT les textes publics", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc(), guidance());
+    expect(r.agentGuidance).toBe(true);
+    const at = r.text.indexOf("Recommandations générales de la collectivité");
+    expect(at).toBeGreaterThan(r.text.indexOf("Questions fréquentes du service"));
+    expect(at).toBeLessThan(r.text.indexOf("Communication aux usagers"));
+    expect(r.text.startsWith("### Garde-fous")).toBe(true);
+  });
+
+  it("trois FAQ, trois titres : celle des agents ne se mêle ni au service ni aux usagers", () => {
+    const r = condenseKnowledge(kb(), [], 20000, uc(), guidance());
+    const service = r.text.indexOf("Questions fréquentes du service");
+    const agents = r.text.indexOf("Questions fréquentes DES AGENTS");
+    const usagers = r.text.indexOf("Questions fréquentes DES USAGERS");
+    expect(service).toBeLessThan(agents);
+    expect(agents).toBeLessThan(usagers);
+    expect(r.text.indexOf("Un tiers peut-il déposer ?")).toBeGreaterThan(agents);
+    expect(r.text.indexOf("Un tiers peut-il déposer ?")).toBeLessThan(usagers);
+  });
+
+  it("une consigne tient sur une ligne, titre puis texte", () => {
+    const r = condenseKnowledge(emptyAiKnowledge(), [], 20000, null, guidance());
+    expect(r.text).toContain("- Confidentialité : Aucun dossier lu à voix haute.");
+  });
+
+  it("a son propre plafond : un texte démesuré n'évince pas la matière de la démarche", () => {
+    const r = condenseKnowledge(
+      kb({ proceduresText: "Étape finale du service." }),
+      [],
+      20000,
+      null,
+      guidance({ roleDescription: "mot ".repeat(20000), physicalReception: "mot ".repeat(20000) }),
+    );
+    expect(r.truncated).toBe(true);
+    expect(r.text).toContain("Étape finale du service.");
+    const block = r.text.slice(r.text.indexOf("### Recommandations générales"));
+    // 3 000 jetons au plus pour le bloc (≈ 10 500 caractères, marge du titre comprise).
+    expect(block.length).toBeLessThan(11_500);
+  });
+
+  it("les sources recommandées rejoignent les sources citées, sans doublon", () => {
+    const r = condenseKnowledge(
+      parseAiKnowledge({
+        guardrails: ["g"],
+        agentLinks: [{ url: "https://www.service-public.fr", description: "Service public" }],
+      }),
+      [],
+      20000,
+      null,
+      guidance({
+        recommendedSources: [
+          { url: "https://www.service-public.fr", description: "Fiches pratiques" },
+          { url: "https://www.legifrance.gouv.fr", description: "Légifrance" },
+        ],
+      }),
+    );
+    expect(r.text.match(/service-public\.fr/g)).toHaveLength(1);
+    expect(r.text).toContain("Légifrance (https://www.legifrance.gouv.fr) — recommandée par la collectivité");
+  });
+
+  it("des sources recommandées seules comptent comme un apport", () => {
+    const r = condenseKnowledge(emptyAiKnowledge(), [], 20000, null, {
+      ...emptyAgentGuidance(),
+      recommendedSources: [{ url: "https://www.legifrance.gouv.fr", description: "Légifrance" }],
+    });
+    expect(r.agentGuidance).toBe(true);
+    expect(r.text).not.toContain("Recommandations générales de la collectivité");
+    expect(r.text).toContain("Légifrance");
   });
 });
 

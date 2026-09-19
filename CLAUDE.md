@@ -256,6 +256,11 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   qu'au-dessus, aucun identifiant du navigateur ; whitelist réduite au `logo_url` http(s) ;
   décoratif donc **jamais une erreur** : Socle muet ⇒ `branding: null` et le header écrit
   le nom),
+  **`/v1/organizations/agent-guidance`** (2026-09-19 : les **recommandations générales** de
+  la collectivité à ses agents, Socle 1.27.0 — même règle, aucun identifiant du navigateur ;
+  ouverte à tout membre ; whitelist `_shared/organizations/agentGuidance.ts` partagée avec
+  l'écran et l'assistant ; ⚠️ Socle muet = **erreur relayée**, pas un vide — sinon l'écran
+  lirait « rien d'écrit »),
   **`/v1/quartiers/list`** (quartiers du territoire **avec leur géométrie**, pour la carte du
   champ d'adresse **et le cadrage de la carte des interventions** — qui s'ouvre depuis le
   2026-08-31 sur l'étendue du territoire, et non sur ses épingles ; ouverte à tout membre
@@ -402,7 +407,12 @@ les invariants ci-dessus restent la référence.
   chaque carte dit qui la propose (miroir des activations, opt-in strict), si elle est
   **ouverte temporairement** et si elle est **absente du portail**. Au clic, la fiche en
   trois colonnes — rubriques, lecture, **assistant** élargissable —, avec les rubriques de
-  la fiche du guichet (`procedure/FicheSections.tsx`). Ouvert par l'attribut de profil
+  la fiche du guichet (`procedure/FicheSections.tsx`). Depuis le 2026-09-19, les
+  **recommandations générales** de la collectivité (rôle des agents, accueil physique,
+  consignes générales, FAQ, sources — rédigées dans le **Socle**, sur la racine, jamais dans
+  Iris) : carte en tête du catalogue, page `/base-de-connaissances/recommandations`, rubrique
+  « Toutes démarches » de chaque fiche ; l'assistant les lit aussi, et **la consigne de la
+  démarche l'emporte**. Ouvert par l'attribut de profil
   `knowledge_base_access` (bullet « Profils de droits ») ; bureau seul →
   [`src/features/knowledge/CLAUDE.md`](src/features/knowledge/CLAUDE.md).
 - **Statistiques** (`src/features/stats`, route `/statistiques`, entrée de rail — 2026-09-18) :
@@ -502,7 +512,10 @@ les invariants ci-dessus restent la référence.
   1.24.0 : durée d'instruction annoncée, public, pièces annoncées, FAQ usager, descriptif —
   `_shared/ai/userCommunication.ts`), étiqueté pour que les six pièges du contrat tiennent
   jusque dans le prompt : une pièce ANNONCÉE n'est pas une pièce à déposer, la FAQ usager
-  n'est pas celle du service. **Conversation ÉPHÉMÈRE** :
+  n'est pas celle du service. Depuis le 2026-09-19, les **recommandations générales** de la
+  collectivité à ses agents (Socle 1.27.0), lues en parallèle, en bloc distinct à plafond
+  propre — et la règle « la consigne de la démarche l'emporte » posée HORS du bloc de
+  données, parce que c'est une consigne. **Conversation ÉPHÉMÈRE** :
   aucune table, le fil disparaît au rechargement. Droit exigé : **instruction** sur le couple,
   ou un droit de création au guichet.
   ⚠️ **Iris n'appelle pas Mistral** : il compose le prompt — ce qu'il est seul à savoir faire,

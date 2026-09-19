@@ -112,6 +112,31 @@ describe("buildAssistantPrompt", () => {
     expect(buildAssistantPrompt(base)).not.toContain("aucune consigne interne");
   });
 
+  it("recommandations générales : la préséance de la démarche est une CONSIGNE, hors des données", () => {
+    const p = buildAssistantPrompt({ ...base, generalGuidance: true });
+    expect(p).toContain("recommandations générales de la collectivité :");
+    const rule = p.indexOf("c'est la consigne de la démarche qui l'emporte");
+    expect(rule).toBeGreaterThan(0);
+    // Après la fermeture du bloc de connaissances : ce n'est pas une donnée.
+    expect(rule).toBeGreaterThan(p.indexOf("<<<<FIN DONNÉES>>>>"));
+    expect(buildAssistantPrompt(base)).not.toContain("l'emporte");
+  });
+
+  it("sans consigne de la démarche, dit exactement de quoi l'assistant dispose", () => {
+    expect(buildAssistantPrompt({ ...base, noInternalGuidance: true, generalGuidance: true, userCommunication: false }))
+      .toContain("tu ne disposes que des recommandations générales de la collectivité, communes à toutes ses démarches");
+    expect(buildAssistantPrompt({ ...base, noInternalGuidance: true, generalGuidance: true, userCommunication: true }))
+      .toContain("recommandations générales de la collectivité et des textes qu'il publie pour ses usagers");
+    expect(buildAssistantPrompt({ ...base, noInternalGuidance: true }))
+      .toContain("tu ne disposes que des textes qu'il publie pour ses usagers");
+  });
+
+  it("recommandations générales illisibles : le dit, sans taire le reste", () => {
+    const p = buildAssistantPrompt({ ...base, generalGuidanceUnavailable: true });
+    expect(p).toContain("n'ont pas pu être lues");
+    expect(p).toContain("Base de connaissances de la démarche");
+  });
+
   it("nomme les documents non fournis faute de place", () => {
     const p = buildAssistantPrompt({ ...base, skippedDocuments: ["Barème 2026.pdf"] });
     expect(p).toContain("Barème 2026.pdf");

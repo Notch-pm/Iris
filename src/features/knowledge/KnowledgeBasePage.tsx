@@ -10,7 +10,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { BookOpen, Loader2, Search } from "lucide-react";
+import { BookOpen, BookUser, ChevronRight, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useWideLayout } from "@/components/layout/shellLayout";
 import { cn } from "@/lib/utils";
@@ -20,6 +20,43 @@ import { volumeLabel } from "@/features/requests/creation/procedureSearch";
 import { useProcedureMonthlyCounts } from "@/features/requests/creation/useCreationData";
 import { filterCatalogue, groupByCategory, organismesLabel, type KnowledgeProcedure } from "./catalogue";
 import { useKnowledgeCatalogue } from "./useKnowledge";
+import { useAgentGuidance } from "./useAgentGuidance";
+import { guidanceHighlights } from "./guidance";
+
+/**
+ * Les recommandations générales de la collectivité, en tête du catalogue : elles
+ * valent pour toutes les démarches qui suivent. Rien d'écrit ⇒ rien à montrer ;
+ * référentiel muet ⇒ une ligne qui le dit, jamais une carte vide.
+ */
+function AgentGuidanceCard({ orgId }: { orgId: string }) {
+  const guidance = useAgentGuidance(orgId);
+  if (guidance.isError) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        Recommandations générales indisponibles — le Référentiel n'a pas répondu.
+      </p>
+    );
+  }
+  if (!guidance.data?.configured) return null;
+  const highlights = guidanceHighlights(guidance.data.guidance);
+  return (
+    <Link
+      to="/base-de-connaissances/recommandations"
+      className="group flex max-w-3xl items-center gap-3.5 rounded-[14px] border border-primary/25 bg-primary/[0.04] px-4 py-3.5 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="flex size-10 shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
+        <BookUser className="size-5" aria-hidden="true" />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] font-bold">Recommandations générales</span>
+        <span className="block text-[13px] text-muted-foreground">
+          Valables pour toutes les démarches{highlights.length > 0 ? ` — ${highlights.join(", ")}` : ""}.
+        </span>
+      </span>
+      <ChevronRight className="size-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
+    </Link>
+  );
+}
 
 function ProcedureCard({ item, count }: { item: KnowledgeProcedure; count: number | undefined }) {
   return (
@@ -69,6 +106,8 @@ export function KnowledgeBasePage() {
           voit l'usager, les consignes du service, et l'assistant pour les questions du guichet.
         </p>
       </div>
+
+      <AgentGuidanceCard orgId={orgId} />
 
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[280px] max-w-[560px] flex-1">

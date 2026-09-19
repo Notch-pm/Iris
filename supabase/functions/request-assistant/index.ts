@@ -68,6 +68,10 @@ import {
   parseUserCommunicationKnowledge,
   type UserCommunicationKnowledge,
 } from "../_shared/ai/userCommunication.ts";
+import {
+  sanitizeAgentGuidanceView,
+  type AgentGuidance,
+} from "../_shared/organizations/agentGuidance.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -157,6 +161,30 @@ async function socleKnowledge(
     userCommunication: parseUserCommunicationKnowledge(procedure),
     name: typeof procedure.name === "string" ? procedure.name : null,
   };
+}
+
+/**
+ * Recommandations générales de la collectivité à ses agents (Socle 1.27.0),
+ * lues sur la racine du tenant — elles valent pour TOUTES ses démarches, y
+ * compris une demande historique sans démarche. `undefined` = référentiel muet
+ * (l'assistant répond quand même, en le disant) ; rien d'écrit = une structure
+ * vide, que `condenseKnowledge` ignore.
+ */
+async function socleAgentGuidance(socleRootId: string): Promise<AgentGuidance | undefined> {
+  const base = publicApiBase();
+  const key = Deno.env.get("SOCLE_API_KEY");
+  if (base === "" || !key) return undefined;
+  const res = await fetch(`${base}/v1/organizations/${socleRootId}/agent-guidance`, {
+    headers: { Authorization: `Bearer ${key}` },
+    signal: AbortSignal.timeout(10_000),
+  }).catch(() => null);
+  if (!res?.ok) {
+    console.error(`request-assistant: recommandations générales illisibles (${res?.status ?? "réseau"})`);
+    return undefined;
+  }
+  const body = await res.json().catch(() => null);
+  if (!isRecord(body)) return undefined;
+  return sanitizeAgentGuidanceView(body).guidance;
 }
 
 type SocleOutcome =
@@ -391,8 +419,13 @@ Deno.serve(async (req) => {
   let userCommunication: UserCommunicationKnowledge | null = null;
   let procedureName: string | null = null;
   let knowledgeUnavailable = false;
+  // Les deux lectures sont indépendantes : en parallèle, pour ne pas allonger
+  // l'attente de l'agent d'un aller-retour de plus.
+  const [read, agentGuidance] = await Promise.all([
+    socleProcedureId ? socleKnowledge(socleProcedureId, socleOrgId) : Promise.resolve(null),
+    socleAgentGuidance(socleOrgId),
+  ]);
   if (socleProcedureId) {
-    const read = await socleKnowledge(socleProcedureId, socleOrgId);
     if (read) {
       knowledge = read.kb;
       userCommunication = read.userCommunication;
@@ -406,7 +439,9 @@ Deno.serve(async (req) => {
   // ---- Composition ----------------------------------------------------------
   // Les documents d'entraînement arrivent en vague 4 : le budget les prévoit,
   // la liste est vide d'ici là.
-  const condensed = condenseKnowledge(knowledge, [], KNOWLEDGE_BUDGET_TOKENS, userCommunication);
+  const condensed = condenseKnowledge(
+    knowledge, [], KNOWLEDGE_BUDGET_TOKENS, userCommunication, agentGuidance ?? null,
+  );
   const system = buildAssistantPrompt({
     context,
     knowledge: condensed.text,
@@ -422,7 +457,13 @@ Deno.serve(async (req) => {
     skippedDocuments: condensed.skipped.map((s) => s.name),
     truncated: condensed.truncated,
     knowledgeUnavailable,
-    noInternalGuidance: condensed.userCommunication && isAiKnowledgeEmpty(knowledge),
+    // Le service n'a rien rédigé pour la démarche, mais la base n'est pas vide
+    // pour autant : textes publiés aux usagers, recommandations générales.
+    noInternalGuidance: (condensed.userCommunication || condensed.agentGuidance) &&
+      isAiKnowledgeEmpty(knowledge),
+    generalGuidance: condensed.agentGuidance,
+    userCommunication: condensed.userCommunication,
+    generalGuidanceUnavailable: agentGuidance === undefined,
   });
 
   // ---- L'appel : le Socle réserve, appelle et solde -----------------------
@@ -449,6 +490,7 @@ Deno.serve(async (req) => {
       knowledgeUnavailable,
       truncated: condensed.truncated,
       userCommunication: condensed.userCommunication,
+      agentGuidance: condensed.agentGuidance,
       documents: { used: condensed.included, skipped: condensed.skipped },
       answers: context?.answers.length ?? 0,
       removedIdentityKeys: context?.removedIdentityKeys ?? [],

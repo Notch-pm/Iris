@@ -27,6 +27,7 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { allowsAgentDocument, parseAgentKnowledge } from "./_shared/knowledge.ts";
+import { sanitizeAgentGuidanceView } from "../_shared/organizations/agentGuidance.ts";
 import {
   FRANCE_TIME_ZONE,
   isoDay,
@@ -362,6 +363,28 @@ Deno.serve(async (req) => {
     }
     const raw = await res.json().catch(() => null);
     return json(req, 200, { branding: sanitizeBranding(raw) });
+  }
+
+  // ---- Recommandations aux agents de la collectivité (Socle 1.27.0) ---------
+  // Ce que la collectivité dit à ses agents pour TOUTES ses démarches : rôle,
+  // accueil physique, consignes générales, FAQ, sources. Rédigées sur la
+  // racine ; même règle que `/root` et `/branding` : AUCUN identifiant du
+  // navigateur, c'est `tenant.socleOrgId`.
+  //
+  // Ouverte à tout membre, comme `/v1/procedures/get` dont elle est la version
+  // globale : c'est de la lecture d'agent. Whitelist partagée avec l'écran et
+  // l'assistant (`_shared/organizations/agentGuidance.ts`).
+  //
+  // ⚠️ Pas décorative, contrairement à la charte : un Socle muet est une
+  // ERREUR relayée, pour que l'écran dise « indisponible » — jamais des
+  // recommandations vides, qu'on lirait « la collectivité n'a rien écrit ».
+  if (path === "/v1/organizations/agent-guidance") {
+    const res = await socleFetch(
+      `${publicApiBase()}/v1/organizations/${tenant.socleOrgId}/agent-guidance`,
+    );
+    if (!res?.ok) return relaySocleError(req, res);
+    const raw = await res.json().catch(() => null);
+    return json(req, 200, { agent_guidance: sanitizeAgentGuidanceView(raw) });
   }
 
   if (path === "/v1/quartiers/list") {

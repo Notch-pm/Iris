@@ -103,6 +103,28 @@ export interface PromptInput {
    * usager existe, et instruirait d'après une page de présentation.
    */
   noInternalGuidance?: boolean;
+  /**
+   * La base porte les recommandations générales de la collectivité (Socle
+   * 1.27.0 — bloc ou sources recommandées). Le prompt pose alors la règle de
+   * préséance HORS du bloc de données : c'est une consigne, pas une donnée.
+   */
+  generalGuidance?: boolean;
+  /**
+   * Le bloc « Communication aux usagers » figure dans la base. Ne sert qu'à
+   * dire juste ce dont l'assistant dispose quand `noInternalGuidance` ; absent,
+   * on le suppose présent (comportement d'avant le 2026-09-19).
+   */
+  userCommunication?: boolean;
+  /** Les recommandations générales n'ont pas pu être lues (Socle muet). */
+  generalGuidanceUnavailable?: boolean;
+}
+
+/** Ce dont l'assistant dispose quand le service n'a rien rédigé pour la démarche. */
+function onlyAvailable(input: PromptInput): string {
+  if (!input.generalGuidance) return "des textes qu'il publie pour ses usagers";
+  return input.userCommunication === false
+    ? "des recommandations générales de la collectivité, communes à toutes ses démarches"
+    : "des recommandations générales de la collectivité et des textes qu'il publie pour ses usagers";
 }
 
 function contextBlock(ctx: RequestContext): string {
@@ -154,11 +176,24 @@ export function buildAssistantPrompt(input: PromptInput): string {
   );
 
   if (input.knowledge.trim() !== "") {
-    parts.push(fenced("Base de connaissances de la démarche (référentiel du service) :", input.knowledge));
+    parts.push(fenced(
+      input.generalGuidance
+        ? "Base de connaissances de la démarche et recommandations générales de la collectivité :"
+        : "Base de connaissances de la démarche (référentiel du service) :",
+      input.knowledge,
+    ));
+    if (input.generalGuidance) {
+      parts.push(
+        "Les recommandations générales de la collectivité valent pour toutes ses démarches. En " +
+          "cas de contradiction avec une consigne propre à cette démarche (garde-fous, consignes " +
+          "du service, procédure de traitement, questions fréquentes du service), c'est la " +
+          "consigne de la démarche qui l'emporte — dis-le quand tu tranches.\n",
+      );
+    }
     if (input.noInternalGuidance) {
       parts.push(
         "Le service n'a rédigé aucune consigne interne pour cette démarche : tu ne disposes " +
-          "que des textes qu'il publie pour ses usagers. Dis-le si la question appelait une " +
+          `que ${onlyAvailable(input)}. Dis-le si la question appelait une ` +
           "consigne d'instruction.\n",
       );
     }
@@ -171,6 +206,13 @@ export function buildAssistantPrompt(input: PromptInput): string {
     parts.push(
       "Le service n'a pas documenté cette démarche. Tu n'as donc aucune consigne " +
         "interne : dis-le plutôt que de suppléer.\n",
+    );
+  }
+
+  if (input.generalGuidanceUnavailable) {
+    parts.push(
+      "Les recommandations générales de la collectivité n'ont pas pu être lues. Dis-le si la " +
+        "question portait sur une règle commune à toutes ses démarches.\n",
     );
   }
 

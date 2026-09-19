@@ -23,7 +23,7 @@
 
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, CalendarRange, EyeOff, Loader2, Maximize2, Minimize2, Sparkles } from "lucide-react";
+import { ArrowLeft, BookUser, CalendarRange, EyeOff, Loader2, Maximize2, Minimize2, Sparkles } from "lucide-react";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { cn } from "@/lib/utils";
 import { useTenant } from "@/features/tenant/TenantProvider";
@@ -42,18 +42,26 @@ import { useProcedureFiche } from "@/features/requests/procedure/useProcedureKno
 import type { KnowledgeProcedure } from "./catalogue";
 import { ProcedureSwitcher } from "./ProcedureSwitcher";
 import { useKnowledgeCatalogue } from "./useKnowledge";
+import { useAgentGuidance } from "./useAgentGuidance";
+import { AgentGuidanceContent } from "./AgentGuidanceContent";
 
-type ContentTab = Exclude<FicheTab, "assistant">;
+/**
+ * Les rubriques de la fiche, plus une qui n'appartient à AUCUNE démarche : les
+ * recommandations générales de la collectivité, qui valent pour celle-ci aussi.
+ */
+type ContentTab = Exclude<FicheTab, "assistant"> | "recommandations";
 
 /** Ce que l'assistant a sous les yeux, dit en une phrase — rien d'autre ne part. */
-function contextLine(item: KnowledgeProcedure, fiche: ProcedureFiche | null): string {
-  if (!fiche) return `Fiche « ${item.name} ». L'assistant ne voit aucune donnée d'usager.`;
+function contextLine(item: KnowledgeProcedure, fiche: ProcedureFiche | null, generalGuidance: boolean): string {
   const parts: string[] = [];
-  const rules = fiche.knowledge.guardrails.length;
-  if (rules > 0) parts.push(`${rules} point${rules > 1 ? "s" : ""} de vigilance`);
-  if (fiche.knowledge.agentHelpText || fiche.knowledge.proceduresText) parts.push("consignes du service");
-  if (fiche.knowledge.faq.length > 0) parts.push("FAQ agent");
-  if (fiche.description || fiche.userCommunication) parts.push("textes publiés pour l'usager");
+  if (fiche) {
+    const rules = fiche.knowledge.guardrails.length;
+    if (rules > 0) parts.push(`${rules} point${rules > 1 ? "s" : ""} de vigilance`);
+    if (fiche.knowledge.agentHelpText || fiche.knowledge.proceduresText) parts.push("consignes du service");
+    if (fiche.knowledge.faq.length > 0) parts.push("FAQ agent");
+  }
+  if (generalGuidance) parts.push("recommandations générales de la collectivité");
+  if (fiche && (fiche.description || fiche.userCommunication)) parts.push("textes publiés pour l'usager");
   const what = parts.length > 0 ? ` : ${parts.join(", ")}` : "";
   return `Fiche « ${item.name} »${what}. L'assistant ne voit aucune donnée d'usager.`;
 }
@@ -79,11 +87,18 @@ export function KnowledgeProcedurePage() {
   // La fiche n'est demandée qu'une fois la démarche reconnue comme PUBLIÉE.
   const fiche = useProcedureFiche(orgId, item ? procedureId : null);
   const data = fiche.data ?? null;
+  const guidance = useAgentGuidance(orgId);
+  const guidanceView = guidance.data?.configured ? guidance.data : null;
 
   const [requested, setRequested] = React.useState<ContentTab>("usager");
   const [wide, setWide] = React.useState(false);
-  const tab = resolveTab(requested, data) as ContentTab;
+  // La rubrique générale ne dépend pas de la fiche : elle tient tant qu'elle a
+  // quelque chose à montrer, et retombe sur « usager » sinon.
+  const tab: ContentTab = requested === "recommandations"
+    ? (guidanceView ? "recommandations" : "usager")
+    : resolveTab(requested, data) as ContentTab;
   const nav = data ? internalNav(data.knowledge) : [];
+  const selectTab = (t: ContentTab) => setRequested(t);
 
   if (catalogue.isLoading) {
     return (
@@ -150,7 +165,7 @@ export function KnowledgeProcedurePage() {
           className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-5 pt-3.5"
         >
           <NavGroup label="Côté usager" first />
-          <NavButton tab="usager" label="Ce que voit l'usager" current={tab} onSelect={(t) => setRequested(t as ContentTab)} />
+          <NavButton<ContentTab> tab="usager" label="Ce que voit l'usager" current={tab} onSelect={selectTab} />
 
           <NavGroup label="Interne — agent" />
           {fiche.isLoading ? (
@@ -165,23 +180,45 @@ export function KnowledgeProcedurePage() {
             </p>
           ) : (
             nav.map((navItem) => (
-              <NavButton
-                key={navItem.tab} tab={navItem.tab} label={navItem.label} count={navItem.count}
-                current={tab} onSelect={(t) => setRequested(t as ContentTab)}
+              <NavButton<ContentTab>
+                // `internalNav` ne rend que des rubriques internes, jamais l'assistant.
+                key={navItem.tab} tab={navItem.tab as ContentTab} label={navItem.label} count={navItem.count}
+                current={tab} onSelect={selectTab}
               />
             ))
           )}
 
+          {/* Toutes démarches : absente quand la collectivité n'a rien écrit,
+              dite indisponible quand le référentiel n'a pas répondu. */}
+          {guidanceView || guidance.isError ? <NavGroup label="Toutes démarches" /> : null}
+          {guidanceView ? (
+            <NavButton<ContentTab>
+              tab="recommandations" label="Recommandations générales" icon={BookUser}
+              current={tab} onSelect={selectTab}
+            />
+          ) : guidance.isError ? (
+            <p className="px-2.5 py-1.5 text-xs leading-relaxed text-muted-foreground">
+              Recommandations générales indisponibles.
+            </p>
+          ) : null}
         </div>
       </aside>
 
       {/* ── La rubrique ouverte ── */}
       <main
         role="tabpanel"
-        aria-label={tab === "usager" ? "Ce que voit l'usager" : nav.find((i) => i.tab === tab)?.label}
+        aria-label={
+          tab === "usager"
+            ? "Ce que voit l'usager"
+            : tab === "recommandations"
+              ? "Recommandations générales"
+              : nav.find((i) => i.tab === tab)?.label
+        }
         className="min-w-0 flex-1 overflow-y-auto overflow-x-hidden px-[clamp(16px,2.4vw,32px)] pb-10 pt-6"
       >
-        {fiche.isLoading ? (
+        {tab === "recommandations" && guidanceView ? (
+          <AgentGuidanceContent view={guidanceView} organizationName={current?.organizationName ?? null} />
+        ) : fiche.isLoading ? (
           <p className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="size-4 animate-spin" aria-hidden="true" /> Lecture de la fiche dans le référentiel…
           </p>
@@ -191,7 +228,7 @@ export function KnowledgeProcedurePage() {
           </p>
         ) : (
           <FicheTabContent
-            tab={tab}
+            tab={tab === "recommandations" ? "usager" : tab}
             fiche={data}
             organizationId={orgId}
             socleProcedureId={item.id}
@@ -240,7 +277,7 @@ export function KnowledgeProcedurePage() {
           <div className="flex min-h-0 flex-1 flex-col gap-4 p-4">
             <div className="shrink-0 rounded-[10px] border border-border bg-muted/50 px-3.5 py-3">
               <p className="text-xs font-extrabold uppercase tracking-[0.03em] text-muted-foreground">Contexte</p>
-              <p className="mt-1.5 text-[13px] leading-relaxed">{contextLine(item, data)}</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed">{contextLine(item, data, guidanceView !== null)}</p>
             </div>
             <AssistantPane
               wide

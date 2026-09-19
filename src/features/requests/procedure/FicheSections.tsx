@@ -75,14 +75,20 @@ export function NavGroup({ label, first = false }: { label: string; first?: bool
   );
 }
 
-export function NavButton({ tab, label, count, current, onSelect }: {
-  tab: FicheTab;
+/**
+ * Générique sur l'onglet : la Base de connaissances y ajoute une rubrique qui
+ * n'appartient à aucune démarche (« Recommandations générales ») — elle passe
+ * alors son `icon`, `TAB_ICON` ne connaissant que les rubriques d'une fiche.
+ */
+export function NavButton<T extends string = FicheTab>({ tab, label, count, current, onSelect, icon }: {
+  tab: T;
   label: string;
   count?: number;
-  current: FicheTab;
-  onSelect: (tab: FicheTab) => void;
+  current: T;
+  onSelect: (tab: T) => void;
+  icon?: React.ComponentType<{ className?: string }>;
 }) {
-  const Icon = TAB_ICON[tab];
+  const Icon = icon ?? TAB_ICON[tab as FicheTab];
   const active = current === tab;
   return (
     <button

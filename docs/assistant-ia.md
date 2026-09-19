@@ -73,6 +73,7 @@ Cette phrase est écrite en tête de `supabase/functions/_shared/ai/redact.ts`, 
 | Règles de comportement | agent Mistral, ou `BASE_RULES` en repli | ✅ | ✅ |
 | Base de connaissances | Socle, lue à chaque appel | ✅ | ✅ |
 | Communication aux usagers (depuis le 2026-09-18) | même lecture Socle : `user_communication` + `user_description` | ✅ | ✅ |
+| Recommandations générales de la collectivité (depuis le 2026-09-19) | Socle `GET /v1/organizations/{racine}/agent-guidance`, lu en parallèle | ✅ | ✅ |
 | Démarche, objet, description, statut, urgence, échéance | `requests` | ✅ | ❌ |
 | Réponses au formulaire (conditions rejouées) | `form_data` + `procedure_snapshot` | ✅ | ❌ |
 | Historique des étapes (30 derniers événements) | `request_events` | ✅ | ❌ |
@@ -118,6 +119,35 @@ instruirait d'après une page de présentation sans le savoir. L'écran affiche 
 
 Module : `_shared/ai/userCommunication.ts` (pur, testé).
 
+### Les recommandations générales de la collectivité (2026-09-19)
+
+Depuis le contrat public-api **1.27.0**, le Socle porte, sur l'organisation principale, ce que la
+collectivité dit **à ses agents pour toutes ses démarches** : rôle des agents, accueil physique,
+consignes générales, FAQ des agents, sources recommandées. C'est la version **globale** de
+`knowledge_base` — même public, l'agent et son assistant. Rien n'y concerne un usager, aucune
+identité n'y figure : rien n'est retiré avant l'envoi.
+
+- **Lu à chaque appel**, sur la racine du tenant, **en parallèle** de la démarche
+  (`socleAgentGuidance`). Il vaut donc aussi pour une demande historique **sans démarche**.
+- **Un bloc à part**, jamais fusionné avec la matière de la démarche : « Recommandations générales
+  de la collectivité à ses agents ». Sa FAQ est la **troisième** (« Questions fréquentes DES
+  AGENTS »), distincte de celle du service et de celle des usagers. Les **sources recommandées**
+  rejoignent les « Sources citées », dites comme telles et **sans doublon** d'adresse — elles ne
+  sont pas plus consultées que les autres.
+- ⚠️ **La démarche l'emporte.** C'est une CONSIGNE, pas une donnée : `prompt.ts` la pose **hors du
+  bloc de données**, et seulement quand le bloc a été lu (`generalGuidance`). Écrite dans le bloc,
+  elle serait de la matière que le modèle a pour règle de ne pas suivre.
+- **Rien d'écrit** ⇒ aucun bloc, aucune phrase. **Socle muet** ⇒ l'assistant répond quand même, et
+  le prompt dit que les recommandations générales n'ont pas pu être lues.
+- Quand le service n'a rien rédigé pour la démarche, la phrase « aucune consigne interne » dit
+  désormais exactement de quoi l'assistant dispose — recommandations générales, textes publiés, ou
+  les deux (`onlyAvailable`).
+- L'écran affiche la pastille **« recommandations générales »** quand le bloc a été lu
+  (`context.agentGuidance`).
+
+Module : `_shared/organizations/agentGuidance.ts` (pur, testé) — la whitelist partagée avec
+`socle-proxy` et la Base de connaissances.
+
 ### Anti-injection
 
 Tout ce qui vient du référentiel ou du dossier est enfermé dans un bloc délimité, précédé de
@@ -145,6 +175,7 @@ précédentes » écrit dans une réponse de formulaire ne sort plus de son bloc
       OU has_knowledge_base_access_for (base de connaissances, 2026-09-18)
 6. tenant rattaché au Socle (socle_org_id) ?              → 503 not_configured
 7. GET Socle /v1/procedures/{id}  →  parseAiKnowledge
+   ∥ GET Socle /v1/organizations/{racine}/agent-guidance (2026-09-19)
    Socle muet ⇒ DÉGRADÉ, jamais un refus
 8. condenseKnowledge + buildAssistantPrompt
 9. POST ai-api /v1/completions       ← le Socle réserve, appelle, solde
@@ -189,6 +220,7 @@ l'instruction des demandes continue.
 | Consignes du service | ≤ 3 000 |
 | Procédure de traitement | ≤ 3 000 |
 | FAQ du service | 8 entrées × (question 200 + réponse 600 caractères) |
+| Recommandations générales de la collectivité | ≤ 3 000 au total ; rôle et accueil ≤ 2 400 caractères chacun ; 12 consignes (titre 150, texte 900) ; FAQ des agents bornée comme celle du service |
 | Communication aux usagers | ≤ 4 000 au total, dont descriptif ≤ 1 500 ; 20 pièces par liste ; FAQ usager bornée comme celle du service |
 | **Documents d'entraînement** | le reliquat, **en tourniquet** |
 | Sources et liens | URL et descriptions seules — **jamais suivies** |
@@ -329,7 +361,7 @@ centralisation, et il serait annulé par le premier secret fournisseur reposé i
 | | |
 |---|---|
 | Edge function | `supabase/functions/request-assistant/index.ts` |
-| Modules purs | `supabase/functions/_shared/ai/` — `knowledge` · **`userCommunication`** · `context` · `redact` · `condense` · `prompt` · `messages` · `tokens` · **`socleErrors`** · `quota` (réduit à l'affichage) |
+| Modules purs | `supabase/functions/_shared/organizations/agentGuidance` · `supabase/functions/_shared/ai/` — `knowledge` · **`userCommunication`** · `context` · `redact` · `condense` · `prompt` · `messages` · `tokens` · **`socleErrors`** · `quota` (réduit à l'affichage) |
 | Front | `src/features/requests/assistant/` — `thread.ts` (pur) · `AssistantThreadProvider` · `AssistantPane` · `useAssistant` |
 | Panneau hôte | `src/features/requests/procedure/ProcedurePane.tsx` |
 | Consommation (écran) | `src/features/ai/` — `AiUsagePanel` · `useAiUsage`, servi par `socle-proxy /v1/ai/usage` |

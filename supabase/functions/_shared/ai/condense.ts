@@ -25,6 +25,13 @@
  * collectivité PUBLIE pour ses usagers (`userCommunication.ts`) : un bloc à
  * part, après la matière du service et avant les documents.
  *
+ * Depuis le 2026-09-19, elle comprend les RECOMMANDATIONS GÉNÉRALES de la
+ * collectivité à ses agents (Socle 1.27.0, `_shared/organizations/
+ * agentGuidance.ts`) : un bloc à part, APRÈS la matière de la démarche — une
+ * consigne propre à la démarche l'emporte, et c'est elle qui doit survivre au
+ * budget — et AVANT la communication aux usagers. Plafond propre : il ne mord
+ * jamais sur les garde-fous ni sur les consignes de la démarche.
+ *
  * Sortie DÉTERMINISTE : même entrée, même chaîne. C'est ce qui rendra un cache
  * de prompt possible le jour où on en voudra un.
  *
@@ -37,6 +44,10 @@ import {
   isUserCommunicationEmpty,
   type UserCommunicationKnowledge,
 } from "./userCommunication.ts";
+import {
+  isAgentGuidanceEmpty,
+  type AgentGuidance,
+} from "../organizations/agentGuidance.ts";
 
 /** Enveloppe par défaut laissée à la base de connaissances. */
 export const KNOWLEDGE_BUDGET_TOKENS = 20000;
@@ -57,6 +68,13 @@ const LIMITS = {
   pieces: 20,
   pieceText: 300,
   audienceNote: 500,
+  /** Recommandations générales de la collectivité, bloc entier (jetons). */
+  agentGuidance: 3000,
+  /** Rôle des agents, accueil physique : chacun (caractères). */
+  guidanceText: 2400,
+  guidelines: 12,
+  guidelineTitle: 150,
+  guidelineText: 900,
 } as const;
 
 const TRUNCATION_MARK = " […] (extrait tronqué)";
@@ -116,6 +134,8 @@ export interface CondenseResult {
   truncated: boolean;
   /** Vrai si le bloc « Communication aux usagers » a été injecté. */
   userCommunication: boolean;
+  /** Vrai si le bloc « Recommandations générales de la collectivité » a été injecté. */
+  agentGuidance: boolean;
 }
 
 function block(title: string, body: string): string {
@@ -233,11 +253,60 @@ function userCommunicationBody(
   return lines.join("\n");
 }
 
+/**
+ * Le bloc « Recommandations générales ». Ses sous-titres portent le SENS de
+ * chaque rubrique ; la règle de préséance (la démarche l'emporte) est, elle,
+ * une consigne : `prompt.ts` la pose HORS du bloc de données.
+ * Les sources recommandées n'y sont pas : elles rejoignent les sources citées.
+ */
+function agentGuidanceBody(g: AgentGuidance, onTruncate: () => void): string {
+  const clip = (value: string, maxChars: number): string => {
+    const out = truncateAtBoundary(value, maxChars);
+    if (out !== value) onTruncate();
+    return out;
+  };
+  // Une consigne tient sur une ligne de liste : ses sauts de ligne se replient.
+  const oneLine = (value: string) => value.replace(/\s*\n\s*/g, " ");
+  const lines: string[] = ["Valables pour toutes les démarches de la collectivité."];
+
+  if (g.roleDescription) {
+    lines.push("", "Rôle des agents :", clip(demoteHeadings(g.roleDescription), LIMITS.guidanceText));
+  }
+  if (g.physicalReception) {
+    lines.push("", "Accueil physique :", clip(demoteHeadings(g.physicalReception), LIMITS.guidanceText));
+  }
+  if (g.guidelines.length > 0) {
+    const entries = g.guidelines.slice(0, LIMITS.guidelines);
+    if (g.guidelines.length > entries.length) onTruncate();
+    lines.push("", "Consignes générales :");
+    for (const c of entries) {
+      const title = c.title ? clip(oneLine(c.title), LIMITS.guidelineTitle) : "";
+      const body = c.text ? clip(oneLine(c.text), LIMITS.guidelineText) : "";
+      lines.push(`- ${title}${title && body ? " : " : ""}${body}`);
+    }
+  }
+  if (g.faq.length > 0) {
+    const entries = g.faq.slice(0, LIMITS.faqEntries);
+    if (g.faq.length > entries.length) onTruncate();
+    lines.push(
+      "",
+      "Questions fréquentes DES AGENTS, toutes démarches confondues (distinctes de celles du " +
+        "service pour cette démarche) :",
+    );
+    entries.forEach((f, i) => {
+      if (i > 0) lines.push("");
+      lines.push(`Q. ${clip(f.question, LIMITS.faqQuestion)}`, `R. ${clip(f.answer, LIMITS.faqAnswer)}`);
+    });
+  }
+  return lines.join("\n");
+}
+
 export function condenseKnowledge(
   kb: AiKnowledge,
   extracts: DocumentExtract[] = [],
   budgetTokens: number = KNOWLEDGE_BUDGET_TOKENS,
   userCommunication: UserCommunicationKnowledge | null = null,
+  agentGuidance: AgentGuidance | null = null,
 ): CondenseResult {
   const parts: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
@@ -279,7 +348,27 @@ export function condenseKnowledge(
     parts.push(block("Questions fréquentes du service", spend(body, remaining)));
   }
 
-  // 4 bis. Ce que la collectivité publie pour ses usagers (contrat Socle
+  // 4 bis. Recommandations générales de la collectivité (Socle 1.27.0). APRÈS
+  // la matière de la démarche, qui l'emporte ; AVANT les textes publics. Bloc
+  // distinct : ni la FAQ ni les consignes ne se fusionnent avec celles de la
+  // démarche.
+  let agentGuidanceIncluded = false;
+  if (agentGuidance && !isAgentGuidanceEmpty(agentGuidance)) {
+    const hasBody = agentGuidance.roleDescription !== "" || agentGuidance.physicalReception !== "" ||
+      agentGuidance.guidelines.length > 0 || agentGuidance.faq.length > 0;
+    if (hasBody) {
+      const body = spend(
+        agentGuidanceBody(agentGuidance, () => { truncated = true; }),
+        LIMITS.agentGuidance,
+      );
+      if (body !== "") {
+        parts.push(block("Recommandations générales de la collectivité à ses agents", body));
+        agentGuidanceIncluded = true;
+      }
+    }
+  }
+
+  // 4 ter. Ce que la collectivité publie pour ses usagers (contrat Socle
   // 1.24.0). APRÈS la matière du service — une consigne d'instruction pèse
   // plus qu'une page de présentation — et AVANT les documents, qui prennent le
   // reliquat. Bloc distinct de la FAQ du service : le contrat interdit de
@@ -337,12 +426,28 @@ export function condenseKnowledge(
     }
   }
 
-  // 6. Sources et liens — les URL seules, jamais suivies en v1.
-  const sources = [...kb.aiSources, ...kb.agentLinks]
-    .map((l) => `- ${l.description || l.url}${l.description ? ` (${l.url})` : ""}`)
-    .join("\n");
+  // 6. Sources et liens — les URL seules, jamais suivies en v1. Celles de la
+  // démarche d'abord ; puis celles que la collectivité recommande pour toutes,
+  // dites comme telles, sans répéter une adresse déjà citée.
+  const cited = new Set<string>();
+  const sourceLines: string[] = [];
+  const cite = (l: { url: string; description: string }, suffix: string) => {
+    if (l.url !== "" && cited.has(l.url)) return;
+    if (l.url !== "") cited.add(l.url);
+    sourceLines.push(`- ${l.description || l.url}${l.description && l.url ? ` (${l.url})` : ""}${suffix}`);
+  };
+  for (const l of [...kb.aiSources, ...kb.agentLinks]) cite(l, "");
+  let recommendedSourcesCited = false;
+  for (const l of agentGuidance?.recommendedSources ?? []) {
+    const before = sourceLines.length;
+    cite(l, " — recommandée par la collectivité pour toutes les démarches");
+    if (sourceLines.length > before) recommendedSourcesCited = true;
+  }
+  const sources = sourceLines.join("\n");
+  let sourcesText = "";
   if (sources !== "") {
-    parts.push(block("Sources citées (non consultées par l'assistant)", spend(sources, remaining)));
+    sourcesText = spend(sources, remaining);
+    parts.push(block("Sources citées (non consultées par l'assistant)", sourcesText));
   }
 
   return {
@@ -351,5 +456,8 @@ export function condenseKnowledge(
     skipped,
     truncated,
     userCommunication: userCommunicationIncluded,
+    // Des sources recommandées seules suffisent à dire que le bloc a compté —
+    // à condition qu'elles aient survécu au budget.
+    agentGuidance: agentGuidanceIncluded || (recommendedSourcesCited && sourcesText !== ""),
   };
 }
