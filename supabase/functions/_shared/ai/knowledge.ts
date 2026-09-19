@@ -40,7 +40,10 @@ export type {
 export interface AiKnowledge extends AgentKnowledge {
   /** Documents d'entraînement IA : lus côté serveur, jamais servis au navigateur. */
   trainingDocuments: KnowledgeDocument[];
-  /** Sources en ligne destinées à l'IA. Citées, jamais suivies (v1). */
+  /**
+   * Sources en ligne destinées à l'IA. Depuis le 2026-09-19, CONSULTABLES sur
+   * accord de l'agent (`sources/catalogue.ts`) ; jamais lues d'office.
+   */
   aiSources: KnowledgeLink[];
 }
 

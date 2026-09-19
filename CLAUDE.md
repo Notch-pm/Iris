@@ -228,7 +228,9 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `form_schema`, `requester_config`, et —
   depuis le 2026-08-28 — la **part agent** de la `knowledge_base` : consignes, procédures,
   documents d'aide, liens, FAQ, garde-fous ; `trainingDocuments` et `aiSources`, matière de
-  l'assistant IA, ne franchissent PAS la frontière ; et depuis le 2026-09-01 le bloc
+  l'assistant IA, ne franchissent PAS la frontière par cette route (depuis le 2026-09-19,
+  `request-assistant` en montre le LIBELLÉ — et l'adresse d'une page — dans sa carte de
+  proposition ; jamais le chemin d'un document, jamais leur contenu) ; et depuis le 2026-09-01 le bloc
   **`documents`** — les modèles de document et de courrier de la démarche, pour que l'écran
   PROPOSE : le fichier, lui, ne transite jamais par le navigateur ; et depuis le 2026-09-18
   **`user_communication`** — ce que la collectivité écrit pour ses usagers, PUBLIC par
@@ -518,6 +520,16 @@ les invariants ci-dessus restent la référence.
   données, parce que c'est une consigne. **Conversation ÉPHÉMÈRE** :
   aucune table, le fil disparaît au rechargement. Droit exigé : **instruction** sur le couple,
   ou un droit de création au guichet.
+  **Répondre d'abord, proposer ensuite** (décision PO 2026-09-19) : quand la base ne suffit
+  pas, l'assistant peut PROPOSER de consulter les sources que la collectivité a déclarées
+  **pour l'IA** — sources en ligne et documents d'entraînement de la démarche, sources
+  recommandées pour toutes ses démarches — et **l'agent approuve à chaque fois** sur une carte
+  du fil (`_shared/ai/sources/`). Ce n'est **pas un outil** : le modèle écrit une ligne
+  `[[CONSULTER: …]]` qu'Iris retire, l'agent décide, Iris lit dans un catalogue FERMÉ qu'il
+  relit lui-même dans le Socle (identifiant inconnu ⇒ 400), et `ai-api` reste sans `tools`.
+  Le texte lu ne passe **jamais** par l'historique du navigateur : il est relu à chaque tour
+  tant que l'accord tient. Une page n'est lue qu'en `https` publique (garde SSRF revérifiée
+  à chaque redirection) ; le chemin et l'URL signée d'un document ne quittent pas le serveur.
   ⚠️ **Iris n'appelle pas Mistral** : il compose le prompt — ce qu'il est seul à savoir faire,
   le Socle ignorant ce qu'est une demande — et le confie au guichet `ai-api`, qui réserve,
   appelle et solde. **Iris décide ce qui est dit, le Socle décide si ça peut l'être et ce que ça

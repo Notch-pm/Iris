@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   condenseKnowledge,
   demoteHeadings,
+  shareBudget,
   truncateAtBoundary,
   type DocumentExtract,
 } from "./condense";
@@ -363,6 +364,59 @@ describe("condenseKnowledge — recommandations générales de la collectivité"
     expect(r.agentGuidance).toBe(true);
     expect(r.text).not.toContain("Recommandations générales de la collectivité");
     expect(r.text).toContain("Légifrance");
+  });
+});
+
+// 2026-09-19 : une page que l'assistant peut PROPOSER de consulter n'est plus
+// citée — le prompt la présente dans son propre bloc, avec son identifiant.
+describe("condenseKnowledge — sources proposées à la consultation", () => {
+  const withSources = parseAiKnowledge({
+    guardrails: ["g"],
+    aiSources: [{ url: "https://www.arles.fr/r", description: "Règlement" }],
+    agentLinks: [{ url: "https://www.service-public.fr", description: "Service public" }],
+  });
+
+  it("ne cite plus une page offerte, mais garde les liens de l'agent", () => {
+    const r = condenseKnowledge(withSources, [], 20000, null, null, {
+      offeredUrls: new Set(["https://www.arles.fr/r"]),
+    });
+    expect(r.text).not.toContain("https://www.arles.fr/r");
+    expect(r.text).toContain("Service public (https://www.service-public.fr)");
+  });
+
+  it("sans option, rien ne change", () => {
+    expect(condenseKnowledge(withSources).text).toContain("Règlement (https://www.arles.fr/r)");
+  });
+
+  it("une source recommandée PROPOSÉE compte comme un apport des recommandations", () => {
+    const r = condenseKnowledge(emptyAiKnowledge(), [], 20000, null, {
+      ...emptyAgentGuidance(),
+      recommendedSources: [{ url: "https://www.legifrance.gouv.fr", description: "Légifrance" }],
+    }, { offeredUrls: new Set(["https://www.legifrance.gouv.fr"]) });
+    expect(r.agentGuidance).toBe(true);
+    expect(r.text).not.toContain("legifrance");
+  });
+});
+
+describe("shareBudget — le tourniquet", () => {
+  it("rend les textes dans l'ordre d'ENTRÉE, et un long n'évince pas un court", () => {
+    const r = shareBudget(["long ".repeat(50000), "court"], 2000);
+    expect(r.bodies[1]).toBe("court");
+    expect(r.bodies[0]).toContain("(extrait tronqué)");
+    expect(r.truncated).toBe(true);
+  });
+
+  it("écarte (null) plutôt que de servir une miette, et écarte le vide", () => {
+    const r = shareBudget(["a ".repeat(5000), "b ".repeat(5000), "   "], 200);
+    expect(r.bodies[2]).toBeNull();
+    expect(r.bodies.filter((b) => b === null).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("les courts rendent leur surplus aux longs", () => {
+    const seul = shareBudget(["x ".repeat(20000)], 3000).bodies[0]!;
+    const avecCourt = shareBudget(["x ".repeat(20000), "petit"], 3000).bodies[0]!;
+    // Le court ne coûte presque rien : le long garde presque toute l'enveloppe.
+    expect(avecCourt.length).toBeGreaterThan(seul.length * 0.95);
   });
 });
 

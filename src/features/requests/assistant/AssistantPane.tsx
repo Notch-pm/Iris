@@ -19,13 +19,33 @@
 // Rompre cette chaîne quelque part et tout redevient un long document : rien
 // ne casse visiblement, le socle cesse simplement d'être un socle.
 
+//
+// LA CARTE DE PROPOSITION (2026-09-19) : quand la base ne suffit pas,
+// l'assistant propose de consulter des sources que la collectivité a déclarées
+// pour l'IA. La carte les nomme, dit ce que « Consulter » implique (lecture
+// par Iris, envoi à l'assistant, consommation IA) et attend l'agent. Comme
+// l'erreur, elle est DANS le fil sans en faire partie : `trimForSend` ne la
+// renvoie jamais.
+
 import * as React from "react";
-import { AlertTriangle, Loader2, RotateCcw, Send, Sparkles } from "lucide-react";
+import {
+  AlertTriangle,
+  BookOpenCheck,
+  FileText,
+  Globe,
+  Loader2,
+  RotateCcw,
+  Send,
+  Sparkles,
+} from "lucide-react";
+import type { SourceRef } from "@fn/_shared/ai/sources/catalogue";
+import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
 import { Textarea } from "@/components/ui/textarea";
+import { safeHref } from "@/lib/markdown";
 import { cn } from "@/lib/utils";
 import { useAssistantThread } from "./AssistantThreadProvider";
-import { isFresh } from "./thread";
+import { isFresh, readingAnchor, type ProposalStatus, type ThreadProposal } from "./thread";
 
 /** Amorces affichées tant que rien n'a été demandé. */
 const STARTERS = [
@@ -42,6 +62,106 @@ function ContextChip({ label }: { label: string }) {
   );
 }
 
+/** Le domaine d'une page, sans `www.` — ce que l'agent reconnaît d'un coup d'œil. */
+function hostOf(url: string | undefined): string {
+  if (!url) return "";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+function SourceIcon({ source }: { source: SourceRef }) {
+  const Icon = source.kind === "page" ? Globe : FileText;
+  return <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />;
+}
+
+const CLOSED_PROPOSAL: Record<Exclude<ProposalStatus, "open">, string> = {
+  accepted: "Consultation autorisée.",
+  declined: "Proposition déclinée — rien n'a été lu.",
+  expired: "Proposition non retenue : une autre question a suivi.",
+};
+
+function ProposalCard({
+  proposal,
+  pending,
+  wide,
+  onApprove,
+  onDecline,
+}: {
+  proposal: ThreadProposal;
+  pending: boolean;
+  wide: boolean;
+  onApprove: () => void;
+  onDecline: () => void;
+}) {
+  const open = proposal.status === "open";
+  return (
+    <div
+      role="group"
+      aria-label="Proposition de l'assistant : consulter des sources"
+      className={cn(
+        "rounded-[14px] border p-3",
+        wide ? "max-w-[78%]" : "max-w-[92%]",
+        open ? "border-primary/25 bg-primary/5" : "border-border bg-muted/40",
+      )}
+    >
+      <p className={cn("flex items-start gap-2 font-semibold text-foreground", wide ? "text-[13px]" : "text-[11.5px]")}>
+        <BookOpenCheck className="mt-px size-3.5 shrink-0 text-primary" aria-hidden="true" />
+        Pour aller plus loin, je peux consulter :
+      </p>
+      <ul className="mt-2 flex flex-col gap-1.5">
+        {proposal.sources.map((source) => (
+          <li key={source.id} className="flex items-start gap-2">
+            <SourceIcon source={source} />
+            <span className="min-w-0">
+              <span className={cn("block font-semibold leading-snug", wide ? "text-[13px]" : "text-[12px]")}>
+                {source.label}
+              </span>
+              <span className="block text-[10.5px] leading-snug text-muted-foreground">
+                {source.kind === "page" ? hostOf(source.url) : "Document de référence"}
+                {source.origin === "collectivite" ? " · recommandée par la collectivité" : ""}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {proposal.status === "open" ? (
+        <>
+          <p className="mt-2.5 text-[10.5px] leading-relaxed text-muted-foreground">
+            Leur contenu sera lu par Iris et transmis à l'assistant, pour cette question et les
+            suivantes. Elle comptera dans la consommation IA de la collectivité.
+          </p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <Button size="sm" className="h-8 px-3 text-xs" onClick={onApprove} disabled={pending}>
+              Consulter
+            </Button>
+            <Button size="sm" variant="ghost" className="h-8 px-3 text-xs" onClick={onDecline} disabled={pending}>
+              Non merci
+            </Button>
+          </div>
+        </>
+      ) : (
+        <p className="mt-2 text-[10.5px] font-semibold text-muted-foreground">
+          {CLOSED_PROPOSAL[proposal.status]}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Une source consultée : un lien pour une page, un nom pour un document. */
+function ConsultedName({ source }: { source: SourceRef }) {
+  const href = source.url ? safeHref(source.url) : null;
+  if (!href) return <span className="font-semibold">{source.label}</span>;
+  return (
+    <a href={href} target="_blank" rel="noreferrer noopener" className="font-semibold underline underline-offset-2 hover:text-foreground">
+      {source.label}
+    </a>
+  );
+}
+
 interface Props {
   emptyHint: string;
   /** Amorces propres à l'écran hôte — par défaut, celles de l'instruction. */
@@ -54,28 +174,36 @@ interface Props {
 }
 
 export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: Props) {
-  const { thread, draft, setDraft, send, reset, pending, canSend, lastContext, disabled } =
-    useAssistantThread();
+  const {
+    thread, draft, setDraft, send, reset, pending, canSend, lastContext, disabled,
+    consulted, approve, decline, stopConsulting,
+  } = useAssistantThread();
   const scrollRef = React.useRef<HTMLDivElement>(null);
-  const lastMessageRef = React.useRef<HTMLDivElement>(null);
+  const anchorRef = React.useRef<HTMLDivElement>(null);
+  const anchorId = readingAnchor(thread);
 
   React.useEffect(() => {
     // Le défilement se règle sur le CONTENEUR du fil, jamais par
     // `scrollIntoView` : celui-ci ferait aussi sauter la fiche entière.
     const box = scrollRef.current;
     if (!box) return;
-    const last = thread.messages[thread.messages.length - 1];
-    if (pending || !last || last.role !== "assistant") {
+    if (pending || anchorId === null) {
       // Question envoyée, attente, erreur : on suit le bas du fil.
       box.scrollTop = box.scrollHeight;
       return;
     }
     // Réponse arrivée : on la lit depuis sa PREMIÈRE ligne (retour PO
-    // 2026-09-19) — son début est calé en haut du fil, pas sa fin en bas.
-    const el = lastMessageRef.current;
+    // 2026-09-19) — son début est calé en haut du fil, pas sa fin en bas. Une
+    // carte de proposition qui la suit ne change rien : elle se lit après.
+    const el = anchorRef.current;
     if (!el) return;
     box.scrollTop += el.getBoundingClientRect().top - box.getBoundingClientRect().top;
-  }, [thread.messages.length, pending]);
+  }, [thread.messages.length, pending, anchorId]);
+
+  // Un motif « non lue » peut arriver sans libellé (référentiel muet) : on
+  // reprend alors celui que l'agent a approuvé.
+  const labelOf = (id: string, label: string) =>
+    label || consulted.find((s) => s.id === id)?.label || "source demandée";
 
   if (disabled) {
     return (
@@ -98,9 +226,11 @@ export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: 
               <Sparkles className="mt-px size-3.5 shrink-0 text-primary" aria-hidden="true" />
               <span>
                 Je réponds à partir de la base de connaissances de la démarche — et du dossier,
-                quand il y en a un ouvert. <strong className="font-semibold">L'identité de
-                l'usager ne m'est pas transmise</strong>, et cette conversation n'est pas
-                enregistrée : elle disparaît si vous rechargez la page.
+                quand il y en a un ouvert. Si elle ne suffit pas, je peux vous proposer de
+                consulter les sources que la collectivité a déclarées : rien n'est lu sans votre
+                accord. <strong className="font-semibold">L'identité de l'usager ne m'est pas
+                transmise</strong>, et cette conversation n'est pas enregistrée : elle disparaît
+                si vous rechargez la page.
               </span>
             </p>
             <div className="flex flex-wrap gap-1.5">
@@ -122,8 +252,19 @@ export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: 
         ) : null}
 
         <div className="flex flex-col gap-2.5">
-          {thread.messages.map((message, index) => {
-            const isLast = index === thread.messages.length - 1;
+          {thread.messages.map((message) => {
+            if (message.role === "proposal") {
+              return message.proposal ? (
+                <ProposalCard
+                  key={message.id}
+                  proposal={message.proposal}
+                  pending={pending}
+                  wide={wide}
+                  onApprove={() => approve(message.id)}
+                  onDecline={() => decline(message.id)}
+                />
+              ) : null;
+            }
             if (message.role === "error") {
               return (
                 <p
@@ -140,7 +281,7 @@ export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: 
             return (
               <div
                 key={message.id}
-                ref={isLast ? lastMessageRef : undefined}
+                ref={message.id === anchorId ? anchorRef : undefined}
                 className={cn("flex", mine ? "justify-end" : "justify-start")}
               >
                 <div
@@ -168,7 +309,9 @@ export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: 
           {pending ? (
             <p className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-              L'assistant lit la démarche et rédige sa réponse…
+              {consulted.length > 0
+                ? "L'assistant lit les sources autorisées et rédige sa réponse…"
+                : "L'assistant lit la démarche et rédige sa réponse…"}
             </p>
           ) : null}
         </div>
@@ -200,6 +343,29 @@ export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: 
             {lastContext.removedIdentityKeys.length > 0 ? (
               <ContextChip label="identité retirée" />
             ) : null}
+            {lastContext.sources && lastContext.sources.consulted.length > 0 ? (
+              <ContextChip
+                label={`${lastContext.sources.consulted.length} source${lastContext.sources.consulted.length > 1 ? "s" : ""} consultée${lastContext.sources.consulted.length > 1 ? "s" : ""}`}
+              />
+            ) : null}
+            {lastContext.sources && lastContext.sources.consulted.length > 0 ? (
+              <span className="w-full text-[10.5px] leading-relaxed text-muted-foreground">
+                Sources consultées :{" "}
+                {lastContext.sources.consulted.map((s, i) => (
+                  <React.Fragment key={s.id}>
+                    {i > 0 ? ", " : null}
+                    <ConsultedName source={s} />
+                  </React.Fragment>
+                ))}
+                .
+              </span>
+            ) : null}
+            {lastContext.sources && lastContext.sources.skipped.length > 0 ? (
+              <span className="w-full text-[10.5px] leading-relaxed text-muted-foreground">
+                Non lues :{" "}
+                {lastContext.sources.skipped.map((s) => `${labelOf(s.id, s.label)} (${s.reason})`).join(", ")}.
+              </span>
+            ) : null}
             {lastContext.documents.skipped.length > 0 ? (
               <span className="w-full text-[10.5px] leading-relaxed text-muted-foreground">
                 Non pris en compte, faute de place :{" "}
@@ -220,6 +386,27 @@ export function AssistantPane({ emptyHint, starters = STARTERS, wide = false }: 
 
       {/* ── Le SOCLE : insensible au défilement du fil ── */}
       <div className="flex shrink-0 flex-col gap-2 border-t border-border pt-3">
+        {/* L'accord en cours : il vaut pour chaque question qui suit, donc il se
+            lit là où l'on écrit — et se retire d'un geste. */}
+        {consulted.length > 0 ? (
+          <div className="flex items-start justify-between gap-2 rounded-[10px] bg-primary/5 px-2.5 py-1.5 text-[10.5px] leading-relaxed text-muted-foreground">
+            <span className="flex min-w-0 items-start gap-1.5">
+              <BookOpenCheck className="mt-0.5 size-3 shrink-0 text-primary" aria-hidden="true" />
+              <span>
+                Consultées à chaque question :{" "}
+                <span className="font-semibold text-foreground">{consulted.map((s) => s.label).join(", ")}</span>
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={stopConsulting}
+              disabled={pending}
+              className="shrink-0 font-semibold hover:text-foreground disabled:opacity-50"
+            >
+              Ne plus consulter
+            </button>
+          </div>
+        ) : null}
         <div className="flex items-end gap-1.5">
           <Textarea
             rows={2}

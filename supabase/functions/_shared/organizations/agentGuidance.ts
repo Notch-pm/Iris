@@ -53,7 +53,10 @@ export interface AgentGuidance {
   guidelines: AgentGuideline[];
   /** FAQ des agents — ni celle d'une démarche, ni celle des usagers. */
   faq: AgentGuidanceFaqItem[];
-  /** Sources recommandées, pour l'agent comme pour l'assistant (qui les CITE sans les ouvrir). */
+  /**
+   * Sources recommandées, pour l'agent comme pour l'assistant — qui peut, depuis
+   * le 2026-09-19, en lire le contenu sur accord de l'agent (`ai/sources/`).
+   */
   recommendedSources: AgentGuidanceLink[];
 }
 

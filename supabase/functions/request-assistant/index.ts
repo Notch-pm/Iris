@@ -48,6 +48,18 @@
 // se contentait de le dégrader (réponse sans base de connaissances). Le
 // message le dit, et rappelle que l'instruction des demandes continue.
 //
+// DEUX TEMPS (2026-09-19) : l'assistant répond d'abord avec ce qui est composé
+// ici. Quand la collectivité a déclaré des sources pour l'IA (sources en ligne
+// et documents d'entraînement de la démarche, sources recommandées pour toutes
+// ses démarches), il peut PROPOSER d'en consulter — une ligne balisée, retirée
+// de la réponse et rendue au navigateur sous `proposal`. L'agent approuve ; le
+// tour suivant porte `sources: [identifiants]`, et Iris lit ces sources avant
+// d'appeler le guichet. Ce n'est PAS un outil : le modèle ne déclenche rien,
+// le catalogue est RELU ici à chaque appel et un identifiant qui n'y figure
+// pas est refusé. Le texte lu ne revient jamais par l'historique (entrée non
+// fiable) : il est relu à chaque tour tant que l'agent maintient l'accord.
+// Voir `_shared/ai/sources/` et `docs/assistant-ia.md`.
+//
 // CORS : allowlist stricte (IRIS_APP_URL + localhost de dev).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -72,6 +84,17 @@ import {
   sanitizeAgentGuidanceView,
   type AgentGuidance,
 } from "../_shared/organizations/agentGuidance.ts";
+import {
+  buildCatalogue,
+  catalogueUrls,
+  parseSourceIds,
+  resolveSources,
+  toRef,
+} from "../_shared/ai/sources/catalogue.ts";
+import { condenseConsulted, EXPLORATION_BUDGET_TOKENS } from "../_shared/ai/sources/consult.ts";
+import { extractProposal } from "../_shared/ai/sources/proposal.ts";
+import { allowedLinkOrigins, neutralizeLinks } from "../_shared/ai/links.ts";
+import { readSources } from "../_shared/ai/sources/read.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -94,7 +117,7 @@ const SOCLE_TIMEOUT_MS = 75_000;
 
 /** Clés acceptées dans le corps. Toute autre ⇒ 400 (motif create-request-from-procedure). */
 const ALLOWED_KEYS = new Set([
-  "request_id", "organization_id", "socle_procedure_id", "messages",
+  "request_id", "organization_id", "socle_procedure_id", "messages", "sources",
 ]);
 
 function corsHeaders(req: Request): Record<string, string> {
@@ -293,6 +316,11 @@ Deno.serve(async (req) => {
   const history = parseClientHistory(body.messages);
   if (!history.ok) return fail(req, 400, history.code, history.message);
 
+  // Les sources que l'agent a autorisées : forme contrôlée ici, existence
+  // contrôlée une fois le catalogue relu dans le Socle.
+  const requestedSources = parseSourceIds(body.sources);
+  if (!requestedSources.ok) return fail(req, 400, "invalid_request", requestedSources.message);
+
   const requestId = typeof body.request_id === "string" ? body.request_id : "";
   const requestMode = requestId !== "";
   if (requestMode && !UUID_RE.test(requestId)) {
@@ -436,11 +464,42 @@ Deno.serve(async (req) => {
   }
   if (!procedureName && context) procedureName = context.procedure;
 
+  // ---- Sources déclarées pour l'IA : le catalogue, relu à chaque appel -----
+  // Construit depuis ce qui vient d'être lu — aucun appel Socle de plus. Une
+  // lecture manquée (démarche ou recommandations) le rend PARTIEL : une source
+  // approuvée qu'on ne retrouve pas n'est alors pas une faute du navigateur.
+  const catalogue = buildCatalogue(knowledge, agentGuidance ?? null, { socleOrgId });
+  const resolved = resolveSources(
+    catalogue,
+    requestedSources.ids,
+    knowledgeUnavailable || agentGuidance === undefined,
+  );
+  if (!resolved.ok) {
+    return fail(req, 400, "unknown_source",
+      "Une source demandée n'est pas déclarée pour cette démarche. Rechargez la page.");
+  }
+  const reads = await readSources(resolved.entries, {
+    socleApiBase: publicApiBase(),
+    socleKey: Deno.env.get("SOCLE_API_KEY") ?? "",
+    socleOrgId,
+  });
+  const exploration = condenseConsulted(reads, EXPLORATION_BUDGET_TOKENS);
+  const unreadSources = [
+    ...exploration.unread,
+    ...resolved.missing.map((id) => ({ id, label: "", reason: "référentiel momentanément illisible" })),
+  ];
+  // Ce qui peut encore être proposé : tout le catalogue, moins ce que l'agent
+  // a déjà autorisé (lu ou non — le reproposer ne servirait à rien).
+  const offered = catalogue
+    .filter((e) => !requestedSources.ids.includes(e.id))
+    .map(toRef);
+
   // ---- Composition ----------------------------------------------------------
-  // Les documents d'entraînement arrivent en vague 4 : le budget les prévoit,
-  // la liste est vide d'ici là.
+  // Les documents d'entraînement ne sont plus servis d'office : ils sont au
+  // catalogue, lus sur approbation de l'agent.
   const condensed = condenseKnowledge(
     knowledge, [], KNOWLEDGE_BUDGET_TOKENS, userCommunication, agentGuidance ?? null,
+    { offeredUrls: catalogueUrls(catalogue) },
   );
   const system = buildAssistantPrompt({
     context,
@@ -464,6 +523,10 @@ Deno.serve(async (req) => {
     generalGuidance: condensed.agentGuidance,
     userCommunication: condensed.userCommunication,
     generalGuidanceUnavailable: agentGuidance === undefined,
+    consultable: offered,
+    consulted: exploration.consulted,
+    unreadSources,
+    consultedTruncated: exploration.truncated,
   });
 
   // ---- L'appel : le Socle réserve, appelle et solde -----------------------
@@ -483,9 +546,27 @@ Deno.serve(async (req) => {
     );
     return fail(req, mapped.status, mapped.code, mapped.message);
   }
+  // La balise de proposition est retirée du texte ; seuls les identifiants
+  // OFFERTS à ce tour survivent.
+  const extracted = extractProposal(outcome.answer, offered);
+  // Politique de liens : une réponse ne garde cliquables que les liens vers
+  // une origine DÉCLARÉE dans le référentiel. Sans elle, un texte injecté
+  // (réponse d'usager, page consultée) ferait porter le dossier par l'URL d'un
+  // lien au libellé honnête. Voir `_shared/ai/links.ts`.
+  const declaredOrigins = allowedLinkOrigins([
+    ...knowledge.aiSources.map((l) => l.url),
+    ...knowledge.agentLinks.map((l) => l.url),
+    ...(agentGuidance?.recommendedSources ?? []).map((l) => l.url),
+  ]);
+  const answer = neutralizeLinks(extracted.answer, declaredOrigins);
   return json(req, 200, {
-    answer: outcome.answer,
+    answer: answer || "L'assistant n'a pas formulé de réponse — reformulez la question.",
+    proposal: extracted.proposal ? { sources: extracted.proposal } : null,
     context: {
+      sources: {
+        consulted: exploration.consulted.map(({ text: _text, ...ref }) => ref),
+        skipped: unreadSources,
+      },
       knowledge: condensed.text !== "",
       knowledgeUnavailable,
       truncated: condensed.truncated,

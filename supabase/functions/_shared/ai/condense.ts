@@ -301,12 +301,21 @@ function agentGuidanceBody(g: AgentGuidance, onTruncate: () => void): string {
   return lines.join("\n");
 }
 
+export interface CondenseOptions {
+  /**
+   * Adresses des pages que l'assistant peut PROPOSER de consulter
+   * (`sources/catalogue.ts`) : elles ne sont plus citées à l'étape 6.
+   */
+  offeredUrls?: Set<string>;
+}
+
 export function condenseKnowledge(
   kb: AiKnowledge,
   extracts: DocumentExtract[] = [],
   budgetTokens: number = KNOWLEDGE_BUDGET_TOKENS,
   userCommunication: UserCommunicationKnowledge | null = null,
   agentGuidance: AgentGuidance | null = null,
+  options: CondenseOptions = {},
 ): CondenseResult {
   const parts: string[] = [];
   const skipped: { name: string; reason: string }[] = [];
@@ -389,54 +398,49 @@ export function condenseKnowledge(
   const usable = extracts.filter((e) => e.text.trim() !== "");
   if (usable.length > 0) {
     // On réserve de quoi citer les sources et les liens après.
-    const forDocuments = Math.max(0, remaining - 400);
-    // Les courts rendent leur surplus : on sert d'abord ceux qui tiennent dans
-    // leur part, et le reliquat se redistribue aux longs.
-    const sorted = [...usable].sort((a, b) => a.text.length - b.text.length);
-    let pool = forDocuments;
-    let left = sorted.length;
-    const rendered: { name: string; body: string }[] = [];
-
-    for (const doc of sorted) {
-      const allowance = left > 0 ? Math.floor(pool / left) : 0;
-      if (allowance < MIN_DOCUMENT_TOKENS) {
-        skipped.push({ name: doc.name, reason: "budget de contexte atteint" });
-        left -= 1;
-        continue;
-      }
-      const body = truncateAtBoundary(doc.text.trim(), tokensToChars(allowance));
-      if (body.length < doc.text.trim().length) truncated = true;
-      const cost = estimateTokens(body);
-      pool -= cost;
-      left -= 1;
-      rendered.push({ name: doc.name, body });
-      included.push(doc.name);
-    }
-
+    const share = shareBudget(usable.map((d) => d.text), Math.max(0, remaining - 400));
+    if (share.truncated) truncated = true;
     // Rendu dans l'ordre d'origine (déterminisme lisible), pas dans l'ordre de
     // tri par taille.
-    const byName = new Map(rendered.map((r) => [r.name, r.body]));
-    const body = usable
-      .filter((d) => byName.has(d.name))
-      .map((d) => `-- Document « ${d.name} » --\n${byName.get(d.name)}`)
-      .join("\n\n");
+    const rendered: string[] = [];
+    usable.forEach((d, i) => {
+      const served = share.bodies[i];
+      if (served === null) {
+        skipped.push({ name: d.name, reason: "budget de contexte atteint" });
+        return;
+      }
+      included.push(d.name);
+      rendered.push(`-- Document « ${d.name} » --\n${served}`);
+    });
+    const body = rendered.join("\n\n");
     if (body !== "") {
       parts.push(block("Documents de référence du service", body));
       remaining = Math.max(0, remaining - estimateTokens(body));
     }
   }
 
-  // 6. Sources et liens — les URL seules, jamais suivies en v1. Celles de la
-  // démarche d'abord ; puis celles que la collectivité recommande pour toutes,
-  // dites comme telles, sans répéter une adresse déjà citée.
+  // 6. Sources et liens — les URL seules. Celles de la démarche d'abord ; puis
+  // celles que la collectivité recommande pour toutes, dites comme telles,
+  // sans répéter une adresse déjà citée.
+  //
+  // Depuis le 2026-09-19, une page que l'assistant peut PROPOSER de consulter
+  // (`sources/catalogue.ts`) n'est plus citée ici : le prompt la présente dans
+  // son propre bloc, avec son identifiant. La citer deux fois ferait croire au
+  // modèle à deux sources distinctes.
+  const offered = options.offeredUrls ?? new Set<string>();
   const cited = new Set<string>();
   const sourceLines: string[] = [];
   const cite = (l: { url: string; description: string }, suffix: string) => {
-    if (l.url !== "" && cited.has(l.url)) return;
+    if (l.url !== "" && (cited.has(l.url) || offered.has(l.url))) return;
     if (l.url !== "") cited.add(l.url);
     sourceLines.push(`- ${l.description || l.url}${l.description && l.url ? ` (${l.url})` : ""}${suffix}`);
   };
   for (const l of [...kb.aiSources, ...kb.agentLinks]) cite(l, "");
+  // Une source recommandée PROPOSÉE à la consultation est un apport des
+  // recommandations au même titre qu'une source citée : sans cela, la pastille
+  // s'éteindrait pour une collectivité qui n'a écrit que des sources.
+  const recommendedSourcesOffered = (agentGuidance?.recommendedSources ?? [])
+    .some((l) => l.url !== "" && offered.has(l.url));
   let recommendedSourcesCited = false;
   for (const l of agentGuidance?.recommendedSources ?? []) {
     const before = sourceLines.length;
@@ -457,7 +461,48 @@ export function condenseKnowledge(
     truncated,
     userCommunication: userCommunicationIncluded,
     // Des sources recommandées seules suffisent à dire que le bloc a compté —
-    // à condition qu'elles aient survécu au budget.
-    agentGuidance: agentGuidanceIncluded || (recommendedSourcesCited && sourcesText !== ""),
+    // citées, à condition qu'elles aient survécu au budget ; ou proposées à la
+    // consultation, auquel cas le prompt les présente dans son propre bloc.
+    agentGuidance: agentGuidanceIncluded || recommendedSourcesOffered ||
+      (recommendedSourcesCited && sourcesText !== ""),
   };
+}
+
+export interface ShareResult {
+  /** Le texte servi pour chaque entrée, dans l'ordre d'ENTRÉE ; `null` = écarté. */
+  bodies: (string | null)[];
+  /** Vrai si au moins un texte a été rogné. */
+  truncated: boolean;
+}
+
+/**
+ * Le TOURNIQUET : partager une enveloppe de jetons entre plusieurs textes
+ * sans qu'un long évince les autres. Chacun reçoit une part égale ; on sert
+ * d'abord les courts, qui rendent leur surplus aux longs. Un texte dont la
+ * part tomberait sous `MIN_DOCUMENT_TOKENS` est ÉCARTÉ (`null`) plutôt que
+ * réduit à une miette — l'appelant le nomme. Un texte vide est écarté aussi.
+ *
+ * Sert aux documents de la base de connaissances (étape 5) et, depuis le
+ * 2026-09-19, aux sources que l'agent a autorisé l'assistant à consulter.
+ */
+export function shareBudget(texts: string[], budgetTokens: number): ShareResult {
+  const bodies: (string | null)[] = texts.map(() => null);
+  let truncated = false;
+  const order = texts
+    .map((text, index) => ({ index, text: text.trim() }))
+    .filter((t) => t.text !== "")
+    .sort((a, b) => a.text.length - b.text.length);
+
+  let pool = Math.max(0, budgetTokens);
+  let left = order.length;
+  for (const { index, text } of order) {
+    const allowance = left > 0 ? Math.floor(pool / left) : 0;
+    left -= 1;
+    if (allowance < MIN_DOCUMENT_TOKENS) continue;
+    const body = truncateAtBoundary(text, tokensToChars(allowance));
+    if (body.length < text.length) truncated = true;
+    pool -= estimateTokens(body);
+    bodies[index] = body;
+  }
+  return { bodies, truncated };
 }

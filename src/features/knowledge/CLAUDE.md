@@ -98,5 +98,7 @@ aucun identifiant du navigateur). Whitelist partagée proxy / écran / assistant
 Version et date de la fiche ; « Voir la page publique » (Iris ne connaît pas l'adresse du
 portail) ; « Consigner une demande » (le guichet ne sait pas encore s'ouvrir sur une
 démarche désignée — à faire avec un `?demarche=`, en tenant compte de l'étape « Organisme ») ;
-les sources cliquables, les votes et « Copier dans la demande » sous les réponses de
-l'assistant (il ne renvoie pas de sources structurées, et rien n'est conservé).
+les votes et « Copier dans la demande » sous les réponses de l'assistant (rien n'est
+conservé). Les **sources cliquables** existent depuis le 2026-09-19, mais seulement pour ce
+que l'agent a autorisé l'assistant à consulter (pastille « Sources consultées » sous la
+réponse) — pas pour les citations libres de sa réponse, qui restent du texte.
