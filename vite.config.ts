@@ -20,6 +20,14 @@ export default defineConfig({
     // Passer à "jsdom" (+ @testing-library/react) quand on ajoutera des tests de composants.
     environment: "node",
     globals: true,
+    // Valeurs factices : `src/lib/supabase.ts` lève au chargement sans elles, et
+    // la CI n'a pas de `.env.local` — un test dont l'import transitif atteint le
+    // client passait donc en local et tombait en CI (2026-08-31, puis 2026-09-20).
+    // Aucun test n'atteint le réseau.
+    env: {
+      VITE_SUPABASE_URL: "http://localhost:54321",
+      VITE_SUPABASE_PUBLISHABLE_KEY: "test-publishable-key",
+    },
     // `src/**` + la logique pure des futures edge functions (co-localisée dans `_shared`,
     // sans dépendance Deno) — motif Socle.
     include: [

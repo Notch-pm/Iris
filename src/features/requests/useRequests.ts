@@ -33,14 +33,9 @@ export interface RequestFilters {
   source: string[];
 }
 
-export const EMPTY_FILTERS: RequestFilters = {
-  q: "",
-  status: [],
-  destinataire: [],
-  procedure: [],
-  priority: [],
-  source: [],
-};
+// La valeur vit dans `listing.ts` (pur) : l'importer d'ici chargerait le client
+// Supabase, qui lève sans `.env.local` — donc dans tout test, en CI.
+export { EMPTY_FILTERS } from "./listing";
 
 const LIST_SELECT =
   "id, reference, subject, status, priority, source, identity_status, socle_organization_id, socle_organization_label, socle_procedure_id, socle_procedure_label, assigned_to, received_at, due_at, created_at, updated_at";

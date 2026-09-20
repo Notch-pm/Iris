@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  activeFilterCount, DEFAULT_SORT, exportFilename, filterChips, GROUP_LABELS, groupLabelOf, groupRows,
+  activeFilterCount, DEFAULT_SORT, EMPTY_FILTERS, exportFilename, filterChips, GROUP_LABELS, groupLabelOf, groupRows,
   orderClauses, pageWindow, removeFilterChip, requestCsvColumns, searchClause, toggleFilterValue,
   toggleSort,
 } from "./listing";
-import { EMPTY_FILTERS, type RequestListItem } from "./useRequests";
+import type { RequestListItem } from "./useRequests";
 
 function item(partial: Partial<RequestListItem>): RequestListItem {
   return {

@@ -17,6 +17,15 @@ import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
 // dans un popover et se rappellent en CHIPS supprimables sous la barre. Chaque
 // critère est une sélection multiple ; la recherche par objet en est un aussi.
 
+export const EMPTY_FILTERS: RequestFilters = {
+  q: "",
+  status: [],
+  destinataire: [],
+  procedure: [],
+  priority: [],
+  source: [],
+};
+
 export const FILTER_KEYS = ["status", "destinataire", "procedure", "priority", "source"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
