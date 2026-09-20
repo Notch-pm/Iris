@@ -2,6 +2,12 @@
 // publié, par catégorie, filtré à la frappe (mêmes règles que la liste :
 // `filterCatalogue`, `groupByCategory`), ouvert sur la démarche courante.
 //
+// En tête de liste, hors catégorie : « Recommandations générales » — ce que la
+// collectivité dit pour TOUTES ses démarches se lit au même endroit que chacune
+// d'elles. L'entrée n'existe que si la collectivité a écrit quelque chose
+// (`guidance`), et la page des recommandations monte ce même sélecteur avec
+// `currentId = GUIDANCE_ENTRY_ID`.
+//
 // Motif combobox ARIA : le champ garde le focus, ↑ ↓ déplacent l'option
 // active (`aria-activedescendant`), Entrée ouvre sa fiche, Échap referme
 // (géré par `Dropdown`). Le défilement de la liste suit l'option active en
@@ -14,13 +20,23 @@ import { Check, ChevronsUpDown, Search } from "lucide-react";
 import { Dropdown } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
 import { filterCatalogue, groupByCategory, type KnowledgeProcedure } from "./catalogue";
+import { GUIDANCE_ENTRY_GROUP, GUIDANCE_ENTRY_ID, GUIDANCE_ENTRY_LABEL, guidanceEntryMatches } from "./guidance";
 
 interface Props {
   catalogue: readonly KnowledgeProcedure[];
+  /** Une démarche, ou `GUIDANCE_ENTRY_ID` sur la page des recommandations. */
   currentId: string;
+  /** La collectivité a rédigé des recommandations générales : l'entrée est proposée. */
+  guidance?: boolean;
 }
 
-export function ProcedureSwitcher({ catalogue, currentId }: Props) {
+/** Ce que la liste propose : les recommandations d'abord, puis les démarches. */
+interface Entry {
+  id: string;
+  name: string;
+}
+
+export function ProcedureSwitcher({ catalogue, currentId, guidance = false }: Props) {
   const navigate = useNavigate();
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
@@ -28,8 +44,14 @@ export function ProcedureSwitcher({ catalogue, currentId }: Props) {
   const listRef = React.useRef<HTMLUListElement>(null);
   const baseId = React.useId();
 
-  const groups = React.useMemo(() => groupByCategory(filterCatalogue(catalogue, query)), [catalogue, query]);
-  const flat = React.useMemo(() => groups.flatMap((g) => g.procedures), [groups]);
+  const groups = React.useMemo(() => {
+    const procedures: { label: string; entries: Entry[] }[] = groupByCategory(filterCatalogue(catalogue, query))
+      .map((g) => ({ label: g.label, entries: g.procedures }));
+    return guidance && guidanceEntryMatches(query)
+      ? [{ label: GUIDANCE_ENTRY_GROUP, entries: [{ id: GUIDANCE_ENTRY_ID, name: GUIDANCE_ENTRY_LABEL }] }, ...procedures]
+      : procedures;
+  }, [catalogue, query, guidance]);
+  const flat = React.useMemo(() => groups.flatMap((g) => g.entries), [groups]);
 
   // À l'ouverture, l'option active est la démarche courante ; à la frappe, la
   // première qui correspond.
@@ -55,8 +77,9 @@ export function ProcedureSwitcher({ catalogue, currentId }: Props) {
     else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight;
   }, [active, open]);
 
-  function choose(item: KnowledgeProcedure) {
+  function choose(item: Entry) {
     setOpen(false);
+    // `GUIDANCE_ENTRY_ID` EST le segment de route des recommandations.
     if (item.id !== currentId) navigate(`/base-de-connaissances/${item.id}`);
   }
 
@@ -78,7 +101,7 @@ export function ProcedureSwitcher({ catalogue, currentId }: Props) {
           {...props}
           className="flex h-9 w-full items-center justify-between gap-2 rounded-[10px] border border-border bg-card px-3 text-[13px] font-bold transition-colors hover:border-primary/40"
         >
-          <span>Changer de démarche</span>
+          <span>{currentId === GUIDANCE_ENTRY_ID ? "Consulter une démarche" : "Changer de démarche"}</span>
           <ChevronsUpDown className="size-[15px] text-muted-foreground" aria-hidden="true" />
         </button>
       )}
@@ -128,7 +151,7 @@ export function ProcedureSwitcher({ catalogue, currentId }: Props) {
                 {group.label}
               </p>
               <ul role="group" aria-label={group.label}>
-                {group.procedures.map((item) => {
+                {group.entries.map((item) => {
                   index += 1;
                   const i = index;
                   const isActive = i === active;

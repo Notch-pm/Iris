@@ -9,8 +9,8 @@ import * as React from "react";
 import { ExternalLink, Minus, Plus } from "lucide-react";
 import { Markdown } from "@/components/ui/markdown";
 import { cn } from "@/lib/utils";
-import type { AgentGuidanceView } from "@fn/_shared/organizations/agentGuidance";
-import { guidanceDate, safeSourceHref } from "./guidance";
+import type { AgentGuidance, AgentGuidanceView } from "@fn/_shared/organizations/agentGuidance";
+import { GUIDANCE_TAB_LABELS, guidanceDate, safeSourceHref, type GuidanceTab } from "./guidance";
 
 const BODY = "text-[15px] leading-[1.65]";
 
@@ -54,11 +54,101 @@ function FaqList({ items }: { items: { question: string; answer: string }[] }) {
   );
 }
 
-export function AgentGuidanceContent({ view, organizationName }: {
+/** Le corps d'UNE rubrique — `null` quand elle est vide. */
+function sectionBody(g: AgentGuidance, tab: GuidanceTab): React.ReactNode {
+  switch (tab) {
+    case "role":
+      return g.roleDescription ? <Markdown source={g.roleDescription} className={BODY} /> : null;
+    case "accueil":
+      return g.physicalReception ? <Markdown source={g.physicalReception} className={BODY} /> : null;
+    case "consignes":
+      return g.guidelines.length > 0 ? (
+        <ol className="grid gap-2.5">
+          {g.guidelines.map((item, i) => (
+            <li key={i} className="flex gap-3 rounded-[10px] border border-border bg-card px-4 py-3.5">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-extrabold text-primary">
+                {i + 1}
+              </span>
+              <div className="min-w-0 flex-1">
+                {item.title ? <p className="text-[15px] font-bold">{item.title}</p> : null}
+                {item.text ? (
+                  <Markdown source={item.text} className={cn("text-sm leading-[1.65]", item.title && "mt-1")} />
+                ) : null}
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : null;
+    case "faq":
+      return g.faq.length > 0 ? <FaqList items={g.faq} /> : null;
+    case "sources":
+      return g.recommendedSources.length > 0 ? (
+        <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,250px),1fr))] gap-3">
+          {g.recommendedSources.map((link, i) => {
+            const href = safeSourceHref(link.url);
+            const body = (
+              <>
+                <ExternalLink className="mt-0.5 size-[18px] shrink-0 text-primary" aria-hidden="true" />
+                <span className="min-w-0">
+                  <span className="block break-words text-sm font-bold">{link.description || link.url}</span>
+                  {link.description && link.url ? (
+                    <span className="block break-all text-[13px] text-muted-foreground">{link.url}</span>
+                  ) : null}
+                </span>
+              </>
+            );
+            const card = "flex items-start gap-3 rounded-[10px] border border-border bg-card p-3.5 text-left";
+            return href ? (
+              <a
+                key={i}
+                href={href}
+                target="_blank"
+                rel="noreferrer noopener"
+                className={cn(card, "transition-shadow hover:border-primary/40 hover:shadow-airbnb-md")}
+              >
+                {body}
+              </a>
+            ) : (
+              <div key={i} className={card}>{body}</div>
+            );
+          })}
+        </div>
+      ) : null;
+  }
+}
+
+/** Ce que chaque rubrique est, dit sous son titre quand elle s'ouvre seule. */
+const SECTION_CAPTIONS: Record<GuidanceTab, string> = {
+  role: "Ce que la collectivité attend de ses agents, quelle que soit la démarche.",
+  accueil: "Les spécificités de l'accueil au guichet.",
+  consignes: "Valables pour toutes les démarches. Une consigne propre à une démarche l'emporte sur celles-ci.",
+  faq: "Les questions que se posent les agents — ni celles d'une démarche, ni celles des usagers.",
+  sources: "Où vérifier une information. L'assistant peut les consulter, sur votre accord.",
+};
+
+const TABS: GuidanceTab[] = ["role", "accueil", "consignes", "faq", "sources"];
+
+/**
+ * Sans `section`, toutes les rubriques remplies à la suite (rubrique « Toutes
+ * démarches » d'une fiche). Avec, UNE rubrique en titre de page — la page
+ * dédiée, dont la colonne de gauche porte la navigation.
+ */
+export function AgentGuidanceContent({ view, organizationName, section }: {
   view: AgentGuidanceView;
   organizationName: string | null;
+  section?: GuidanceTab;
 }) {
   const g = view.guidance;
+  if (section) {
+    return (
+      <div className="min-w-0 max-w-[820px]">
+        <h2 className="text-[22px] font-extrabold tracking-tight">{GUIDANCE_TAB_LABELS[section]}</h2>
+        <p className="mb-[22px] mt-1 text-sm text-muted-foreground">{SECTION_CAPTIONS[section]}</p>
+        {sectionBody(g, section)}
+      </div>
+    );
+  }
+
   const date = guidanceDate(view.updated_at);
   return (
     <div className="min-w-0 max-w-[820px]">
@@ -69,78 +159,10 @@ export function AgentGuidanceContent({ view, organizationName }: {
         {date ? ` Mises à jour le ${date}.` : ""}
       </p>
 
-      {g.roleDescription ? (
-        <Rubrique title="Rôle des agents">
-          <Markdown source={g.roleDescription} className={BODY} />
-        </Rubrique>
-      ) : null}
-
-      {g.physicalReception ? (
-        <Rubrique title="Accueil physique">
-          <Markdown source={g.physicalReception} className={BODY} />
-        </Rubrique>
-      ) : null}
-
-      {g.guidelines.length > 0 ? (
-        <Rubrique title="Consignes générales">
-          <ol className="grid gap-2.5">
-            {g.guidelines.map((item, i) => (
-              <li key={i} className="flex gap-3 rounded-[10px] border border-border bg-card px-4 py-3.5">
-                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-extrabold text-primary">
-                  {i + 1}
-                </span>
-                <div className="min-w-0 flex-1">
-                  {item.title ? <p className="text-[15px] font-bold">{item.title}</p> : null}
-                  {item.text ? (
-                    <Markdown source={item.text} className={cn("text-sm leading-[1.65]", item.title && "mt-1")} />
-                  ) : null}
-                </div>
-              </li>
-            ))}
-          </ol>
-        </Rubrique>
-      ) : null}
-
-      {g.faq.length > 0 ? (
-        <Rubrique title="FAQ des agents">
-          <FaqList items={g.faq} />
-        </Rubrique>
-      ) : null}
-
-      {g.recommendedSources.length > 0 ? (
-        <Rubrique title="Sources recommandées">
-          <div className="grid grid-cols-[repeat(auto-fill,minmax(min(100%,250px),1fr))] gap-3">
-            {g.recommendedSources.map((link, i) => {
-              const href = safeSourceHref(link.url);
-              const body = (
-                <>
-                  <ExternalLink className="mt-0.5 size-[18px] shrink-0 text-primary" aria-hidden="true" />
-                  <span className="min-w-0">
-                    <span className="block break-words text-sm font-bold">{link.description || link.url}</span>
-                    {link.description && link.url ? (
-                      <span className="block break-all text-[13px] text-muted-foreground">{link.url}</span>
-                    ) : null}
-                  </span>
-                </>
-              );
-              const card = "flex items-start gap-3 rounded-[10px] border border-border bg-card p-3.5 text-left";
-              return href ? (
-                <a
-                  key={i}
-                  href={href}
-                  target="_blank"
-                  rel="noreferrer noopener"
-                  className={cn(card, "transition-shadow hover:border-primary/40 hover:shadow-airbnb-md")}
-                >
-                  {body}
-                </a>
-              ) : (
-                <div key={i} className={card}>{body}</div>
-              );
-            })}
-          </div>
-        </Rubrique>
-      ) : null}
+      {TABS.map((tab) => {
+        const body = sectionBody(g, tab);
+        return body ? <Rubrique key={tab} title={GUIDANCE_TAB_LABELS[tab]}>{body}</Rubrique> : null;
+      })}
     </div>
   );
 }

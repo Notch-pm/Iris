@@ -155,7 +155,7 @@ export function KnowledgeProcedurePage() {
           {item.temporaryPeriod ? (
             <p className="mt-1.5 text-[11px] text-muted-foreground">{item.temporaryPeriod}</p>
           ) : null}
-          <ProcedureSwitcher catalogue={catalogue.data ?? []} currentId={item.id} />
+          <ProcedureSwitcher catalogue={catalogue.data ?? []} currentId={item.id} guidance={guidanceView !== null} />
         </div>
 
         <div

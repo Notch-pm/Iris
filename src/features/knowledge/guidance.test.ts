@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { emptyAgentGuidance } from "@fn/_shared/organizations/agentGuidance";
-import { guidanceDate, guidanceHighlights, safeSourceHref } from "./guidance";
+import {
+  guidanceDate, guidanceEntryMatches, guidanceHighlights, guidanceNav, resolveGuidanceTab, safeSourceHref,
+} from "./guidance";
 
 describe("safeSourceHref", () => {
   it("un lien http(s) reste un lien", () => {
@@ -32,6 +34,45 @@ describe("guidanceHighlights", () => {
         recommendedSources: [{ url: "https://a.fr", description: "" }],
       }),
     ).toEqual(["rôle des agents", "2 consignes", "1 question", "1 source"]);
+  });
+});
+
+describe("guidanceNav", () => {
+  it("rien d'écrit, aucune rubrique — et aucune rubrique à ouvrir", () => {
+    expect(guidanceNav(emptyAgentGuidance())).toEqual([]);
+    expect(resolveGuidanceTab("faq", [])).toBeNull();
+  });
+
+  it("une entrée par rubrique remplie, dans l'ordre de lecture, les listes comptées", () => {
+    const nav = guidanceNav({
+      roleDescription: "Rôle",
+      physicalReception: "",
+      guidelines: [{ title: "A", text: "" }, { title: "B", text: "" }],
+      faq: [],
+      recommendedSources: [{ url: "https://a.fr", description: "" }],
+    });
+    expect(nav).toEqual([
+      { tab: "role", label: "Rôle des agents" },
+      { tab: "consignes", label: "Consignes générales", count: 2 },
+      { tab: "sources", label: "Sources recommandées", count: 1 },
+    ]);
+    expect(resolveGuidanceTab("consignes", nav)).toBe("consignes");
+    // Une rubrique vide (ou rien de demandé) retombe sur la première remplie.
+    expect(resolveGuidanceTab("faq", nav)).toBe("role");
+    expect(resolveGuidanceTab(null, nav)).toBe("role");
+  });
+});
+
+describe("guidanceEntryMatches", () => {
+  it("se cherche comme une démarche : sans accents ni casse, tous les mots", () => {
+    for (const query of ["", "recomm", "GENERALES recommandations", "toutes demarches", "collectivite"]) {
+      expect(guidanceEntryMatches(query)).toBe(true);
+    }
+  });
+
+  it("ne s'invite pas dans une recherche qui ne la concerne pas", () => {
+    expect(guidanceEntryMatches("état civil")).toBe(false);
+    expect(guidanceEntryMatches("recommandations voirie")).toBe(false);
   });
 });
 

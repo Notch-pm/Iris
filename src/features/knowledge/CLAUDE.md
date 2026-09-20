@@ -54,7 +54,7 @@ Trois colonnes, pleine hauteur (`useFullBleedLayout`) :
 - **à gauche** — « Retour » (la liste), la démarche (catégorie, type, pastilles),
   **« Changer de démarche »** — un sélecteur à recherche (`ProcedureSwitcher` : combobox
   ARIA, ↑ ↓ Entrée Échap, mêmes filtre et regroupement que la liste, ouvert sur la
-  démarche courante) —, et les rubriques : « Ce que voit l'usager », puis « Interne —
+  démarche courante, « Recommandations générales » en tête quand il y en a) —, et les rubriques : « Ce que voit l'usager », puis « Interne —
   agent » — une entrée par bloc NON VIDE de la base de connaissances (`internalNav`) ;
 - **au centre** — la rubrique ouverte, en typographie de page : ce sont les rubriques de la
   « Fiche démarche » du guichet (`requests/procedure/FicheSections.tsx`, taille `page`),
@@ -76,10 +76,22 @@ public-api **1.27.0**). Iris ne fait que le RELIRE, à chaque visite, sans rien 
 aucun identifiant du navigateur). Whitelist partagée proxy / écran / assistant :
 `@fn/_shared/organizations/agentGuidance` (idempotente, noms du Socle à la lettre).
 
-- **Trois points d'entrée, un seul rendu** (`AgentGuidanceContent`) : une carte en tête du
+- **Quatre points d'entrée, un seul rendu** (`AgentGuidanceContent`) : une carte en tête du
   catalogue, la page `/base-de-connaissances/recommandations` (`AgentGuidancePage` — segment
-  statique, il prime sur `:procedureId`), et une rubrique **« Toutes démarches » ›
-  « Recommandations générales »** dans la fiche de chaque démarche.
+  statique, il prime sur `:procedureId`), une rubrique **« Toutes démarches » ›
+  « Recommandations générales »** dans la fiche de chaque démarche, et — depuis le
+  2026-09-20 — une entrée **en tête du sélecteur de démarche** (`ProcedureSwitcher`, groupe
+  « Toutes démarches », cherchable comme une démarche : `guidanceEntryMatches`). L'entrée
+  n'existe que si la collectivité a écrit quelque chose ; `GUIDANCE_ENTRY_ID` EST le segment
+  de route.
+- **La page est sur le modèle de la fiche d'une démarche** (2026-09-20) : pleine hauteur,
+  colonne de gauche (« Retour », titre, date de mise à jour, sélecteur — « Consulter une
+  démarche » —, une entrée par rubrique NON VIDE : `guidanceNav`, pur et testé), rubrique
+  ouverte au centre (`AgentGuidanceContent section=…`). Dans la fiche d'une démarche, le même
+  composant SANS `section` enchaîne toutes les rubriques. ⚠️ **Pas de colonne « Assistant »** :
+  `request-assistant` ne connaît que les modes demande et démarche (`socle_procedure_id`
+  exigé) — un mode « recommandations seules » serait un chantier serveur (garde, plafond IA),
+  pas un réglage d'écran.
 - **Trois états qui ne se confondent pas** : rien d'écrit ⇒ ni carte ni rubrique (la page dédiée
   dit où les rédiger) ; référentiel muet ⇒ « indisponible » — ⚠️ la route proxy RELAIE l'erreur,
   à l'inverse de `/branding`, pour qu'un silence ne se lise jamais « la collectivité n'a rien
