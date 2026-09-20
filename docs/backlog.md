@@ -2,7 +2,7 @@
 
 > **Public** : PO et équipe Iris · **Question traitée** : qu'est-ce qui a été demandé, pas
 > encore arbitré, et que faut-il savoir avant de s'y mettre ? · **Dernière mise à jour** :
-> 2026-09-19
+> 2026-09-20
 
 Ce document porte les demandes **produit** en attente. Il ne double pas
 [`dette-technique.md`](dette-technique.md), qui traite de ce qui est **assumé comme dette** :
@@ -61,6 +61,48 @@ pas parce que les deux entrées emploient le même mot qu'elles parlent du même
 
 **Touche** : selon la lecture, `src/features/requests/` seul, ou le modèle de données et
 [`architecture-proposee.md`](architecture-proposee.md).
+
+## B9 — Retrait d'un consentement RGPD par l'usager
+
+**Ce qui existe.** Depuis le 2026-09-20, deux consentements sont recueillis **à chaque dépôt**
+(traitement, obligatoire ; partage aux services, facultatif) et consignés à deux endroits :
+`requests.consents` (la trace du dépôt, **immuable**) et le référentiel Socle
+(`contact_consents` + état dérivé sur la fiche). La fiche usager `/usagers/:contactId` les
+**affiche** — état, date, phrase exacte soumise, historique des recueils — mais en **lecture
+seule**.
+
+**Ce qui manque.** L'usager qui demande le retrait de son consentement au partage n'a aucun
+geste correspondant dans Iris. C'est un droit RGPD (art. 7.3 : le retrait doit être aussi
+simple que l'octroi), pas un confort.
+
+**La moitié du chemin est déjà faite, et c'est important pour le chiffrage** : le référentiel
+accepte DÉJÀ un retrait. `POST /v1/contacts/{id}/consents` prend `granted: false`, le
+consigne comme un recueil de plus, et le trigger `sync_contact_consent_state` met l'état de la
+fiche à jour — *à condition* que sa date soit au moins aussi récente que le recueil en place.
+Rien à changer côté Socle. Ce qui manque est **côté Iris** : l'écran, et la garde.
+
+**Ce que ça touche.**
+- `socle-proxy` : `filterContactUpdate` refuse aujourd'hui toute clé `consent_*`, et le proxy
+  n'a **aucune route d'écriture** de consentement. Il en faudrait une, bornée — sûrement pas
+  un assouplissement du PATCH d'identité.
+- `src/features/contacts/UsagerPage.tsx` (carte « Consentements RGPD ») et
+  `src/features/contacts/usager.ts`.
+
+**Questions ouvertes, à trancher avant de coder.**
+1. **Qui peut retirer ?** Le droit de création (garde actuelle de toutes les routes
+   `/v1/contacts/*`) ? Un droit d'administration ? La question n'est pas neutre : consigner un
+   retrait au nom d'un usager engage la collectivité.
+2. **Le consentement OBLIGATOIRE se retire-t-il ?** Le retirer ne peut pas effacer les demandes
+   déjà déposées — leur trace est immuable, et c'est voulu. Que signifie alors « retirer » :
+   une opposition pour l'avenir ? Un signalement à l'agent ? Le laisser retirable sans
+   conséquence visible serait pire que de ne pas le proposer.
+3. **Quelle preuve du retrait ?** Le `statement` consigné doit dire ce qui a été retiré et à la
+   demande de qui — le catalogue actuel ne porte que les phrases d'octroi.
+4. **Et Clara ?** Sa fiche contact montre les mêmes consentements du même référentiel. Un
+   retrait fait dans Iris y sera visible ; l'inverse aussi le jour où elle le proposera.
+
+**Touche** : `src/features/contacts/`, `supabase/functions/socle-proxy/`. Le catalogue partagé
+`supabase/functions/_shared/consents/catalog.ts` porterait les libellés de retrait.
 
 ## B5 — Sous-tâches
 
