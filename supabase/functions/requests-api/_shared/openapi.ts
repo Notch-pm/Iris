@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.2.0";
+export const CONTRACT_VERSION = "2.3.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -302,6 +302,14 @@ export function buildOpenApi(baseUrl: string) {
         "`socle_root_organization_id` que vous déclarez sont **vérifiés contre la clé** (403 en",
         "cas d'écart). Une intégration ne lit que **ses propres** demandes.",
         "",
+        "**Clé plateforme** (2.3.0) — réservée aux applications de la gamme qui servent *toutes*",
+        "les collectivités depuis une seule instance (le portail usagers). Elle est liée à une",
+        "source **sans tenant** ; chaque appel nomme alors la collectivité par l'en-tête",
+        "`X-Socle-Root-Organization-Id` (UUID Socle de la racine). Iris exige que cette",
+        "collectivité ait une source **active du même code** : c'est l'interrupteur par",
+        "collectivité, et le journal reste tenu par collectivité. Avec une clé liée à un tenant,",
+        "cet en-tête est facultatif et ne peut que confirmer le périmètre (403 sinon).",
+        "",
         "## Toute demande est fondée sur une démarche",
         "`socle_procedure_id` est **obligatoire** : Iris ne gère aucune demande libre. La",
         "démarche doit être **active et appartenir au tenant de votre clé** (sinon `400`). Le",
@@ -350,7 +358,8 @@ export function buildOpenApi(baseUrl: string) {
         "Au sein d'une version majeure : **évolutions additives uniquement**. Tolérez les champs",
         "de réponse inconnus et ne codez que sur les clés documentées. **2.0.0 (2026-09)** : le",
         "mode « URL signée » des pièces (`fetch_url`, `copy_status: pending`) est retiré — il",
-        "n'avait jamais été mis en service. Les routes restent sous `/v1`.",
+        "n'avait jamais été mis en service. Les routes restent sous `/v1`. **2.3.0 (2026-09)** :",
+        "clé plateforme et en-tête `X-Socle-Root-Organization-Id` — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -376,8 +385,21 @@ export function buildOpenApi(baseUrl: string) {
         integrationKey: {
           type: "http", scheme: "bearer",
           description:
-            "Clé d'intégration Iris (irs_…), liée à une source enregistrée pour UN tenant. " +
-            "Secret serveur uniquement — jamais dans un navigateur.",
+            "Clé d'intégration Iris (irs_…), liée à une source enregistrée pour UN tenant — ou " +
+            "clé PLATEFORME, liée à une source sans tenant, qui nomme la collectivité par " +
+            "X-Socle-Root-Organization-Id. Secret serveur uniquement — jamais dans un navigateur.",
+        },
+      },
+      parameters: {
+        TenantHeader: {
+          name: "X-Socle-Root-Organization-Id",
+          in: "header",
+          required: false,
+          schema: { type: "string", format: "uuid" },
+          description:
+            "UUID Socle de la collectivité racine pour laquelle l'appel est fait. OBLIGATOIRE " +
+            "avec une clé plateforme (400 sinon) ; facultatif avec une clé de tenant, où il doit " +
+            "correspondre au périmètre de la clé (403 sinon).",
         },
       },
       schemas: {
@@ -394,6 +416,7 @@ export function buildOpenApi(baseUrl: string) {
         post: {
           tags: ["Pièces jointes"],
           summary: "Déposer un fichier (avant de le rattacher)",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }],
           description:
             "Scope requests:write. Un fichier par appel, `multipart/form-data`, champ `file` " +
             "(25 Mo maximum, 60 dépôts par minute et par clé). Iris vérifie le CONTENU réel — " +
@@ -429,6 +452,7 @@ export function buildOpenApi(baseUrl: string) {
         post: {
           tags: ["Demandes"],
           summary: "Déposer une demande (idempotent)",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }],
           description:
             "Scope requests:write. Unicité par (source_system, external_id), complétée par " +
             "idempotency_key. Rejeu au contenu identique → 200 { created: false } ; contenu " +
@@ -543,6 +567,7 @@ export function buildOpenApi(baseUrl: string) {
           summary: "Lister ses demandes (réconciliation)",
           description: "Scope requests:read. Une intégration ne voit QUE les demandes de sa source, dans son tenant.",
           parameters: [
+            { $ref: "#/components/parameters/TenantHeader" },
             { name: "updated_since", in: "query", schema: { type: "string", format: "date-time" } },
             { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500, default: 100 } },
           ],
@@ -565,7 +590,7 @@ export function buildOpenApi(baseUrl: string) {
           tags: ["Demandes"],
           summary: "Relire une demande",
           description: "Scope requests:read. 404 si la demande n'appartient pas à la source authentifiée (l'existence n'est jamais révélée).",
-          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
           responses: {
             "200": { description: "La demande.", content: { "application/json": { schema: {
               type: "object", properties: { request: { $ref: "#/components/schemas/Request" } },
@@ -581,7 +606,7 @@ export function buildOpenApi(baseUrl: string) {
           description:
             "Scope requests:write. Références { upload_id, form_field_key? } de fichiers déposés " +
             "sur POST /v1/uploads — jamais de contenu inline. Rattachement synchrone.",
-          parameters: [{ name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
           requestBody: {
             required: true,
             content: { "application/json": { schema: {

@@ -213,6 +213,7 @@ function publicJson(body: unknown): Response {
 
 interface AuthContext {
   credentialId: string;
+  /** La source DU TENANT — même sous une clé plateforme : le journal et les bornes restent par collectivité. */
   sourceId: string;
   sourceCode: string;
   organizationId: string;  // tenant Iris (organizations.id)
@@ -221,6 +222,13 @@ interface AuthContext {
   organismName: string | null;
   scopes: string[];
 }
+
+/**
+ * En-tête par lequel une clé PLATEFORME nomme la collectivité pour laquelle
+ * elle agit — l'UUID Socle de la racine du tenant. Symétrique de ce qu'Iris
+ * fait lui-même vers le Socle (clé plateforme + `X-Organization-Id`).
+ */
+const TENANT_HEADER = "x-socle-root-organization-id";
 
 async function authenticate(req: Request): Promise<AuthContext | Response> {
   const header = req.headers.get("authorization") ?? "";
@@ -233,7 +241,7 @@ async function authenticate(req: Request): Promise<AuthContext | Response> {
     .select(
       "id, scopes, expires_at, revoked_at, " +
       "source:integration_sources!inner(id, code, status, organization_id, " +
-      "organization:organizations!inner(id, socle_org_id, name))",
+      "organization:organizations(id, socle_org_id, name))",
     )
     .eq("key_hash", keyHash)
     .maybeSingle();
@@ -255,14 +263,54 @@ async function authenticate(req: Request): Promise<AuthContext | Response> {
     .eq("id", data.id)
     .then(() => {});
 
+  const scopes = data.scopes as string[];
+  const wantedRoot = req.headers.get(TENANT_HEADER)?.trim() ?? "";
+
+  // Clé liée à UN tenant : le périmètre est celui de la clé, et rien d'autre.
+  // L'en-tête, s'il est envoyé, ne peut que le confirmer — jamais l'élargir.
+  if (source.organization_id !== null) {
+    if (wantedRoot !== "" && wantedRoot.toLowerCase() !== String(source.organization.socle_org_id).toLowerCase()) {
+      return fail("forbidden", "X-Socle-Root-Organization-Id hors du périmètre de l'intégration.");
+    }
+    return {
+      credentialId: data.id,
+      sourceId: source.id,
+      sourceCode: source.code,
+      organizationId: source.organization_id,
+      socleRootOrgId: source.organization.socle_org_id,
+      organismName: (source.organization.name as string | null) ?? null,
+      scopes,
+    };
+  }
+
+  // Clé PLATEFORME : elle authentifie, l'appel nomme la collectivité. Le tenant
+  // doit exister dans le miroir ET avoir une source ACTIVE du même code —
+  // c'est l'interrupteur par collectivité, et c'est ce que le trigger
+  // requests_check_source exigera de toute façon à l'écriture.
+  if (!UUID_RE.test(wantedRoot)) {
+    return fail("bad_request", "X-Socle-Root-Organization-Id requis (UUID Socle de la collectivité) avec une clé plateforme.");
+  }
+  const { data: tenant, error: tenantError } = await supabase
+    .from("organizations")
+    .select("id, socle_org_id, name, integration_sources(id, status)")
+    .eq("socle_org_id", wantedRoot)
+    .eq("integration_sources.code", source.code)
+    .maybeSingle();
+  if (tenantError) return fail("internal_error", "Erreur serveur.");
+  if (!tenant) return fail("forbidden", "Collectivité inconnue d'Iris.");
+  // deno-lint-ignore no-explicit-any
+  const tenantSource = ((tenant as any).integration_sources as Array<{ id: string; status: string }>)[0];
+  if (!tenantSource) return fail("forbidden", `Source « ${source.code} » non déclarée pour cette collectivité.`);
+  if (tenantSource.status !== "active") return fail("forbidden", "Intégration suspendue pour cette collectivité.");
+
   return {
     credentialId: data.id,
-    sourceId: source.id,
+    sourceId: tenantSource.id,
     sourceCode: source.code,
-    organizationId: source.organization_id,
-    socleRootOrgId: source.organization.socle_org_id,
-    organismName: (source.organization.name as string | null) ?? null,
-    scopes: data.scopes as string[],
+    organizationId: tenant.id,
+    socleRootOrgId: tenant.socle_org_id,
+    organismName: (tenant.name as string | null) ?? null,
+    scopes,
   };
 }
 

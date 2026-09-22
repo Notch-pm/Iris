@@ -206,10 +206,13 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   (`integration_sources`/`integration_credentials`/`integration_api_logs`, registre de sources
   dynamique — aucune logique spécifique à un émetteur).
 - **L'API d'ingestion `requests-api` est déployée et vérifiée** (18 + 7 scénarios HTTP bout
-  en bout) : contrat OpenAPI **2.1.0** sur `/v1/openapi.json` (routes `/` et `/v1/openapi.json`
+  en bout) : contrat OpenAPI **2.3.0** sur `/v1/openapi.json` (routes `/` et `/v1/openapi.json`
   **publiques et seules ouvertes au navigateur** — CORS ; rendu humain sur `/api-doc`), guide
   consommateurs dans [`docs/api-ingestion.md`](docs/api-ingestion.md). Périmètre dérivé de la clé (jamais d'un
-  header/payload), **démarche obligatoire** (vérifiée dans le cache du tenant, snapshot
+  header/payload) — **sauf clé PLATEFORME** (2.3.0, 2026-09-22) : source sans tenant, réservée
+  à une application de la gamme qui sert toutes les collectivités (le portail Nora), et
+  l'en-tête `X-Socle-Root-Organization-Id` nomme la collectivité, qui doit avoir une source
+  active du même code (interrupteur et journal restent par collectivité), **démarche obligatoire** (vérifiée dans le cache du tenant, snapshot
   construit côté serveur — dégradé + anomalie si Socle injoignable, jamais un refus), rejeu
   identique → 200, divergent → 409, pièces par URL signée uniquement (`form_field_key` pour
   rattacher une pièce à un champ du formulaire).

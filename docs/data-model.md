@@ -458,7 +458,11 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   (`UNIQUE (organization_id, code)`, format contraint, `iris` réservé). `status`
   `active|suspended` : la suspension coupe l'ingestion sans révoquer les clés. C'est l'ancrage
   du périmètre : une intégration n'agit que dans son tenant. Aucune logique par émetteur —
-  Clara, portail ou tiers sont de simples lignes.
+  Clara, portail ou tiers sont de simples lignes. **Source plateforme** (`20260923110000`) :
+  `organization_id` NULL (un seul code par source plateforme, index partiel) — sa clé vaut
+  pour toute collectivité qui a une source **active du même code**, nommée à l'appel par
+  `X-Socle-Root-Organization-Id`. Invisible aux administrateurs de collectivité
+  (`is_org_admin(NULL)` n'est vrai que pour la plateforme).
 - **`integration_credentials`** — clés d'une source : `key_hash` SHA-256 UNIQUE (jamais en
   clair), `key_prefix` d'affichage, `scopes` CHECK `⊆ {requests:write, requests:read}`,
   `expires_at` NOT NULL, `revoked_at`, `last_used_at`. Plusieurs clés actives par source

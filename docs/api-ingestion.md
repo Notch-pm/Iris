@@ -14,7 +14,7 @@ simples *sources enregistrées*.
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
 | Documentation lisible | `https://<app-iris>/api-doc` — le même contrat rendu par Redoc, consultable **sans compte** (motif `/api-doc` du Socle) |
-| Version | `2.2.0` (2026-09-20 : **consentements RGPD** facultatifs dans l'enveloppe) — précédemment `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
+| Version | `2.3.0` (2026-09-22 : **clé plateforme** et en-tête `X-Socle-Root-Organization-Id`) — précédemment `2.2.0` (2026-09-20 : **consentements RGPD** facultatifs dans l'enveloppe), `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -41,6 +41,39 @@ simples *sources enregistrées*.
   `socle_root_organization_id` que vous déclarez sont **vérifiés contre la clé** (403 en cas
   d'écart) — jamais pris pour argent comptant. Une intégration ne peut rien faire hors de son
   périmètre, et ne lit que **ses propres** demandes.
+
+### Clé plateforme — une application de la gamme qui sert toutes les collectivités (2.3.0)
+
+Le modèle « une source, un tenant, une clé » est le bon pour un partenaire tiers : il ne dépose
+que chez lui. Il ne l'est pas pour une application de la gamme qui sert **toutes** les
+collectivités depuis une seule instance — le portail usagers (Nora), qui parle déjà au Socle
+avec une clé plateforme. Constaté le 2026-09-22 : une clé Iris par collectivité, à reposer
+toutes ensemble dans un secret d'edge function que personne ne peut relire, n'est pas tenable.
+
+Une **source plateforme** est une ligne `integration_sources` **sans `organization_id`**. Sa clé
+authentifie mais ne désigne aucun tenant : **chaque appel nomme la collectivité** par l'en-tête
+`X-Socle-Root-Organization-Id` (UUID Socle de la racine) — le symétrique exact de ce qu'Iris
+fait lui-même vers le Socle (clé plateforme + `X-Organization-Id`). Iris exige alors que cette
+collectivité ait **une source active du même code** : c'est l'interrupteur par collectivité
+(suspendre la source coupe le portail pour elle seule), et le journal `integration_api_logs`
+reste tenu **par collectivité** — la clé est plateforme, la trace ne l'est pas.
+
+| Situation | Réponse |
+|---|---|
+| en-tête absent ou mal formé avec une clé plateforme | `400` |
+| collectivité inconnue du miroir d'Iris (lancer `sync-socle-referentiel`) | `403` |
+| collectivité sans source de ce code, ou source suspendue | `403` |
+| en-tête envoyé avec une clé de tenant, et différent de son périmètre | `403` |
+
+Provisioning : une seule ligne `integration_sources` (organisation nulle) et sa clé ; puis, par
+collectivité raccordée, une ligne `integration_sources` du même code **sans clé**. Ajouter une
+collectivité ne touche plus à aucun secret.
+
+```sql
+insert into integration_sources (organization_id, code, name, status)
+values (null, 'portail-citoyen', 'Portail usagers (Nora) — plateforme', 'active');
+-- puis la clé, comme pour toute source (integration_credentials, SHA-256 du clair)
+```
 
 ## 2. Créer une demande — `POST /v1/requests` (scope `requests:write`)
 
