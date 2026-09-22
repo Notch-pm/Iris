@@ -567,6 +567,16 @@ vérifié égal ou ignoré, jamais faisant autorité). Clé **Clara** : platefor
 cible du payload est validée contre le miroir `socle_organizations` du tenant. Hors
 périmètre = 404.
 
+> **Réalisé le 2026-09-22, pour le portail usagers (contrat 2.3.0).** La clé plateforme n'a
+> finalement pas servi à Clara mais à Nora, dont l'instance unique sert toutes les
+> collectivités : une source `integration_sources` **sans organisation** porte la clé, et
+> l'appel nomme la collectivité par l'en-tête `X-Socle-Root-Organization-Id`, validé contre
+> le miroir. Une nuance par rapport au dessin : la collectivité doit en plus avoir **une
+> source active du même code** — c'est l'interrupteur par collectivité, et le journal reste
+> tenu par collectivité. Une clé par collectivité avait été essayée le même jour : intenable
+> dès la troisième (secret remplacé en entier, clairs non conservés). Voir
+> `docs/api-ingestion.md`, « Clé plateforme ».
+
 **Payload minimal** :
 
 | Champ | Obligatoire | Notes |
