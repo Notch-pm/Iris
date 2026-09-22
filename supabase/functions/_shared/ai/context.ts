@@ -143,7 +143,13 @@ function displayValue(value: unknown): string {
   if (value === null || value === undefined) return "";
   if (Array.isArray(value)) return value.map(displayValue).filter((v) => v !== "").join(", ");
   if (typeof value === "boolean") return value ? "oui" : "non";
-  if (typeof value === "object") return JSON.stringify(value);
+  if (typeof value === "object") {
+    // Un lieu d'intervention que le schéma figé n'annonce pas reste une
+    // adresse : du JSON n'apprendrait rien au modèle (mêmes raisons que
+    // `stringifyValue` côté fiche).
+    const lieu = parseLocationValue(value);
+    return lieu ? lieu.address : JSON.stringify(value);
+  }
   return String(value).trim();
 }
 
