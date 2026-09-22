@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  locationAddressText,
   parseLocationValue,
   allowsAnonymous,
   attachmentIsRequired,
@@ -241,6 +242,29 @@ describe("lieu d'intervention — champ `location` (Socle 1.29.0)", () => {
     expect(r.formData).toEqual({ intervention_lieu: { ...AT, lat: null, lon: null, adjusted: false } });
     const free = validateFormSubmission(schema, { "f-ou": "12 rue Neuve" }, []);
     expect(free.formData).toEqual({ intervention_lieu: { address: "12 rue Neuve", lat: null, lon: null, precision: null, adjusted: false } });
+  });
+
+  // ⚠️ Régression vécue sur le portail le 2026-09-22 : réafficher l'adresse
+  // ROGNÉE dans le champ de saisie rend l'espace intapable. Même règle que le
+  // bloc d'adresse (2026-08-28) : un champ contrôlé ne se dérive jamais d'une
+  // transformation à perte de ce qui vient d'être tapé.
+  it("locationAddressText rend l'adresse TAPÉE, espaces compris — la normalisation reste à la frontière", () => {
+    for (const frappe of ["12", "12 ", "12 rue ", " 12 rue de la Paix "]) {
+      expect(locationAddressText({ address: frappe })).toBe(frappe);
+    }
+    let saisie = "";
+    for (const lettre of "12 rue de la Paix") {
+      saisie += lettre;
+      expect(locationAddressText({ address: saisie })).toBe(saisie);
+    }
+    expect(locationAddressText("12 rue Neuve")).toBe("12 rue Neuve");
+    for (const raw of [null, undefined, 42, [], {}, { address: 12 }]) {
+      expect(locationAddressText(raw)).toBe("");
+    }
+    // La frontière, elle, rogne toujours.
+    const schema = parseFormSchema({ version: 1, content: [LIEU] });
+    expect(validateFormSubmission(schema, { "f-ou": { address: " 12 rue Neuve " } }, []).formData)
+      .toEqual({ intervention_lieu: { address: "12 rue Neuve", lat: null, lon: null, precision: null, adjusted: false } });
   });
 
   it("une condition isEmpty / isNotEmpty sur un lieu regarde son adresse", () => {

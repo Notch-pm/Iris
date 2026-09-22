@@ -19,7 +19,7 @@ import { AddressField } from "@/components/address/AddressField";
 import { useQuartiers } from "@/features/socle/useQuartiers";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import {
-  parseLocationValue,
+  locationAddressText,
   type LocationField,
   type LocationValue,
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
@@ -34,7 +34,9 @@ interface Props {
 export function LocationFieldControl({ field, value, onChange, error }: Props) {
   const { current: tenant } = useTenant();
   const { quartiers } = useQuartiers(tenant?.organizationId ?? "");
-  const location = parseLocationValue(value);
+  // ⚠️ Ce qui s'affiche est lu de la valeur BRUTE (`locationAddressText`),
+  // jamais de `parseLocationValue` (qui rogne) : sans cela, l'espace serait
+  // intapable — elle disparaîtrait à l'instant où elle est frappée.
 
   return (
     <AddressField
@@ -45,7 +47,7 @@ export function LocationFieldControl({ field, value, onChange, error }: Props) {
       error={error}
       singleLine
       quartiers={quartiers}
-      value={{ line: location?.address ?? "", postcode: "", city: "" }}
+      value={{ line: locationAddressText(value), postcode: "", city: "" }}
       onChange={(next, suggestion) => {
         if (suggestion) {
           onChange({
@@ -57,9 +59,10 @@ export function LocationFieldControl({ field, value, onChange, error }: Props) {
           });
           return;
         }
-        const address = next.line.trim();
+        // Champ vidé = plus de réponse ; tout le reste est gardé tel quel, y
+        // compris une saisie encore blanche (la frontière la tiendra pour vide).
         onChange(
-          address === ""
+          next.line === ""
             ? undefined
             : { address: next.line, lat: null, lon: null, precision: null, adjusted: false },
         );

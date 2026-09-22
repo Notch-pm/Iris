@@ -224,6 +224,23 @@ export function locationIsEmpty(raw: unknown): boolean {
   return parseLocationValue(raw) === null;
 }
 
+/**
+ * L'adresse d'un lieu telle qu'elle a été TAPÉE, pour la réafficher dans un
+ * champ de saisie : lue sans rien reconstruire, espaces de bord compris.
+ *
+ * ⚠️ Ne jamais réafficher `parseLocationValue(value).address` à la place : le
+ * parseur rogne, et un champ contrôlé sur une valeur rognée rend l'espace
+ * intapable — elle disparaît à l'instant où elle est frappée (règle tirée du
+ * bloc d'adresse le 2026-08-28, re-vécue sur le portail le 2026-09-22). La
+ * normalisation appartient à la frontière (`validateFormSubmission`), pas à la
+ * frappe.
+ */
+export function locationAddressText(raw: unknown): string {
+  if (typeof raw === "string") return raw;
+  if (isRecord(raw) && typeof raw.address === "string") return raw.address;
+  return "";
+}
+
 export interface Section {
   id: string;
   kind: "section";
