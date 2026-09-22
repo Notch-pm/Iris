@@ -591,3 +591,27 @@ describe("originResource — la ressource d'origine ne double pas un lien extern
     expect(originResource({ external_ref: null, external_url: null, source: "iris" }, [])).toBeNull();
   });
 });
+
+describe("formAnswers — une adresse déposée ne s'affiche jamais en JSON", () => {
+  // Vécu le 2026-09-22 : le snapshot figé ne déclarait pas le champ, et
+  // l'adresse tombait telle quelle dans les « Informations saisies ».
+  const AT = {
+    address: "10 Avenue du Général de Gaulle 93110 Rosny-sous-Bois",
+    lat: 48.874978,
+    lon: 2.48238,
+    precision: "adresse",
+    adjusted: true,
+  };
+
+  it("rend l'adresse, même quand le schéma ne connaît pas la clé", () => {
+    const rows = formAnswers({ form_schema: { version: 1, content: [] } }, { intervention_lieu: AT });
+    const row = rows.find((r) => r.key === "intervention_lieu");
+    expect(row?.value).toBe(AT.address);
+    expect(row?.value).not.toContain("{");
+  });
+
+  it("laisse les autres objets inconnus en JSON — on n'invente pas une lecture", () => {
+    const rows = formAnswers(null, { charge: { poids: 12 } });
+    expect(rows.find((r) => r.key === "charge")?.value).toBe('{"poids":12}');
+  });
+});

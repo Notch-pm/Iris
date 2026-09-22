@@ -272,6 +272,37 @@ describe("fitStreetParts — écrire dans les champs que le bloc porte VRAIMENT"
   });
 });
 
+describe("un lieu DÉPOSÉ que le schéma figé ignore (snapshot dégradé ou périmé)", () => {
+  // Vécu le 2026-09-22 : la demande portait l'adresse et son point, mais le
+  // snapshot figé au dépôt ne déclarait pas le champ — la fiche montrait un
+  // lieu vide et l'adresse tombait en JSON dans les « Informations saisies ».
+  const AT = { address: "10 Avenue du Général de Gaulle 93110 Rosny-sous-Bois", lat: 48.874978, lon: 2.48238, precision: "adresse", adjusted: true };
+
+  it("relit form_data quand le schéma ne décrit aucun lieu", () => {
+    const autreSchema = snapshot([{ id: "f-d", key: "description", label: "Description", type: "textarea" }]);
+    const lieu = interventionLocation(autreSchema, { description: "x", intervention_lieu: AT });
+    expect(lieu).toMatchObject({ query: AT.address, keys: ["intervention_lieu"], point: { adjusted: true } });
+  });
+
+  it("préfère l'adresse déposée à un ancien bloc resté VIDE", () => {
+    const lieu = interventionLocation(snapshot([lieuSection()]), { intervention_lieu: AT });
+    expect(lieu).toMatchObject({ query: AT.address, keys: ["intervention_lieu"] });
+    expect(lieu!.point).not.toBeNull();
+  });
+
+  it("mais laisse le bloc vide quand rien n'a été déposé — la question posée sans réponse se voit", () => {
+    const lieu = interventionLocation(snapshot([lieuSection()]), {});
+    expect(lieu).toMatchObject({ empty: true, point: null });
+    expect(lieu!.keys).toContain("intervention_voie");
+  });
+
+  it("et laisse l'ancien bloc RENSEIGNÉ tel quel", () => {
+    const lieu = interventionLocation(snapshot([lieuSection()]), ADDRESS);
+    expect(lieu!.lines).toEqual(["6 Bis Rue de la République", "69001 Lyon"]);
+    expect(lieu!.point).toBeNull();
+  });
+});
+
 describe("champ `location` — le point déclaré au dépôt prime (Socle 1.29.0)", () => {
   const field = { id: "f-ou", key: "intervention_lieu", label: "Où est le dépôt ?", type: "location" };
   const AT = { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573, precision: "adresse", adjusted: true };

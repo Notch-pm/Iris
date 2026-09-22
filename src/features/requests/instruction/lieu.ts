@@ -20,6 +20,15 @@
 // affichage. Sur un snapshot dégradé (schéma illisible), on relit `form_data`
 // par les clés du contrat — `intervention_lieu` d'abord, puis toute valeur qui a
 // la forme d'un lieu, puis les sept clés de l'ancien bloc.
+//
+// ⚠️ **Ce qui a été DÉPOSÉ l'emporte sur ce que le schéma annonce.** Le snapshot
+// est figé au dépôt et peut ignorer le champ que la réponse porte : Socle
+// injoignable (snapshot dégradé, `form_schema: null`), ou démarche dont le
+// formulaire a changé entre le chargement du portail et l'arrivée de la
+// demande. Sans cette règle, l'adresse tombait dans les « Informations
+// saisies » en JSON brut, et la fiche affichait un lieu vide (vécu le
+// 2026-09-22). On ne renonce donc jamais à une adresse réellement présente
+// dans `form_data`.
 
 import {
   dataKey,
@@ -171,7 +180,16 @@ export function interventionLocation(
   }
 
   const found = interventionFields(schema, visible);
-  if (!found) return null;
+  if (!found) {
+    // Rien de visible. Deux situations à ne pas confondre :
+    //  - le schéma DÉCRIT un lieu, masqué par une condition : le masquage est
+    //    une décision de la démarche, on ne ressuscite rien ;
+    //  - le schéma n'en décrit AUCUN : la réponse en porte peut-être un quand
+    //    même (snapshot dégradé ou périmé — voir l'en-tête).
+    const tous = entries.filter((entry) => entry.field.type !== "attachment");
+    const decritUnLieu = locationField(tous) !== null || interventionFields(schema, tous) !== null;
+    return decritUnLieu ? null : fromRawData(data);
+  }
 
   const valueOf = (part: AddressPart): string => {
     const entry = found.get(part);
@@ -183,12 +201,20 @@ export function interventionLocation(
     return label && label !== "" ? label : LABEL_BY_PART[part];
   };
 
-  return build({
+  const lieu = build({
     title: sectionOf(found)?.title.trim() || "Lieu d'intervention",
     keys: PARTS.filter((part) => found.has(part)).map((part) => dataKey(found.get(part)!.field)),
     valueOf,
     labelOf,
   });
+  // Le bloc reconnu est resté vide, mais une adresse a bien été déposée sous
+  // une autre clé : c'est elle qui est vraie. Le bloc vide reste le cas normal
+  // d'une question sans réponse — on ne le remplace que si l'on trouve mieux.
+  if (lieu.empty) {
+    const deposee = fromRawData(data);
+    if (deposee && !deposee.empty) return deposee;
+  }
+  return lieu;
 }
 
 /**

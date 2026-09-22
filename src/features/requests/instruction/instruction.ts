@@ -6,6 +6,7 @@
 // l'autorité sur les transitions et le RLS sur la visibilité.
 
 import {
+  parseLocationValue,
   dataKey,
   fieldIsVisible,
   flatFields,
@@ -450,6 +451,10 @@ function stringifyValue(value: unknown): string {
   if (typeof value === "boolean") return value ? "Oui" : "Non";
   if (typeof value === "number") return String(value);
   if (Array.isArray(value)) return value.map(stringifyValue).filter((v) => v !== "").join(", ");
+  // Un lieu d'intervention que le schéma n'annonce pas (snapshot dégradé ou
+  // périmé) reste une ADRESSE : l'agent doit la lire, pas déchiffrer du JSON.
+  const lieu = parseLocationValue(value);
+  if (lieu) return lieu.address;
   return JSON.stringify(value);
 }
 
