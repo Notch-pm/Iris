@@ -464,3 +464,12 @@ c,adresse introuvable,,,,,,
     expect(parseBatchGeocodeCsv("a,b\r\n1,2\r\n").size).toBe(0);
   });
 });
+
+describe("googleMapsDirectionsUrl — vers des coordonnées", () => {
+  it("vise le point de l'usager quand on le lui donne, et reste inerte sans destination", () => {
+    expect(googleMapsDirectionsUrl({ lat: 47.223, lon: -1.573 })).toBe(
+      "https://www.google.com/maps/dir/?api=1&destination=47.223,-1.573",
+    );
+    expect(googleMapsDirectionsUrl(null)).toBeNull();
+  });
+});

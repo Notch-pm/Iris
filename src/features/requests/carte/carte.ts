@@ -3,10 +3,12 @@
 // filtrer, où poser les épingles et la fiche de survol.
 //
 // Rien ici ne protège quoi que ce soit : le RLS borne déjà les demandes lues,
-// et l'adresse vient du `form_data` de la demande (bloc « Lieu d'intervention »
-// de la démarche — voir `instruction/lieu.ts`).
+// et l'adresse vient du `form_data` de la demande (lieu d'intervention de la
+// démarche — voir `instruction/lieu.ts`). Une demande déposée avec un POINT
+// (champ `location` du Socle) est située par lui, sans géocodage : seules les
+// adresses sans point partent au géocodeur.
 
-import type { BatchAddress, GeoPrecision } from "@/lib/carto";
+import type { BatchAddress, GeoPoint, GeoPrecision } from "@/lib/carto";
 import { formatDayMonth, priorityOption, requesterIdentity } from "../instruction/instruction";
 import { interventionLocation, type InterventionLocation } from "../instruction/lieu";
 
@@ -56,11 +58,18 @@ export interface MapRequestRow {
   form_schema: unknown;
 }
 
+/** Le point déclaré au dépôt, porté comme un point de carte — `adjusted` en plus. */
+export interface DeclaredPoint extends GeoPoint {
+  adjusted: boolean;
+}
+
 export interface LocatedRequest {
   row: MapRequestRow;
   lieu: InterventionLocation;
   /** Clé d'adresse : mutualise le géocodage entre demandes d'une même adresse. */
   addressKey: string;
+  /** Le point déclaré au dépôt (champ `location`) — `null` : à géocoder. */
+  point: DeclaredPoint | null;
 }
 
 export function addressKey(lieu: InterventionLocation): string {
@@ -83,15 +92,29 @@ export function locatableRequests(rows: MapRequestRow[]): Locatable {
       withoutAddress++;
       continue;
     }
-    located.push({ row, lieu, addressKey: addressKey(lieu) });
+    const point: DeclaredPoint | null = lieu.point
+      ? {
+          lat: lieu.point.lat,
+          lon: lieu.point.lon,
+          label: lieu.query,
+          precision: lieu.point.precision ?? "adresse",
+          score: 1,
+          adjusted: lieu.point.adjusted,
+        }
+      : null;
+    located.push({ row, lieu, addressKey: addressKey(lieu), point });
   }
   return { located, withoutAddress };
 }
 
-/** Adresses distinctes à géocoder (une ligne par adresse, pas par demande). */
+/**
+ * Adresses distinctes à géocoder (une ligne par adresse, pas par demande) —
+ * et seulement celles SANS point déclaré : le point de l'usager prime.
+ */
 export function distinctAddresses(located: LocatedRequest[]): BatchAddress[] {
   const seen = new Map<string, BatchAddress>();
   for (const item of located) {
+    if (item.point !== null) continue;
     if (seen.has(item.addressKey)) continue;
     seen.set(item.addressKey, {
       key: item.addressKey,
@@ -286,7 +309,10 @@ export function cardAnchor(
  */
 const RELIABLE_SCORE = 0.55;
 
-export function locationHint(point: { precision: GeoPrecision; score: number }): string | null {
+export function locationHint(point: { precision: GeoPrecision; score: number; adjusted?: boolean }): string | null {
+  // Un point que l'usager a déplacé n'est pas une réserve du géocodeur, c'est
+  // une précision : elle se dit avant tout.
+  if (point.adjusted === true) return "Point ajusté par l'usager";
   if (point.score < RELIABLE_SCORE) return "Localisation approximative — vérifiez l'adresse";
   switch (point.precision) {
     case "adresse":

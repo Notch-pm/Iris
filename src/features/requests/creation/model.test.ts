@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { optionValueFor, reachableSteps } from "./model";
+import {
+  displayFieldValue, optionValueFor, reachableSteps } from "./model";
 import type { Field as SchemaField } from "@fn/create-request-from-procedure/_shared/procedureForm";
 
 const BTQ: SchemaField = {
@@ -69,5 +70,15 @@ describe("reachableSteps", () => {
 
   it("une étape courante hors du tableau n'ouvre rien (écran de confirmation)", () => {
     expect(reachableSteps(SANS_ORGANISME, 5, 0, true)).toEqual(new Set());
+  });
+});
+
+describe("displayFieldValue — lieu d'intervention", () => {
+  it("se lit par son adresse, jamais en JSON", () => {
+    const field = { id: "f-ou", key: "intervention_lieu", label: "Où ?", type: "location" } as SchemaField;
+    expect(displayFieldValue(field, { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573 }))
+      .toBe("10 Avenue de Frémeur 44000 Nantes");
+    expect(displayFieldValue(field, { lat: 1, lon: 2 })).toBe("");
+    expect(displayFieldValue(field, undefined)).toBe("");
   });
 });

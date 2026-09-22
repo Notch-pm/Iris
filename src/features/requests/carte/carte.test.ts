@@ -304,3 +304,30 @@ describe("mapCard", () => {
     expect(card.rows.at(-1)).toEqual({ label: "Agent instructeur", value: "Non affectée" });
   });
 });
+
+describe("champ `location` — une demande déposée avec un point n'est pas géocodée", () => {
+  const SCHEMA_LIEU = {
+    version: 1,
+    content: [{ id: "f-ou", key: "intervention_lieu", label: "Où ?", type: "location" }],
+  };
+  const AT = { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573, precision: "adresse", adjusted: true };
+
+  it("porte le point déclaré, et distinctAddresses l'ignore ; une saisie libre reste à géocoder", () => {
+    const { located, withoutAddress } = locatableRequests([
+      row({ id: "p1", form_schema: SCHEMA_LIEU, form_data: { intervention_lieu: AT } }),
+      row({ id: "p2", form_schema: SCHEMA_LIEU, form_data: { intervention_lieu: { address: "Chemin des Vignes, Nantes" } } }),
+      row({ id: "p3", form_schema: SCHEMA_LIEU, form_data: {} }),
+    ]);
+    expect(withoutAddress).toBe(1);
+    expect(located.map((l) => l.row.id)).toEqual(["p1", "p2"]);
+    expect(located[0]!.point).toEqual({ lat: 47.223, lon: -1.573, label: AT.address, precision: "adresse", score: 1, adjusted: true });
+    expect(located[1]!.point).toBeNull();
+    expect(distinctAddresses(located).map((a) => a.query)).toEqual(["Chemin des Vignes, Nantes"]);
+  });
+
+  it("locationHint : un point ajusté par l'usager se dit avant toute réserve du géocodeur", () => {
+    expect(locationHint({ precision: "voie", score: 1, adjusted: true })).toBe("Point ajusté par l'usager");
+    expect(locationHint({ precision: "adresse", score: 1, adjusted: false })).toBeNull();
+    expect(locationHint({ precision: "voie", score: 1 })).toBe("Localisée à la voie — numéro non trouvé");
+  });
+});

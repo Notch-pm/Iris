@@ -28,20 +28,25 @@
 import { ALL_DECLARED_KEYS } from "../identity/declared.ts";
 
 /**
- * Préfixes préservés malgré le catalogue. Le bloc « Lieu d'intervention » du
- * contrat Socle nomme ses champs `intervention_numero|btq|voie|complement|
- * appartement|code_postal|ville` : aucun ne collisionne avec le catalogue
- * aujourd'hui, mais la règle explicite protège le jour où un champ
- * d'intervention s'appellerait `adresse`.
+ * Préfixes préservés malgré le catalogue. Le lieu d'intervention du contrat
+ * Socle est un champ `intervention_lieu` dont la VALEUR est un objet
+ * `{ address, lat, lon, … }` (1.29.0) — et `address` EST une clé du catalogue.
+ * D'où la règle, et sa portée : une clé préservée l'est avec TOUT son
+ * sous-arbre, sans y descendre. L'ancien bloc (`intervention_numero|btq|voie|
+ * complement|appartement|code_postal|ville`) est couvert de même.
  */
 const KEEP_PREFIXES = ["intervention_"] as const;
+
+function isKeptKey(key: string): boolean {
+  const lower = key.toLowerCase();
+  return KEEP_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
 
 const DECLARED = new Set(ALL_DECLARED_KEYS.map((k) => k.toLowerCase()));
 
 function isIdentityKey(key: string): boolean {
-  const lower = key.toLowerCase();
-  if (KEEP_PREFIXES.some((prefix) => lower.startsWith(prefix))) return false;
-  return DECLARED.has(lower);
+  if (isKeptKey(key)) return false;
+  return DECLARED.has(key.toLowerCase());
 }
 
 export interface StripResult<T> {
@@ -67,7 +72,9 @@ export function stripIdentityKeys<T>(value: T): StripResult<T> {
         removed.add(key);
         continue;
       }
-      out[key] = walk(child);
+      // Un lieu d'intervention est copié ENTIER : descendre y retirerait
+      // `address`, qui n'est pas l'adresse d'une personne mais celle du dépôt.
+      out[key] = isKeptKey(key) ? child : walk(child);
     }
     return out;
   };

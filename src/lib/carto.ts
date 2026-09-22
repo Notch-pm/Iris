@@ -397,7 +397,13 @@ export function openStreetMapUrl(lat: number, lon: number, zoom: number): string
  * point de départ est la position de l'agent, le mode de transport reste le
  * sien. `null` si l'adresse est vide — le bouton reste alors inerte.
  */
-export function googleMapsDirectionsUrl(destination: string): string | null {
+export function googleMapsDirectionsUrl(destination: string | LatLon | null): string | null {
+  if (destination === null) return null;
+  // Des coordonnées : le point que l'usager a posé (`directionsTarget`), plus
+  // juste qu'une adresse quand il l'a déplacé.
+  if (typeof destination !== "string") {
+    return `https://www.google.com/maps/dir/?api=1&destination=${destination.lat},${destination.lon}`;
+  }
   const query = destination.trim();
   if (query === "") return null;
   return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(query)}`;

@@ -247,7 +247,10 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `/v1/contacts/get`, `/v1/contacts/create`, `/v1/contacts/update` (via contacts-api Socle
   uniquement, whitelist d'entrée ; l'update est un **PATCH partiel** — `contact_type` et
   `status` refusés, pays jamais vidé — et les refus du Socle sont relayés tels quels),
-  **`/v1/ai/usage`** (consommation IA de la collectivité, relayée du guichet `ai-api` —
+  **`/v1/ai/usage`** (consommation IA relayée du guichet `ai-api` — depuis le contrat 1.3.0,
+  2026-09-22, `limit`/`used_tokens`/`reserved_tokens` sont ceux d'**Iris** : le plafond commun
+  de la collectivité moins les parts que le Socle réserve à d'autres applications ; seul
+  `by_consumer` reste la ventilation de toute la collectivité —
   ⚠️ **réservée aux administrateurs, garde réécrite DANS la fonction** : la lecture se fait en
   service role, le RLS qui gardait autrefois les tables ne s'applique plus),
   **`/v1/organizations/root`** (fiche de l'organisation **principale** du tenant — `id`, `name`,
@@ -502,7 +505,16 @@ les invariants ci-dessus restent la référence.
   fournisseur LLM et la comptabilité des jetons ont été centralisées dans le référentiel
   (`ai-api`). Le plafond est celui de la **collectivité**, **commun à toute la gamme** — Iris et
   Clara puisent au même seau —, défini par l'admin plateforme dans le Socle et **consulté en
-  lecture seule** par l'administrateur du tenant (Paramètres › Assistant IA). Les trois tables
+  lecture seule** par l'administrateur du tenant (Paramètres › Assistant IA). **Depuis le
+  contrat `ai-api` 1.3.0 (2026-09-22), le Socle peut RÉSERVER une part de ce plafond à une
+  application** (l'assistant du portail, `nora`) : les applications sans part — Iris — se
+  partagent le reste et y sont bornées. Conséquences : Iris peut être refusé (`429
+  ai_quota_exceeded`, même message daté) **avant** que le plafond commun soit atteint — le
+  message du Socle est la seule information à relayer, jamais « le plafond de la collectivité
+  est atteint » ; et les chiffres rendus (`quota` d'un appel, `quota` du 429, `/v1/usage`)
+  sont ceux d'**Iris** — `limit` = le commun moins les parts des autres, `remaining_tokens =
+  limit − used − reserved` —, seul `by_consumer` couvrant toute la collectivité (ne jamais
+  l'additionner contre `limit`). Sans part réservée, rien ne change. Les trois tables
   `ai_usage_*` d'Iris ont été **supprimées** (`20260829120000`) : les laisser n'aurait pas
   laissé du code mort mais un **second compteur**, qui aurait affiché zéro à qui l'aurait lu.
   ⚠️ La lecture passe par **`socle-proxy /v1/ai/usage`**, donc en service role : le RLS ne garde
@@ -609,8 +621,14 @@ les invariants ci-dessus restent la référence.
   bundle. Ce qui transite, c'est une **ADRESSE et rien qui l'accompagne** — jamais un nom,
   jamais la référence d'une demande : cela vaut pour le lieu d'intervention comme pour
   l'adresse d'un usager qu'un agent saisit (le Socle re-géocode déjà cette même adresse pour
-  recalculer le quartier). **Aucun point n'est stocké côté Iris**, ni aucune géométrie de
-  quartier. Substituables sans toucher au code par `VITE_MAP_TILE_URL` / `VITE_GEOCODE_URL`
+  recalculer le quartier). **Iris ne géocode jamais pour stocker** : un point qu'Iris calcule
+  (fiche, carte, champ d'adresse) est un confort de session, jamais une donnée de la demande,
+  et aucune géométrie de quartier n'est conservée. Depuis le contrat Socle **1.29.0** (champ
+  `location` du `form_schema`, 2026-09-22), un lieu d'intervention peut arriver **avec le point
+  que l'usager a déclaré** (`{address, lat, lon, precision, adjusted}` dans `form_data`) : c'est
+  une **réponse au formulaire**, stockée comme les autres, figée avec elles, et elle **prime**
+  sur tout géocodage — l'usager sait mieux que la BAN où il a posé son épingle (150 m au plus de
+  l'adresse). Substituables sans toucher au code par `VITE_MAP_TILE_URL` / `VITE_GEOCODE_URL`
   (fournisseur dédié le jour où le volume l'exige).
 - **Saisie d'adresse assistée** (`src/lib/adresse.ts` + `src/components/address/`) : une
   **ligne unique** qui propose les adresses du référentiel (combobox ARIA, ↑ ↓ / Entrée /

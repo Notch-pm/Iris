@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseLocationValue,
   allowsAnonymous,
   attachmentIsRequired,
   dataKey,
@@ -201,5 +202,59 @@ describe("attachmentIsRequired", () => {
     const cond = { combinator: "and" as const, rules: [{ fieldId: "x", operator: "equals" as const, value: "1" }] };
     expect(attachmentIsRequired({ ...field, requiredIf: cond }, { x: "1" })).toBe(true);
     expect(attachmentIsRequired({ ...field, requiredIf: cond }, { x: "2" })).toBe(false);
+  });
+});
+
+describe("lieu d'intervention — champ `location` (Socle 1.29.0)", () => {
+  const LIEU = { id: "f-ou", key: "intervention_lieu", label: "Où ?", type: "location", required: true };
+  const AT = { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573, precision: "adresse", adjusted: true };
+
+  it("est lu par le moteur — un type inconnu, lui, vide toujours tout le schéma (parité Socle)", () => {
+    const parsed = parseFormSchema({ version: 1, content: [LIEU, { ...LIEU, id: "f-x", key: "x", type: "type_inconnu" }] });
+    expect(parsed.content).toEqual([]);
+    const ok = parseFormSchema({ version: 1, content: [{ ...LIEU, radius: 300 }] });
+    expect(ok.content).toEqual([{ id: "f-ou", key: "intervention_lieu", label: "Où ?", type: "location", required: true }]);
+  });
+
+  it("parseLocationValue : la forme du contrat, tolérante — couple de coordonnées, précision, chaîne nue", () => {
+    expect(parseLocationValue({ ...AT, citycode: "44109" })).toEqual(AT);
+    expect(parseLocationValue({ ...AT, lon: undefined })).toEqual({ ...AT, lat: null, lon: null, adjusted: false });
+    expect(parseLocationValue({ ...AT, lat: 91 })).toMatchObject({ lat: null, lon: null, adjusted: false });
+    expect(parseLocationValue({ ...AT, precision: "housenumber" })!.precision).toBeNull();
+    expect(parseLocationValue({ ...AT, adjusted: "oui" })!.adjusted).toBe(false);
+    // Une chaîne nue est élevée : un producteur dégradé ne fait pas perdre le texte.
+    expect(parseLocationValue(" 12 rue Neuve ")).toEqual({ address: "12 rue Neuve", lat: null, lon: null, precision: null, adjusted: false });
+    for (const raw of [null, undefined, "", "  ", 42, [], {}, { address: " " }, { lat: 1, lon: 2 }]) {
+      expect(parseLocationValue(raw)).toBeNull();
+    }
+  });
+
+  it("validateFormSubmission : obligatoire sans adresse = manquant ; sinon la valeur stockée est normalisée", () => {
+    const schema = parseFormSchema({ version: 1, content: [LIEU] });
+    for (const value of [undefined, "", {}, { address: "" }]) {
+      expect(validateFormSubmission(schema, { "f-ou": value }, []).errors["f-ou"]).toBe("Champ obligatoire.");
+    }
+    // Un objet qui a quelque chose mais pas d'adresse : ce n'est pas un lieu.
+    expect(validateFormSubmission(schema, { "f-ou": { lat: 1, lon: 2 } }, []).errors["f-ou"]).toBe("Adresse attendue.");
+    const r = validateFormSubmission(schema, { "f-ou": { ...AT, extra: "x", lon: undefined } }, []);
+    expect(r.ok).toBe(true);
+    expect(r.formData).toEqual({ intervention_lieu: { ...AT, lat: null, lon: null, adjusted: false } });
+    const free = validateFormSubmission(schema, { "f-ou": "12 rue Neuve" }, []);
+    expect(free.formData).toEqual({ intervention_lieu: { address: "12 rue Neuve", lat: null, lon: null, precision: null, adjusted: false } });
+  });
+
+  it("une condition isEmpty / isNotEmpty sur un lieu regarde son adresse", () => {
+    const schema = parseFormSchema({
+      version: 1,
+      content: [
+        { ...LIEU, required: false },
+        {
+          id: "f-p", key: "precisions", label: "Précisions", type: "text", required: true,
+          visibleIf: { combinator: "and", rules: [{ fieldId: "f-ou", operator: "isNotEmpty" }] },
+        },
+      ],
+    });
+    expect(validateFormSubmission(schema, { "f-ou": { address: "" } }, []).errors).toEqual({});
+    expect(validateFormSubmission(schema, { "f-ou": AT }, []).errors).toEqual({ "f-p": "Champ obligatoire." });
   });
 });

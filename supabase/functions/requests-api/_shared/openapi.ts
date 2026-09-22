@@ -175,7 +175,11 @@ const envelopeSchema = {
     },
     form_data: {
       type: "object",
-      description: "Réponses au formulaire de la démarche (clé machine = key). Jamais validé à l'ingestion.",
+      description:
+        "Réponses au formulaire de la démarche (clé machine = key). Jamais validé à l'ingestion. " +
+        "Un champ de type `location` (lieu d'intervention, Socle 1.29.0) porte l'objet du Socle " +
+        "`{ address, lat, lon, precision, adjusted }` : Iris situe la demande par ce point, sans le " +
+        "géocoder.",
     },
     consents: {
       type: "array",

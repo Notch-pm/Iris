@@ -72,7 +72,8 @@ export function CartePage() {
   const markers: MapMarker[] = React.useMemo(
     () =>
       visible
-        .map((item) => ({ item, point: geocode.points.get(item.addressKey) ?? null }))
+        // Le point déclaré au dépôt prime ; sinon le géocodage de l'adresse.
+        .map((item) => ({ item, point: item.point ?? geocode.points.get(item.addressKey) ?? null }))
         .filter((m): m is MapMarker => m.point !== null),
     [visible, geocode.points],
   );

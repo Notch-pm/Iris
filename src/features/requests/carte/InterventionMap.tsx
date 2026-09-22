@@ -32,7 +32,8 @@ import { cardAnchor, isResolved, locationHint, mapCard, spreadByPoint, type Loca
 
 export interface MapMarker {
   item: LocatedRequest;
-  point: GeoPoint;
+  /** Le point géocodé, ou le point déclaré au dépôt (`adjusted` en plus). */
+  point: GeoPoint & { adjusted?: boolean };
 }
 
 /** Ramp d'urgence : jaune (normale) → orange (haute) → rouge (urgente). */

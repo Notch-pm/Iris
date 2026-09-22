@@ -24,6 +24,7 @@ import {
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
 import { interventionFields, type AddressPart } from "../instruction/lieu";
 import { InterventionAddress } from "./InterventionAddress";
+import { LocationFieldControl } from "./LocationFieldControl";
 
 interface Props {
   schema: FormSchema;
@@ -216,6 +217,17 @@ function FieldControl({ field, values, onChange, files, onFilesChange, errors, a
   };
 
   switch (field.type) {
+    case "location":
+      // Adresse sur une ligne (BAN) + carte de contrôle ; la valeur est l'objet
+      // du contrat Socle — voir `LocationFieldControl`.
+      return (
+        <LocationFieldControl
+          field={field}
+          value={value}
+          error={error}
+          onChange={(next) => onChange(field.id, next)}
+        />
+      );
     case "textarea":
       return (
         <Field {...common}>
@@ -313,7 +325,12 @@ function FieldControl({ field, values, onChange, files, onFilesChange, errors, a
 
 /** Un champ long ou une pièce occupe toute la largeur de la grille. */
 function spansFullWidth(field: SchemaField): boolean {
-  return field.type === "textarea" || field.type === "attachment" || field.type === "checkboxes";
+  return (
+    field.type === "textarea" ||
+    field.type === "attachment" ||
+    field.type === "checkboxes" ||
+    field.type === "location"
+  );
 }
 
 function FieldGrid({ fields, values, hidden, ...rest }: {

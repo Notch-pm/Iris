@@ -51,7 +51,7 @@ import {
   activityItems, attachmentExt, buildStages, dueView, formAnswers, formatBytes, formatTimeline,
   headerSubtitle, memberName, requesterView,
 } from "../instruction/instruction";
-import { interventionLocation } from "../instruction/lieu";
+import { directionsTarget, interventionLocation } from "../instruction/lieu";
 import { plainBody } from "../instruction/mentions";
 import { inlineViewable, interventionDocuments, usagerPieces } from "../instruction/documents";
 import { blockingMessage, motifLabel, pieceRequirements } from "../instruction/conformite";
@@ -517,9 +517,9 @@ export function MobileRequestPage() {
           <div className="flex flex-col gap-2 rounded-[14px] border border-border bg-card p-3.5 shadow-airbnb-sm">
             <div className="flex items-center justify-between gap-2">
               <span className="text-base font-bold">{lieu.title}</span>
-              {googleMapsDirectionsUrl(lieu.query) ? (
+              {googleMapsDirectionsUrl(directionsTarget(lieu)) ? (
                 <Button asChild variant="outline" size="sm">
-                  <a href={googleMapsDirectionsUrl(lieu.query)!} target="_blank" rel="noreferrer">
+                  <a href={googleMapsDirectionsUrl(directionsTarget(lieu))!} target="_blank" rel="noreferrer">
                     <Navigation aria-hidden="true" /> Guider
                   </a>
                 </Button>

@@ -19,7 +19,7 @@ import { useTenant } from "@/features/tenant/TenantProvider";
 import { googleMapsDirectionsUrl } from "@/lib/carto";
 import { cn } from "@/lib/utils";
 import { memberName } from "../../instruction/instruction";
-import { interventionLocation } from "../../instruction/lieu";
+import { directionsTarget, interventionLocation } from "../../instruction/lieu";
 import { useTenantMembers } from "../../useRequests";
 import {
   canComplete, formatDay, interventionTone, isLate, isoDay, type CompletionDraft,
@@ -51,7 +51,7 @@ function TodoCard({ row, today, userId, nameOf, onOpen, onDeclare }: CardProps) 
   const addressLine = hasLocation ? location!.query : (request?.socle_organization_label ?? "—");
   const tone: PillTone = interventionTone(row, today);
   const late = isLate(row, today);
-  const directionsUrl = hasLocation ? googleMapsDirectionsUrl(location!.query) : null;
+  const directionsUrl = hasLocation ? googleMapsDirectionsUrl(directionsTarget(location!)) : null;
   const canFinish = canComplete(row, userId);
   const comment = row.request_comment.trim();
 

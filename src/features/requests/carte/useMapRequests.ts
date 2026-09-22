@@ -4,7 +4,8 @@
 // Un appel unitaire par demande saturerait le géocodeur : les adresses
 // distinctes partent en une seule requête CSV (voir `src/lib/carto.ts`), et un
 // cache de session évite de re-géocoder ce qui est déjà connu — y compris en
-// revenant sur l'écran. Aucun point n'est stocké côté Iris.
+// revenant sur l'écran. Aucun point calculé n'est stocké côté Iris ; les
+// demandes déposées AVEC un point (champ `location`) ne passent pas par ici.
 
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";

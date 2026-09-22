@@ -2,8 +2,11 @@
 // formulaire de la démarche, une carte OpenStreetMap centrée dessus et le
 // bouton « Guider » (itinéraire Google Maps, nouvel onglet).
 //
-// La carte est un CONFORT : l'adresse et l'itinéraire restent disponibles même
-// si le géocodage ou les tuiles ne répondent pas. Attribution OpenStreetMap
+// Deux sources pour le point : le point DÉCLARÉ au dépôt (champ `location` du
+// Socle — l'usager l'a parfois déplacé pour désigner l'endroit exact), qui
+// prime et n'appelle pas le géocodeur ; sinon le géocodage de l'adresse. La
+// carte est un CONFORT : l'adresse et l'itinéraire restent disponibles même si
+// le géocodage ou les tuiles ne répondent pas. Attribution OpenStreetMap
 // obligatoire (ODbL) — ne pas la retirer.
 
 import * as React from "react";
@@ -20,18 +23,27 @@ import {
   zoomForPrecision,
   type GeoPoint,
 } from "@/lib/carto";
-import type { InterventionLocation } from "./lieu";
+import { directionsTarget, type InterventionLocation } from "./lieu";
 import { useGeocode } from "@/components/map/useGeocode";
 
 const MAP_HEIGHT = 220;
 
 export function LieuIntervention({ lieu }: { lieu: InterventionLocation }) {
-  const geocode = useGeocode(lieu.query, lieu.postcode);
-  const point = geocode.data ?? null;
+  // Un point déclaré dispense du géocodage (requête vide = pas d'appel).
+  const geocode = useGeocode(lieu.point ? "" : lieu.query, lieu.postcode);
+  const point: GeoPoint | null = lieu.point
+    ? {
+        lat: lieu.point.lat,
+        lon: lieu.point.lon,
+        label: lieu.query,
+        precision: lieu.point.precision ?? "adresse",
+        score: 1,
+      }
+    : geocode.data ?? null;
   const [zoomShift, setZoomShift] = React.useState(0);
   const baseZoom = point ? zoomForPrecision(point.precision) : DEFAULT_ZOOM;
   const zoom = clampZoom(baseZoom + zoomShift);
-  const itinerary = googleMapsDirectionsUrl(lieu.query);
+  const itinerary = googleMapsDirectionsUrl(directionsTarget(lieu));
 
   // Nouvelle adresse localisée → on repart du zoom adapté à sa finesse.
   React.useEffect(() => setZoomShift(0), [point?.lat, point?.lon]);
@@ -84,9 +96,9 @@ export function LieuIntervention({ lieu }: { lieu: InterventionLocation }) {
             <MapPlaceholder>
               Adresse incomplète (ni voie ni commune) : ni carte ni itinéraire possibles.
             </MapPlaceholder>
-          ) : geocode.isLoading ? (
+          ) : !lieu.point && geocode.isLoading ? (
             <MapPlaceholder>Localisation de l'adresse…</MapPlaceholder>
-          ) : geocode.isError ? (
+          ) : !lieu.point && geocode.isError ? (
             <MapPlaceholder
               action={
                 <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5 text-xs"
@@ -105,9 +117,17 @@ export function LieuIntervention({ lieu }: { lieu: InterventionLocation }) {
             <>
               <MapCanvas point={point} zoom={zoom} onZoom={(step) => setZoomShift((s) => s + step)} />
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <Pill tone={point.precision === "adresse" ? "ok" : "pending"}>
-                  {PRECISION_LABELS[point.precision]}
-                </Pill>
+                {lieu.point ? (
+                  <Pill tone="ok">
+                    {lieu.point.adjusted
+                      ? "Point ajusté par l'usager (150 m au plus de l'adresse)"
+                      : "Point déclaré par l'usager"}
+                  </Pill>
+                ) : (
+                  <Pill tone={point.precision === "adresse" ? "ok" : "pending"}>
+                    {PRECISION_LABELS[point.precision]}
+                  </Pill>
+                )}
                 <a
                   href={openStreetMapUrl(point.lat, point.lon, zoom)}
                   target="_blank"

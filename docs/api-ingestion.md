@@ -166,7 +166,10 @@ Points de contrat :
   demande Iris (pour un futur connecteur Clara : l'id du *ticket d'action*, jamais celui du
   courrier — un courrier peut engendrer plusieurs demandes).
 - **`form_data`** n'est jamais validé à l'ingestion (la complétude est un problème
-  d'instruction, pas un motif de rejet). Clé machine des champs = `key` (règle Socle).
+  d'instruction, pas un motif de rejet). Clé machine des champs = `key` (règle Socle). Un champ
+  de type `location` (lieu d'intervention, Socle 1.29.0) attend l'objet du Socle
+  `{ address, lat, lon, precision, adjusted }` : Iris le stocke tel quel et situe la demande
+  par ce point sans le géocoder ; une chaîne nue y est lue comme une adresse sans point.
 - **`attachments[].form_field_key`** (optionnel, ≤ 120 caractères) rattache une pièce au champ
   « pièce justificative » correspondant du `form_schema` de la démarche ; omis = pièce hors
   formulaire.

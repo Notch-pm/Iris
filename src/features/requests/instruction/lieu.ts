@@ -1,23 +1,36 @@
 // Lieu d'intervention — extraction PURE (sans DOM ni réseau) de l'adresse
 // portée par le formulaire de la démarche.
 //
-// Le Socle propose un bloc prêt à l'emploi « Lieu d'intervention » : une
-// **section ordinaire** du `form_schema` (aucun type dédié dans le contrat —
-// cf. `docs/integration.md` du Socle), pré-remplie de champs dont les clés
-// machine sont préfixées `intervention_`. Tout y reste modifiable après
-// insertion : on reconnaît donc le bloc d'abord par ses **clés** (la donnée du
-// contrat), puis, à défaut, par le **titre** de la section et les libellés de
-// ses champs. Aucune de ces reconnaissances n'est une garde : elle ne décide
-// que d'un affichage.
+// Deux formes coexistent dans le contrat Socle, et Iris lit les deux :
+//
+//  1. **Le champ `location`** (Socle 1.29.0, 2026-09-22) : UN champ, reconnu
+//     par son `type`, dont la valeur est `{ address, lat, lon, precision,
+//     adjusted }` — l'adresse sur une ligne et le POINT que l'usager a retenu,
+//     éventuellement déplacé (150 m au plus) pour désigner l'endroit exact.
+//     ⚠️ Ce point PRIME sur tout géocodage : l'usager sait mieux que la BAN où
+//     il a posé son épingle. Il est porté par `point`, et la fiche comme la
+//     carte l'utilisent sans appeler le géocodeur.
+//  2. **L'ancien bloc** : une **section ordinaire** pré-remplie de champs dont
+//     les clés machine sont préfixées `intervention_` (numéro, BTQ, voie…).
+//     Tout y reste modifiable après insertion : on le reconnaît d'abord par ses
+//     **clés**, puis, à défaut, par le **titre** de la section et les libellés
+//     de ses champs. Sans point : c'est le géocodage qui situe.
+//
+// Aucune de ces reconnaissances n'est une garde : elle ne décide que d'un
+// affichage. Sur un snapshot dégradé (schéma illisible), on relit `form_data`
+// par les clés du contrat — `intervention_lieu` d'abord, puis toute valeur qui a
+// la forme d'un lieu, puis les sept clés de l'ancien bloc.
 
 import {
   dataKey,
   fieldIsVisible,
   flatFields,
   isSection,
+  parseLocationValue,
   type FlatField,
   type FormSchema,
   type FormValues,
+  type LocationPrecision,
   type Section,
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
 import { displayFieldValue } from "../creation/model";
@@ -91,8 +104,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Le point déclaré au dépôt par un champ `location` — jamais un point géocodé par Iris. */
+export interface StoredPoint {
+  lat: number;
+  lon: number;
+  precision: LocationPrecision | null;
+  /** L'usager a déplacé le point : il diffère de celui de l'adresse (150 m au plus). */
+  adjusted: boolean;
+}
+
 export interface InterventionLocation {
-  /** Titre de la section tel que la démarche le porte (souvent « Lieu d'intervention »). */
+  /** Titre de la section ou libellé du champ tel que la démarche le porte. */
   title: string;
   /** Clés de `form_data` couvertes par le bloc — à retirer des « Informations saisies ». */
   keys: string[];
@@ -106,6 +128,11 @@ export interface InterventionLocation {
   city: string | null;
   /** La démarche pose la question, l'adresse n'a pas été renseignée. */
   empty: boolean;
+  /**
+   * Le point déclaré au dépôt (champ `location`), ou `null` : ancien bloc,
+   * texte libre sans proposition retenue — il faut alors géocoder.
+   */
+  point: StoredPoint | null;
 }
 
 /**
@@ -121,9 +148,10 @@ export function interventionLocation(
 ): InterventionLocation | null {
   const data = isRecord(formData) ? formData : {};
   const schema = formSchemaFrom(procedureSnapshot);
-  // Snapshot dégradé (Socle injoignable à l'ingestion) : les clés du contrat
-  // suffisent à reconstituer l'adresse, avec les libellés du bloc Socle.
-  if (!schema) return fromRawData(data);
+  // Snapshot dégradé (Socle injoignable à l'ingestion) — ou schéma que ce moteur
+  // n'a pas su lire (un type inconnu vide TOUT le schéma, parité Socle) : les
+  // clés du contrat suffisent à reconstituer l'adresse.
+  if (!schema || schema.content.length === 0) return fromRawData(data);
 
   const entries = flatFields(schema);
   const byId: FormValues = {};
@@ -131,6 +159,16 @@ export function interventionLocation(
   const visible = entries.filter(
     (entry) => entry.field.type !== "attachment" && fieldIsVisible(entry, byId),
   );
+
+  // Le champ `location` d'abord : c'est la forme qui porte un point.
+  const location = locationField(visible);
+  if (location) {
+    return fromLocationValue(
+      location.field.label.trim() || "Lieu d'intervention",
+      dataKey(location.field),
+      data[dataKey(location.field)],
+    );
+  }
 
   const found = interventionFields(schema, visible);
   if (!found) return null;
@@ -151,6 +189,22 @@ export function interventionLocation(
     valueOf,
     labelOf,
   });
+}
+
+/**
+ * Le champ `location` parmi `candidates` — reconnu par son TYPE, jamais par sa
+ * clé (`intervention_lieu` n'est qu'un défaut, modifiable dans le Socle). Le
+ * premier rencontré fait foi. Servi à la lecture (fiche, carte) comme à la
+ * saisie (création guichet).
+ */
+export function locationField(candidates: FlatField[]): FlatField | null {
+  return candidates.find((entry) => entry.field.type === "location") ?? null;
+}
+
+/** Itinéraire : les coordonnées quand l'usager a déplacé le point, l'adresse sinon. */
+export function directionsTarget(lieu: InterventionLocation): string | { lat: number; lon: number } | null {
+  if (lieu.point && lieu.point.adjusted) return { lat: lieu.point.lat, lon: lieu.point.lon };
+  return lieu.query === "" ? null : lieu.query;
 }
 
 /**
@@ -262,8 +316,37 @@ function titledSection(content: readonly unknown[], visible: FlatField[]): Secti
   return null;
 }
 
+/** Un lieu d'intervention depuis la valeur d'un champ `location`. */
+function fromLocationValue(title: string, key: string, raw: unknown): InterventionLocation {
+  const value = parseLocationValue(raw);
+  const address = value?.address ?? "";
+  const point: StoredPoint | null =
+    value !== null && value.lat !== null && value.lon !== null
+      ? { lat: value.lat, lon: value.lon, precision: value.precision, adjusted: value.adjusted }
+      : null;
+  return {
+    title,
+    keys: [key],
+    lines: address === "" ? [] : [address],
+    query: address,
+    details: [],
+    postcode: address.match(/\b\d{5}\b/)?.[0] ?? null,
+    city: null,
+    empty: address === "",
+    point,
+  };
+}
+
 /** Reconstitution depuis les seules clés du contrat (sans schéma exploitable). */
 function fromRawData(data: Record<string, unknown>): InterventionLocation | null {
+  // Le champ `location` d'abord — sous sa clé par défaut, puis sous n'importe
+  // quelle clé dont la valeur a la forme d'un lieu (clé renommée dans le Socle).
+  const locationKey =
+    parseLocationValue(data.intervention_lieu) !== null
+      ? "intervention_lieu"
+      : Object.keys(data).find((key) => isRecord(data[key]) && parseLocationValue(data[key]) !== null);
+  if (locationKey !== undefined) return fromLocationValue("Lieu d'intervention", locationKey, data[locationKey]);
+
   const present = PARTS.filter((part) => {
     const value = data[KEY_BY_PART[part]];
     return typeof value === "string" ? value.trim() !== "" : value !== undefined && value !== null;
@@ -311,5 +394,6 @@ function build(input: {
     postcode: valueOf("code_postal") || null,
     city: valueOf("ville") || null,
     empty: lines.length === 0 && details.length === 0,
+    point: null,
   };
 }

@@ -6,6 +6,8 @@
 // Confort d'affichage, jamais une donnée de la demande : le point n'est ni
 // stocké ni renvoyé au serveur Iris, seulement mis en cache le temps de la
 // session. Une panne du service laisse l'adresse et l'itinéraire intacts.
+// Une requête vide n'appelle rien : c'est ainsi qu'un lieu déposé AVEC son
+// point (champ `location` du Socle) s'en dispense.
 
 import { useQuery } from "@tanstack/react-query";
 import { geocodeUrl, parseGeocodeResponse, type GeoPoint } from "@/lib/carto";

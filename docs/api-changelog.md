@@ -9,6 +9,19 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## Note du 2026-09-22 — le lieu d'intervention peut arriver avec son point (contrat inchangé)
+
+**Aucun champ, aucune route, aucun code d'erreur ne change** : le contrat d'ingestion reste à sa
+version courante. Ce qui change, c'est ce qu'Iris **fait** d'un `form_data` : depuis le contrat
+Socle `public-api` 1.29.0, un formulaire de démarche peut porter un champ de type `location`
+(lieu d'intervention) dont la réponse est l'objet `{ address, lat, lon, precision, adjusted }`.
+Iris le stocke tel quel, comme toute réponse, et situe la demande par ce point **sans le
+géocoder** — fiche, carte des interventions, itinéraire (vers les coordonnées quand
+`adjusted` est vrai). Un émetteur qui envoie une chaîne à la place est lu comme une adresse sans
+point. Rien à faire pour qui n'émet pas ce champ.
+
+---
+
 ## 2.1.0 — 2026-09-10 — un permalien qui ne résout que chez vous est ignoré
 
 **Additif, et sans effet pour qui envoie déjà des adresses publiques.** Aucune enveloppe

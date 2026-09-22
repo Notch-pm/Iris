@@ -87,7 +87,8 @@ export function FormulaireEditDialog({
 
             <p className="text-[12.5px] text-muted-foreground">
               Le formulaire est celui retenu au dépôt de la demande. Modifier une réponse peut
-              rendre une pièce obligatoire, ou cesser de l'exiger.
+              rendre une pièce obligatoire, ou cesser de l'exiger. Retaper l'adresse d'un lieu
+              d'intervention retire le point que l'usager avait posé sur la carte.
             </p>
 
             {error ? <p role="alert" className="text-sm text-destructive">{error}</p> : null}

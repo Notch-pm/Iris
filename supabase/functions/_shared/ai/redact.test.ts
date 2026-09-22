@@ -115,3 +115,18 @@ describe("redactValue", () => {
     expect(redactValue({ objet: "Nid-de-poule" }).removedKeys).toEqual([]);
   });
 });
+
+describe("stripIdentityKeys — le lieu d'intervention est copié ENTIER", () => {
+  it("ne descend pas sous `intervention_lieu` : son `address` est celle du dépôt, pas d'une personne", () => {
+    const { value, removedKeys } = stripIdentityKeys({
+      intervention_lieu: { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573, adjusted: true },
+      email: "x@y.fr",
+      demandeur: { address: "1 rue Cachée" },
+    });
+    expect(value).toEqual({
+      intervention_lieu: { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573, adjusted: true },
+      demandeur: {},
+    });
+    expect(removedKeys).toEqual(["address", "email"]);
+  });
+});

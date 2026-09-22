@@ -2,6 +2,7 @@
 
 import {
   AUDIENCES,
+  parseLocationValue,
   type Field as SchemaField,
   type FormSchema,
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
@@ -65,6 +66,9 @@ export function displayFieldValue(field: SchemaField, value: unknown): string {
   if (value === undefined || value === null || value === "") return "";
   if (field.type === "boolean") return value === true ? "Oui" : "Non";
   if (field.type === "date" && typeof value === "string") return formatIsoDate(value);
+  // Un lieu d'intervention se lit par son adresse ; le point, la fiche et la
+  // carte le disent (`instruction/lieu.ts`).
+  if (field.type === "location") return parseLocationValue(value)?.address ?? "";
   if (field.type === "select" || field.type === "radio") {
     return field.options.find((o) => o.value === value)?.label ?? String(value);
   }

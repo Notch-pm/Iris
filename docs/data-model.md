@@ -728,7 +728,10 @@ Iris n'a jamais appelé le fournisseur directement en production.
 `release-stale-ai-reservations` a été déprogrammé.
 
 **Où lire la consommation aujourd'hui** : Paramètres › Assistant IA, servi par
-`socle-proxy /v1/ai/usage`. ⚠️ Cette lecture se fait en **service role**, donc **hors RLS** :
+`socle-proxy /v1/ai/usage`. Depuis `ai-api` 1.3.0 (2026-09-22), la jauge y est **celle
+d'Iris** — `limit` = le plafond commun moins les parts que le Socle réserve à d'autres
+applications, `used`/`reserved` ce qui y est engagé — et seule la répartition par application
+couvre toute la collectivité. ⚠️ Cette lecture se fait en **service role**, donc **hors RLS** :
 la garde administrateur est réécrite dans la fonction (`is_org_admin_anywhere_for`), jumeau
 service de la policy qui gardait autrefois les tables. Le schéma détaillé vit désormais dans
 `docs/data-model.md` du **Socle**, § « Plafond et journal d'utilisation IA ».
@@ -1126,6 +1129,14 @@ partout. Le jumeau TypeScript est
 (parité Socle). Le SQL refait ce choix à l'identique. Sans cela, la base bloquerait sur une
 exigence que l'écran ne sait pas afficher — un refus qu'un agent ne pourrait ni comprendre ni
 lever. En cas de doute, le SQL ne trouve **aucune** exigence et ne bloque rien.
+
+⚠️ **Le revers** : un type de champ que le Socle ajoute à son contrat et que le jumeau ignore
+vide le schéma de toute démarche qui le porte — plus aucune pièce n'y est exigée, et la garde t17
+s'ouvre. **Un nouveau type Socle = une ligne dans `form_field_valid` (migration + rollback), une
+dans `procedureForm.ts`, un test de chaque côté** (Q1-location dans `qualification-pieces.test.sql`
+pour `location`, migration `20260923120000_form_schema_location`). Types connus des deux côtés :
+`text`, `textarea`, `number`, `date`, `email`, `phone`, `boolean`, `select`, `radio`, `checkboxes`,
+`attachment`, `location` (Socle 1.29.0).
 
 ⚠️ **La propagation de NULL est le piège de tout jumeau SQL d'un contrat JSON** (correctif
 `20260828100100`, trouvé par le test avant toute mise en service). `p_field -> 'requiredIf'`

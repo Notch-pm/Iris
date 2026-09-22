@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { fitStreetParts, interventionLocation } from "./lieu";
+import {
+  directionsTarget, fitStreetParts, interventionLocation } from "./lieu";
 
 // Miroir du bloc « Lieu d'intervention » inséré par le Socle
 // (createLieuInterventionSection) : une section ordinaire, clés préfixées.
@@ -268,5 +269,65 @@ describe("fitStreetParts — écrire dans les champs que le bloc porte VRAIMENT"
   it("ne fabrique rien à partir de rien", () => {
     expect(fitStreetParts({ numero: "", btq: "", voie: "" }, all, listeBtq))
       .toEqual({ numero: "", btq: "", voie: "" });
+  });
+});
+
+describe("champ `location` — le point déclaré au dépôt prime (Socle 1.29.0)", () => {
+  const field = { id: "f-ou", key: "intervention_lieu", label: "Où est le dépôt ?", type: "location" };
+  const AT = { address: "10 Avenue de Frémeur 44000 Nantes", lat: 47.223, lon: -1.573, precision: "adresse", adjusted: true };
+
+  it("lit l'adresse et le point, sous le libellé du champ, et couvre sa clé", () => {
+    const lieu = interventionLocation(snapshot([field]), { intervention_lieu: AT, autre: "x" });
+    expect(lieu).toEqual({
+      title: "Où est le dépôt ?",
+      keys: ["intervention_lieu"],
+      lines: ["10 Avenue de Frémeur 44000 Nantes"],
+      query: "10 Avenue de Frémeur 44000 Nantes",
+      details: [],
+      postcode: "44000",
+      city: null,
+      empty: false,
+      point: { lat: 47.223, lon: -1.573, precision: "adresse", adjusted: true },
+    });
+  });
+
+  it("une saisie libre n'a pas de point — il faudra géocoder ; rien de saisi = vide", () => {
+    const free = interventionLocation(snapshot([field]), { intervention_lieu: { address: "Chemin des Vignes" } });
+    expect(free).toMatchObject({ lines: ["Chemin des Vignes"], query: "Chemin des Vignes", postcode: null, point: null, empty: false });
+    const none = interventionLocation(snapshot([field]), {});
+    expect(none).toMatchObject({ keys: ["intervention_lieu"], lines: [], query: "", empty: true, point: null });
+  });
+
+  it("se reconnaît par son TYPE, pas par sa clé — et l'emporte sur un ancien bloc voisin", () => {
+    const renamed = { ...field, key: "endroit" };
+    const lieu = interventionLocation(snapshot([lieuSection(), renamed]), { ...ADDRESS, endroit: AT });
+    expect(lieu!.keys).toEqual(["endroit"]);
+    expect(lieu!.point).not.toBeNull();
+  });
+
+  it("respecte la condition de visibilité du champ", () => {
+    const conditional = {
+      ...field,
+      visibleIf: { combinator: "and", rules: [{ fieldId: "f-t", operator: "equals", value: "oui" }] },
+    };
+    const toggle = { id: "f-t", key: "sur_place", label: "Sur place ?", type: "text" };
+    expect(interventionLocation(snapshot([toggle, conditional]), { sur_place: "non", intervention_lieu: AT })).toBeNull();
+    expect(interventionLocation(snapshot([toggle, conditional]), { sur_place: "oui", intervention_lieu: AT })!.point).not.toBeNull();
+  });
+
+  it("snapshot dégradé ou schéma illisible : relit form_data — la clé par défaut, sinon toute valeur qui a la forme d'un lieu", () => {
+    expect(interventionLocation(null, { intervention_lieu: AT })).toMatchObject({ keys: ["intervention_lieu"], point: { adjusted: true } });
+    expect(interventionLocation({ form_schema: { version: 1, content: [] } }, { endroit: AT })).toMatchObject({ keys: ["endroit"], query: AT.address });
+    // Sans lieu : l'ancien chemin par les sept clés.
+    expect(interventionLocation(null, ADDRESS)!.lines).toEqual(["6 bis Rue de la République", "69001 Lyon"]);
+  });
+
+  it("directionsTarget : les coordonnées quand le point a été déplacé, l'adresse sinon, rien sans adresse", () => {
+    const adjusted = interventionLocation(snapshot([field]), { intervention_lieu: AT })!;
+    expect(directionsTarget(adjusted)).toEqual({ lat: 47.223, lon: -1.573 });
+    const exact = interventionLocation(snapshot([field]), { intervention_lieu: { ...AT, adjusted: false } })!;
+    expect(directionsTarget(exact)).toBe(AT.address);
+    expect(directionsTarget(interventionLocation(snapshot([field]), {})!)).toBeNull();
+    expect(directionsTarget(interventionLocation(snapshot([lieuSection()]), ADDRESS)!)).toBe("6 Bis Rue de la République, 69001 Lyon");
   });
 });

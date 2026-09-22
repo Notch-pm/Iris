@@ -22,6 +22,20 @@ rien dans la demande, et n'envoie rien à personne.
 > reste la propriété d'Iris. Ce qui a changé, c'est le chemin, et le plafond : il est désormais
 > **celui de la collectivité, commun à toute la gamme**. Le détail du guichet vit dans le
 > dépôt Socle (`CLAUDE.md` § « guichet IA », `docs/integration.md`).
+>
+> ⚠️ **Depuis `ai-api` 1.3.0 (2026-09-22), « commun » ne veut plus dire « le même pour tous ».**
+> Le super administrateur du Socle peut **réserver une part** de ce plafond à une application
+> (l'assistant du portail, `nora`), en jetons ou en pourcentage vivant ; les applications sans
+> part — Iris — se partagent le reste et y sont bornées. Deux conséquences, et une seule règle :
+> Iris peut être refusé **avant** que le plafond commun soit atteint (même `429 ai_quota_exceeded`,
+> même message daté — le relayer, ne pas réessayer avant le renouvellement) ; et les chiffres que
+> le Socle nous rend — `quota` d'un appel accepté, `quota` du 429, `GET /v1/usage` — sont **ceux
+> d'Iris** : `limit` est notre plafond (le commun moins les parts des autres, stable dans le mois),
+> `used_tokens`/`reserved_tokens` ce qui y est engagé, `remaining_tokens = limit − used − reserved`
+> exactement ce que la prochaine réservation laissera passer. Seul `by_consumer` de `/v1/usage`
+> reste la ventilation de **toute** la collectivité, parts comprises : sa somme ne se compare
+> jamais à `limit`. Tant qu'aucune part n'est réservée, ces chiffres sont ceux d'avant.
+> Référence : `docs/api-changelog.md` du Socle, entrée du 2026-09-22.
 
 ---
 
@@ -74,8 +88,11 @@ Cette phrase est écrite en tête de `supabase/functions/_shared/ai/redact.ts`, 
    - `redactFreeText` masque courriels, téléphones français, IBAN et SIRET.
    - **Jamais les noms** : sans reconnaissance d'entités c'est hors de portée, et masquer
      « Dupont » casserait « rue Marcel Dupont ».
-   - Le **lieu d'intervention** est explicitement préservé (préfixe `intervention_`) : un lieu
-     n'est pas une personne, et c'est souvent le cœur de la question.
+   - Le **lieu d'intervention** est explicitement préservé (préfixe `intervention_`), point
+     déclaré compris : `redact.ts` copie une clé préservée **avec tout son sous-arbre**, sans y
+     descendre — sinon la clé `address` du catalogue aurait retiré l'adresse du champ `location`
+     (`{ address, lat, lon, … }`, Socle 1.29.0). Un lieu n'est pas une personne, et c'est souvent
+     le cœur de la question.
 
 ### Le contenu exact du prompt
 
@@ -323,7 +340,7 @@ interdit. C'est un coût assumé, inscrit à la dette.
 | Réponse du Socle | Ce que l'agent voit | Pourquoi |
 |---|---|---|
 | aucune (réseau, délai) | 502 « le référentiel ne répond pas. L'instruction des demandes n'est pas affectée. » | Le seul cas actionnable pour l'agent : il peut continuer à instruire |
-| 429 | **le message du Socle, mot pour mot** | Seul le Socle connaît la date de renouvellement ; la recomposer recréerait le jumeau supprimé |
+| 429 | **le message du Socle, mot pour mot** | Seul le Socle connaît la date de renouvellement ; la recomposer recréerait le jumeau supprimé. Depuis `ai-api` 1.3.0, ce refus peut tomber **avant** le plafond commun de la collectivité (part réservée à une autre application) : le message est la seule information à relayer, aucun texte ne dit « le plafond de la collectivité est atteint » |
 | 401 / 403 | 502 « signaler à un administrateur » | Panne de configuration (clé sans scope `ai`, sans imputation), pas un problème de l'agent — jamais relayée brute |
 | 400 / 404 | 500 erreur interne | **Notre** bug : c'est Iris qui compose le payload |
 | 502 / 500 / autre | 502 « momentanément indisponible » | L'erreur brute du fournisseur ne remonte jamais |

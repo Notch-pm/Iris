@@ -19,6 +19,7 @@
  */
 
 import {
+  parseLocationValue,
   dataKey,
   fieldIsVisible,
   flatFields,
@@ -148,6 +149,9 @@ function displayValue(value: unknown): string {
 
 /** Le CODE d'une option ne dit rien au modèle ; son libellé, si. */
 function optionLabel(field: Field, raw: unknown): string {
+  // Un lieu d'intervention se lit par son adresse : ses coordonnées ne disent
+  // rien au modèle, et un JSON brut moins encore.
+  if (field.type === "location") return parseLocationValue(raw)?.address ?? "";
   if (!isChoiceType(field.type)) return displayValue(raw);
   const options = (field as { options?: { value: string; label: string }[] }).options ?? [];
   const one = (v: unknown) =>

@@ -36,6 +36,13 @@ function isEmptyValue(value: unknown): boolean {
   if (value === undefined || value === null) return true;
   if (typeof value === "string") return value.trim() === "";
   if (Array.isArray(value)) return value.length === 0;
+  // Un lieu d'intervention sans adresse est vide — pour l'obligation comme
+  // pour les conditions `isEmpty` / `isNotEmpty`. Les autres objets restent
+  // « renseignés » : on ne sait rien d'eux.
+  if (isRecord(value)) {
+    if (Object.keys(value).length === 0) return true;
+    if ("address" in value) return locationIsEmpty(value);
+  }
   return false;
 }
 
@@ -97,7 +104,8 @@ export type FieldType =
   | "select"
   | "radio"
   | "checkboxes"
-  | "attachment";
+  | "attachment"
+  | "location";
 
 export const CHOICE_TYPES = ["select", "radio", "checkboxes"] as const;
 export type ChoiceType = (typeof CHOICE_TYPES)[number];
@@ -141,7 +149,80 @@ export interface AttachmentField extends FieldCommon {
   requiredIf?: Condition;
 }
 
-export type Field = SimpleField | ChoiceField | AttachmentField;
+/**
+ * Lieu d'intervention (Socle 1.29.0) : une adresse sur une ligne, complétée par
+ * la Base Adresse Nationale, et un point que l'usager peut déplacer dans un
+ * rayon de 150 m (constante de plateforme, pas une option du champ). Sa réponse
+ * est un `LocationValue`, pas une chaîne.
+ */
+export interface LocationField extends FieldCommon {
+  type: "location";
+}
+
+export type Field = SimpleField | ChoiceField | AttachmentField | LocationField;
+
+// ---- La valeur d'un lieu d'intervention (contrat Socle `LocationValue`) ------
+
+export const LOCATION_PRECISIONS = ["adresse", "voie", "lieu_dit", "commune"] as const;
+export type LocationPrecision = (typeof LOCATION_PRECISIONS)[number];
+
+/**
+ * Ce que porte `form_data[key]` d'un champ `location` — la forme publiée par
+ * le Socle, produite par le portail (Nora) ou par le guichet d'Iris :
+ *  - `address` : le libellé BAN retenu, sinon le texte tapé — jamais vide ;
+ *  - `lat`/`lon` : le point RETENU (celui de l'adresse, ou celui où l'usager
+ *    l'a déplacé, 150 m au plus) — ensemble, ou nuls tous les deux ;
+ *  - `precision` : la finesse de la proposition BAN retenue ;
+ *  - `adjusted` : le point diffère de celui de l'adresse.
+ * ⚠️ Un point présent ne se géocode pas : il est plus précis que tout géocodage.
+ */
+export interface LocationValue {
+  address: string;
+  lat: number | null;
+  lon: number | null;
+  precision: LocationPrecision | null;
+  adjusted: boolean;
+}
+
+function finiteCoordinate(value: unknown, bound: number): number | null {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return Math.abs(value) <= bound ? value : null;
+}
+
+/**
+ * Lecture TOLÉRANTE d'une valeur de lieu : clés inconnues ignorées, coordonnée
+ * seule ou hors bornes → couple nul (et `adjusted` avec), précision hors
+ * vocabulaire → `null`. Une chaîne nue est ÉLEVÉE en adresse sans point : un
+ * producteur dégradé ne fait pas perdre le texte de l'usager. Sans adresse,
+ * `null` — ce n'est pas un lieu.
+ */
+export function parseLocationValue(raw: unknown): LocationValue | null {
+  if (typeof raw === "string") {
+    const address = raw.trim();
+    return address === "" ? null : { address, lat: null, lon: null, precision: null, adjusted: false };
+  }
+  if (!isRecord(raw)) return null;
+  const address = typeof raw.address === "string" ? raw.address.trim() : "";
+  if (address === "") return null;
+  const lat = finiteCoordinate(raw.lat, 90);
+  const lon = finiteCoordinate(raw.lon, 180);
+  const hasPoint = lat !== null && lon !== null;
+  const precision = (LOCATION_PRECISIONS as readonly unknown[]).includes(raw.precision)
+    ? (raw.precision as LocationPrecision)
+    : null;
+  return {
+    address,
+    lat: hasPoint ? lat : null,
+    lon: hasPoint ? lon : null,
+    precision,
+    adjusted: hasPoint && raw.adjusted === true,
+  };
+}
+
+/** Une valeur qui ne fait pas un lieu (rien, adresse vide, forme illisible). */
+export function locationIsEmpty(raw: unknown): boolean {
+  return parseLocationValue(raw) === null;
+}
 
 export interface Section {
   id: string;
@@ -242,6 +323,11 @@ function parseField(raw: unknown): Field | null {
       }
     }
     return { ...common, type: raw.type as ChoiceType, options };
+  }
+
+  if (raw.type === "location") {
+    // Aucune option propre : le rayon d'ajustement est une constante du Socle.
+    return { ...common, type: "location" };
   }
 
   if ((SIMPLE_TYPES as readonly string[]).includes(raw.type)) {
@@ -472,6 +558,14 @@ export function validateFormSubmission(
           errors[field.id] = "Choix hors des options proposées.";
           continue;
         }
+        break;
+      }
+      case "location": {
+        // La valeur stockée est TOUJOURS la forme du contrat, normalisée : ce
+        // qu'un écran a pu accrocher en chemin ne traverse pas.
+        const parsed = parseLocationValue(value);
+        if (!parsed) { errors[field.id] = "Adresse attendue."; continue; }
+        normalized = parsed;
         break;
       }
     }

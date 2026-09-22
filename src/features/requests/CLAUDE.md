@@ -256,6 +256,12 @@ note interne → résolution avec texte de clôture → journal.
     validation de confort côté client, validation d'AUTORITÉ côté serveur sur la démarche
     **rechargée depuis Socle**. Clé de `form_data` = clé machine `key` (repli sur l'id si
     vide). Alias `@fn` → `supabase/functions/` (vite + tsconfig).
+    ⚠️ **Un type de champ inconnu vide TOUT le schéma** — à l'écran, dans l'edge function
+    ET dans le jumeau SQL (`form_field_valid`, dont dépend la garde t17 des pièces
+    obligatoires). Tout nouveau type du contrat Socle se déclare aux **trois** endroits (+ un
+    test chacun) **avant** d'être publié côté Socle. Vécu à blanc avec `location` (1.29.0) :
+    sans le miroir, une démarche publiée avec ce champ aurait cassé la création guichet et
+    ouvert la clôture positive sans pièce.
   - **Usager : rapprocher, sinon CRÉER dans le Socle** (décision PO 2026-08-26) — voir
     [`src/features/contacts/CLAUDE.md`](../contacts/CLAUDE.md). « Poursuivre sans
     rapprochement » ne subsiste que comme sortie de secours sur panne AVÉRÉE, et la demande
@@ -362,10 +368,23 @@ note interne → résolution avec texte de clôture → journal.
     adresse postale + précisions d'accès (complément, appartement — jamais envoyées au
     GPS), **carte OpenStreetMap statique** (tuiles composées par `src/lib/carto.ts`,
     marqueur au centre, zoom ±, attribution ODbL obligatoire, « Ouvrir dans
-    OpenStreetMap ») et bouton **« Guider »** (itinéraire Google Maps, nouvel onglet, sur
-    l'adresse — pas sur les coordonnées, donc valable même sans géocodage). Le géocodage
-    (BAN) est un confort mis en cache par TanStack Query, jamais stocké : panne, adresse
-    introuvable ou tuiles muettes laissent l'adresse et « Guider » intacts.
+    OpenStreetMap ») et bouton **« Guider »** (itinéraire Google Maps, nouvel onglet). Le
+    géocodage (BAN) est un confort mis en cache par TanStack Query, jamais stocké : panne,
+    adresse introuvable ou tuiles muettes laissent l'adresse et « Guider » intacts.
+    - **Seconde forme, depuis Socle 1.29.0 (2026-09-22) : le champ `location`.** UN champ
+      (clé par défaut `intervention_lieu`), reconnu **par son `type`** (`locationField`),
+      jamais par sa clé ; sa valeur est `{ address, lat, lon, precision, adjusted }` — la
+      valeur normalisée par `parseLocationValue` (procedureForm.ts, chaîne nue élevée en
+      adresse sans point). Elle est portée par `InterventionLocation.point` et **prime sur
+      tout géocodage** : `LieuIntervention` désactive `useGeocode` (requête vide), la carte
+      des interventions ne l'envoie pas au lot CSV (`distinctAddresses` saute les demandes
+      avec point), la pastille dit « Point déclaré par l'usager » / « Point ajusté par
+      l'usager (150 m au plus) ». **« Guider »** vise les **coordonnées** quand `adjusted`
+      (`directionsTarget`) — c'est l'usager qui a dit « pas à la porte, ici » — et l'adresse
+      sinon (valable même sans point). Sur un snapshot dégradé ou un schéma que le moteur n'a
+      pas su lire (`content: []`), `fromRawData` relit `intervention_lieu`, puis toute valeur
+      qui a la forme d'un lieu, puis les sept clés de l'ancien bloc. L'ancien bloc reste lu
+      tel quel : rien n'est migré côté Socle.
   - **Base de connaissances de la démarche** (`procedure/`, 2026-08-28) : le rail bascule
     entre deux onglets — « Demande » (prise en charge, avancement, usager) et
     « Procédure » —, par `RailTabs` (pastille tant que l'onglet n'a pas été ouvert et que
@@ -508,7 +527,8 @@ note interne → résolution avec texte de clôture → journal.
       (bascule « Afficher les quartiers ») : basculer l'affichage ne déplace pas la carte.
     - ⚠️ **Un confort, jamais une dépendance** : route absente, Socle muet, pas d'adresse de
       siège ⇒ on descend d'un cran dans le repli, jamais une erreur. Iris ne stocke ni la
-      géométrie, ni l'adresse, ni aucun point.
+      géométrie, ni l'adresse, ni aucun point qu'il aurait calculé (le point DÉCLARÉ par
+      l'usager, lui, est une réponse du formulaire — voir « Lieu d'intervention »).
     - **Ce qui reste ouvert** (question de fond de B1, jamais tranchée) : une demande **hors
       territoire** reste hors du cadre initial — elle s'atteint en reculant. Est-ce un
       cadrage à élargir, ou une **anomalie à signaler** ?
@@ -533,7 +553,8 @@ note interne → résolution avec texte de clôture → journal.
     troncature signalée), sélection allégée `procedure_snapshot->form_schema` (le snapshot
     entier × 500 pèserait pour rien), puis **géocodage en masse** en UNE requête (endpoint
     CSV de la BAN) avec cache de session — un appel unitaire par demande saturerait le
-    service. Aucun point n'est stocké côté Iris.
+    service. Aucun point calculé n'est stocké côté Iris ; une demande déposée **avec** un
+    point (champ `location`) est située par lui et ne part pas au lot.
   - **`InterventionMap.tsx`** : `TileLayer` (brique partagée avec la fiche), épingles
     **colorées par urgence** (jaune `normale` → orange `haute` → rouge `urgente`, gris
     `basse` : sans urgence particulière), survol/focus → fiche (référence, statut, objet,
@@ -664,7 +685,10 @@ note interne → résolution avec texte de clôture → journal.
   - **La carte** (`AddressMap`) réutilise `TileLayer` et le motif de `LieuIntervention` : le
     point, la réserve du géocodeur (`PRECISION_LABELS` — même vocabulaire que la carte des
     interventions), le zoom ±. Elle MONTRE, elle ne saisit pas : le point n'est pas
-    déplaçable, puisque Iris ne stocke aucune coordonnée — seule l'adresse est enregistrée.
+    déplaçable — ce qui s'enregistre est la proposition retenue (adresse **et** son point
+    BAN, pour un champ `location` : `LocationFieldControl`), jamais un point qu'un agent
+    aurait posé ; l'ajustement à 150 m est un geste de l'usager, sur le portail. Retaper
+    l'adresse d'un lieu existant retire son point (dit dans `FormulaireEditDialog`).
     ⚠️ **`useElementSize` mesure au MONTAGE** : `AddressMap` n'est monté qu'une fois le point
     connu (un conteneur rendu conditionnellement plus tard n'est jamais mesuré, et sa mosaïque
     reste vide — vécu le 2026-08-28).
