@@ -129,26 +129,40 @@ describe("renderEmailText", () => {
 describe("le gabarit habillé de la charte d'une collectivité", () => {
   const sombre = {
     primary: "#1f8a5b", onPrimary: "#FFFFFF",
-    logoUrl: "https://accm.fr/logo-blanc.svg", logoPlate: false,
+    logoUrl: "https://accm.fr/logo.png",
   };
-  const clair = { primary: "#ffd166", onPrimary: "#1C2220", logoUrl: null, logoPlate: false };
+  const clair = { primary: "#ffd166", onPrimary: "#1C2220", logoUrl: null };
 
-  it("peint le bandeau ET le bouton de la couleur principale", () => {
+  it("trace les bordures et remplit le bouton de la couleur principale", () => {
     const html = renderEmailHtml(content, { ...brand, charte: sombre });
-    expect(html).toContain("background-color:#1f8a5b;padding:20px 32px;");
+    expect(html).toContain("border:1px solid #1f8a5b;border-radius:14px;");
+    expect(html).toContain("border-bottom:1px solid #1f8a5b;padding:20px 32px;");
     expect(html).toContain("background-color:#1f8a5b;border-radius:10px;");
     // Le vert d'Iris n'a plus rien à peindre dans ce message.
     expect(html).not.toContain("#089B59");
   });
 
-  it("porte l'encre CALCULÉE, pas du blanc d'office", () => {
-    expect(renderEmailHtml(content, { ...brand, charte: clair })).toContain("color:#1C2220;");
-    expect(renderEmailHtml(content, { ...brand, charte: sombre })).toContain("color:#FFFFFF;");
+  it("garde le bandeau BLANC — un aplat de couleur entrait en collision avec le logo", () => {
+    for (const charte of [sombre, clair]) {
+      const html = renderEmailHtml(content, { ...brand, charte });
+      expect(html).toContain("background-color:#FFFFFF;border-bottom:1px solid");
+      expect(html).not.toContain(`background-color:${charte.primary};padding:20px 32px;`);
+    }
+  });
+
+  it("écrit le nom du bandeau à l'encre du corps, lisible sur blanc quelle que soit la charte", () => {
+    const html = renderEmailHtml(content, { ...brand, charte: clair });
+    expect(html).toContain("font-weight:800;letter-spacing:0.2px;color:#1C2220;");
+  });
+
+  it("porte sur le bouton l'encre CALCULÉE, pas du blanc d'office", () => {
+    expect(renderEmailHtml(content, { ...brand, charte: clair })).toMatch(/color:#1C2220;font-family:[^"]*font-size:15px;font-weight:700/);
+    expect(renderEmailHtml(content, { ...brand, charte: sombre })).toMatch(/color:#FFFFFF;font-family:[^"]*font-size:15px;font-weight:700/);
   });
 
   it("affiche le logo, avec un alt VIDE — le nom est déjà écrit à côté", () => {
     const html = renderEmailHtml(content, { ...brand, charte: sombre });
-    expect(html).toContain('src="https://accm.fr/logo-blanc.svg"');
+    expect(html).toContain('src="https://accm.fr/logo.png"');
     expect(html).toContain('alt=""');
     // Images bloquées : le nom reste lisible, et le logo n'en ajoute PAS une
     // occurrence de plus — c'est tout l'objet de l'alt vide.
@@ -166,20 +180,10 @@ describe("le gabarit habillé de la charte d'une collectivité", () => {
     expect(html).toContain("&quot; onerror=&quot;alert(1)");
   });
 
-  it("pose le logo COULEUR sur une pastille claire — sur un bandeau sombre il serait illisible", () => {
-    const couleur = { ...sombre, logoUrl: "https://accm.fr/logo.png", logoPlate: true };
-    const html = renderEmailHtml(content, { ...brand, charte: couleur });
-    expect(html).toContain("background-color:#FFFFFF;border-radius:8px;padding:7px 10px;");
-    expect(html).toContain('src="https://accm.fr/logo.png"');
-    // Le logo BLANC, lui, est fait pour ce fond : pas de pastille.
-    expect(renderEmailHtml(content, { ...brand, charte: sombre }))
-      .not.toContain("border-radius:8px;padding:7px 10px;");
-  });
-
   it("sans charte, rend EXACTEMENT le message d'avant", () => {
     expect(renderEmailHtml(content, { ...brand, charte: null })).toBe(renderEmailHtml(content, brand));
     expect(renderEmailHtml(content, brand)).toContain(
-      `background-color:${"#089B59"};padding:20px 32px;`,
+      `border-bottom:1px solid ${"#089B59"};padding:20px 32px;`,
     );
     expect(renderEmailHtml(content, brand)).not.toContain("<img");
   });

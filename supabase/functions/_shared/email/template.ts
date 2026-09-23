@@ -1,5 +1,6 @@
 // Gabarit d'email Iris — reprise du gabarit Clara (carte centrée 520 px,
-// bandeau de marque, bouton d'action, lien de repli, pied), rhabillé aux
+// bandeau de marque BLANC, bordures à la couleur de marque, bouton d'action,
+// lien de repli, pied), rhabillé aux
 // tokens du DS Ariane : vert AA, beurre, radius 14 px (carte) / 10 px
 // (bouton), typographie Nunito Sans.
 //
@@ -45,7 +46,7 @@ export interface EmailBrand {
   tenantName?: string | null;
   /**
    * Charte graphique de la collectivité, résolue par le Socle et préparée par
-   * `charte.ts` (couleur du bandeau, encre lisible dessus, logo). Absente ⇒
+   * `charte.ts` (couleur des bordures et du bouton, encre du bouton, logo). Absente ⇒
    * habillage Iris — c'est le cas de tous les messages qui vont aux AGENTS.
    */
   charte?: EmailCharte | null;
@@ -119,12 +120,16 @@ const IRIS_CHARTE: EmailCharte = {
   primary: EMAIL_COLORS.primary,
   onPrimary: EMAIL_COLORS.onPrimary,
   logoUrl: null,
-  logoPlate: false,
 };
 
 /**
- * Le bandeau — la seule surface où la marque se voit. Il porte la couleur
- * principale de la collectivité et, quand elle en fournit un, son logo.
+ * Le bandeau — BLANC, délibérément. La marque s'y lit par le logo et par le
+ * filet de couleur qui le sépare du corps (posé sur la cellule, voir
+ * `renderEmailHtml`), plus par un aplat : un fond à la couleur principale
+ * entrait en collision avec le logo — un logo de collectivité est dessiné pour
+ * du papier, et sur un aplat de sa propre couleur il perdait tout contraste.
+ * Le nom est écrit à l'encre du corps : sur blanc il se lit quelle que soit la
+ * charte, jaune vif compris.
  *
  * ⚠️ `alt=""` sur le logo, DÉLIBÉRÉMENT : le nom de la collectivité est écrit
  * juste à côté, dans le même bandeau. Beaucoup de clients bloquent les images
@@ -132,14 +137,6 @@ const IRIS_CHARTE: EmailCharte = {
  * Le logo est ici la redite visuelle d'un texte présent, pas une information
  * de plus — et c'est exactement le cas où la règle d'accessibilité demande un
  * `alt` vide.
- *
- * ⚠️ LA PASTILLE (`charte.logoPlate`) n'est pas une coquetterie. Le logo
- * COULEUR d'une collectivité est dessiné pour du papier et des fonds blancs,
- * encre foncée comprise ; posé à même un bandeau sombre il est illisible. Or
- * c'est le cas ORDINAIRE : beaucoup de collectivités déclarent un logo, très
- * peu en déclarent une version blanche. On le pose donc sur un aplat clair,
- * qui se lit comme un parti pris et non comme un défaut. Sur un bandeau déjà
- * clair, la pastille ne se voit pas — et ne gêne pas.
  *
  * La hauteur est posée en attribut ET en style : Outlook ignore le style, les
  * clients modernes ignorent parfois l'attribut. La largeur reste `auto` — on ne
@@ -150,15 +147,12 @@ const IRIS_CHARTE: EmailCharte = {
  */
 function bannerHtml(line: string, charte: EmailCharte): string {
   const label =
-    `<p style="margin:0;font-size:17px;font-weight:800;letter-spacing:0.2px;color:${charte.onPrimary};">${line}</p>`;
+    `<p style="margin:0;font-size:17px;font-weight:800;letter-spacing:0.2px;color:${EMAIL_COLORS.ink};">${line}</p>`;
   if (!charte.logoUrl) return label;
-  const plate = charte.logoPlate
-    ? `background-color:${EMAIL_COLORS.surface};border-radius:8px;padding:7px 10px;`
-    : "";
   return `<table role="presentation" cellpadding="0" cellspacing="0" border="0">
                 <tr>
                   <td valign="middle" style="padding-right:14px;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="${plate}"><img src="${escapeHtml(charte.logoUrl)}" alt="" height="36" style="display:block;height:36px;width:auto;max-width:160px;border:0;outline:none;text-decoration:none;" /></td></tr></table>
+                    <img src="${escapeHtml(charte.logoUrl)}" alt="" height="36" style="display:block;height:36px;width:auto;max-width:160px;border:0;outline:none;text-decoration:none;" />
                   </td>
                   <td valign="middle">${label}</td>
                 </tr>
@@ -205,9 +199,9 @@ export function renderEmailHtml(content: EmailContent, brand: EmailBrand): strin
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${EMAIL_COLORS.page};padding:40px 16px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%;background-color:${EMAIL_COLORS.surface};border:1px solid ${EMAIL_COLORS.border};border-radius:14px;overflow:hidden;">
+        <table role="presentation" width="520" cellpadding="0" cellspacing="0" border="0" style="width:520px;max-width:100%;background-color:${EMAIL_COLORS.surface};border:1px solid ${charte.primary};border-radius:14px;overflow:hidden;">
           <tr>
-            <td style="background-color:${charte.primary};padding:20px 32px;">
+            <td style="background-color:${EMAIL_COLORS.surface};border-bottom:1px solid ${charte.primary};padding:20px 32px;">
               ${bannerHtml(line, charte)}
             </td>
           </tr>

@@ -33,9 +33,9 @@ dépend d'aucun runtime), plus un module d'envoi qui, lui, dépend de Deno :
 
 | Module | Rôle |
 |---|---|
-| `template.ts` | Rend le HTML et la version texte. Carte centrée 520 px, bandeau de marque, bouton, lien de repli, pied — **reprise du gabarit Clara**, rhabillée aux tokens du DS Ariane. |
+| `template.ts` | Rend le HTML et la version texte. Carte centrée 520 px bordée de la couleur de marque, bandeau blanc, bouton, lien de repli, pied — **reprise du gabarit Clara**, rhabillée aux tokens du DS Ariane. |
 | `messages.ts` | Catalogue des textes, en français, un objet par type d'email. |
-| `charte.ts` | Charte graphique de la collectivité (Socle) → couleur du bandeau, encre lisible dessus, logo à afficher. |
+| `charte.ts` | Charte graphique de la collectivité (Socle) → couleur des bordures et du bouton, encre lisible sur le bouton, logo à afficher. |
 | `config.ts` | Résolution du serveur d'envoi : tenant d'abord, relais de plateforme en repli. |
 | `transport.ts` | `nodemailer` — la seule brique qui parle au réseau. |
 
@@ -360,29 +360,27 @@ de son organisation parente » est une règle du référentiel, résolue là où
 
 | Décision | Règle |
 |---|---|
-| Couleur du bandeau et du bouton | `primary_color`, le vert du DS à défaut |
-| Couleur du **texte** sur ce fond | **calculée** par contraste WCAG — jamais devinée |
-| Lequel des deux logos | le **blanc** sur un fond sombre, le **couleur** sinon |
-| Faut-il une **pastille** claire sous le logo | oui dès qu'on affiche le logo **couleur** |
+| Couleur des bordures, du filet sous le bandeau et du bouton | `primary_color`, le vert du DS à défaut |
+| Couleur du **texte** sur le bouton | **calculée** par contraste WCAG — jamais devinée |
+| Quel logo | le logo **couleur** (`logo_url`), toujours — `logo_white_url` est ignoré |
 
-**Pourquoi calculer l'encre.** Une charte peut être un jaune vif sur lequel du blanc est
-illisible. Le critère retenu est « le blanc **suffit-il** » (≥ 3:1, seuil AA grand texte — le
-bandeau est en 17 px gras), et non « le blanc est-il le **plus** contrasté » : sur le vert du DS
+**Pourquoi un bandeau blanc** (depuis le 2026-09-23). Le bandeau était un aplat de la couleur
+principale ; il entrait en collision avec le logo — un logo de collectivité est dessiné pour du
+papier, souvent dans sa propre couleur, et posé sur elle il perdait tout contraste. La couleur
+ne sert donc plus qu'en **trait** : bordure de la carte, filet sous le bandeau, et en fond du
+bouton d'action. Le nom écrit dans le bandeau prend l'encre du corps, lisible sur blanc quelle
+que soit la charte. La pastille claire qu'on glissait sous le logo couleur n'a plus d'objet.
+
+**Pourquoi calculer l'encre du bouton.** Une charte peut être un jaune vif sur lequel du blanc
+est illisible. Le critère retenu est « le blanc **suffit-il** » (≥ 3:1, seuil AA grand texte — le
+libellé est en 15 px gras), et non « le blanc est-il le **plus** contrasté » : sur le vert du DS
 (`#089b59`) l'encre sombre contraste davantage que le blanc (≈ 4,5 contre ≈ 3,6), et un critère
-de maximum repeindrait donc en sombre le bandeau de **tous** les e-mails d'Iris, contre la
+de maximum repeindrait donc en sombre le bouton de **tous** les e-mails d'Iris, contre la
 prescription du DS Ariane.
 
-**Pourquoi jamais le logo blanc sur un fond clair** : il y disparaîtrait. Une collectivité qui
-ne fournit *que* la version blanche et choisit une couleur claire n'a donc pas de logo dans son
-bandeau — mieux vaut pas de logo qu'un rectangle vide.
-
-**Pourquoi la pastille.** Le logo **couleur** d'une collectivité est dessiné pour du papier et
-des fonds blancs, encre foncée comprise ; posé à même un bandeau sombre il est illisible. Or
-c'est le cas **ordinaire** : beaucoup de collectivités déclarent un logo, très peu en déclarent
-une version blanche — au 2026-08-30, ACCM porte un `logo_url` et aucun `logo_white_url`, et
-toutes ses sous-organisations en héritent. Le logo couleur est donc posé sur un aplat clair, qui
-se lit comme un parti pris et non comme un défaut ; sur un bandeau déjà clair la pastille ne se
-voit pas, et ne gêne pas. Le logo **blanc**, lui, est fait pour ce fond : il s'y pose nu.
+**Pourquoi jamais le logo blanc** : sur le bandeau blanc il disparaîtrait. Une collectivité qui
+ne fournit *que* la version blanche n'a donc pas de logo dans l'e-mail — mieux vaut pas de logo
+qu'un rectangle vide ; son nom, écrit dans le bandeau, suffit.
 
 **`alt=""` sur le logo, délibérément.** Le nom de la collectivité est écrit juste à côté, dans
 le même bandeau. Beaucoup de clients bloquent les images distantes par défaut ; un `alt`

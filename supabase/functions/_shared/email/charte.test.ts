@@ -93,80 +93,63 @@ describe("charteFromSocle", () => {
     expect(charteFromSocle(undefined)).toBeNull();
   });
 
-  it("une couleur SEULE est une charte : le bandeau la prend", () => {
+  it("une couleur SEULE est une charte : les bordures la prennent", () => {
     const charte = charteFromSocle(dto({ primary_color: "#1f8a5b" }));
     expect(charte).toEqual({
-      primary: "#1f8a5b", onPrimary: EMAIL_COLORS.onPrimary, logoUrl: null, logoPlate: false,
+      primary: "#1f8a5b", onPrimary: EMAIL_COLORS.onPrimary, logoUrl: null,
     });
   });
 
-  it("un logo SEUL est une charte : le bandeau reste vert et le porte", () => {
+  it("un logo SEUL est une charte : les bordures restent vertes et le bandeau le porte", () => {
     const charte = charteFromSocle(dto({ logo_url: "https://accm.fr/logo.png" }));
     expect(charte).toEqual({
       primary: EMAIL_COLORS.primary,
       onPrimary: EMAIL_COLORS.onPrimary,
       logoUrl: "https://accm.fr/logo.png",
-      // Logo COULEUR sur bandeau vert : il lui faut une pastille claire.
-      logoPlate: true,
     });
   });
 
-  it("préfère le logo BLANC sur un bandeau sombre", () => {
-    const charte = charteFromSocle(dto({
-      primary_color: "#1f8a5b",
-      logo_url: "https://accm.fr/logo.png",
-      logo_white_url: "https://accm.fr/logo-blanc.svg",
-    }));
-    expect(charte?.logoUrl).toBe("https://accm.fr/logo-blanc.svg");
-    expect(charte?.logoPlate).toBe(false); // il est fait pour ce fond
+  it("sert toujours le logo COULEUR — le bandeau est blanc, quelle que soit la charte", () => {
+    for (const primary_color of ["#1f8a5b", "#ffd166"]) {
+      const charte = charteFromSocle(dto({
+        primary_color,
+        logo_url: "https://accm.fr/logo.png",
+        logo_white_url: "https://accm.fr/logo-blanc.svg",
+      }));
+      expect(charte?.logoUrl).toBe("https://accm.fr/logo.png");
+    }
   });
 
-  it("retombe sur le logo couleur si la collectivité n'a pas de version blanche", () => {
-    const charte = charteFromSocle(dto({
-      primary_color: "#1f8a5b",
-      logo_url: "https://accm.fr/logo.png",
-    }));
-    expect(charte?.logoUrl).toBe("https://accm.fr/logo.png");
-    expect(charte?.logoPlate).toBe(true); // faute de version blanche : pastille
-  });
-
-  it("n'envoie JAMAIS le logo blanc sur un bandeau clair — il y disparaîtrait", () => {
-    const deux = charteFromSocle(dto({
-      primary_color: "#ffd166",
-      logo_url: "https://accm.fr/logo.png",
-      logo_white_url: "https://accm.fr/logo-blanc.svg",
-    }));
-    expect(deux?.logoUrl).toBe("https://accm.fr/logo.png");
-    expect(deux?.onPrimary).toBe(EMAIL_COLORS.ink);
-
-    // Blanc seulement + fond clair : mieux vaut pas de logo qu'un logo invisible.
+  it("n'envoie JAMAIS le logo blanc — sur le bandeau blanc il disparaîtrait", () => {
+    // Blanc seulement : mieux vaut pas de logo qu'un logo invisible.
     const blancSeul = charteFromSocle(dto({
       primary_color: "#ffd166",
       logo_white_url: "https://accm.fr/logo-blanc.svg",
     }));
     expect(blancSeul).toEqual({
-      primary: "#ffd166", onPrimary: EMAIL_COLORS.ink, logoUrl: null, logoPlate: false,
+      primary: "#ffd166", onPrimary: EMAIL_COLORS.ink, logoUrl: null,
     });
+    // Et sans couleur, un logo blanc seul n'est pas une charte.
+    expect(charteFromSocle(dto({ logo_white_url: "https://accm.fr/logo-blanc.svg" }))).toBeNull();
   });
 
   it("ignore une couleur illisible et une URL de logo qui n'est pas du http(s)", () => {
     expect(charteFromSocle(dto({ primary_color: "bleu", logo_url: "javascript:alert(1)" })))
       .toBeNull();
 
-    // Couleur invalide + logo valable : le bandeau reste vert, le logo passe.
+    // Couleur invalide + logo valable : les bordures restent vertes, le logo passe.
     const charte = charteFromSocle(dto({ primary_color: "#zzzzzz", logo_url: "https://accm.fr/l.png" }));
     expect(charte).toEqual({
       primary: EMAIL_COLORS.primary,
       onPrimary: EMAIL_COLORS.onPrimary,
       logoUrl: "https://accm.fr/l.png",
-      logoPlate: true,
     });
   });
 
   it("cas réel du référentiel : un logo couleur et AUCUNE couleur déclarée", () => {
     // C'est la situation d'ACCM au 2026-08-30, et celle dont toutes ses
-    // sous-organisations héritent. Le bandeau reste vert, donc sombre, et le
-    // logo couleur — dessiné pour du papier — y serait illisible sans pastille.
+    // sous-organisations héritent. Les bordures restent vertes, et le logo
+    // couleur — dessiné pour du papier — se pose sur le bandeau blanc.
     const charte = charteFromSocle(dto({
       logo_url: "https://upload.wikimedia.org/wikipedia/commons/accm.png",
     }));
@@ -174,7 +157,6 @@ describe("charteFromSocle", () => {
       primary: EMAIL_COLORS.primary,
       onPrimary: EMAIL_COLORS.onPrimary,
       logoUrl: "https://upload.wikimedia.org/wikipedia/commons/accm.png",
-      logoPlate: true,
     });
   });
 

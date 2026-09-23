@@ -17,12 +17,15 @@
 // couleurs de la collectivité.
 //
 // CE QUE CE MODULE DÉCIDE, et que le gabarit n'a donc pas à savoir :
-//   • la couleur du bandeau — celle de la collectivité, le vert du DS à défaut ;
-//   • la couleur du TEXTE sur ce bandeau — CALCULÉE par contraste, jamais
+//   • la couleur de marque — celle de la collectivité, le vert du DS à défaut.
+//     Elle trace les BORDURES de la carte et le filet sous le bandeau, et remplit
+//     le bouton ; le bandeau lui-même reste BLANC (un aplat de couleur
+//     entrait en collision avec le logo) ;
+//   • la couleur du TEXTE sur le bouton — CALCULÉE par contraste, jamais
 //     devinée : une charte peut être un jaune vif sur lequel du blanc est
 //     illisible ;
-//   • LEQUEL des deux logos afficher — un logo blanc sur un bandeau clair
-//     disparaît, et rien ne dit qu'une collectivité fournit les deux.
+//   • le logo à afficher — le logo COULEUR, seul fait pour un fond blanc. Le
+//     logo blanc y disparaîtrait : il n'est jamais servi.
 //
 // Rien de ce qui sort d'ici n'est du HTML : le gabarit échappe, comme pour tout
 // le reste. Les URL, elles, sont filtrées ICI (http(s) seulement) — une charte
@@ -47,22 +50,15 @@ export interface SocleBrandingDto {
 
 /** Ce que le gabarit consomme : déjà résolu, déjà sûr, rien à décider. */
 export interface EmailCharte {
-  /** Fond du bandeau et du bouton d'action. */
+  /** Bordures de la carte, filet sous le bandeau, fond du bouton d'action. */
   primary: string;
-  /** Texte lisible SUR `primary`. Calculé, jamais saisi. */
+  /** Texte lisible SUR `primary` (le bouton). Calculé, jamais saisi. */
   onPrimary: string;
-  /** Logo du bandeau, ou `null`. Toujours une URL http(s). */
-  logoUrl: string | null;
   /**
-   * Le logo doit-il être posé sur une pastille claire ?
-   *
-   * Vrai dès qu'on affiche le logo COULEUR — celui d'une collectivité est
-   * dessiné pour du papier et des fonds blancs, encre foncée comprise. Sur le
-   * bandeau (souvent sombre) il serait illisible. C'est le cas le plus courant
-   * en pratique : beaucoup de collectivités ont un logo, très peu en ont une
-   * version blanche.
+   * Logo du bandeau, ou `null`. Toujours une URL http(s), toujours le logo
+   * COULEUR : le bandeau est blanc.
    */
-  logoPlate: boolean;
+  logoUrl: string | null;
 }
 
 const HEX = /^#?([0-9a-f]{6})$/i;
@@ -108,13 +104,12 @@ export function contrastRatio(a: string, b: string): number {
 }
 
 /**
- * Seuil AA « grand texte » (WCAG 2.1) : la ligne du bandeau est en 17 px gras,
- * le libellé du bouton en 15 px gras.
+ * Seuil AA « grand texte » (WCAG 2.1) : le libellé du bouton est en 15 px gras.
  *
  * ⚠️ Le critère est « le blanc SUFFIT-IL », pas « le blanc est-il le PLUS
  * contrasté ». Sur le vert du DS (`#089b59`), l'encre sombre contraste
  * davantage que le blanc (4,5 contre 3,6) — un critère de maximum ferait donc
- * basculer en texte sombre le bandeau de tous les e-mails d'Iris, alors que le
+ * basculer en texte sombre le bouton de tous les e-mails d'Iris, alors que le
  * DS Ariane prescrit du blanc sur son vert. On garde le blanc tant qu'il tient,
  * et on ne bascule que là où il ne tient plus (un jaune de charte, par exemple).
  */
@@ -136,9 +131,14 @@ export function readableInk(background: string): string {
  * tous invalides) : l'e-mail garde alors l'habillage Iris par défaut, ce qui
  * est un rendu correct — pas une panne.
  *
- * ⚠️ Une couleur SANS logo est une charte : le bandeau prend la couleur de la
- * collectivité. Un logo SANS couleur en est une aussi : le bandeau reste vert
- * et porte le logo. Les deux cas se produisent.
+ * ⚠️ Une couleur SANS logo est une charte : les bordures prennent la couleur de
+ * la collectivité. Un logo SANS couleur en est une aussi : les bordures restent
+ * vertes et le bandeau porte le logo. Les deux cas se produisent.
+ *
+ * ⚠️ `logo_white_url` est ignoré, délibérément : sur le bandeau blanc il serait
+ * invisible. Une collectivité qui ne déclare QUE la version blanche n'a donc
+ * pas de logo dans l'e-mail — mieux vaut pas de logo qu'un rectangle vide ; le
+ * nom, écrit dans le bandeau, suffit.
  */
 export function charteFromSocle(dto: SocleBrandingDto | null | undefined): EmailCharte | null {
   if (!dto || dto.configured === false) return null;
@@ -146,16 +146,8 @@ export function charteFromSocle(dto: SocleBrandingDto | null | undefined): Email
   const declared = normalizeHex(dto.primary_color);
   const primary = declared ?? EMAIL_COLORS.primary;
   const onPrimary = readableInk(primary);
-
-  const color = httpUrl(dto.logo_url);
-  const white = httpUrl(dto.logo_white_url);
-  // Le logo blanc ne va que sur un fond sombre — sur un bandeau clair il
-  // disparaîtrait purement et simplement. Le logo couleur, lui, sert de repli
-  // quand la collectivité n'a pas fourni de version blanche : c'est le cas
-  // ordinaire, et il ne doit alors PAS être posé à même le bandeau (pastille).
-  const useWhite = prefersWhiteInk(primary) && white !== null;
-  const logoUrl = useWhite ? white : color;
+  const logoUrl = httpUrl(dto.logo_url);
 
   if (!declared && !logoUrl) return null;
-  return { primary, onPrimary, logoUrl, logoPlate: logoUrl !== null && !useWhite };
+  return { primary, onPrimary, logoUrl };
 }
