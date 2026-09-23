@@ -275,9 +275,11 @@ sécurité, seulement une économie de trafic — c'est le serveur qui décide, 
   plateforme). La fonction n'a aucune `EXECUTE` cliente : pas de surface de sondage.
 - Le volet est **borné au tenant courant** (comme tout le reste de l'application) : changer de
   tenant change la cloche.
-- **Aucune purge n'est branchée** : les notifications suivent la demande (`on delete cascade`),
-  donc la purge RGPD les emporte, mais rien ne rogne les anciennes lues ni les lignes `sent`.
-  À prévoir si la volumétrie le demande.
+- **Purge à 90 jours** (cron `purge-retention-journaux`, 03:30, migration
+  `20260923140000_retention_journaux.sql`) : ne part qu'une notification dont e-mail **et**
+  push sont réglés (`sent` / `skipped` / `failed`) et qui n'est plus attendue dans la cloche
+  (lue, ou `in_app = false`). Une notification non lue reste indéfiniment. Au-delà, les
+  notifications suivent la demande (`on delete cascade`) : la purge RGPD les emporte.
 - **Le cron tourne toutes les minutes** : c'est le délai maximal d'un e-mail. Le volet, lui,
   est immédiat (temps réel). Si le secret `cron_secret_iris` du Vault n'est pas posé, l'appel
   part sans secret, la fonction répond 401 et **rien n'est envoyé** — le job est inoffensif à
