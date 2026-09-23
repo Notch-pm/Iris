@@ -57,6 +57,17 @@ export function pickDeclared(declared: unknown, field: DeclaredField): string | 
 }
 
 /**
+ * Une identité a-t-elle été DÉCLARÉE, même inexploitable (un prénom seul) ?
+ * Distingue « rien envoyé » — rien à réclamer — de « envoyé mais impossible à
+ * rattacher », qui doit se signaler par une anomalie.
+ */
+export function hasDeclaredIdentity(declared: unknown): boolean {
+  return (Object.keys(DECLARED_KEYS) as DeclaredField[]).some(
+    (field) => pickDeclared(declared, field) !== null,
+  );
+}
+
+/**
  * Civilités telles que le Socle les STOCKE (minuscules) → telles qu'on les
  * ÉCRIT. Vit ici, avec les autres cascades d'identité, parce que deux mondes en
  * ont besoin : l'écran (fiche usager, `civilityLabel`) et les courriels composés
@@ -184,7 +195,12 @@ export function contactCreatePayload(declared: unknown): Record<string, string> 
     put("first_name", pickDeclared(declared, "firstName"));
     put("civility", pickDeclared(declared, "civility"));
     put("birth_date", pickDeclared(declared, "birthDate"));
-    if (!out.last_name) return null;
+    // Le nom d'usage SUFFIT à nommer une personne — c'est la règle du Socle
+    // (`contactInvariantError` n'exige que la civilité). L'exiger en nom de
+    // naissance laissait hors du référentiel tout dépôt d'un portail qui ne
+    // demande que le nom usuel (Nora, Rosny, 2026-09-23). On ne recopie PAS le
+    // nom d'usage en `last_name` : ce serait affirmer un nom de naissance.
+    if (!out.last_name && !out.usage_name) return null;
   } else {
     put("legal_name", pickDeclared(declared, "legalName") ?? pickDeclared(declared, "displayName"));
     put("siret", pickDeclared(declared, "siret"));

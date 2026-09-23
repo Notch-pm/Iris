@@ -127,8 +127,12 @@ Points de contrat :
     l'autre. Sans identifiant fort, une fiche est créée : c'est-à-dire, peut-être, un doublon.
   - L'identité déclarée reste conservée intégralement comme pièce du dossier, y compris les
     clés que le référentiel ne connaît pas.
-  - Socle injoignable ⇒ **jamais un refus** : la demande passe, reste en `non_rapprochee`, et
-    porte l'anomalie `usager_a_creer_dans_socle`.
+  - Pour **créer** une personne, un nom suffit : nom de naissance (`nom_naissance`,
+    `last_name`…) **ou** nom d'usage seul (`nom_usuel`, `usage_name`) ; le Socle exige en
+    outre la civilité. Une structure demande sa raison sociale.
+  - Socle injoignable, fiche refusée par le Socle, ou identité impossible à rattacher (un
+    prénom seul, un courriel sans nom et sans fiche existante) ⇒ **jamais un refus** : la
+    demande passe, reste en `non_rapprochee`, et porte l'anomalie `usager_a_creer_dans_socle`.
 - **`context.external_url` et `links[].url` doivent être PUBLICS** (contrat 2.1.0). Iris rend
   ces adresses cliquables dans la fiche de la demande, sous les yeux d'un agent. Une adresse
   qui ne résout que sur votre réseau — `localhost`, `127.0.0.1`, `::1`, plages privées

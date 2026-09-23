@@ -4,6 +4,7 @@ import {
   contactCreatePayload,
   contactIdentitySnapshot,
   declaredContactType,
+  hasDeclaredIdentity,
   hasStrongMatch,
   matchIdentityFromDeclared,
   pickDeclared,
@@ -31,6 +32,33 @@ describe("pickDeclared — les trois écritures d'une même identité", () => {
     expect(ALL_DECLARED_KEYS).toContain("nom_usuel");
     expect(ALL_DECLARED_KEYS).toContain("display_name");
     expect(new Set(ALL_DECLARED_KEYS).size).toBe(ALL_DECLARED_KEYS.length);
+  });
+});
+
+describe("hasDeclaredIdentity — rien envoyé, ou envoyé mais inexploitable", () => {
+  it("reconnaît une identité même impossible à rattacher", () => {
+    expect(hasDeclaredIdentity({ prenoms: "Madeleine" })).toBe(true);
+    expect(hasDeclaredIdentity({ civilite: "madame" })).toBe(true);
+  });
+
+  it("ne voit rien dans le vide ni dans des clés hors catalogue", () => {
+    expect(hasDeclaredIdentity(null)).toBe(false);
+    expect(hasDeclaredIdentity({})).toBe(false);
+    expect(hasDeclaredIdentity({ contact_type: "personne", prenoms: "  " })).toBe(false);
+    expect(hasDeclaredIdentity({ anonymous: false, inconnu: "x" })).toBe(false);
+  });
+});
+
+describe("matchIdentityFromDeclared — un nom d'usage seul se cherche", () => {
+  it("cherche sur le nom d'usage et le courriel sans nom de naissance", () => {
+    expect(matchIdentityFromDeclared({
+      civilite: "madame", prenoms: "Madeleine", nom_usuel: "Lefevre", courriel: "m@b.fr",
+    })).toEqual({
+      contact_type: "personne",
+      usage_name: "Lefevre",
+      first_name: "Madeleine",
+      email: "m@b.fr",
+    });
   });
 });
 
@@ -117,6 +145,21 @@ describe("contactCreatePayload", () => {
     });
   });
 
+  it("crée une personne nommée par son SEUL nom d'usage (dépôt Nora, 2026-09-23)", () => {
+    // Le Socle n'exige pas de nom de naissance ; le nom d'usage n'est pas
+    // recopié en last_name, ce serait affirmer un nom de naissance.
+    expect(contactCreatePayload({
+      civilite: "madame", prenoms: "Madeleine", nom_usuel: "Lefevre",
+      courriel: "m@b.fr", contact_type: "personne",
+    })).toEqual({
+      contact_type: "personne",
+      usage_name: "Lefevre",
+      first_name: "Madeleine",
+      civility: "madame",
+      email: "m@b.fr",
+    });
+  });
+
   it("replie l'adresse libre d'un partenaire sur address_line1", () => {
     const payload = contactCreatePayload({ nom: "Durand", adresse: "10 rue des Lilas" });
     expect(payload?.address_line1).toBe("10 rue des Lilas");
@@ -132,6 +175,7 @@ describe("contactCreatePayload", () => {
   it("refuse de créer une fiche que rien ne nomme", () => {
     // Une fiche sans nom ne sert personne, et le Socle la refuserait.
     expect(contactCreatePayload({ courriel: "m@b.fr" })).toBeNull();
+    expect(contactCreatePayload({ prenoms: "Madeleine", courriel: "m@b.fr" })).toBeNull();
     expect(contactCreatePayload({ contact_type: "entreprise", siret: "12345678900012" })).toBeNull();
     expect(contactCreatePayload({})).toBeNull();
   });

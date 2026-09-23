@@ -39,6 +39,7 @@ import {
 import {
   contactCreatePayload,
   contactIdentitySnapshot,
+  hasDeclaredIdentity,
   hasStrongMatch,
   matchIdentityFromDeclared,
 } from "../_shared/identity/declared.ts";
@@ -143,12 +144,22 @@ async function resolveRequester(
 
   const criteria = matchIdentityFromDeclared(declared);
   const payload = contactCreatePayload(declared);
-  if (!criteria || !payload) {
-    // Rien de nommable : on ne crée pas une fiche vide dans le référentiel.
-    return { socleContactId: null, declared, identityStatus: "non_rapprochee", anomaly: null };
+  if (!criteria) {
+    // Rien de cherchable. Une identité VIDE ne réclame rien ; une identité
+    // déclarée mais inexploitable (un prénom seul) se SIGNALE — sans quoi la
+    // demande reste orpheline sans que personne ne le sache.
+    return {
+      socleContactId: null,
+      declared,
+      identityStatus: "non_rapprochee",
+      anomaly: hasDeclaredIdentity(declared) ? "usager_a_creer_dans_socle" : null,
+    };
   }
 
-  // 1. Rapprochement — réutilisation SEULEMENT sur identifiant fort.
+  // 1. Rapprochement — réutilisation SEULEMENT sur identifiant fort. Il se
+  // tente dès qu'il y a de quoi chercher, même si la fiche ne pourrait pas être
+  // créée : un courriel seul retrouve un usager connu (jusqu'au 2026-09-23, un
+  // contenu de création vide court-circuitait aussi la recherche).
   const matchRes = await socleContactsFetch("/v1/contacts/match", socleRootOrgId, { identity: criteria });
   if (matchRes?.ok) {
     const body = await matchRes.json().catch(() => null);
@@ -167,7 +178,8 @@ async function resolveRequester(
   }
 
   // 2. Création — la décision : sans correspondance, c'est quelqu'un de nouveau.
-  const createRes = await socleContactsFetch("/v1/contacts", socleRootOrgId, payload);
+  // Pas de quoi nommer la fiche (un courriel seul) : pas d'appel, une anomalie.
+  const createRes = payload ? await socleContactsFetch("/v1/contacts", socleRootOrgId, payload) : null;
   if (createRes?.ok) {
     const contact = await createRes.json().catch(() => null);
     if (contact && typeof contact.id === "string") {
@@ -180,10 +192,17 @@ async function resolveRequester(
     }
   }
 
-  // 3. Socle muet ou refus : jamais un refus d'ingestion, une anomalie.
+  // 3. Socle muet, refus, ou rien pour nommer la fiche : jamais un refus
+  // d'ingestion, une anomalie. Le motif du Socle (message de validation, sans
+  // donnée d'usager) est journalisé : c'est lui qui dit quoi corriger.
+  const createDetail = !payload
+    ? "sans nom"
+    : createRes
+    ? `${createRes.status} ${(await createRes.text().catch(() => "")).slice(0, 300)}`
+    : "réseau";
   console.error(
     `requests-api: usager non créé dans le Socle (match=${matchRes?.status ?? "réseau"}, ` +
-      `create=${createRes?.status ?? "réseau"})`,
+      `create=${createDetail})`,
   );
   return { socleContactId: null, declared, identityStatus: "non_rapprochee", anomaly: "usager_a_creer_dans_socle" };
 }
