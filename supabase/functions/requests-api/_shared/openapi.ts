@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.4.0";
+export const CONTRACT_VERSION = "2.5.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -365,7 +365,8 @@ export function buildOpenApi(baseUrl: string) {
         "n'avait jamais été mis en service. Les routes restent sous `/v1`. **2.3.0 (2026-09)** :",
         "clé plateforme et en-tête `X-Socle-Root-Organization-Id` — ajout additif. **2.4.0",
         "(2026-09)** : filtre `socle_contact_id` sur `GET /v1/requests` et scope",
-        "`requests:read_tenant` (les demandes d'un usager, toutes sources) — ajout additif.",
+        "`requests:read_tenant` (les demandes d'un usager, toutes sources) — ajout additif. **2.5.0",
+        "(2026-09)** : `GET /v1/requests/{id}/timeline` (scope `requests:read_tenant`) — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -612,6 +613,46 @@ export function buildOpenApi(baseUrl: string) {
               type: "object", properties: { request: { $ref: "#/components/schemas/Request" } },
             } } } },
             "404": err("Hors périmètre ou inexistante."),
+          },
+        },
+      },
+      "/v1/requests/{id}/timeline": {
+        get: {
+          tags: ["Demandes"],
+          summary: "Fil d'une demande (applications de la gamme)",
+          description:
+            "Scopes requests:read ET requests:read_tenant — réservé aux applications de la gamme ; " +
+            "un partenaire reçoit 403. Toutes sources du tenant de la clé ; 404 hors tenant (l'existence n'est jamais révélée). " +
+            "Rend la demande (liste blanche habituelle + `body`), son activité (`events` : type, date, auteur nommé, " +
+            "détail d'affichage filtré par type), ses NOTES INTERNES (`notes`) et ses interventions (`interventions`). " +
+            "Jamais d'e-mail ni d'identifiant d'agent : les personnes sont nommées.",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: {
+            "200": { description: "Le fil.", content: { "application/json": { schema: {
+              type: "object",
+              properties: {
+                request: { allOf: [{ $ref: "#/components/schemas/Request" }, { type: "object", properties: { body: { type: ["string", "null"] } } }] },
+                events: { type: "array", items: { type: "object", properties: {
+                  type: { type: "string" }, at: { type: "string", format: "date-time" },
+                  by: { type: ["string", "null"] }, detail: { type: "object", additionalProperties: true },
+                } } },
+                notes: { type: "array", items: { type: "object", properties: {
+                  body: { type: "string" }, at: { type: "string", format: "date-time" }, by: { type: ["string", "null"] },
+                } } },
+                interventions: { type: "array", items: { type: "object", properties: {
+                  status: { type: "string", enum: ["demandee", "realisee"] },
+                  intervenant: { type: ["string", "null"] },
+                  requested_at: { type: ["string", "null"], format: "date-time" },
+                  requested_for: { type: ["string", "null"], format: "date" },
+                  request_comment: { type: ["string", "null"] },
+                  completed_on: { type: ["string", "null"], format: "date" },
+                  completion_comment: { type: ["string", "null"] },
+                } } },
+              },
+            } } } },
+            "401": err("Authentification requise."),
+            "403": err("Scopes requests:read et requests:read_tenant requis."),
+            "404": err("Ressource introuvable."),
           },
         },
       },

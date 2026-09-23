@@ -21,7 +21,8 @@ import {
 } from "./_shared/validation.ts";
 import { REQUEST_SELECT, serializeRequest } from "./_shared/serializers.ts";
 import { PERMALINK_ANOMALY, sanitizePermalinks } from "./_shared/permalink.ts";
-import { parseListQuery } from "./_shared/list-query.ts";
+import { parseListQuery, READ_TENANT_SCOPE } from "./_shared/list-query.ts";
+import { serializeTimeline, TIMELINE_NOTE_KIND, timelineUserIds, userDisplayName } from "./_shared/timeline.ts";
 import { buildOpenApi, MAX_UPLOAD_BYTES_DEFAULT, publicBaseUrl } from "./_shared/openapi.ts";
 import { httpStatusFor } from "../_shared/files/inspect.ts";
 import { readSingleFileForm } from "../_shared/files/multipart.ts";
@@ -816,6 +817,69 @@ async function handleList(auth: AuthContext, url: URL): Promise<Response> {
   return json(200, { requests: (data ?? []).map((r) => serializeRequest(r, APP_URL)) });
 }
 
+/**
+ * Fil d'une demande (contrat 2.5.0) — scope requests:read_tenant. Toutes
+ * sources du tenant de la clé ; hors tenant, 404 sans révéler l'existence.
+ * Sort le texte, l'activité, les notes internes et les interventions, par la
+ * liste blanche de `_shared/timeline.ts`.
+ */
+async function handleTimeline(auth: AuthContext, id: string): Promise<Response> {
+  const { data: row, error } = await supabase
+    .from("requests")
+    .select(`${REQUEST_SELECT}, body`)
+    .eq("id", id)
+    .eq("organization_id", auth.organizationId)
+    .maybeSingle();
+  if (error) return fail("internal_error", "Erreur serveur.");
+  if (!row) return fail("not_found", "Ressource introuvable.");
+
+  const [events, notes, interventions] = await Promise.all([
+    supabase
+      .from("request_events")
+      .select("event_type, payload, created_by, created_at")
+      .eq("organization_id", auth.organizationId)
+      .eq("request_id", id)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("request_messages")
+      .select("kind, body, author_id, created_at")
+      .eq("organization_id", auth.organizationId)
+      .eq("request_id", id)
+      .eq("kind", TIMELINE_NOTE_KIND)
+      .order("created_at", { ascending: true }),
+    supabase
+      .from("request_interventions")
+      .select("status, intervenant_id, requested_at, requested_for, request_comment, completed_on, completion_comment")
+      .eq("organization_id", auth.organizationId)
+      .eq("request_id", id)
+      .order("requested_at", { ascending: true }),
+  ]);
+  if (events.error || notes.error || interventions.error) return fail("internal_error", "Erreur serveur.");
+
+  const ids = timelineUserIds(events.data ?? [], notes.data ?? [], interventions.data ?? []);
+  const names = new Map<string, string>();
+  if (ids.length > 0) {
+    const { data: users, error: usersError } = await supabase
+      .from("users")
+      .select("id, first_name, last_name")
+      .in("id", ids);
+    if (usersError) return fail("internal_error", "Erreur serveur.");
+    for (const u of users ?? []) {
+      const name = userDisplayName(u);
+      if (name) names.set(u.id, name);
+    }
+  }
+
+  return json(200, serializeTimeline({
+    request: row,
+    events: events.data ?? [],
+    notes: notes.data ?? [],
+    interventions: interventions.data ?? [],
+    names,
+    appUrl: APP_URL,
+  }));
+}
+
 async function handleAddAttachments(auth: AuthContext, id: string, req: Request): Promise<Response> {
   const body = await req.json().catch(() => null);
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
@@ -880,6 +944,7 @@ Deno.serve(async (req) => {
 
   const idMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})$/i);
   const attachMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/attachments$/i);
+  const timelineMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/timeline$/i);
 
   if (path === UPLOAD_PATH && method === "POST") {
     response = requireScope("requests:write") ?? await handleUpload(auth, req);
@@ -892,10 +957,13 @@ Deno.serve(async (req) => {
   } else if (idMatch && method === "GET" && UUID_RE.test(idMatch[1])) {
     requestId = idMatch[1];
     response = requireScope("requests:read") ?? await handleGet(auth, requestId);
+  } else if (timelineMatch && method === "GET" && UUID_RE.test(timelineMatch[1])) {
+    requestId = timelineMatch[1];
+    response = requireScope("requests:read") ?? requireScope(READ_TENANT_SCOPE) ?? await handleTimeline(auth, requestId);
   } else if (attachMatch && method === "POST" && UUID_RE.test(attachMatch[1])) {
     requestId = attachMatch[1];
     response = requireScope("requests:write") ?? await handleAddAttachments(auth, requestId, req);
-  } else if (path === "/v1/requests" || idMatch || attachMatch) {
+  } else if (path === "/v1/requests" || idMatch || attachMatch || timelineMatch) {
     response = fail("method_not_allowed", "Méthode non prévue sur cette route.");
   } else {
     response = fail("not_found", "Ressource introuvable.");

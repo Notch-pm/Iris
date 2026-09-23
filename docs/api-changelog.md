@@ -9,6 +9,25 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.5.0 — 2026-09-23 — le fil d'une demande, pour les applications de la gamme
+
+**Additif.** Rien ne change pour une clé sans `requests:read_tenant`.
+
+### Ce qui change
+
+- **Nouvelle route `GET /v1/requests/{id}/timeline`**, scopes `requests:read` **et**
+  `requests:read_tenant` (403 sinon). Toutes sources du tenant de la clé, 404 hors tenant.
+- Elle rend la demande (liste blanche habituelle **+ `body`**), son **activité** (`events`), ses
+  **notes internes** (`notes`) et ses **interventions** (`interventions` : état, intervenant,
+  dates, commentaires). Personnes nommées, jamais d'e-mail ni d'identifiant d'agent ; détails
+  d'événements filtrés par type — un type nouveau sort sans détail.
+- **Les notes internes ne sortent que par cette route** : la liste blanche de
+  `GET /v1/requests` et `GET /v1/requests/{id}` est inchangée, et un partenaire tiers n'obtient
+  pas `requests:read_tenant`. Premier consommateur : Clara (détail d'une demande depuis la fiche
+  usager et l'espace élu).
+
+---
+
 ## 2.4.0 — 2026-09-23 — les demandes d'un usager, toutes sources confondues
 
 **Additif.** Aucune route ne disparaît, aucun comportement existant ne change.

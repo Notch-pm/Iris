@@ -14,7 +14,7 @@ simples *sources enregistrées*.
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
 | Documentation lisible | `https://<app-iris>/api-doc` — le même contrat rendu par Redoc, consultable **sans compte** (motif `/api-doc` du Socle) |
-| Version | `2.4.0` (2026-09-23 : filtre `socle_contact_id` et scope **`requests:read_tenant`** — les demandes d'un usager, toutes sources) — précédemment `2.3.0` (2026-09-22 : **clé plateforme** et en-tête `X-Socle-Root-Organization-Id`), `2.2.0` (2026-09-20 : **consentements RGPD** facultatifs dans l'enveloppe), `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
+| Version | `2.5.0` (2026-09-23 : fil d'une demande `GET /v1/requests/{id}/timeline`, scope `requests:read_tenant`) — précédemment `2.4.0` (2026-09-23 : filtre `socle_contact_id` et scope **`requests:read_tenant`** — les demandes d'un usager, toutes sources) — précédemment `2.3.0` (2026-09-22 : **clé plateforme** et en-tête `X-Socle-Root-Organization-Id`), `2.2.0` (2026-09-20 : **consentements RGPD** facultatifs dans l'enveloppe), `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -276,6 +276,13 @@ qu'il faut corriger, ou l'activation dans le Socle. Les pièces déjà déposée
   reste celle de votre source : pas d'aspiration du tenant. Même liste blanche de champs
   (ni notes internes, ni `form_data`) ; `GET /v1/requests/{id}` reste limité à votre source.
   Un scope réservé aux applications de la gamme : un partenaire tiers ne le reçoit pas.
+- `GET /v1/requests/{id}/timeline` — **le fil d'une demande** (2.5.0), scopes `requests:read`
+  **et** `requests:read_tenant`. Toutes sources du tenant. Rend le texte de la demande
+  (`body`), l'activité, les **notes internes** et les interventions, par une liste blanche
+  dédiée (`_shared/timeline.ts`) : détails d'événements filtrés par type, personnes **nommées**
+  (jamais d'e-mail ni d'identifiant d'agent). Premier consommateur : Clara (détail d'une
+  demande depuis la fiche usager et l'espace élu). Les notes internes ne sortent **que** par
+  cette route, donc que vers une application de la gamme : un partenaire reçoit 403.
 
 ## 5. Traçabilité
 
