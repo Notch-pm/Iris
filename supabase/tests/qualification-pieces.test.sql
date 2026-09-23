@@ -147,6 +147,15 @@ begin
     (proc, orgA, s_root, 'Demande de subvention'),
     (proc2, orgB, s_root2, 'Démarche B');
 
+  -- ⚠️ Le miroir des ACTIVATIONS (opt-in strict) : sans lui, la garde t18
+  -- `requests_require_procedure_active` (2026-08-31) refuse tout dépôt — y
+  -- compris ici, en contexte de service. Une démarche est activée POUR
+  -- l'organisme qui portera la demande, donc pour la Voirie et pour la
+  -- Mairie B, jamais « pour le tenant ».
+  insert into public.socle_procedure_organizations (organization_id, socle_procedure_id, socle_org_id) values
+    (orgA, proc, s_voirie),
+    (orgB, proc2, s_root2);
+
   insert into public.permission_profiles (organization_id, name, is_admin)
     values (orgA, 'Instructeur voirie', false) returning id into p_id;
   insert into public.permission_profile_organizations (profile_id, socle_org_id) values (p_id, s_voirie);

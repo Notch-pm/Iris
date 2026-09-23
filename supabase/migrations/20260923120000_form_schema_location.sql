@@ -9,7 +9,7 @@
 -- t17 cesserait de bloquer `resolue_positive` sur une pièce obligatoire
 -- manquante, pour toute démarche portant un lieu d'intervention. Le test Q1h
 -- (qualification-pieces.test.sql) enshrine ce comportement pour un type
--- inconnu ; le cas Q1l vérifie qu'un `location` ne l'est plus.
+-- inconnu ; le cas Q1-location vérifie qu'un `location` ne l'est plus.
 --
 -- Rien d'autre ne change : aucune fonction du jumeau ne lit la VALEUR d'un
 -- champ qui n'est pas une pièce. Le miroir TypeScript est
