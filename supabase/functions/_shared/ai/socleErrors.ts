@@ -23,6 +23,14 @@
  * jumeau que la centralisation vient de supprimer — et un jumeau qui dérive
  * ferait mentir la date.
  *
+ * ⚠️ Depuis ai-api 1.3.0 (2026-09-22), ce refus peut arriver AVANT que le
+ * plafond commun de la collectivité soit atteint : le Socle peut réserver une
+ * part de ce plafond à une autre application, et Iris est borné au reste. Le
+ * message du Socle est donc la SEULE information à relayer — jamais « le
+ * plafond de la collectivité est atteint », jamais une comparaison avec un
+ * plafond lu ailleurs. Le geste de l'agent ne change pas : attendre le
+ * renouvellement que le message nomme.
+ *
  * Module PUR, testé.
  */
 
@@ -84,7 +92,10 @@ export function mapSocleFailure(status: number | null, body: unknown): MappedFai
 
   if (status === 429) {
     // La seule phrase relayée mot pour mot : elle nomme la date de
-    // renouvellement, que seul le Socle connaît.
+    // renouvellement, que seul le Socle connaît. Le repli, lui, parle du
+    // plafond de l'ASSISTANT — pas de celui de la collectivité, qui peut ne
+    // pas être atteint quand Iris est refusé (part réservée à une autre
+    // application, ai-api 1.3.0).
     const message = socleMessage(body);
     return {
       status: 429,

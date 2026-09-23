@@ -404,6 +404,31 @@ describe("sanitizeAiUsage", () => {
     expect(sanitizeAiUsage(JSON.parse(JSON.stringify(once)))).toEqual(once);
   });
 
+  // ai-api 1.3.0 (2026-09-22) : quand le Socle réserve une part du plafond
+  // commun à une autre application, `limit` est celui d'IRIS (le commun moins
+  // la part) et `by_consumer` reste le journal de TOUTE la collectivité. Le
+  // sanitiseur transmet l'un et l'autre tels quels — il ne « corrige » pas un
+  // journal dont la somme dépasse notre plafond, et le `remaining_tokens` du
+  // Socle vaut bien limit − used − reserved sur les chiffres transmis.
+  it("un plafond inférieur au plafond commun passe tel quel, et le journal n'est pas borné dessus", () => {
+    const shared = {
+      ...raw,
+      limit: 600000,
+      used_tokens: 150000,
+      reserved_tokens: 50000,
+      remaining_tokens: 400000,
+      by_consumer: [
+        { consumer: "nora", feature: "assistant-portail", calls: 900, tokens: 1200000 },
+        { consumer: "iris", feature: "assistant-instruction", calls: 40, tokens: 150000 },
+      ],
+    };
+    const out = sanitizeAiUsage(shared);
+    expect(out.limit).toBe(600000);
+    expect((out.limit ?? 0) - out.used_tokens - out.reserved_tokens).toBe(shared.remaining_tokens);
+    expect(out.by_consumer.map((r) => r.tokens)).toEqual([1200000, 150000]);
+    expect(out).not.toHaveProperty("remaining_tokens");
+  });
+
   it("un plafond nul, négatif ou absent vaut aucun plafond", () => {
     expect(sanitizeAiUsage({ ...raw, limit: 0 }).limit).toBeNull();
     expect(sanitizeAiUsage({ ...raw, limit: -1 }).limit).toBeNull();

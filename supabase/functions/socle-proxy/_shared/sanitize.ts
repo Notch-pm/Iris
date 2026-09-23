@@ -412,7 +412,18 @@ export function filterContactListQuery(
 }
 
 /**
- * Consommation IA d'une collectivité, telle que la rend `ai-api /v1/usage`.
+ * Consommation IA, telle que la rend `ai-api /v1/usage` à l'application qui
+ * l'appelle — donc à Iris.
+ *
+ * ⚠️ SÉMANTIQUE DES CHIFFRES (ai-api 1.3.0, 2026-09-22) : le Socle peut
+ * réserver une part du plafond commun de la collectivité à une autre
+ * application (`nora`). `limit` est alors NOTRE plafond — le commun moins les
+ * parts des autres, stable dans le mois —, `used_tokens` et `reserved_tokens`
+ * ce qu'Iris (et les autres applications sans part) y ont engagé. Les mêmes
+ * chiffres sont rendus par le `quota` d'un appel accepté et par celui du 429.
+ * `by_consumer`, lui, reste le journal de TOUTE la collectivité, parts
+ * comprises : sa somme ne se compare jamais à `limit`. Sans part réservée,
+ * rien ne change par rapport aux chiffres d'avant.
  *
  * ⚠️ LES NOMS DE CHAMPS SONT CEUX DU SOCLE, à la lettre — même règle que
  * `knowledge.ts`, et pour la même raison : la sortie est un sous-ensemble
@@ -428,6 +439,9 @@ export function filterContactListQuery(
  *    Iris les recalcule avec `quotaView`, qui dessine aussi la jauge : les
  *    transmettre offrirait deux sources pour un même nombre, donc une
  *    occasion de diverger. Le Socle possède les FAITS, Iris la présentation.
+ *    Le contrat 1.3.0 garantit `remaining_tokens = limit − used − reserved`
+ *    sur les chiffres de NOTRE application : la dérivation reste exacte,
+ *    même quand une part est réservée à une autre.
  *
  * Ce qui est délibérément CONSERVÉ : `renews_at`. La date de renouvellement
  * appartient au Socle, qui possède la période — c'est tout l'objet de la

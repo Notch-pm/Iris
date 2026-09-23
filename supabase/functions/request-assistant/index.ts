@@ -6,8 +6,10 @@
 //     d'instruction. Droit exigé : **INSTRUCTION** sur le couple de la demande
 //     (organisation porteuse Socle, démarche). Ce n'est pas une question de
 //     confidentialité — un consultant peut déjà lire tout ce qui compose le
-//     prompt — mais de BUDGET : chaque question mord sur le plafond du tenant,
-//     et la consultation est une lecture stricte, « aucune action ».
+//     prompt — mais de BUDGET : chaque question mord sur le plafond IA
+//     d'Iris pour la collectivité (le plafond commun moins les parts que le
+//     Socle réserve à d'autres applications, ai-api 1.3.0), et la
+//     consultation est une lecture stricte, « aucune action ».
 //
 //   • `{ organization_id, socle_procedure_id, messages }` — MODE DÉMARCHE, au
 //     guichet, où AUCUNE demande n'existe encore. L'assistant ne connaît alors
@@ -278,7 +280,9 @@ async function askSocle(
 
   // Le `usage` et le `quota` de la réponse ne sont PAS relus ici : le journal
   // et le compteur du Socle font foi, et une seconde comptabilité côté Iris ne
-  // pourrait que diverger. Seule la réponse nous intéresse.
+  // pourrait que diverger. Seule la réponse nous intéresse. (Depuis ai-api
+  // 1.3.0, ce `quota` serait celui d'Iris — même sémantique que `/v1/usage`,
+  // lu par l'écran Paramètres ; rien à en faire ici.)
   const answer = isRecord(body) ? (body as { answer?: unknown }).answer : null;
   if (typeof answer !== "string" || answer.trim() === "") {
     console.error("request-assistant: réponse du guichet IA vide ou inattendue");
@@ -425,7 +429,10 @@ Deno.serve(async (req) => {
 
   // ⚠️ AUCUN PRÉ-CONTRÔLE DE PLAFOND ICI. Iris ne tient plus de compteur : il
   // n'a donc rien à consulter, et surtout rien qui puisse diverger du seul
-  // compteur qui fasse foi. Le refus arrive du Socle, en 429, avec sa date.
+  // compteur qui fasse foi. Le refus arrive du Socle, en 429, avec sa date —
+  // et il peut tomber AVANT le plafond commun de la collectivité, quand une
+  // part en est réservée à une autre application (ai-api 1.3.0) : seul le
+  // message du Socle dit où en est Iris.
 
   // ---- Socle : la base de connaissances COMPLÈTE ----------------------------
   const { data: org } = await supabase

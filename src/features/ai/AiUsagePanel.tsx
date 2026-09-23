@@ -5,12 +5,24 @@
 // paramètre métier délégué aux collectivités : l'écran le dit explicitement
 // plutôt que de laisser l'administrateur chercher un bouton qui n'existe pas.
 //
-// ⚠️ DEPUIS LE 2026-08-29, LE BUDGET N'EST PLUS CELUI D'IRIS. Il appartient à
+// ⚠️ DEPUIS LE 2026-08-29, LE BUDGET N'EST PLUS TENU PAR IRIS. Il appartient à
 // la collectivité et vaut pour toute la gamme : Iris, Clara et les suivants
-// puisent au même seau. L'écran doit le dire, sans quoi un administrateur
-// lirait « il me reste de quoi tenir » en ignorant ce qu'un autre produit
-// consomme au même moment. C'est aussi pourquoi la répartition par
-// application est affichée : elle est la seule réponse à « qui dépense ? ».
+// puisent au même seau.
+//
+// ⚠️ DEPUIS LE 2026-09-22 (ai-api 1.3.0), LES CHIFFRES DE LA JAUGE SONT CEUX
+// D'IRIS. Le super administrateur du Socle peut RÉSERVER une part du plafond
+// commun à une application (l'assistant du portail, `nora`) ; les applications
+// sans part — nous — se partagent le reste et y sont bornées. Ce que le Socle
+// rend à Iris (`limit`, `used_tokens`, `reserved_tokens`) est donc « notre
+// plafond » et « ce que nous y avons engagé » : le plafond commun moins les
+// parts des autres, et la consommation hors de ces parts. Tant qu'aucune part
+// n'est réservée, ces chiffres sont ceux du plafond commun, comme avant.
+// L'écran le dit tel quel : « consommé par Iris / plafond d'Iris ».
+//
+// La répartition par application (`by_consumer`), elle, reste le journal de
+// TOUTE la collectivité, parts comprises — c'est la seule réponse à « qui
+// dépense ? ». ⚠️ Ne jamais l'additionner pour la comparer au plafond de la
+// jauge : les deux ne couvrent pas le même périmètre.
 
 import { Loader2 } from "lucide-react";
 import { Surface, SurfaceHead } from "@/components/ui/surface";
@@ -62,12 +74,15 @@ export function AiUsagePanel({ orgId }: { orgId: string }) {
         <div className="flex flex-col gap-3">
           {data.view.unlimited ? (
             <p className="text-sm text-muted-foreground">
-              Aucun plafond configuré pour cette collectivité — consommation illimitée.
+              Aucun plafond configuré pour cette collectivité — l'assistant d'Iris n'est
+              pas borné ce mois-ci.
             </p>
           ) : (
             <>
               <div className="flex flex-wrap items-baseline justify-between gap-2">
-                <span className="text-sm text-muted-foreground">Jetons engagés ce mois</span>
+                <span className="text-sm text-muted-foreground">
+                  Jetons engagés par Iris ce mois, sur votre plafond
+                </span>
                 <span className="text-sm font-semibold tabular-nums">
                   <span className={TEXT_TONE[data.view.tone]}>
                     {formatTokens(data.view.engaged)}
@@ -82,7 +97,7 @@ export function AiUsagePanel({ orgId }: { orgId: string }) {
                 aria-valuenow={data.view.percent}
                 aria-valuemin={0}
                 aria-valuemax={100}
-                aria-label="Consommation de jetons IA"
+                aria-label="Consommation de jetons IA d'Iris sur son plafond"
                 className="h-2 w-full overflow-hidden rounded-full bg-muted"
               >
                 <span
@@ -92,9 +107,10 @@ export function AiUsagePanel({ orgId }: { orgId: string }) {
                 />
               </div>
               <p className="text-xs text-muted-foreground">
-                {formatTokens(data.view.remaining ?? 0)} jetons restants
+                {formatTokens(data.view.remaining ?? 0)} jetons : ce qu'Iris peut encore
+                consommer ce mois-ci
                 {data.view.reserved > 0
-                  ? ` · dont ${formatTokens(data.view.reserved)} en cours de traitement`
+                  ? ` · ${formatTokens(data.view.reserved)} en cours de traitement`
                   : ""}
               </p>
             </>
@@ -103,14 +119,14 @@ export function AiUsagePanel({ orgId }: { orgId: string }) {
           {/* La consommation reste affichée même sans plafond : elle a bien eu lieu. */}
           {data.view.unlimited && data.view.used > 0 ? (
             <p className="text-xs text-muted-foreground">
-              {formatTokens(data.view.used)} jetons consommés ce mois.
+              {formatTokens(data.view.used)} jetons consommés par Iris ce mois.
             </p>
           ) : null}
 
           {data.byConsumer.length > 0 ? (
             <div className="border-t border-border pt-3">
               <p className="mb-2 text-xs font-semibold text-muted-foreground">
-                Par application
+                Par application — toute la collectivité
               </p>
               <ul className="flex flex-col gap-1">
                 {data.byConsumer.map((row, i) => (
@@ -135,10 +151,11 @@ export function AiUsagePanel({ orgId }: { orgId: string }) {
           ) : null}
 
           <p className="border-t border-border pt-3 text-xs leading-relaxed text-muted-foreground">
-            Ce budget est celui de la <strong>collectivité</strong>, toutes les applications
-            Edilumen confondues. Il est fixé par l'éditeur et ne se règle pas ici. Un
-            dépassement ne bloque que l'assistant : l'instruction des demandes continue
-            normalement.
+            Le plafond affiché est <strong>celui d'Iris</strong> : la part du budget IA
+            mensuel de la collectivité que l'éditeur ne réserve pas à une autre application
+            Edilumen. La répartition ci-dessus couvre, elle, toute la collectivité. Ce budget
+            est fixé par l'éditeur et ne se règle pas ici. Un dépassement ne bloque que
+            l'assistant : l'instruction des demandes continue normalement.
           </p>
         </div>
       ) : null}

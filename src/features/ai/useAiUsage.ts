@@ -5,6 +5,12 @@
 // la gamme, et Iris n'en est qu'un des consommateurs. Il ne tient donc plus de
 // comptabilité — il demande la sienne.
 //
+// « La sienne » est à prendre au mot depuis ai-api 1.3.0 (2026-09-22) : le
+// Socle peut réserver une part du plafond commun à une autre application, et
+// ce qu'il rend ici (`limit`, `used_tokens`, `reserved_tokens`) est le plafond
+// et l'engagé D'IRIS — le commun moins les parts des autres. Seul
+// `by_consumer` reste la ventilation de toute la collectivité.
+//
 // ⚠️ CE CHANGEMENT DE SOURCE EST AUSSI UN CHANGEMENT DE GARDE. Tant que la
 // lecture visait les tables d'Iris, la policy `is_platform_admin() or
 // is_org_admin_anywhere(...)` la gardait toute seule. Passée par `socle-proxy`,

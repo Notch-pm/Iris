@@ -27,8 +27,20 @@ export interface AiUsageSummary {
   period: string;
   /** Date ISO rendue par le Socle — Iris ne fait que la mettre en français. */
   renewsAt: string | null;
+  /**
+   * La jauge d'IRIS (ai-api 1.3.0, 2026-09-22) : `limit` est notre plafond —
+   * le plafond commun moins les parts que le Socle réserve à d'autres
+   * applications —, `used`/`reserved` ce que nous y avons engagé, et
+   * `remaining = limit − used − reserved` exactement ce que la prochaine
+   * réservation laissera passer. Sans part réservée, ce sont les chiffres du
+   * plafond commun, comme avant.
+   */
   view: QuotaView;
-  /** Le plafond est commun ; le journal, lui, sait qui a dépensé. */
+  /**
+   * Le journal de TOUTE la collectivité, parts comprises — il sait qui a
+   * dépensé. ⚠️ Sa somme n'a rien à voir avec `view.limit` : ne jamais les
+   * comparer.
+   */
   byConsumer: ConsumerUsage[];
 }
 
