@@ -169,8 +169,14 @@ const envelopeSchema = {
         "`postal_code`, `city`. Les clés inconnues sont conservées telles quelles dans le " +
         "dossier, sans être envoyées au référentiel.",
 
-        "Si le Socle est injoignable, **la demande est acceptée quand même** : elle reste en " +
-        "`identity_status: \"non_rapprochee\"` et porte l'anomalie `usager_a_creer_dans_socle`.",
+        "Pour CRÉER une personne, un nom suffit : nom de naissance **ou** nom d'usage seul " +
+        "(`usage_name`/`nom_usuel`) ; le Socle exige en outre la `civility`. Une structure " +
+        "demande sa `legal_name`.",
+
+        "Si le Socle est injoignable, s'il refuse la fiche, ou si l'identité ne permet pas de " +
+        "la nommer (un prénom seul, un courriel sans nom et sans fiche existante), **la demande " +
+        "est acceptée quand même** : elle reste en `identity_status: \"non_rapprochee\"` et " +
+        "porte l'anomalie `usager_a_creer_dans_socle`.",
       ].join("\n\n"),
     },
     form_data: {

@@ -73,8 +73,11 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   une nouvelle personne : on la CRÉE dans le Socle** (décision PO 2026-08-26) — parcours agent
   comme ingestion partenaire. À l'ingestion, une fiche existante n'est réutilisée que sur un
   **identifiant fort** (courriel, téléphone, SIRET) : personne n'y arbitre les homonymes.
-  « Sans rapprochement » ne subsiste que comme sortie de secours sur panne avérée du
-  référentiel, avec l'anomalie `usager_a_creer_dans_socle`. Iris et ne conserve par demande que le
+  Un **nom d'usage seul suffit** à créer une personne (règle du Socle, qui n'exige que la
+  civilité — un dépôt Nora sans nom de naissance restait orphelin jusqu'au 2026-09-23).
+  « Sans rapprochement » ne subsiste que comme sortie de secours — panne ou refus du
+  référentiel, identité déclarée impossible à nommer — et **jamais en silence** : anomalie
+  `usager_a_creer_dans_socle`. Iris ne conserve par demande que le
   `requester_snapshot` (identité retenue au dépôt, immuable). *Immuable* ne veut pas dire
   *seul affiché* : la fiche d'une demande relit la fiche Socle et montre l'identité du jour,
   le dépôt et leurs écarts restant lisibles à côté (`requesterView`) — et le destinataire d'un

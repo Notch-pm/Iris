@@ -2,7 +2,7 @@
 
 > **Public** : équipes intégrant un émetteur de demandes vers Iris (futur connecteur Clara,
 > portail citoyen, partenaire tiers) · **Question traitée** : comment s'authentifier et créer
-> des demandes dans Iris, sans rien modifier côté Iris ? · **Dernière mise à jour** : 2026-09-08
+> des demandes dans Iris, sans rien modifier côté Iris ? · **Dernière mise à jour** : 2026-09-23
 
 Iris expose une **API d'ingestion générique et multi-source** : la même enveloppe, le même
 contrat et la même authentification pour toute application autorisée. Il n'existe **aucune

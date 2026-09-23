@@ -9,6 +9,25 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## Note du 2026-09-23 — un nom d'usage seul fait entrer l'usager au référentiel (contrat inchangé)
+
+**Aucun champ, aucune route, aucun code d'erreur ne change.** Ce qui change, c'est ce qu'Iris
+**fait** d'un `requester` sans `socle_contact_id` :
+
+- **Un nom d'usage seul (`usage_name`/`nom_usuel`) suffit désormais à créer la fiche** d'une
+  personne au Socle. Jusqu'ici Iris exigeait un nom de naissance, plus strict que le Socle
+  lui-même (qui n'exige que la civilité) : un portail qui ne demande que le nom usuel déposait
+  des demandes que rien ne rattachait au référentiel — constaté sur un dépôt Nora de Rosny.
+- **Le rapprochement par identifiant fort se tente dès qu'il y a de quoi chercher**, même quand
+  la fiche ne pourrait pas être créée : un courriel seul retrouve un usager déjà connu.
+- **Une identité déclarée mais impossible à rattacher n'est plus silencieuse** : elle porte
+  l'anomalie `usager_a_creer_dans_socle`, comme une panne du référentiel ou un refus du Socle.
+
+Rien à faire côté émetteur. Continuez d'envoyer la civilité et un identifiant fort : sans
+civilité, le Socle refuse la fiche d'une personne.
+
+---
+
 ## 2.5.0 — 2026-09-23 — le fil d'une demande, pour les applications de la gamme
 
 **Additif.** Rien ne change pour une clé sans `requests:read_tenant`.
