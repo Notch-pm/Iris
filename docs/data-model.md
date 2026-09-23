@@ -464,7 +464,7 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `X-Socle-Root-Organization-Id`. Invisible aux administrateurs de collectivité
   (`is_org_admin(NULL)` n'est vrai que pour la plateforme).
 - **`integration_credentials`** — clés d'une source : `key_hash` SHA-256 UNIQUE (jamais en
-  clair), `key_prefix` d'affichage, `scopes` CHECK `⊆ {requests:write, requests:read}`,
+  clair), `key_prefix` d'affichage, `scopes` CHECK `⊆ {requests:write, requests:read, requests:read_tenant}`,
   `expires_at` NOT NULL, `revoked_at`, `last_used_at`. Plusieurs clés actives par source
   (rotation double clé). RLS : plateforme uniquement (motif api_keys Socle).
 - **`integration_api_logs`** — journal d'audit **append-only** des appels (méthode, chemin,

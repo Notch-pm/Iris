@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.3.0";
+export const CONTRACT_VERSION = "2.4.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -295,7 +295,7 @@ export function buildOpenApi(baseUrl: string) {
         "## Authentification et périmètre",
         "Chaque appel porte une **clé d'intégration** dans `Authorization: Bearer irs_…`.",
         "Elle est **délivrée par un administrateur plateforme Iris**, porte des **scopes**",
-        "(`requests:write`, `requests:read`) et une **expiration obligatoire** ; plusieurs clés",
+        "(`requests:write`, `requests:read`, `requests:read_tenant`) et une **expiration obligatoire** ; plusieurs clés",
         "peuvent coexister pour une même source (rotation sans coupure).",
         "",
         "La clé est un **secret serveur** : jamais dans un navigateur, un bundle, une variable",
@@ -363,7 +363,9 @@ export function buildOpenApi(baseUrl: string) {
         "de réponse inconnus et ne codez que sur les clés documentées. **2.0.0 (2026-09)** : le",
         "mode « URL signée » des pièces (`fetch_url`, `copy_status: pending`) est retiré — il",
         "n'avait jamais été mis en service. Les routes restent sous `/v1`. **2.3.0 (2026-09)** :",
-        "clé plateforme et en-tête `X-Socle-Root-Organization-Id` — ajout additif.",
+        "clé plateforme et en-tête `X-Socle-Root-Organization-Id` — ajout additif. **2.4.0",
+        "(2026-09)** : filtre `socle_contact_id` sur `GET /v1/requests` et scope",
+        "`requests:read_tenant` (les demandes d'un usager, toutes sources) — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -568,12 +570,22 @@ export function buildOpenApi(baseUrl: string) {
         },
         get: {
           tags: ["Demandes"],
-          summary: "Lister ses demandes (réconciliation)",
-          description: "Scope requests:read. Une intégration ne voit QUE les demandes de sa source, dans son tenant.",
+          summary: "Lister ses demandes (réconciliation), ou celles d'un usager",
+          description:
+            "Scope requests:read. Une intégration ne voit QUE les demandes de sa source, dans son tenant. " +
+            "Exception : une clé portant AUSSI requests:read_tenant qui nomme un usager (`socle_contact_id`) " +
+            "reçoit les demandes de cet usager quelle que soit leur source (vue usager d'une application de la gamme). " +
+            "Sans usager nommé, ce scope ne change rien.",
           parameters: [
             { $ref: "#/components/parameters/TenantHeader" },
             { name: "updated_since", in: "query", schema: { type: "string", format: "date-time" } },
             { name: "limit", in: "query", schema: { type: "integer", minimum: 1, maximum: 500, default: 100 } },
+            {
+              name: "socle_contact_id",
+              in: "query",
+              description: "UUID Socle de l'usager. Toutes sources si la clé porte requests:read_tenant, sinon limité à votre source.",
+              schema: { type: "string", format: "uuid" },
+            },
           ],
           responses: {
             "200": {

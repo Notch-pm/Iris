@@ -14,7 +14,7 @@ simples *sources enregistrées*.
 | URL de base | `https://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api` |
 | Contrat (OpenAPI 3.1, **référence exclusive des endpoints**) | `GET {base}/v1/openapi.json` (public) |
 | Documentation lisible | `https://<app-iris>/api-doc` — le même contrat rendu par Redoc, consultable **sans compte** (motif `/api-doc` du Socle) |
-| Version | `2.3.0` (2026-09-22 : **clé plateforme** et en-tête `X-Socle-Root-Organization-Id`) — précédemment `2.2.0` (2026-09-20 : **consentements RGPD** facultatifs dans l'enveloppe), `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
+| Version | `2.4.0` (2026-09-23 : filtre `socle_contact_id` et scope **`requests:read_tenant`** — les demandes d'un usager, toutes sources) — précédemment `2.3.0` (2026-09-22 : **clé plateforme** et en-tête `X-Socle-Root-Organization-Id`), `2.2.0` (2026-09-20 : **consentements RGPD** facultatifs dans l'enveloppe), `2.1.0` (2026-09-10 : un permalien qui ne résout que sur votre réseau est ignoré ; 2026-09-08 : les pièces se **déposent** sur `POST /v1/uploads`, le mode `fetch_url` est retiré) — au sein d'une majeure : **évolutions additives uniquement** ; tolérez les champs de réponse inconnus. Historique : [`api-changelog.md`](api-changelog.md) |
 | Erreurs | Enveloppe de gamme `{ "error": { code, message } }`, messages français ; hors périmètre = **404** |
 
 ## 1. S'authentifier
@@ -27,7 +27,7 @@ simples *sources enregistrées*.
    d'une source coupe l'ingestion sans révoquer les clés.
 2. **Émission d'une clé** : une ligne `integration_credentials` — secret `irs_…` affiché
    **une seule fois** (SHA-256 en base, jamais en clair), **scopes** (`requests:write`,
-   `requests:read`), **expiration obligatoire** (12 mois recommandés), révocable à tout
+   `requests:read`, `requests:read_tenant` — voir § 4), **expiration obligatoire** (12 mois recommandés), révocable à tout
    moment. Plusieurs clés actives par source → **rotation par double clé** sans coupure.
 
 ### Utilisation
@@ -268,6 +268,14 @@ qu'il faut corriger, ou l'activation dans le Socle. Les pièces déjà déposée
   `updated_at` croissant). Le champ `version` est **monotone** : n'appliquez une mise à jour
   chez vous que si `version` est supérieure à celle déjà connue — cela absorbe rejeux et
   désordre. (Le push d'événements signés viendra en complément — phase 4 du plan.)
+- `GET /v1/requests?socle_contact_id=<UUID Socle>` — **les demandes d'un usager** (2.4.0).
+  Avec `requests:read` seul, limitées à votre source. Avec **`requests:read_tenant`** en plus,
+  **toutes sources du tenant** : c'est la vue usager d'une application de la gamme (Clara :
+  fiche contact, espace élu), qui doit montrer aussi ce qui est arrivé par le portail ou le
+  guichet. Le scope ne vaut **que si un usager est nommé** — sans `socle_contact_id`, la liste
+  reste celle de votre source : pas d'aspiration du tenant. Même liste blanche de champs
+  (ni notes internes, ni `form_data`) ; `GET /v1/requests/{id}` reste limité à votre source.
+  Un scope réservé aux applications de la gamme : un partenaire tiers ne le reçoit pas.
 
 ## 5. Traçabilité
 

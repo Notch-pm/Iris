@@ -9,6 +9,23 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.4.0 — 2026-09-23 — les demandes d'un usager, toutes sources confondues
+
+**Additif.** Aucune route ne disparaît, aucun comportement existant ne change.
+
+### Ce qui change
+
+- **`GET /v1/requests` accepte `socle_contact_id`** (UUID Socle) : ne rend que les demandes de
+  cet usager. Avec une clé `requests:read` seule, toujours limitées à votre source.
+- **Nouveau scope `requests:read_tenant`**, réservé aux applications de la gamme : combiné à
+  `socle_contact_id`, il rend les demandes de l'usager **quelle que soit leur source** (portail,
+  guichet, autres applications). Sans usager nommé, il ne change rien — pas d'aspiration du
+  tenant. Premier consommateur : Clara (fiche contact et espace élu).
+- **Inchangé** : la liste blanche des champs (ni notes internes, ni `form_data`),
+  `GET /v1/requests/{id}` (limité à votre source), l'ordre `updated_at` croissant.
+
+---
+
 ## Note du 2026-09-22 — le lieu d'intervention peut arriver avec son point (contrat inchangé)
 
 **Aucun champ, aucune route, aucun code d'erreur ne change** : le contrat d'ingestion reste à sa

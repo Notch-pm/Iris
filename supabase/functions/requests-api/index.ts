@@ -21,6 +21,7 @@ import {
 } from "./_shared/validation.ts";
 import { REQUEST_SELECT, serializeRequest } from "./_shared/serializers.ts";
 import { PERMALINK_ANOMALY, sanitizePermalinks } from "./_shared/permalink.ts";
+import { parseListQuery } from "./_shared/list-query.ts";
 import { buildOpenApi, MAX_UPLOAD_BYTES_DEFAULT, publicBaseUrl } from "./_shared/openapi.ts";
 import { httpStatusFor } from "../_shared/files/inspect.ts";
 import { readSingleFileForm } from "../_shared/files/multipart.ts";
@@ -794,25 +795,22 @@ async function handleGet(auth: AuthContext, id: string): Promise<Response> {
 }
 
 async function handleList(auth: AuthContext, url: URL): Promise<Response> {
-  const limitRaw = url.searchParams.get("limit") ?? "100";
-  const limit = Number.parseInt(limitRaw, 10);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-    return fail("bad_request", "limit : entier entre 1 et 500.");
-  }
+  const parsed = parseListQuery(url.searchParams, auth.scopes);
+  if (!parsed.ok) return fail("bad_request", parsed.message);
+  const { limit, updatedSince, socleContactId, allSources } = parsed.value;
+
   let query = supabase
     .from("requests")
     .select(REQUEST_SELECT)
     .eq("organization_id", auth.organizationId)
-    .eq("source", auth.sourceCode)
     .order("updated_at", { ascending: true })
     .limit(limit);
-  const since = url.searchParams.get("updated_since");
-  if (since !== null) {
-    if (Number.isNaN(Date.parse(since))) {
-      return fail("bad_request", "updated_since : date ISO 8601 attendue.");
-    }
-    query = query.gte("updated_at", since);
-  }
+  // Sa source seulement, sauf scope requests:read_tenant ET usager nommé
+  // (vue par usager d'une autre application de la gamme) — voir list-query.ts.
+  if (!allSources) query = query.eq("source", auth.sourceCode);
+  if (socleContactId !== null) query = query.eq("socle_contact_id", socleContactId);
+  if (updatedSince !== null) query = query.gte("updated_at", updatedSince);
+
   const { data, error } = await query;
   if (error) return fail("internal_error", "Erreur serveur.");
   return json(200, { requests: (data ?? []).map((r) => serializeRequest(r, APP_URL)) });
