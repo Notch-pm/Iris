@@ -1,7 +1,7 @@
 # Dette technique — backlog
 
 > **Public** : équipe Iris · **Question traitée** : qu'est-ce qui est assumé comme dette, et
-> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-09-13
+> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-09-23
 
 Ce document ne recopie rien : il ne porte que la dette **sans autre domicile** (outillage,
 conventions, transverse). La dette de modèle de données et d'API vit là où elle se constate :
@@ -207,3 +207,37 @@ Socle choisie dans le référentiel (proxy, jamais un UUID saisi), synchro immé
 rattachement de l'ouvrant, et **création des deux profils de reprise** (Administrateur, Agent)
 dans la même transaction, par la RPC existante. Décision PO du 2026-09-13 : à faire plus tard,
 le provisioning manuel tient pour l'instant.
+
+## O9 — Le reste de l'audit purge / performance du 2026-09-23
+
+**Constat** : l'audit transverse de la gamme (avant mise en production) a soldé le même jour la
+plomberie pg_cron / pg_net — `cron.job_run_details` pesait 54 Mo, 73 % de la base, faute de
+purge — et la rétention des journaux techniques (`purge_retention_journaux`, 03:30). Restent,
+mesurés sur la base réelle (`pg_stat_statements`, advisors) :
+
+- **6 policies RLS réévaluent `auth.uid()` à chaque ligne** (advisor `auth_rls_initplan`),
+  toutes antérieures à la convention `(select auth.uid())` adoptée le 2026-08-22 (les tables
+  `permission_*` et `notifications*` sont déjà corrigées, `20260822100900`) : `users_select`,
+  `users_update` et `organization_members_select`
+  (`20260820100000_identite_tenants_helpers.sql`), `request_messages_insert` / `_update` /
+  `_delete` (`20260820100200_requests_satellites.sql`). Impact faible aujourd'hui (petites
+  tables, opérations unitaires), correctif trivial sans changement de sémantique.
+  ⚠️ `is_org_member(p_org_id)` et ses sœurs prennent un argument qui varie par ligne : les
+  envelopper dans `(select …)` n'aurait pas de sens.
+- **33 clés étrangères sans index** (advisor), surtout des colonnes d'auteur (`created_by`,
+  `uploaded_by`, `assigned_by`…) et `organization_id` de tables satellites
+  (`notifications`, `request_emails`, `request_interventions`, `integration_deliveries`). Aucune
+  n'est sur un chemin chaud mesuré ; à reprendre quand une purge RGPD (phase 5) supprimera des
+  utilisateurs ou des demandes — c'est là qu'un `ON DELETE` sans index balaie la table.
+- **Temps réel** : le poller WAL de Realtime est la première charge CPU de la base (735 000
+  appels, 71 min cumulées) pour la seule table `notifications`, doublée du filet
+  `refetchInterval` de 60 s. Rien à faire au volume actuel ; piste le jour où le nombre
+  d'agents connectés grandit : Realtime *Broadcast* émis par le trigger plutôt que
+  `postgres_changes`.
+- **Deux jobs à la minute** (`notifications-mailer`, `notifications-push`) : ~2 900 lignes/jour
+  dans `cron.job_run_details` et `net._http_response`, bornées depuis le 2026-09-23 (7 jours,
+  VACUUM nocturne). Clara a ramené son push à 3 minutes le 2026-09-22 pour la même raison ;
+  à arbitrer par le PO (c'est le délai maximal d'un e-mail ou d'un push).
+- **`integration_deliveries`** (outbox du retour vers Clara, phase 4) n'a pas encore
+  d'écrivain : prévoir la purge des lignes `delivered` / `failed` **dans le même lot** que le
+  worker, pas après coup.
