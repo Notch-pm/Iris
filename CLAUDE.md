@@ -315,7 +315,8 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   demande** (`socle_scope_org_id`) : la route RÉSOUT l'héritage, donc « à défaut, celle de
   l'organisation parente » est déjà répondu et Iris ne remonte aucun arbre. ⚠️ **Jamais depuis
   `/v1/organizations/{id}`** : les colonnes brutes d'une organisation qui hérite sont nulles.
-  Depuis le 2026-09-23 le **bandeau est blanc** : la couleur ne trace plus que les bordures de
+  Depuis le 2026-09-23 le **bandeau est blanc** (logo centré, depuis le 2026-09-24 ; colonne
+  arrondie aux quatre coins, en VML pour Outlook — même cadre que Clara et le Socle) : la couleur ne trace plus que les bordures de
   la carte, le filet sous le bandeau et le fond du bouton — un aplat de couleur entrait en
   collision avec le logo. Seul le logo **couleur** est servi (le blanc disparaîtrait sur le
   bandeau), sans pastille. L'encre du bouton est **calculée** par contraste

@@ -65,7 +65,9 @@ describe("renderEmailHtml", () => {
 
   it("répète le lien en clair pour les clients qui cassent le bouton", () => {
     expect(html).toContain("Si le bouton ne fonctionne pas");
-    expect(html.match(/https:\/\/iris\.test\/nouveau-mot-de-passe\?token_hash=abc/g)?.length).toBe(2);
+    // Bouton, lien de repli (href + texte affiché) : trois occurrences.
+    expect(html.match(/https:\/\/iris\.test\/nouveau-mot-de-passe\?token_hash=abc/g)?.length).toBe(3);
+    expect(html).toContain('copiez ce lien : <a href="https://iris.test/nouveau-mot-de-passe?token_hash=abc"');
   });
 
   it("ouvre par un pré-en-tête masqué reprenant le premier paragraphe", () => {
@@ -133,26 +135,32 @@ describe("le gabarit habillé de la charte d'une collectivité", () => {
   };
   const clair = { primary: "#ffd166", onPrimary: "#1C2220", logoUrl: null };
 
-  it("trace les bordures et remplit le bouton de la couleur principale", () => {
+  it("borde la colonne de 1 px de la couleur principale, arrondie aux QUATRE coins", () => {
     const html = renderEmailHtml(content, { ...brand, charte: sombre });
-    expect(html).toContain("border:1px solid #1f8a5b;border-radius:14px;");
-    expect(html).toContain("border-bottom:1px solid #1f8a5b;padding:20px 32px;");
-    expect(html).toContain("background-color:#1f8a5b;border-radius:10px;");
+    expect(html).toContain("border:1px solid #1f8a5b;border-radius:16px;");
+    expect(html).toContain("background-color:#1f8a5b;border-radius:8px;");
     // Le vert d'Iris n'a plus rien à peindre dans ce message.
     expect(html).not.toContain("#089B59");
   });
 
-  it("garde le bandeau BLANC — un aplat de couleur entrait en collision avec le logo", () => {
+  it("dessine l'arrondi en VML pour Outlook, sans doubler la bordure", () => {
+    const html = renderEmailHtml(content, { ...brand, charte: sombre });
+    expect(html).toContain('<v:roundrect');
+    expect(html).toContain('strokecolor="#1f8a5b"');
+    expect(html).toContain("<!--[if !mso]><!--><table");
+  });
+
+  it("garde le bandeau BLANC, séparé du corps par un filet de la couleur principale", () => {
     for (const charte of [sombre, clair]) {
       const html = renderEmailHtml(content, { ...brand, charte });
-      expect(html).toContain("background-color:#FFFFFF;border-bottom:1px solid");
-      expect(html).not.toContain(`background-color:${charte.primary};padding:20px 32px;`);
+      expect(html).toContain(`<td align="center" style="padding:28px 32px 24px;border-bottom:1px solid ${charte.primary};`);
+      expect(html).not.toMatch(new RegExp(`background-color:${charte.primary};padding`));
     }
   });
 
-  it("écrit le nom du bandeau à l'encre du corps, lisible sur blanc quelle que soit la charte", () => {
+  it("écrit le nom du bandeau, sans logo, à l'encre du corps — lisible sur blanc quelle que soit la charte", () => {
     const html = renderEmailHtml(content, { ...brand, charte: clair });
-    expect(html).toContain("font-weight:800;letter-spacing:0.2px;color:#1C2220;");
+    expect(html).toContain("font-size:20px;font-weight:800;line-height:1.3;color:#1C2220;\">Iris · Ville de Test</p>");
   });
 
   it("porte sur le bouton l'encre CALCULÉE, pas du blanc d'office", () => {
@@ -160,15 +168,11 @@ describe("le gabarit habillé de la charte d'une collectivité", () => {
     expect(renderEmailHtml(content, { ...brand, charte: sombre })).toMatch(/color:#FFFFFF;font-family:[^"]*font-size:15px;font-weight:700/);
   });
 
-  it("affiche le logo, avec un alt VIDE — le nom est déjà écrit à côté", () => {
+  it("centre le logo SEUL, avec le nom en alt — il n'est plus écrit à côté", () => {
     const html = renderEmailHtml(content, { ...brand, charte: sombre });
-    expect(html).toContain('src="https://accm.fr/logo.png"');
-    expect(html).toContain('alt=""');
-    // Images bloquées : le nom reste lisible, et le logo n'en ajoute PAS une
-    // occurrence de plus — c'est tout l'objet de l'alt vide.
-    const sansLogo = renderEmailHtml(content, brand);
-    expect((html.match(/Iris · Ville de Test/g) ?? []).length)
-      .toBe((sansLogo.match(/Iris · Ville de Test/g) ?? []).length);
+    expect(html).toContain('src="https://accm.fr/logo.png" alt="Iris · Ville de Test"');
+    // Le nom n'est plus écrit en texte dans le bandeau (seulement en alt et au pied).
+    expect(html).not.toContain("font-size:20px;font-weight:800");
   });
 
   it("échappe l'URL du logo — un guillemet ne sort pas de l'attribut", () => {
@@ -183,7 +187,7 @@ describe("le gabarit habillé de la charte d'une collectivité", () => {
   it("sans charte, rend EXACTEMENT le message d'avant", () => {
     expect(renderEmailHtml(content, { ...brand, charte: null })).toBe(renderEmailHtml(content, brand));
     expect(renderEmailHtml(content, brand)).toContain(
-      `border-bottom:1px solid ${"#089B59"};padding:20px 32px;`,
+      `border:1px solid ${"#089B59"};border-radius:16px;`,
     );
     expect(renderEmailHtml(content, brand)).not.toContain("<img");
   });

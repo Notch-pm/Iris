@@ -91,7 +91,7 @@ describe("la charte de la collectivité dans un message à l'usager", () => {
 
   it("habille la carte aux couleurs et au logo de la collectivité", () => {
     const html = renderEmailHtml(content, usagerBrand("Ville de Saint-Aubin", charte));
-    expect(html).toContain("border-bottom:1px solid #1f8a5b;padding:20px 32px;");
+    expect(html).toContain("border:1px solid #1f8a5b;border-radius:16px;");
     expect(html).toContain('src="https://accm.fr/logo.png"');
     // Et toujours pas un mot d'Iris à l'habitant.
     expect(html).not.toContain("Iris");

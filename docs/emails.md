@@ -382,10 +382,15 @@ prescription du DS Ariane.
 ne fournit *que* la version blanche n'a donc pas de logo dans l'e-mail — mieux vaut pas de logo
 qu'un rectangle vide ; son nom, écrit dans le bandeau, suffit.
 
-**`alt=""` sur le logo, délibérément.** Le nom de la collectivité est écrit juste à côté, dans
-le même bandeau. Beaucoup de clients bloquent les images distantes par défaut ; un `alt`
-porteur afficherait alors ce nom **deux fois**. Le logo est ici la redite visuelle d'un texte
-présent, pas une information de plus.
+**Le dessin, commun à Iris, Clara et le Socle** (validé le 2026-09-24) : colonne de 520 px,
+fond blanc, **bordée de 1 px de la couleur principale et arrondie aux quatre coins** (16 px) ;
+bandeau blanc portant le logo **centré** (le nom à défaut), séparé du corps par un filet de la
+couleur principale ; bouton plein ; lien de repli cliquable ; nom de l'organisation en pied.
+**Outlook pour Windows** ignore `border-radius` : la colonne y est dessinée en VML
+(`v:roundrect` sous `[if mso]`), et la bordure CSS y est retirée pour ne pas tracer deux cadres.
+
+**Le logo porte le nom en `alt`.** Le nom n'est plus écrit à côté du logo : images bloquées
+(le réglage par défaut de beaucoup de clients), le bandeau affiche donc le nom de l'organisation.
 
 **Seul du `http(s)` entre dans un `src`.** Une charte vient du référentiel, mais une URL
 `javascript:` ou `data:` reste un vecteur ; une URL invalide vaut mieux tue qu'affichée cassée.
