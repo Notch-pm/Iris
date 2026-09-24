@@ -8,12 +8,18 @@
 // Un trou — variable sans valeur pour cette demande — se voit donc tout de
 // suite et se comble à la main, au lieu de partir sans qu'on le sache.
 //
+// RÉDACTION ASSISTÉE (2026-09-24, edge `request-email-assistant`) : devant un
+// message vide, le bandeau « Assistant IA » rédige un accusé de réception ou un
+// suivi (ergonomie de Clara) ; devant un message écrit, « Améliorer mon
+// message » en corrige la langue sans en changer le sens, et se défait d'un
+// clic tant que l'agent n'a pas retouché le texte. Rien ne part sans « Envoyer ».
+//
 // L'usager ne peut pas répondre : la mention est portée par le pied du gabarit
 // d'e-mail (« … — message automatique, merci de ne pas y répondre. »), et
 // rappelée ici à l'agent avant qu'il envoie.
 
 import * as React from "react";
-import { Loader2, Mail, Paperclip, Send, X } from "lucide-react";
+import { Loader2, Mail, Paperclip, Send, Undo2, WandSparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Avatar, Pill } from "@/components/ui/surface";
@@ -42,6 +48,8 @@ import {
   type RequesterIdentity,
   type StageEvent,
 } from "./instruction";
+import { EmailAssistantPanel } from "./EmailAssistantPanel";
+import { useDraftEmail, useImproveEmail, type DraftKind } from "./useEmailAssistant";
 
 /**
  * Brouillon déposé dans le composeur par un autre bloc de la fiche. Chaque
@@ -109,6 +117,11 @@ export function EchangesPane({
   const [docIds, setDocIds] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  /** Le texte d'avant « Améliorer » — tant que l'agent n'a rien retouché depuis. */
+  const [beforeImprove, setBeforeImprove] = React.useState<{ original: string; improved: string } | null>(null);
+  const draftEmail = useDraftEmail(request.id);
+  const improveEmail = useImproveEmail(request.id);
+  const aiBusy = draftEmail.isPending || improveEmail.isPending;
 
   // Le brouillon remplace la saisie en cours : il arrive d'un geste explicite
   // (« Signaler à l'usager »), jamais d'un rendu de fond.
@@ -188,6 +201,37 @@ export function EchangesPane({
     requestAnimationFrame(() => { el.focus(); el.setSelectionRange(out.caret, out.caret); });
   }
 
+  function generate(input: { kind: DraftKind; instructions: string }) {
+    setError(null);
+    draftEmail.mutate(input, {
+      onSuccess: (draft) => {
+        // Le corps était vide (le bandeau n'existe qu'à cette condition) ;
+        // l'objet ne remplace jamais celui que l'agent a déjà écrit.
+        setBody(draft.body);
+        setSubject((current) => (current.trim() === "" ? draft.subject : current));
+        setTemplateId("");
+        setBeforeImprove(null);
+      },
+      onError: (err) => setError(err instanceof Error ? err.message : "Rédaction impossible."),
+    });
+  }
+
+  function improve() {
+    const original = body;
+    setError(null);
+    improveEmail.mutate(original, {
+      onSuccess: ({ body: improved }) => {
+        setBody(improved);
+        setBeforeImprove(improved === original ? null : { original, improved });
+      },
+      onError: (err) => setError(err instanceof Error ? err.message : "Amélioration impossible."),
+    });
+  }
+
+  // Une retouche après l'amélioration rend l'annulation trompeuse : elle
+  // effacerait la retouche. Elle disparaît donc à la première frappe.
+  const canUndoImprove = beforeImprove !== null && body === beforeImprove.improved;
+
   function addFiles(list: FileList | null) {
     if (!list || list.length === 0) return;
     setFiles((current) => [...current, ...Array.from(list)]);
@@ -219,6 +263,7 @@ export function EchangesPane({
       setDocIds([]);
       setTemplateId("");
       setSubmitted(false);
+      setBeforeImprove(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Envoi impossible.");
     }
@@ -380,6 +425,15 @@ export function EchangesPane({
                 </div>
               </div>
 
+              {/* Assistant de rédaction : seulement devant un message vide (règle Clara). */}
+              {body.trim() === "" ? (
+                <EmailAssistantPanel
+                  disabled={sending}
+                  pending={draftEmail.isPending}
+                  onGenerate={generate}
+                />
+              ) : null}
+
               {/* Corps : objet puis message, sans cadre — le cadre, c'est le composeur. */}
               <div className="flex flex-col">
                 <input
@@ -400,7 +454,7 @@ export function EchangesPane({
                   className="min-h-[160px] w-full resize-y bg-transparent px-4 py-3.5 text-sm leading-[1.65] text-foreground placeholder:text-muted-foreground focus:outline-none"
                   placeholder="Message à l'usager"
                   value={body}
-                  disabled={sending}
+                  disabled={sending || improveEmail.isPending}
                   onFocus={() => setFocused("body")}
                   onChange={(e) => setBody(e.target.value)}
                   aria-label="Message à l'usager"
@@ -457,10 +511,37 @@ export function EchangesPane({
                     affiché, et ne pourra pas y répondre.
                   </span>
                 </span>
-                <Button type="submit" size="md" className="shrink-0" disabled={sending}>
-                  {sending ? "Envoi…" : "Envoyer l'échange"}
-                  {sending ? <Loader2 className="animate-spin" /> : <Send />}
-                </Button>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  {canUndoImprove ? (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-8 text-xs"
+                      disabled={sending || aiBusy}
+                      onClick={() => { setBody(beforeImprove!.original); setBeforeImprove(null); }}
+                    >
+                      <Undo2 />
+                      Annuler l'amélioration
+                    </Button>
+                  ) : null}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-8 text-xs"
+                    title="Corrige l'orthographe et la langue, sans changer le sens. L'identité de l'usager n'est pas transmise."
+                    disabled={sending || aiBusy || body.trim() === ""}
+                    onClick={improve}
+                  >
+                    {improveEmail.isPending ? <Loader2 className="animate-spin" /> : <WandSparkles />}
+                    {improveEmail.isPending ? "Relecture…" : "Améliorer mon message"}
+                  </Button>
+                  <Button type="submit" size="md" className="shrink-0" disabled={sending || aiBusy}>
+                    {sending ? "Envoi…" : "Envoyer l'échange"}
+                    {sending ? <Loader2 className="animate-spin" /> : <Send />}
+                  </Button>
+                </div>
               </div>
             </form>
           )}

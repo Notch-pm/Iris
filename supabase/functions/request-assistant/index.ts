@@ -71,21 +71,15 @@ import { condenseKnowledge, KNOWLEDGE_BUDGET_TOKENS } from "../_shared/ai/conden
 import {
   emptyAiKnowledge,
   isAiKnowledgeEmpty,
-  parseAiKnowledge,
   type AiKnowledge,
 } from "../_shared/ai/knowledge.ts";
-import { parseClientHistory, type ChatMessage } from "../_shared/ai/messages.ts";
+import { parseClientHistory } from "../_shared/ai/messages.ts";
 import { buildAssistantPrompt } from "../_shared/ai/prompt.ts";
-import { estimateCall, MAX_OUTPUT_TOKENS } from "../_shared/ai/tokens.ts";
+import { MAX_OUTPUT_TOKENS } from "../_shared/ai/tokens.ts";
 import { mapSocleFailure } from "../_shared/ai/socleErrors.ts";
-import {
-  parseUserCommunicationKnowledge,
-  type UserCommunicationKnowledge,
-} from "../_shared/ai/userCommunication.ts";
-import {
-  sanitizeAgentGuidanceView,
-  type AgentGuidance,
-} from "../_shared/organizations/agentGuidance.ts";
+import { aiConfigured, askSocle, publicApiBase } from "../_shared/ai/socleClient.ts";
+import { socleAgentGuidance, socleKnowledge } from "../_shared/ai/socleKnowledge.ts";
+import type { UserCommunicationKnowledge } from "../_shared/ai/userCommunication.ts";
 import {
   buildCatalogue,
   catalogueUrls,
@@ -114,8 +108,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  *  toucher une seule application. */
 const AGENT_ALIAS = "assistant-instruction";
 const FEATURE = "assistant-instruction";
-/** 75 s : le dernier maillon de la chaîne, plus long que le Socle (60 s). */
-const SOCLE_TIMEOUT_MS = 75_000;
+const LOG = "request-assistant";
 
 /** Clés acceptées dans le corps. Toute autre ⇒ 400 (motif create-request-from-procedure). */
 const ALLOWED_KEYS = new Set([
@@ -142,153 +135,6 @@ function fail(req: Request, status: number, code: string, message: string): Resp
 }
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function publicApiBase(): string {
-  return (Deno.env.get("SOCLE_API_URL") ?? "").replace(/\/+$/, "");
-}
-
-/**
- * Base de connaissances COMPLÈTE, lue dans le Socle avec la clé de service.
- * `undefined` = référentiel muet : l'appelant répond quand même, en le disant.
- * Un Socle injoignable ne doit pas faire taire l'assistant.
- *
- * La même réponse porte, depuis le contrat 1.24.0, ce que la collectivité
- * publie pour ses usagers (`user_communication`, `user_description`) : aucun
- * second appel, et la même défense de périmètre.
- */
-async function socleKnowledge(
-  procedureId: string,
-  socleRootId: string,
-): Promise<
-  { kb: AiKnowledge; userCommunication: UserCommunicationKnowledge; name: string | null } | undefined
-> {
-  const base = publicApiBase();
-  const key = Deno.env.get("SOCLE_API_KEY");
-  if (base === "" || !key) return undefined;
-  const res = await fetch(`${base}/v1/procedures/${procedureId}`, {
-    headers: { Authorization: `Bearer ${key}`, "X-Organization-Id": socleRootId },
-    signal: AbortSignal.timeout(10_000),
-  }).catch(() => null);
-  if (!res?.ok) {
-    console.error(`request-assistant: démarche ${procedureId} illisible (${res?.status ?? "réseau"})`);
-    return undefined;
-  }
-  const procedure = await res.json().catch(() => null);
-  if (!isRecord(procedure)) return undefined;
-  // Défense en profondeur : la démarche doit appartenir au tenant demandé.
-  if (procedure.organization_id !== socleRootId) {
-    console.error("request-assistant: démarche hors du tenant — ignorée");
-    return undefined;
-  }
-  return {
-    kb: parseAiKnowledge(procedure.knowledge_base),
-    userCommunication: parseUserCommunicationKnowledge(procedure),
-    name: typeof procedure.name === "string" ? procedure.name : null,
-  };
-}
-
-/**
- * Recommandations générales de la collectivité à ses agents (Socle 1.27.0),
- * lues sur la racine du tenant — elles valent pour TOUTES ses démarches, y
- * compris une demande historique sans démarche. `undefined` = référentiel muet
- * (l'assistant répond quand même, en le disant) ; rien d'écrit = une structure
- * vide, que `condenseKnowledge` ignore.
- */
-async function socleAgentGuidance(socleRootId: string): Promise<AgentGuidance | undefined> {
-  const base = publicApiBase();
-  const key = Deno.env.get("SOCLE_API_KEY");
-  if (base === "" || !key) return undefined;
-  const res = await fetch(`${base}/v1/organizations/${socleRootId}/agent-guidance`, {
-    headers: { Authorization: `Bearer ${key}` },
-    signal: AbortSignal.timeout(10_000),
-  }).catch(() => null);
-  if (!res?.ok) {
-    console.error(`request-assistant: recommandations générales illisibles (${res?.status ?? "réseau"})`);
-    return undefined;
-  }
-  const body = await res.json().catch(() => null);
-  if (!isRecord(body)) return undefined;
-  return sanitizeAgentGuidanceView(body).guidance;
-}
-
-type SocleOutcome =
-  | { ok: true; answer: string }
-  | { ok: false; status: number | null; body: unknown };
-
-/**
- * Base de `ai-api`, dérivée de celle du référentiel — les edge functions d'un
- * même projet ne diffèrent que par leur dernier segment.
- */
-function aiApiBase(): string {
-  const base = publicApiBase();
-  return base === "" ? "" : base.replace(/public-api$/, "ai-api");
-}
-
-/**
- * L'appel au guichet IA du Socle.
- *
- * Ce qu'Iris envoie : le prompt système QU'IL A COMPOSÉ, la conversation, un
- * alias d'agent, et des références opaques. Ce qu'il n'envoie pas : ni modèle,
- * ni agent réel, ni imputation — l'imputation vient de la clé, et le Socle la
- * refuserait dans le corps.
- *
- * `X-Organization-Id` est TOUJOURS dérivé côté serveur du tenant vérifié.
- */
-async function askSocle(
-  system: string,
-  messages: ChatMessage[],
-  ctx: { socleOrgId: string; requestId: string | null; procedureId: string | null; userId: string },
-): Promise<SocleOutcome> {
-  const base = aiApiBase();
-  const key = Deno.env.get("SOCLE_API_KEY");
-  if (base === "" || !key) {
-    console.error("request-assistant: SOCLE_API_URL ou SOCLE_API_KEY absente");
-    return { ok: false, status: 503, body: null };
-  }
-
-  const res = await fetch(`${base}/v1/completions`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${key}`,
-      "X-Organization-Id": ctx.socleOrgId,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      feature: FEATURE,
-      agent: AGENT_ALIAS,
-      system,
-      messages,
-      max_output_tokens: MAX_OUTPUT_TOKENS,
-      // Indication seulement : le Socle recalcule et retient le maximum.
-      estimated_tokens: estimateCall({ system, messages }),
-      reference: ctx.requestId
-        ? { kind: "request", id: ctx.requestId }
-        : ctx.procedureId ? { kind: "procedure", id: ctx.procedureId } : null,
-      actor_id: ctx.userId,
-    }),
-    signal: AbortSignal.timeout(SOCLE_TIMEOUT_MS),
-  }).catch(() => null);
-
-  // Pas de réponse : réseau, délai dépassé, Socle à terre. `status: null` est
-  // le seul cas où l'agent apprend que le référentiel est en cause — parce que
-  // c'est actionnable pour lui.
-  if (!res) return { ok: false, status: null, body: null };
-
-  const body = await res.json().catch(() => null);
-  if (!res.ok) return { ok: false, status: res.status, body };
-
-  // Le `usage` et le `quota` de la réponse ne sont PAS relus ici : le journal
-  // et le compteur du Socle font foi, et une seconde comptabilité côté Iris ne
-  // pourrait que diverger. Seule la réponse nous intéresse. (Depuis ai-api
-  // 1.3.0, ce `quota` serait celui d'Iris — même sémantique que `/v1/usage`,
-  // lu par l'écran Paramètres ; rien à en faire ici.)
-  const answer = isRecord(body) ? (body as { answer?: unknown }).answer : null;
-  if (typeof answer !== "string" || answer.trim() === "") {
-    console.error("request-assistant: réponse du guichet IA vide ou inattendue");
-    return { ok: false, status: 502, body: null };
-  }
-  return { ok: true, answer: answer.trim() };
 }
 
 Deno.serve(async (req) => {
@@ -337,7 +183,7 @@ Deno.serve(async (req) => {
   //
   // Ce n'est PAS la clé du fournisseur (Iris n'en a plus), c'est la clé Socle
   // d'Iris — celle qui porte le scope « ai » et l'imputation.
-  if (aiApiBase() === "" || !Deno.env.get("SOCLE_API_KEY")) {
+  if (!aiConfigured()) {
     return fail(req, 503, "not_configured", "L'assistant IA n'est pas configuré sur cette instance.");
   }
 
@@ -457,8 +303,8 @@ Deno.serve(async (req) => {
   // Les deux lectures sont indépendantes : en parallèle, pour ne pas allonger
   // l'attente de l'agent d'un aller-retour de plus.
   const [read, agentGuidance] = await Promise.all([
-    socleProcedureId ? socleKnowledge(socleProcedureId, socleOrgId) : Promise.resolve(null),
-    socleAgentGuidance(socleOrgId),
+    socleProcedureId ? socleKnowledge(socleProcedureId, socleOrgId, LOG) : Promise.resolve(null),
+    socleAgentGuidance(socleOrgId, LOG),
   ]);
   if (socleProcedureId) {
     if (read) {
@@ -540,11 +386,18 @@ Deno.serve(async (req) => {
   // Le cycle réserver → appeler → solder n'a pas disparu, il a DÉMÉNAGÉ : il
   // vit désormais entier dans une seule fonction du Socle, sans franchir de
   // frontière réseau. C'est plus court qu'avant, pas plus long.
-  const outcome = await askSocle(system, history.messages, {
+  const outcome = await askSocle({
+    system,
+    messages: history.messages,
+    feature: FEATURE,
+    agent: AGENT_ALIAS,
+    maxOutputTokens: MAX_OUTPUT_TOKENS,
     socleOrgId,
-    requestId: requestMode ? requestId : null,
-    procedureId: socleProcedureId,
+    reference: requestMode
+      ? { kind: "request", id: requestId }
+      : socleProcedureId ? { kind: "procedure", id: socleProcedureId } : null,
     userId,
+    logLabel: LOG,
   });
   if (!outcome.ok) {
     const mapped = mapSocleFailure(outcome.status, outcome.body);

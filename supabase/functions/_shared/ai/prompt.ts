@@ -53,7 +53,7 @@ export function sanitizeBlock(text: string): string {
   return text.replace(/<{3,}/g, "···").replace(/>{3,}/g, "···");
 }
 
-function fenced(title: string, body: string): string {
+export function fenced(title: string, body: string): string {
   const clean = sanitizeBlock(body).trim();
   if (clean === "") return "";
   return `${title}\n${FENCE}\n${clean}\n${FENCE_END}\n`;
@@ -178,7 +178,7 @@ function onlyAvailable(input: PromptInput): string {
     : "des recommandations générales de la collectivité et des textes qu'il publie pour ses usagers";
 }
 
-function contextBlock(ctx: RequestContext): string {
+export function contextBlock(ctx: RequestContext): string {
   const lines: string[] = [
     `Référence : ${ctx.reference}`,
     `Démarche : ${ctx.procedure ?? "non renseignée"}`,

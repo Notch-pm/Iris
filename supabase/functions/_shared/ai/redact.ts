@@ -86,10 +86,10 @@ export function stripIdentityKeys<T>(value: T): StripResult<T> {
 // « 06 12 34 56 78 », « 06.12.34.56.78 », « +33 6 12 34 56 78 »…) et étroits
 // ailleurs : on préfère laisser passer un faux négatif qu'expurger un numéro
 // de voie ou une référence de dossier.
-const EMAIL_RE = /[^\s@<>()[\]]+@[^\s@<>()[\]]+\.[a-z]{2,}/gi;
-const PHONE_RE = /(?:\+33|0033|\b0)\s?[1-9](?:[\s.\-]?\d{2}){4}\b/g;
-const IBAN_RE = /\b[A-Z]{2}\d{2}(?:[\s]?[A-Z0-9]{4}){2,7}(?:[\s]?[A-Z0-9]{1,3})?\b/g;
-const SIRET_RE = /\b\d{14}\b/g;
+export const EMAIL_RE = /[^\s@<>()[\]]+@[^\s@<>()[\]]+\.[a-z]{2,}/gi;
+export const PHONE_RE = /(?:\+33|0033|\b0)\s?[1-9](?:[\s.\-]?\d{2}){4}\b/g;
+export const IBAN_RE = /\b[A-Z]{2}\d{2}(?:[\s]?[A-Z0-9]{4}){2,7}(?:[\s]?[A-Z0-9]{1,3})?\b/g;
+export const SIRET_RE = /\b\d{14}\b/g;
 
 /**
  * Passe *best effort* sur du texte libre. L'ordre compte : le courriel

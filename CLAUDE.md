@@ -566,6 +566,13 @@ les invariants ci-dessus restent la référence.
   ⚠️ Un Socle injoignable **éteint** l'assistant (il le dégradait avant) — assumé, et le message
   rappelle que l'instruction des demandes continue →
   [`docs/assistant-ia.md`](docs/assistant-ia.md).
+- **Rédaction assistée des échanges** (2026-09-24, edge `request-email-assistant`) : dans le
+  composeur de l'onglet Échanges, un **brouillon** d'accusé de réception ou de suivi
+  (ergonomie de Clara, sans clôture) et **« Améliorer mon message »** (la langue, jamais le
+  sens). Le brouillon connaît le dossier, la démarche et les **interventions** — **jamais les
+  notes internes**. Le texte à améliorer est **pseudonymisé de façon réversible** (`⟦P1⟧`) :
+  un jeton perdu ⇒ refus, jamais un texte amputé. Droit d'instruction ; rien n'est stocké →
+  [`docs/assistant-ia.md`](docs/assistant-ia.md) § 9.
 
 ## Conventions
 

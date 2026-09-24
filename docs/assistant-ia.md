@@ -539,3 +539,48 @@ centralisation, et il serait annulé par le premier secret fournisseur reposé i
 | Consommation (écran) | `src/features/ai/` — `AiUsagePanel` · `useAiUsage`, servi par `socle-proxy /v1/ai/usage` |
 | **Le guichet lui-même** | Dépôt **Socle** : `supabase/functions/ai-api/`, `CLAUDE.md` § « guichet IA », `docs/integration.md`, contrat sur `/api-doc-ia` |
 | Plafond (schéma) | Dépôt **Socle**, `docs/data-model.md` § « Plafond et journal d'utilisation IA ». Côté Iris : [`data-model.md`](data-model.md) § « Plafond d'utilisation IA — RETIRÉ » |
+| Rédaction des échanges (2026-09-24) | `supabase/functions/request-email-assistant/index.ts` · `_shared/ai/emailDraft.ts` · `_shared/ai/pseudonymize.ts` (purs, testés) · client et lectures Socle partagés : `_shared/ai/socleClient.ts`, `_shared/ai/socleKnowledge.ts` · front `src/features/requests/instruction/EmailAssistantPanel.tsx`, `useEmailAssistant.ts` |
+
+---
+
+## 9. Rédaction assistée des échanges (2026-09-24)
+
+Deux gestes dans le composeur de l'onglet **Échanges**, servis par une edge function DISTINCTE,
+`request-email-assistant` : l'assistant d'instruction ne s'adresse jamais à l'usager (règle
+de `BASE_RULES`), celle-ci n'écrit que pour lui. Même guichet (`ai-api`), même chaîne de
+délais, mêmes refus traduits (`socleErrors.ts`) ; **droit d'instruction** revérifié en SQL —
+celui qu'il faut pour envoyer. Rien n'est stocké : le texte revient au composeur, l'agent le
+relit, et `send-request-email` reste la seule porte d'envoi.
+
+**Brouillon** (`mode: "draft"`, fonctionnalité `redaction-reponse` — même alias que
+l'assistant de réponse de Clara, un seul réglage au Socle). Ergonomie de Clara : bandeau
+« Assistant IA » devant un message vide, pastilles **Accusé de réception / Suivi** (pas de
+clôture : l'avis de clôture d'Iris est composé par le serveur), instructions complémentaires.
+À la différence de Clara, **chaque type a ses consignes** (`DRAFT_KIND_RULES`). Le contexte,
+composé côté serveur :
+
+| Entre dans le prompt | N'y entre jamais |
+|---|---|
+| le dossier (`buildRequestContext`, identité exclue par le `select`) | les **notes internes** (`request_messages` n'est pas lue ; `DraftInput` n'a aucun champ pour elles — test) |
+| la démarche : base de connaissances et textes publiés aux usagers (`condenseKnowledge`, 8 000 jetons) | l'identité de l'usager |
+| les **interventions** : dates, état, consigne, compte rendu — sans `intervenant_id` ni `requested_by` | le nom d'un agent ou d'un intervenant |
+| les 5 derniers échanges **envoyés** (objet, corps, date — jamais `to_email`) | les échanges en échec |
+
+Les textes libres (consignes d'intervention, échanges passés) passent par `redactFreeText`, et
+les valeurs d'identité connues du dossier y sont remplacées par « [usager] » (`maskTerms`) —
+un échange passé commence souvent par « Madame Dupont, ». Les interventions sont signalées
+au modèle comme INTERNES : il peut dire qu'une intervention est prévue ou a eu lieu, pas
+recopier la consigne. Sortie en **texte brut**, « Madame, Monsieur, », signature du service,
+`[à compléter]` pour ce qui manque ; l'objet est calculé SANS IA
+(`Votre demande <réf.> — suivi`) et n'écrase jamais celui de l'agent.
+
+**Améliorer mon message** (`mode: "improve"`, `correction-message`) : orthographe, grammaire,
+ponctuation, tournures — sans rien ajouter ni retirer. Le texte de l'agent contient presque
+toujours le nom de l'usager : il est **pseudonymisé de façon réversible** (`pseudonymize.ts`) —
+valeurs d'identité connues du dépôt, courriels, téléphones, IBAN, SIRET et variables `{{…}}`
+deviennent `⟦P1⟧`, `⟦P2⟧`…, le modèle corrige autour, le serveur remet les valeurs. **Un jeton
+perdu ou inventé ⇒ 502 `improve_unreliable`** : on ne rend jamais un texte qui a perdu une
+donnée de l'agent. Le snapshot du dépôt n'est relu que pour reconnaître ces valeurs ; il
+n'est jamais envoyé. La promesse reste bornée : un nom qu'Iris ne connaît pas (un tiers cité)
+peut passer. Entrée plafonnée à 4 500 caractères (la réécriture doit tenir sous les 2 000
+jetons de sortie du guichet).

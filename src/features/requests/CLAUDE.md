@@ -765,6 +765,17 @@ note interne → résolution avec texte de clôture → journal.
   **Échanges**, l'agent écrit un e-mail à l'usager, avec un modèle ou à la main, pièces
   jointes comprises. L'échange est enregistré dans `request_emails` (expéditeur, date et heure
   d'envoi, objet, corps réellement parti, pièces, modèle utilisé).
+  - **Rédaction assistée** (2026-09-24, `EmailAssistantPanel.tsx`, `useEmailAssistant.ts`,
+    edge `request-email-assistant`, modules purs `_shared/ai/emailDraft.ts` et
+    `pseudonymize.ts`) : devant un message **vide**, bandeau repliable « Assistant IA » à
+    l'ergonomie de Clara — pastilles **Accusé de réception / Suivi** (pas de clôture : l'avis
+    de clôture est composé par le serveur), instructions complémentaires, « Générer la
+    réponse » ; le corps est rempli, l'objet seulement s'il est vide. Devant un message
+    écrit, **« Améliorer mon message »** corrige la langue sans changer le sens, et
+    « Annuler l'amélioration » le défait tant que l'agent n'a rien retouché. Le brouillon
+    connaît le dossier, la démarche, les **interventions** (sans nom) et les échanges déjà
+    envoyés — **jamais les notes internes**. Droit exigé : instruction (celui d'envoyer).
+    Détail et garanties : [`docs/assistant-ia.md`](../../../docs/assistant-ia.md) § 9.
   - **Mise en page du fil** (2026-09-19, maquette Claude Design « Échange usager »,
     projet `da078641-cb80-4cff-ac9c-b26ba5009fec`) : les envois se lisent en ordre
     **chronologique**, chacun est un **tour** (`ThreadItem`) — gouttière d'avatar 36 px et
