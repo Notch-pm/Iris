@@ -7,7 +7,7 @@
 
 import * as React from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Navigation } from "lucide-react";
+import { ChevronRight, FileText, Navigation } from "lucide-react";
 import {
   MobileCard, MobileCardButton, MobileChip, MobileEmpty, MobileGroupLabel, MobileHeader, MobileNotice,
 } from "@/components/layout/mobile/MobilePage";
@@ -41,6 +41,28 @@ interface CardProps {
   nameOf: (userId: string | null) => string;
   onOpen: () => void;
   onDeclare: () => void;
+}
+
+/**
+ * « Voir la demande » : la fiche de la demande liée (`/demandes/:id`). Le titre
+ * de la carte y menait déjà, mais rien ne le disait au pouce. L'intervenant n'y
+ * voit que ce que la sollicitation lui ouvre (`can_consult_request` : ni notes
+ * internes, ni échanges) — la fiche mobile le gère (`intervenantOnly`).
+ */
+function ViewRequestButton({ onOpen, disabled }: { onOpen: () => void; disabled: boolean }) {
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="lg"
+      className="h-11 w-full rounded-[14px] text-[15px]"
+      disabled={disabled}
+      onClick={onOpen}
+    >
+      <FileText aria-hidden="true" />
+      Voir la demande
+    </Button>
+  );
 }
 
 /** Carte « à faire » (statut `demandee`) : adresse, ce qui est attendu, geste. */
@@ -98,6 +120,8 @@ function TodoCard({ row, today, userId, nameOf, onOpen, onDeclare }: CardProps) 
           ) : null}
         </div>
       ) : null}
+
+      <ViewRequestButton onOpen={onOpen} disabled={!request} />
     </MobileCard>
   );
 }
@@ -105,7 +129,7 @@ function TodoCard({ row, today, userId, nameOf, onOpen, onDeclare }: CardProps) 
 /** Carte compacte « réalisée » : rappel + accès à la fiche. */
 function DoneCard({ row, onOpen }: { row: MyInterventionPlaceRow; onOpen: () => void }) {
   return (
-    <MobileCardButton onClick={onOpen}>
+    <MobileCardButton onClick={onOpen} disabled={!row.request} chevron={false}>
       <div className="flex items-center justify-between gap-2">
         <span className="text-[16px] font-bold leading-tight">{row.request?.subject ?? "Demande inaccessible"}</span>
         <Pill tone="ok" className="shrink-0">Réalisée</Pill>
@@ -114,6 +138,13 @@ function DoneCard({ row, onOpen }: { row: MyInterventionPlaceRow; onOpen: () => 
         Réalisée le {formatDay(row.completed_on)}
         {row.completion_comment ? " · compte rendu envoyé" : ""}
       </span>
+      {row.request ? (
+        <span className="flex items-center gap-1 text-[13px] font-semibold text-primary">
+          <FileText className="size-4" aria-hidden="true" />
+          Voir la demande {row.request.reference}
+          <ChevronRight className="size-4" aria-hidden="true" />
+        </span>
+      ) : null}
     </MobileCardButton>
   );
 }
