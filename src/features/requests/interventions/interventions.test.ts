@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  addFiles, canComplete, defaultCompletion, ERROR_COMMENT_REQUIRED, ERROR_COMPLETED_FUTURE, ERROR_TOO_MANY_FILES, filesCountLabel, MAX_INTERVENTION_FILES, photoFileName,
+  addFiles, canComplete, defaultCompletion, ERROR_COMPLETED_FUTURE, ERROR_TOO_MANY_FILES, filesCountLabel, MAX_INTERVENTION_FILES, photoFileName,
   ERROR_COMPLETED_REQUIRED, ERROR_DATE_PAST, ERROR_DATE_REQUIRED, ERROR_INTERVENANT_REQUIRED,
   formatDay, interventionStatusLabel, interventionTone, isLate, isoDay, pendingCount,
   solicitGate, sortInterventions, validateCompletion, validateSollicitation,
@@ -69,9 +69,13 @@ describe("validateSollicitation", () => {
     expect(validateSollicitation({ ...ok, requestedFor: TODAY }, TODAY)).toEqual([]);
   });
 
-  it("exige l'intervenant, la date et le commentaire", () => {
-    expect(validateSollicitation({ intervenantId: "", requestedFor: "", comment: "  " }, TODAY))
-      .toEqual([ERROR_INTERVENANT_REQUIRED, ERROR_DATE_REQUIRED, ERROR_COMMENT_REQUIRED]);
+  it("exige l'intervenant et la date", () => {
+    expect(validateSollicitation({ intervenantId: "", requestedFor: "", comment: "Voir" }, TODAY))
+      .toEqual([ERROR_INTERVENANT_REQUIRED, ERROR_DATE_REQUIRED]);
+  });
+
+  it("n'exige pas « ce qui est attendu » (facultatif depuis le 2026-09-24)", () => {
+    expect(validateSollicitation({ ...ok, comment: "  " }, TODAY)).toEqual([]);
   });
 
   it("refuse une date passée", () => {

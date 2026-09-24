@@ -1,7 +1,7 @@
 // Interventions — logique PURE (sans DOM ni réseau), testée.
 //
 // Un agent qui instruit une demande SOLLICITE un intervenant (profil de droits
-// `is_intervenant`) : commentaire, date d'intervention souhaitée. L'intervenant
+// `is_intervenant`) : date d'intervention souhaitée, commentaire facultatif. L'intervenant
 // ne voit que les demandes sur lesquelles on l'a sollicité, et DÉCLARE
 // l'intervention réalisée : date de finalisation (proposée au jour courant),
 // commentaire facultatif.
@@ -34,7 +34,8 @@ export interface InterventionRow {
   requested_at: string;
   /** Jour souhaité, `AAAA-MM-JJ`. */
   requested_for: string;
-  request_comment: string;
+  /** « Ce qui est attendu » — facultatif depuis le 2026-09-24 (NULL = rien d'écrit). */
+  request_comment: string | null;
   status: string;
   completed_at: string | null;
   /** Jour déclaré, `AAAA-MM-JJ`. */
@@ -100,7 +101,6 @@ export interface SollicitationDraft {
 export const ERROR_INTERVENANT_REQUIRED = "Choisissez un intervenant.";
 export const ERROR_DATE_REQUIRED = "Indiquez la date d'intervention souhaitée.";
 export const ERROR_DATE_PAST = "La date d'intervention demandée ne peut pas être passée.";
-export const ERROR_COMMENT_REQUIRED = "Indiquez à l'intervenant ce qui est attendu.";
 export const ERROR_COMPLETED_REQUIRED = "Indiquez la date de finalisation.";
 export const ERROR_COMPLETED_FUTURE = "La date de finalisation ne peut pas être future.";
 
@@ -115,7 +115,6 @@ export function validateSollicitation(draft: SollicitationDraft, today: string):
   if (!isIsoDay(draft.requestedFor)) errors.push(ERROR_DATE_REQUIRED);
   // Comparaison TEXTUELLE : `AAAA-MM-JJ` lexicographique = chronologique.
   else if (draft.requestedFor < today) errors.push(ERROR_DATE_PAST);
-  if (draft.comment.trim() === "") errors.push(ERROR_COMMENT_REQUIRED);
   return errors;
 }
 

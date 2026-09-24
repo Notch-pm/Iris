@@ -12,31 +12,6 @@ export type Database = {
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
-  graphql_public: {
-    Tables: {
-      [_ in never]: never
-    }
-    Views: {
-      [_ in never]: never
-    }
-    Functions: {
-      graphql: {
-        Args: {
-          extensions?: Json
-          operationName?: string
-          query?: string
-          variables?: Json
-        }
-        Returns: Json
-      }
-    }
-    Enums: {
-      [_ in never]: never
-    }
-    CompositeTypes: {
-      [_ in never]: never
-    }
-  }
   public: {
     Tables: {
       attachment_uploads: {
@@ -377,7 +352,7 @@ export type Database = {
           created_at: string
           id: string
           name: string
-          organization_id: string
+          organization_id: string | null
           status: string
           updated_at: string
         }
@@ -386,7 +361,7 @@ export type Database = {
           created_at?: string
           id?: string
           name: string
-          organization_id: string
+          organization_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -395,7 +370,7 @@ export type Database = {
           created_at?: string
           id?: string
           name?: string
-          organization_id?: string
+          organization_id?: string | null
           status?: string
           updated_at?: string
         }
@@ -1289,7 +1264,7 @@ export type Database = {
           id: string
           intervenant_id: string
           organization_id: string
-          request_comment: string
+          request_comment: string | null
           request_id: string
           requested_at: string
           requested_by: string | null
@@ -1305,7 +1280,7 @@ export type Database = {
           id?: string
           intervenant_id: string
           organization_id: string
-          request_comment: string
+          request_comment?: string | null
           request_id: string
           requested_at?: string
           requested_by?: string | null
@@ -1321,7 +1296,7 @@ export type Database = {
           id?: string
           intervenant_id?: string
           organization_id?: string
-          request_comment?: string
+          request_comment?: string | null
           request_id?: string
           requested_at?: string
           requested_by?: string | null
@@ -2389,6 +2364,7 @@ export type Database = {
       }
       purge_attachment_upload: { Args: { p_id: string }; Returns: undefined }
       purge_consumed_uploads: { Args: { p_days?: number }; Returns: number }
+      purge_retention_journaux: { Args: never; Returns: Json }
       push_notification: {
         Args: {
           p_actor_id: string
@@ -2810,9 +2786,6 @@ export type CompositeTypes<
     : never
 
 export const Constants = {
-  graphql_public: {
-    Enums: {},
-  },
   public: {
     Enums: {},
   },

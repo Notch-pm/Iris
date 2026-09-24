@@ -96,7 +96,9 @@ export function InterventionsPane({
                   Intervention demandée pour le <span className="font-semibold text-foreground">{formatDay(i.requested_for)}</span>
                   {" "}· sollicitée par {nameOf(i.requested_by)} le {formatTimeline(i.requested_at)}
                 </p>
-                <p className="whitespace-pre-wrap text-[13px]">{i.request_comment}</p>
+                {i.request_comment ? (
+                  <p className="whitespace-pre-wrap text-[13px]">{i.request_comment}</p>
+                ) : null}
 
                 {i.status === "realisee" ? (
                   <div className="flex flex-col gap-2 rounded-[10px] bg-primary/[0.06] px-3 py-2 text-[12.5px]">

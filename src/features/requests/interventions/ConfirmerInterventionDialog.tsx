@@ -97,8 +97,13 @@ export function ConfirmerInterventionDialog({
               <div className="rounded-[14px] bg-muted/40 px-3.5 py-2.5 text-[12.5px]">
                 {requestLabel ? <p className="font-semibold">{requestLabel}</p> : null}
                 <p className="text-muted-foreground">
-                  Intervention demandée pour le {formatDay(intervention.requested_for)} :{" "}
-                  <span className="text-foreground">{intervention.request_comment}</span>
+                  Intervention demandée pour le {formatDay(intervention.requested_for)}
+                  {intervention.request_comment ? (
+                    <>
+                      {" "}:{" "}
+                      <span className="text-foreground">{intervention.request_comment}</span>
+                    </>
+                  ) : null}
                 </p>
               </div>
 

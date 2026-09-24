@@ -3,8 +3,8 @@
 // Le dialogue ne s'ouvre que depuis une demande EN COURS D'INSTRUCTION avec le
 // droit d'instruction (`solicitGate`) — reflet de confort : la RPC
 // `request_intervention` rejoue tout, et son refus s'affiche ici tel quel.
-// Le commentaire est OBLIGATOIRE : c'est la consigne que l'intervenant lira
-// dans son e-mail, une sollicitation muette n'aurait rien à lui dire.
+// Le commentaire est FACULTATIF (demande PO 2026-09-24) : quand il est écrit,
+// c'est la consigne que l'intervenant lira dans son e-mail.
 
 import * as React from "react";
 import { Button } from "@/components/ui/button";
@@ -16,7 +16,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
-  ERROR_COMMENT_REQUIRED, ERROR_DATE_PAST, ERROR_DATE_REQUIRED, ERROR_INTERVENANT_REQUIRED,
+  ERROR_DATE_PAST, ERROR_DATE_REQUIRED, ERROR_INTERVENANT_REQUIRED,
   isoDay, validateSollicitation, type SollicitationDraft,
 } from "./interventions";
 import type { EligibleIntervenantRow } from "./useInterventions";
@@ -109,9 +109,7 @@ export function SolliciterDialog({
           <Field
             label="Ce qui est attendu"
             htmlFor="sol-comment"
-            required
-            error={fieldError(ERROR_COMMENT_REQUIRED)}
-            hint="Ce texte figurera dans l'e-mail envoyé à l'intervenant."
+            hint="Facultatif — s'il est renseigné, ce texte figurera dans l'e-mail envoyé à l'intervenant."
           >
             <Textarea
               id="sol-comment"

@@ -6,8 +6,8 @@
 --   2. `eligible_intervenants` : profil actif is_intervenant, périmètre en
 --      sous-arbre ; un intervenant d'un autre service n'y est pas.
 --   3. `request_intervention` : refusée hors instruction, sans le droit
---      d'instruction, pour un non-intervenant, à une date passée, sans
---      commentaire, en doublon ; acceptée sinon — journal + notification
+--      d'instruction, pour un non-intervenant, à une date passée, en
+--      doublon ; acceptée sinon, y compris sans commentaire (NULL) — journal + notification
 --      `intervention_requested` (in_app, e-mail en attente, payload
 --      : jour, commentaire, JAMAIS le demandeur).
 --   4. VISIBILITÉ : avant la sollicitation l'intervenant ne voit pas la demande ;
@@ -198,14 +198,21 @@ begin
       v_fail := v_fail || format('T3c: message inattendu - %s', sqlerrm); end if;
   end;
 
-  -- Commentaire vide.
+  -- Commentaire vide : ACCEPTÉ depuis le 2026-09-24 (facultatif), consigné
+  -- NULL — jamais une chaîne blanche. Le sous-bloc est annulé volontairement
+  -- pour que la sollicitation de T5 ne soit pas un doublon.
   begin
-    perform public.request_intervention(req, u_sam, v_today, '   ');
-    v_fail := v_fail || 'T3d: commentaire vide accepte'::text;
+    select (public.request_intervention(req, u_sam, v_today, '   ') ->> 'id')::uuid into v_inter;
+    select count(*) into v_int from public.request_interventions
+      where id = v_inter and request_comment is null;
+    raise exception 'T3d_annulation';
   exception when others then
-    if sqlerrm not like '%attendu%' then
-      v_fail := v_fail || format('T3d: message inattendu - %s', sqlerrm); end if;
+    if sqlerrm <> 'T3d_annulation' then
+      v_fail := v_fail || format('T3d: commentaire vide refuse - %s', sqlerrm);
+    elsif v_int <> 1 then
+      v_fail := v_fail || 'T3d: commentaire vide non consigne NULL'::text; end if;
   end;
+  v_inter := null;
 
   -- Lecteur (consultation seule) : refusé.
   perform set_config('request.jwt.claims',

@@ -1259,8 +1259,8 @@ réalisée** (date de finalisation proposée au jour courant, commentaire facult
   titre qu'un profil d'administration pure). `my_rights` l'expose par profil et en tête
   (`is_intervenant` : quelque part dans le tenant → entrée de rail « Mes interventions »).
 - **`request_interventions`** — une ligne par sollicitation : `intervenant_id`,
-  `requested_by`, `requested_for` (jour souhaité), `request_comment` (obligatoire — c'est
-  la consigne), `status` (`demandee` | `realisee`), `completed_at`, `completed_on` (jour
+  `requested_by`, `requested_for` (jour souhaité), `request_comment` (la consigne —
+  **facultative** depuis le 2026-09-24 : NULL, jamais une chaîne blanche), `status` (`demandee` | `realisee`), `completed_at`, `completed_on` (jour
   déclaré), `completion_comment`. Contrainte de cohérence entre `status` et les colonnes
   de réalisation. **Aucune policy cliente d'écriture** ; lecture par `EXISTS` sur la
   demande (l'intervenant y accède par `requests_select`).

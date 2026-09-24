@@ -53,7 +53,7 @@ function TodoCard({ row, today, userId, nameOf, onOpen, onDeclare }: CardProps) 
   const late = isLate(row, today);
   const directionsUrl = hasLocation ? googleMapsDirectionsUrl(directionsTarget(location!)) : null;
   const canFinish = canComplete(row, userId);
-  const comment = row.request_comment.trim();
+  const comment = (row.request_comment ?? "").trim();
 
   return (
     <MobileCard>
@@ -69,8 +69,8 @@ function TodoCard({ row, today, userId, nameOf, onOpen, onDeclare }: CardProps) 
       </button>
 
       <p className="text-sm leading-snug text-foreground">
-        {comment}
-        {comment.endsWith(".") ? "" : "."} {requestedByLine(row, nameOf, today)}.
+        {comment ? `${comment}${comment.endsWith(".") ? "" : "."} ` : ""}
+        {requestedByLine(row, nameOf, today)}.
       </p>
 
       {canFinish || directionsUrl ? (

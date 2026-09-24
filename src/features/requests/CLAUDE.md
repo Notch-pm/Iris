@@ -1213,7 +1213,8 @@ note interne → résolution avec texte de clôture → journal.
   `interventions.ts` pur/testé — 20 cas —, `useInterventions.ts`, `InterventionsPane.tsx`,
   `SolliciterDialog.tsx`, `ConfirmerInterventionDialog.tsx`, page `MesInterventionsPage`
   sur `/interventions` ; migration `20260914100000`) : pendant l'instruction, l'agent
-  **sollicite un intervenant** (commentaire obligatoire, date d'intervention souhaitée),
+  **sollicite un intervenant** (date d'intervention souhaitée, commentaire « ce qui est
+  attendu » facultatif depuis le 2026-09-24 — NULL en base, jamais une chaîne blanche),
   l'intervenant est **prévenu par e-mail** (gabarit agent, motif `intervention_requested`),
   ne voit **que** les demandes où on l'a sollicité, et **déclare l'intervention réalisée**
   (date de finalisation proposée au jour courant, commentaire facultatif — motif

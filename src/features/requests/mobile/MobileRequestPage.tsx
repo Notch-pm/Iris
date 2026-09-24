@@ -442,7 +442,7 @@ export function MobileRequestPage() {
                     <span className="flex-1 truncate text-sm font-bold">{nameOf(i.intervenant_id)}</span>
                     <Pill tone={tone}>{late ? "En retard" : interventionStatusLabel(i.status)}</Pill>
                   </div>
-                  <p className="text-[13px] leading-relaxed">{i.request_comment}</p>
+                  {i.request_comment ? <p className="text-[13px] leading-relaxed">{i.request_comment}</p> : null}
                   <p className="text-xs text-muted-foreground">demandée pour le {formatDay(i.requested_for)}</p>
                   {i.status === "realisee" ? (
                     <div className="flex flex-col gap-1.5 rounded-lg bg-primary/[0.08] px-2.5 py-2 text-[12.5px]">

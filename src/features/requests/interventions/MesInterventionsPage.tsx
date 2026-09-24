@@ -169,7 +169,11 @@ export function MesInterventionsPage() {
                       </span>
                     </td>
                     <td className="max-w-[360px] px-4 py-3">
-                      <p className="whitespace-pre-wrap">{i.request_comment}</p>
+                      {i.request_comment ? (
+                        <p className="whitespace-pre-wrap">{i.request_comment}</p>
+                      ) : (
+                        <p className="text-muted-foreground">—</p>
+                      )}
                       {i.status === "realisee" ? (
                         <p className="mt-1 text-xs text-muted-foreground">
                           Réalisée le {formatDay(i.completed_on)}
