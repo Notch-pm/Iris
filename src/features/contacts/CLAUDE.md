@@ -134,9 +134,19 @@ navigateur le 2026-08-20 dans le parcours de création.
   dédiée, recherche par mot-clé, filtres, tri par colonne, export CSV de toute la sélection
   filtrée. Les filtres du **fichier domiciliaire** de Clara (grands anniversaires, mariages)
   ne sont **pas** repris : hors sujet ici.
-  - **Gabarit large** (`useWideLayout`, comme la liste des demandes) : le tableau prend
-    toute la largeur de l'écran ; chapeau et barre de filtres restent bornés (largeur de
-    lecture / listes déroulantes de taille utile).
+  - **Gabarit de la liste des demandes** (2026-09-24, `useFullBleedLayout`) : barre
+    collante de 56 px (titre, compteur, « Grouper », « Filtres » en popover — recherche en
+    tête —, densité, export), chips des filtres actifs, en-tête figé, pied de pagination.
+    Les pièces communes vivent dans `src/components/ui/list-toolbar.tsx`, partagé avec
+    `RequestsListPage` — ne pas les recopier.
+  - **Regroupement** (type, quartier, commune, partage) : à la différence des demandes, qui
+    ne regroupent que la page affichée (tri serveur), ici TOUTE la sélection est ordonnée
+    par groupe AVANT la pagination (`orderByGroup`) ; l'en-tête de groupe compte le groupe
+    sur toute la sélection.
+  - **Consentement au partage** (colonne, filtre, regroupement, export) : trois états —
+    accepté (opt-in), refusé (opt-out), **jamais demandé** — tranchés par la DATE
+    `consent_partage_at` (`partageState`), même doctrine que la fiche : un `false` sans date
+    n'est pas un refus. Le popover rappelle la phrase posée à l'usager.
   - **Deux sources qu'aucun serveur ne joint** : les fiches viennent du Socle
     (`socle-proxy /v1/contacts/list`, pagination par `offset`, aucune rétention —
     `gcTime: 0`, comme la fiche usager), les compteurs de demandes viennent d'Iris
@@ -145,7 +155,7 @@ navigateur le 2026-08-20 dans le parcours de création.
     rapprochement, le tri, les filtres et la pagination sont donc **client**, sur l'ensemble
     rapatrié — plafonné à `USAGERS_MAX` (5 000) avec **mention explicite** de la troncature,
     jamais silencieuse.
-  - **Filtres** (décision d'implémentation 2026-08-23) : nombre de demandes et nombre de
+  - **Filtres** (décision d'implémentation 2026-08-23, cases à cocher depuis le 2026-09-24) : nombre de demandes et nombre de
     demandes en cours par **paliers** (« aucune », « au moins 1 », « 2 et plus »…) — les
     mêmes grandeurs étant aussi des **colonnes triables**, ce qui couvre le « qui en a le
     plus » —, quartier (observé dans les fiches rapatriées, plus « Sans quartier » ; le

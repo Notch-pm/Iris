@@ -10,12 +10,15 @@
 import * as React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  Check, ChevronDown, ChevronLeft, ChevronRight, Columns3, Download, Layers, Map, Plus,
-  Rows3, Search, SlidersHorizontal, X,
+  ChevronDown, ChevronRight, Columns3, Download, Layers, Map, Plus, Rows3, Search,
+  SlidersHorizontal, X,
 } from "lucide-react";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
+import {
+  CheckList, ChipGroup, IconPill, ListPagination, PILL, PILL_ACTIVE, PILL_IDLE,
+} from "@/components/ui/list-toolbar";
 import { ariaSort, SortableHeader } from "@/components/ui/sortable-header";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import {
@@ -78,31 +81,6 @@ const COLUMNS: { key: SortKey | null; title: string; className: string; align?: 
   { key: null, title: "", className: "w-[36px]" },
 ];
 
-// ---- Barre : boutons ronds ----------------------------------------------------
-
-const PILL =
-  "inline-flex h-9 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border text-[13px] font-semibold transition-colors " +
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40 active:scale-[0.98]";
-const PILL_IDLE = "border-border bg-background text-foreground hover:bg-secondary hover:border-secondary";
-const PILL_ACTIVE = "border-primary bg-primary/10 text-primary";
-
-/** Bouton rond à icône seule (densité, vues, export) : le libellé passe en info-bulle et en texte caché. */
-function IconPill({
-  label, active, className, children, ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { label: string; active?: boolean }) {
-  return (
-    <button
-      type="button"
-      title={label}
-      className={cn(PILL, "w-9 justify-center px-0", active ? PILL_ACTIVE : PILL_IDLE, "text-muted-foreground", active && "text-primary", className)}
-      {...props}
-    >
-      {children}
-      <span className="sr-only">{label}</span>
-    </button>
-  );
-}
-
 // ---- Ligne ----------------------------------------------------------------------
 
 function RequestRow({ r, dense }: { r: RequestListItem; dense: boolean }) {
@@ -146,83 +124,6 @@ function RequestRow({ r, dense }: { r: RequestListItem; dense: boolean }) {
         <ChevronRight className="ml-auto size-4" aria-hidden="true" />
       </td>
     </tr>
-  );
-}
-
-// ---- Popover « Filtres » ---------------------------------------------------------
-
-interface FilterOption { value: string; label: string }
-
-function ChipGroup({
-  label, options, selected, onToggle,
-}: { label: string; options: FilterOption[]; selected: string[]; onToggle: (value: string) => void }) {
-  return (
-    <fieldset className="flex flex-col gap-1.5">
-      <legend className="mb-1.5 text-[11.5px] font-semibold text-muted-foreground">{label}</legend>
-      <div className="flex flex-wrap gap-1.5">
-        {options.map((o) => {
-          const on = selected.includes(o.value);
-          return (
-            <button
-              key={o.value}
-              type="button"
-              role="checkbox"
-              aria-checked={on}
-              onClick={() => onToggle(o.value)}
-              className={cn(
-                "inline-flex h-[30px] items-center gap-1.5 whitespace-nowrap rounded-full border px-[11px] text-[12.5px] font-semibold transition-colors hover:border-primary/50",
-                on ? PILL_ACTIVE : "border-border bg-background text-foreground",
-              )}
-            >
-              {on ? <Check className="size-3" aria-hidden="true" /> : null}
-              {o.label}
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
-  );
-}
-
-function CheckList({
-  label, options, selected, onToggle,
-}: { label: string; options: FilterOption[]; selected: string[]; onToggle: (value: string) => void }) {
-  return (
-    <fieldset className="flex flex-col gap-0.5">
-      <legend className="mb-1.5 text-[11.5px] font-semibold text-muted-foreground">{label}</legend>
-      {options.length === 0 ? (
-        <span className="px-2 py-1 text-xs text-muted-foreground">Aucune valeur</span>
-      ) : null}
-      <div className="flex max-h-[176px] flex-col gap-0.5 overflow-auto">
-        {options.map((o) => {
-          const on = selected.includes(o.value);
-          return (
-            <button
-              key={o.value}
-              type="button"
-              role="checkbox"
-              aria-checked={on}
-              onClick={() => onToggle(o.value)}
-              className={cn(
-                "flex h-[34px] w-full shrink-0 items-center gap-2 rounded-lg px-2 text-left transition-colors hover:bg-muted/70",
-                on && "bg-primary/[0.07]",
-              )}
-            >
-              <span
-                className={cn(
-                  "flex size-4 shrink-0 items-center justify-center rounded border",
-                  on ? "border-primary bg-primary text-primary-foreground" : "border-input",
-                )}
-                aria-hidden="true"
-              >
-                {on ? <Check className="size-3" /> : null}
-              </span>
-              <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{o.label}</span>
-            </button>
-          );
-        })}
-      </div>
-    </fieldset>
   );
 }
 
@@ -661,44 +562,7 @@ export function RequestsListPage() {
           {total === 0 ? "Aucune demande" : `${first}–${last} sur ${nResults}`}
           {groupKey ? " — regroupement sur la page affichée" : ""}
         </span>
-        <nav className="flex items-center gap-1" aria-label="Pagination">
-          <button
-            type="button"
-            disabled={page <= 1}
-            onClick={() => setPage((p) => p - 1)}
-            className="flex size-7 items-center justify-center rounded-lg border border-border transition-colors hover:bg-secondary disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <ChevronLeft className="size-3.5" aria-hidden="true" />
-            <span className="sr-only">Page précédente</span>
-          </button>
-          {pageWindow(page, pageCount).map((p, i) =>
-            p === null ? (
-              <span key={`gap-${i}`} className="w-5 text-center" aria-hidden="true">…</span>
-            ) : (
-              <button
-                key={p}
-                type="button"
-                onClick={() => setPage(p)}
-                aria-current={p === page ? "page" : undefined}
-                className={cn(
-                  "flex size-7 items-center justify-center rounded-lg text-xs font-semibold tabular-nums transition-colors",
-                  p === page ? "bg-primary text-primary-foreground" : "text-foreground hover:bg-secondary",
-                )}
-              >
-                {p}
-              </button>
-            ),
-          )}
-          <button
-            type="button"
-            disabled={page >= pageCount}
-            onClick={() => setPage((p) => p + 1)}
-            className="flex size-7 items-center justify-center rounded-lg border border-border transition-colors hover:bg-secondary disabled:opacity-40 disabled:hover:bg-transparent"
-          >
-            <ChevronRight className="size-3.5" aria-hidden="true" />
-            <span className="sr-only">Page suivante</span>
-          </button>
-        </nav>
+        <ListPagination page={page} pageCount={pageCount} pages={pageWindow(page, pageCount)} onPage={setPage} />
       </footer>
     </div>
   );

@@ -10,6 +10,7 @@
 // le rapprochement se fait dans le navigateur, sur l'ensemble rapatrié.
 
 import { csvFilename, type CsvColumn } from "@/lib/csv";
+import { consentStatement } from "@fn/_shared/consents/catalog";
 import type { SocleContact } from "./rapprochement";
 import { contactName, contactStatusLabel, contactTypeLabel } from "./usager";
 
@@ -36,6 +37,44 @@ export function buildRows(
 /** Téléphone affiché : mobile d'abord, fixe à défaut. */
 export function contactPhone(contact: SocleContact): string {
   return contact.mobile_phone?.trim() || contact.landline_phone?.trim() || "";
+}
+
+// ---- Consentement au partage -------------------------------------------------
+
+/**
+ * Consentement « partage » d'une fiche (partage aux services de l'organisme
+ * principal, question posée à chaque dépôt depuis le 2026-09-20).
+ *
+ * ⚠️ TROIS états, pas deux — même doctrine que la fiche usager (`consentViews`) :
+ * une fiche jamais passée par un dépôt porte `consent_partage: false` sans que
+ * personne ne lui ait rien demandé. C'est la DATE qui tranche : sans date,
+ * « jamais demandé », jamais « refusé ».
+ */
+export type PartageState = "accepte" | "refuse" | "jamais_demande";
+
+export function partageState(contact: SocleContact): PartageState {
+  if (!contact.consent_partage_at) return "jamais_demande";
+  return contact.consent_partage === true ? "accepte" : "refuse";
+}
+
+export const PARTAGE_LABELS: Record<PartageState, string> = {
+  accepte: "Accepté",
+  refuse: "Refusé",
+  jamais_demande: "Jamais demandé",
+};
+
+/** Ordre de lecture (tri, regroupement) : opt-in, opt-out, puis les fiches jamais interrogées. */
+const PARTAGE_ORDER: readonly PartageState[] = ["accepte", "refuse", "jamais_demande"];
+
+export const PARTAGE_OPTIONS: { value: PartageState; label: string }[] = [
+  { value: "accepte", label: "Accepté (opt-in)" },
+  { value: "refuse", label: "Refusé (opt-out)" },
+  { value: "jamais_demande", label: "Jamais demandé" },
+];
+
+/** La phrase posée à l'usager, pour que l'agent sache ce que le filtre désigne. */
+export function partageStatement(organismName?: string | null): string {
+  return consentStatement("partage", organismName);
 }
 
 // ---- Recherche par mot-clé --------------------------------------------------
@@ -138,12 +177,14 @@ export const OPEN_BUCKETS: CountBucket[] = [
 export interface UsagerFilters {
   /** Recherche par mot-clé (client). */
   search: string;
-  /** Public — "" = tous. */
-  type: string;
+  /** Publics retenus — vide = tous. */
+  type: string[];
   /** Actifs / archivés / tous — SEUL filtre servi par le Socle (il change la requête). */
   status: UsagerStatusFilter;
-  /** Identifiant de quartier, `NO_QUARTIER`, ou "" = tous. */
-  quartier: string;
+  /** Identifiants de quartier (ou `NO_QUARTIER`) — vide = tous. */
+  quartier: string[];
+  /** États du consentement au partage (`PartageState`) — vide = tous. */
+  partage: string[];
   /** Palier `TOTAL_BUCKETS`, ou "" = tous. */
   total: string;
   /** Palier `OPEN_BUCKETS`, ou "" = tous. */
@@ -151,8 +192,76 @@ export interface UsagerFilters {
 }
 
 export const EMPTY_FILTERS: UsagerFilters = {
-  search: "", type: "", status: "active", quartier: "", total: "", open: "",
+  search: "", type: [], status: "active", quartier: [], partage: [], total: "", open: "",
 };
+
+/** Critères à plusieurs valeurs (cases à cocher). */
+export type MultiFilterKey = "type" | "quartier" | "partage";
+/** Critères exclusifs (une valeur au plus ; re-choisir la valeur la retire). */
+export type SingleFilterKey = "total" | "open";
+
+export function toggleMultiFilter(filters: UsagerFilters, key: MultiFilterKey, value: string): UsagerFilters {
+  const current = filters[key];
+  const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
+  return { ...filters, [key]: next };
+}
+
+export function toggleSingleFilter(filters: UsagerFilters, key: SingleFilterKey, value: string): UsagerFilters {
+  return { ...filters, [key]: filters[key] === value ? "" : value };
+}
+
+/** Nombre de critères actifs (pastille du bouton « Filtres ») — le statut par défaut ne compte pas. */
+export function activeFilterCount(filters: UsagerFilters): number {
+  return (
+    filters.type.length + filters.quartier.length + filters.partage.length +
+    (filters.total !== "" ? 1 : 0) + (filters.open !== "" ? 1 : 0) +
+    (filters.status !== EMPTY_FILTERS.status ? 1 : 0) +
+    (filters.search.trim() !== "" ? 1 : 0)
+  );
+}
+
+export type ChipKey = MultiFilterKey | SingleFilterKey | "status" | "search";
+export interface UsagerFilterChip { key: ChipKey; value: string; label: string }
+
+/** Pastilles « Filtres actifs », dans l'ordre du popover. */
+export function filterChips(
+  filters: UsagerFilters,
+  quartierLabel: (id: string) => string | undefined,
+): UsagerFilterChip[] {
+  const chips: UsagerFilterChip[] = [];
+  const search = filters.search.trim();
+  if (search !== "") chips.push({ key: "search", value: search, label: `« ${search} »` });
+  if (filters.status !== EMPTY_FILTERS.status) {
+    const label = STATUS_OPTIONS.find((o) => o.value === filters.status)?.label ?? filters.status;
+    chips.push({ key: "status", value: filters.status, label: `Fiches : ${label.toLowerCase()}` });
+  }
+  for (const v of filters.type) {
+    chips.push({ key: "type", value: v, label: TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v });
+  }
+  for (const v of filters.partage) {
+    const label = PARTAGE_LABELS[v as PartageState] ?? v;
+    chips.push({ key: "partage", value: v, label: `Partage : ${label.toLowerCase()}` });
+  }
+  for (const v of filters.quartier) {
+    chips.push({ key: "quartier", value: v, label: v === NO_QUARTIER ? "Sans quartier" : quartierLabel(v) ?? "Quartier" });
+  }
+  if (filters.total !== "") {
+    chips.push({ key: "total", value: filters.total, label: TOTAL_BUCKETS.find((b) => b.value === filters.total)?.label ?? filters.total });
+  }
+  if (filters.open !== "") {
+    chips.push({ key: "open", value: filters.open, label: OPEN_BUCKETS.find((b) => b.value === filters.open)?.label ?? filters.open });
+  }
+  return chips;
+}
+
+export function removeFilterChip(filters: UsagerFilters, chip: UsagerFilterChip): UsagerFilters {
+  switch (chip.key) {
+    case "search": return { ...filters, search: "" };
+    case "status": return { ...filters, status: EMPTY_FILTERS.status };
+    case "total": case "open": return { ...filters, [chip.key]: "" };
+    default: return toggleMultiFilter(filters, chip.key, chip.value);
+  }
+}
 
 function bucketTest(buckets: CountBucket[], value: string): ((n: number) => boolean) | null {
   if (value === "") return null;
@@ -168,12 +277,11 @@ export function filterUsagers(rows: readonly UsagerRow[], filters: UsagerFilters
   const totalTest = bucketTest(TOTAL_BUCKETS, filters.total);
   const openTest = bucketTest(OPEN_BUCKETS, filters.open);
   return rows.filter((row) => {
-    if (filters.type !== "" && row.contact.contact_type !== filters.type) return false;
-    if (filters.quartier === NO_QUARTIER) {
-      if (row.contact.quartier !== null) return false;
-    } else if (filters.quartier !== "" && row.contact.quartier?.id !== filters.quartier) {
+    if (filters.type.length > 0 && !filters.type.includes(row.contact.contact_type ?? "")) return false;
+    if (filters.quartier.length > 0 && !filters.quartier.includes(row.contact.quartier?.id ?? NO_QUARTIER)) {
       return false;
     }
+    if (filters.partage.length > 0 && !filters.partage.includes(partageState(row.contact))) return false;
     if (totalTest && !totalTest(row.total)) return false;
     if (openTest && !openTest(row.open)) return false;
     return matchesSearch(row, filters.search);
@@ -205,7 +313,7 @@ export function quartierOptions(rows: readonly UsagerRow[]): QuartierOption[] {
 // ---- Tri --------------------------------------------------------------------
 
 export const SORT_KEYS = [
-  "name", "type", "email", "phone", "city", "quartier", "total", "open",
+  "name", "type", "email", "phone", "city", "quartier", "partage", "total", "open",
 ] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 export type SortDir = "asc" | "desc";
@@ -254,6 +362,8 @@ export function sortUsagers(rows: readonly UsagerRow[], sort: SortState): Usager
       const va = sort.key === "total" ? a.total : a.open;
       const vb = sort.key === "total" ? b.total : b.open;
       cmp = (va - vb) * factor;
+    } else if (sort.key === "partage") {
+      cmp = (PARTAGE_ORDER.indexOf(partageState(a.contact)) - PARTAGE_ORDER.indexOf(partageState(b.contact))) * factor;
     } else {
       const va = textValue(a, sort.key);
       const vb = textValue(b, sort.key);
@@ -266,6 +376,100 @@ export function sortUsagers(rows: readonly UsagerRow[], sort: SortState): Usager
       .localeCompare(contactName(b.contact), "fr", { sensitivity: "base" });
     return byName !== 0 ? byName : a.contact.id.localeCompare(b.contact.id);
   });
+}
+
+// ---- Regroupement -------------------------------------------------------------
+
+export const GROUP_KEYS = ["type", "quartier", "city", "partage"] as const;
+export type GroupKey = (typeof GROUP_KEYS)[number];
+
+export const GROUP_LABELS: Record<GroupKey, string> = {
+  type: "Type",
+  quartier: "Quartier",
+  city: "Commune",
+  partage: "Partage d'informations",
+};
+
+export function isGroupKey(value: string): value is GroupKey {
+  return (GROUP_KEYS as readonly string[]).includes(value);
+}
+
+interface GroupRef { id: string; label: string; rank: string }
+
+/** Rang placé APRÈS toute valeur : les groupes « non renseigné » ferment la liste. */
+const LAST = "￿";
+
+function groupOf(row: UsagerRow, key: GroupKey): GroupRef {
+  const c = row.contact;
+  switch (key) {
+    case "type": {
+      const i = TYPE_OPTIONS.findIndex((o) => o.value === c.contact_type);
+      return { id: c.contact_type ?? "", label: contactTypeLabel(c.contact_type), rank: i < 0 ? LAST : String(i) };
+    }
+    case "quartier": {
+      if (!c.quartier) return { id: NO_QUARTIER, label: "Sans quartier", rank: LAST };
+      const name = c.quartier.name?.trim() || "Quartier sans nom";
+      return { id: c.quartier.id, label: name, rank: normalize(name) };
+    }
+    case "city": {
+      const city = c.city?.trim() ?? "";
+      if (city === "") return { id: "", label: "Commune non renseignée", rank: LAST };
+      return { id: normalize(city), label: city, rank: normalize(city) };
+    }
+    case "partage": {
+      const state = partageState(c);
+      return { id: state, label: `Partage ${PARTAGE_LABELS[state].toLowerCase()}`, rank: String(PARTAGE_ORDER.indexOf(state)) };
+    }
+  }
+}
+
+/**
+ * Regroupe TOUTE la sélection (le tri est client, à la différence des demandes,
+ * qui ne regroupent que la page affichée) : groupes dans leur ordre naturel,
+ * « non renseigné » en dernier, et à l'intérieur l'ordre du tri choisi. La
+ * pagination vient APRÈS — un groupe reste d'un seul tenant d'une page à l'autre.
+ */
+export function orderByGroup(rows: readonly UsagerRow[], key: GroupKey | null): UsagerRow[] {
+  if (!key) return [...rows];
+  const ranked = rows.map((row, index) => ({ row, index, rank: groupOf(row, key).rank }));
+  ranked.sort((a, b) => (a.rank === b.rank ? a.index - b.index : a.rank < b.rank ? -1 : 1));
+  return ranked.map((r) => r.row);
+}
+
+export interface UsagerGroup {
+  id: string;
+  label: string;
+  /** Lignes du groupe sur la page affichée. */
+  items: UsagerRow[];
+  /** Taille du groupe dans TOUTE la sélection filtrée. */
+  total: number;
+}
+
+/** Groupes de la page affichée, avec leur taille dans toute la sélection. */
+export function groupUsagers(
+  page: readonly UsagerRow[],
+  selection: readonly UsagerRow[],
+  key: GroupKey | null,
+): UsagerGroup[] {
+  if (!key) return [{ id: "__all__", label: "", items: [...page], total: selection.length }];
+  const totals = new Map<string, number>();
+  for (const row of selection) {
+    const id = groupOf(row, key).id;
+    totals.set(id, (totals.get(id) ?? 0) + 1);
+  }
+  const groups: UsagerGroup[] = [];
+  const byId = new Map<string, UsagerGroup>();
+  for (const row of page) {
+    const ref = groupOf(row, key);
+    let group = byId.get(ref.id);
+    if (!group) {
+      group = { id: `${key}:${ref.id}`, label: ref.label, items: [], total: totals.get(ref.id) ?? 0 };
+      byId.set(ref.id, group);
+      groups.push(group);
+    }
+    group.items.push(row);
+  }
+  return groups;
 }
 
 // ---- Pagination -------------------------------------------------------------
@@ -304,6 +508,8 @@ export function usagerCsvColumns(): CsvColumn<UsagerRow>[] {
     { header: "Quartier", accessor: (r) => r.contact.quartier?.name ?? "" },
     { header: "SIRET", accessor: (r) => r.contact.siret ?? "" },
     { header: "Statut", accessor: (r) => contactStatusLabel(r.contact.status) ?? "" },
+    { header: "Partage d'informations", accessor: (r) => PARTAGE_LABELS[partageState(r.contact)] },
+    { header: "Partage — date du recueil", accessor: (r) => r.contact.consent_partage_at ?? "" },
     { header: "Demandes visibles", accessor: (r) => r.total },
     { header: "Demandes en cours", accessor: (r) => r.open },
     { header: "Identifiant", accessor: (r) => r.contact.id },

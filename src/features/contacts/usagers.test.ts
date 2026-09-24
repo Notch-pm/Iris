@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { buildCsv } from "@/lib/csv";
 import type { SocleContact } from "./rapprochement";
 import {
-  buildRows, contactPhone, DEFAULT_SORT, EMPTY_FILTERS, filterUsagers, matchesSearch,
-  NO_QUARTIER, normalize, PAGE_SIZE, pageCount, paginate, quartierOptions, sortUsagers,
-  toggleSort, usagerCsvColumns, usagersExportFilename,
+  activeFilterCount, buildRows, contactPhone, DEFAULT_SORT, EMPTY_FILTERS, filterChips,
+  filterUsagers, groupUsagers, matchesSearch, NO_QUARTIER, normalize, orderByGroup, PAGE_SIZE,
+  pageCount, paginate, partageState, quartierOptions, removeFilterChip, sortUsagers,
+  toggleMultiFilter, toggleSingleFilter, toggleSort, usagerCsvColumns, usagersExportFilename,
   type UsagerFilters, type UsagerRow,
 } from "./usagers";
 
@@ -101,13 +102,29 @@ describe("filterUsagers", () => {
     row({ id: "c", display_name: "Paul", quartier: { id: "q2", name: "Sud", color: null } }, 1, 0),
   ];
 
-  it("filtre par public", () => {
-    expect(filterUsagers(rows, filters({ type: "association" })).map((r) => r.contact.id)).toEqual(["b"]);
+  it("filtre par public (plusieurs valeurs = OU)", () => {
+    expect(filterUsagers(rows, filters({ type: ["association"] })).map((r) => r.contact.id)).toEqual(["b"]);
+    expect(filterUsagers(rows, filters({ type: ["association", "personne"] }))).toHaveLength(3);
   });
 
   it("filtre par quartier, y compris « sans quartier »", () => {
-    expect(filterUsagers(rows, filters({ quartier: "q2" })).map((r) => r.contact.id)).toEqual(["c"]);
-    expect(filterUsagers(rows, filters({ quartier: NO_QUARTIER })).map((r) => r.contact.id)).toEqual(["b"]);
+    expect(filterUsagers(rows, filters({ quartier: ["q2"] })).map((r) => r.contact.id)).toEqual(["c"]);
+    expect(filterUsagers(rows, filters({ quartier: [NO_QUARTIER] })).map((r) => r.contact.id)).toEqual(["b"]);
+    expect(filterUsagers(rows, filters({ quartier: ["q1", NO_QUARTIER] })).map((r) => r.contact.id)).toEqual(["a", "b"]);
+  });
+
+  it("filtre par consentement au partage : opt-in, opt-out, jamais demandé", () => {
+    const withConsent = [
+      row({ id: "in", consent_partage: true, consent_partage_at: "2026-09-21T10:00:00Z" }),
+      row({ id: "out", consent_partage: false, consent_partage_at: "2026-09-21T10:00:00Z" }),
+      row({ id: "jamais", consent_partage: false, consent_partage_at: null }),
+    ];
+    const ids = (partage: string[]) => filterUsagers(withConsent, filters({ partage })).map((r) => r.contact.id);
+    expect(ids(["accepte"])).toEqual(["in"]);
+    // Jamais demandé n'est PAS un refus : la date tranche.
+    expect(ids(["refuse"])).toEqual(["out"]);
+    expect(ids(["jamais_demande"])).toEqual(["jamais"]);
+    expect(ids(["refuse", "jamais_demande"])).toEqual(["out", "jamais"]);
   });
 
   it("filtre par volumétrie de demandes et de demandes en cours", () => {
@@ -195,6 +212,78 @@ describe("sortUsagers", () => {
     const before = rows.map((r) => r.contact.id);
     sortUsagers(rows, { key: "total", dir: "desc" });
     expect(rows.map((r) => r.contact.id)).toEqual(before);
+  });
+});
+
+describe("partageState", () => {
+  it("distingue accepté, refusé et jamais demandé (la date tranche)", () => {
+    expect(partageState(contact({ id: "a", consent_partage: true, consent_partage_at: "2026-09-21T10:00:00Z" }))).toBe("accepte");
+    expect(partageState(contact({ id: "a", consent_partage: false, consent_partage_at: "2026-09-21T10:00:00Z" }))).toBe("refuse");
+    expect(partageState(contact({ id: "a", consent_partage: false, consent_partage_at: null }))).toBe("jamais_demande");
+    expect(partageState(contact({ id: "a" }))).toBe("jamais_demande");
+  });
+
+  it("trie opt-in, opt-out, puis jamais demandé", () => {
+    const rows = [
+      row({ id: "j", display_name: "A" }),
+      row({ id: "r", display_name: "B", consent_partage: false, consent_partage_at: "2026-09-21T10:00:00Z" }),
+      row({ id: "i", display_name: "C", consent_partage: true, consent_partage_at: "2026-09-21T10:00:00Z" }),
+    ];
+    expect(sortUsagers(rows, { key: "partage", dir: "asc" }).map((r) => r.contact.id)).toEqual(["i", "r", "j"]);
+  });
+
+  it("figure à l'export", () => {
+    const csv = buildCsv([row({ id: "a", consent_partage: true, consent_partage_at: "2026-09-21T10:00:00Z" })], usagerCsvColumns());
+    expect(csv).toContain("Partage d'informations");
+    expect(csv).toContain("Accepté");
+  });
+});
+
+describe("filtres actifs", () => {
+  it("compte les critères, le statut par défaut exclu", () => {
+    expect(activeFilterCount(EMPTY_FILTERS)).toBe(0);
+    expect(activeFilterCount(filters({ type: ["personne", "entreprise"], partage: ["accepte"], status: "all", total: "1" }))).toBe(5);
+  });
+
+  it("bascule une valeur multiple, et une valeur exclusive re-cliquée se retire", () => {
+    const f = toggleMultiFilter(EMPTY_FILTERS, "partage", "accepte");
+    expect(f.partage).toEqual(["accepte"]);
+    expect(toggleMultiFilter(f, "partage", "accepte").partage).toEqual([]);
+    const g = toggleSingleFilter(EMPTY_FILTERS, "total", "2");
+    expect(g.total).toBe("2");
+    expect(toggleSingleFilter(g, "total", "2").total).toBe("");
+  });
+
+  it("pastilles libellées et retirables une à une", () => {
+    const f = filters({ partage: ["refuse"], quartier: ["q1", NO_QUARTIER], status: "archived" });
+    const chips = filterChips(f, (id) => (id === "q1" ? "Nord" : undefined));
+    expect(chips.map((c) => c.label)).toEqual(["Fiches : archivés", "Partage : refusé", "Nord", "Sans quartier"]);
+    const after = chips.reduce((acc, c) => removeFilterChip(acc, c), f);
+    expect(after).toEqual(EMPTY_FILTERS);
+  });
+});
+
+describe("regroupement", () => {
+  const rows = [
+    row({ id: "a", display_name: "Anne", city: "Rosny" }),
+    row({ id: "b", display_name: "Bruno", city: null, contact_type: "association" }),
+    row({ id: "c", display_name: "Chloé", city: "Arles", consent_partage: true, consent_partage_at: "2026-09-21T10:00:00Z" }),
+    row({ id: "d", display_name: "Denis", city: "rosny" }),
+  ];
+
+  it("ordonne toute la sélection par groupe, non renseigné en dernier, l'ordre du tri conservé dedans", () => {
+    expect(orderByGroup(rows, "city").map((r) => r.contact.id)).toEqual(["c", "a", "d", "b"]);
+    expect(orderByGroup(rows, "partage").map((r) => r.contact.id)).toEqual(["c", "a", "b", "d"]);
+    expect(orderByGroup(rows, "type").map((r) => r.contact.id)).toEqual(["a", "c", "d", "b"]);
+    expect(orderByGroup(rows, null)).toEqual(rows);
+  });
+
+  it("groupe la page affichée et compte chaque groupe sur toute la sélection", () => {
+    const ordered = orderByGroup(rows, "city");
+    const groups = groupUsagers(ordered.slice(0, 2), ordered, "city");
+    expect(groups.map((g) => [g.label, g.items.length, g.total])).toEqual([["Arles", 1, 1], ["Rosny", 1, 2]]);
+    const partage = groupUsagers(rows, rows, "partage");
+    expect(partage.map((g) => g.label)).toEqual(["Partage jamais demandé", "Partage accepté"]);
   });
 });
 
