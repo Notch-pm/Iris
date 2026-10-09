@@ -3,6 +3,7 @@ import type { Tables } from "@/types/database.types";
 import { TEMPLATE_VARIABLES, renderTemplate } from "@/features/templates/templates";
 import { requesterIdentity, type StageEvent } from "./instruction";
 import {
+  exchangeAuthor,
   MAX_EMAIL_ATTACHMENT_BYTES,
   hasDraftErrors,
   insertAtCaret,
@@ -261,5 +262,15 @@ describe("insertAtCaret", () => {
   it("borne un curseur hors du texte", () => {
     expect(insertAtCaret("abc", 99, "!").text).toBe("abc!");
     expect(insertAtCaret("abc", -5, "!").text).toBe("!abc");
+  });
+});
+
+describe("exchangeAuthor", () => {
+  const members = [{ userId: "u1", displayName: "Lucie Agent" }];
+  it("nomme l'agent qui a envoyé", () => {
+    expect(exchangeAuthor(members, "u1")).toEqual({ name: "Lucie Agent", role: "agent" });
+  });
+  it("dit l'envoi automatique quand personne ne l'a envoyé (accusé de réception)", () => {
+    expect(exchangeAuthor(members, null)).toEqual({ name: "Iris", role: "envoi automatique" });
   });
 });

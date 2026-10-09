@@ -16,6 +16,9 @@
 // adresse ou un tenant sans relais → `skip_notification_email` : on ne
 // réessaiera jamais avec succès, autant le dire.
 //
+// Depuis le 2026-10-09, un SECOND facteur sur le même cron : les accusés de
+// réception à l'usager au dépôt (`receipts.ts`, file `request_receipts`).
+//
 // ⚠️ CORS : aucun. Cette fonction n'est jamais appelée depuis un navigateur.
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -27,6 +30,7 @@ import {
   requestPermalink,
   type NotificationPayload,
 } from "../_shared/email/notifications.ts";
+import { drainReceipts } from "./receipts.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -107,8 +111,6 @@ Deno.serve(async (req: Request) => {
   }
 
   const rows = (data ?? []) as ClaimedRow[];
-  if (rows.length === 0) return json(200, { claimed: 0, sent: 0, skipped: 0, failed: 0 });
-
   const smtpCache = new Map<string, SmtpConfig | null>();
   let sent = 0, skipped = 0, failed = 0;
 
@@ -151,5 +153,9 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  return json(200, { claimed: rows.length, sent, skipped, failed });
+  // Second facteur, même cron, même cache de relais : les accusés de réception
+  // à l'usager (`receipts.ts`), au dépôt d'une demande.
+  const receipts = await drainReceipts(supabase, (orgId) => smtpForOrg(orgId, smtpCache), BATCH);
+
+  return json(200, { claimed: rows.length, sent, skipped, failed, receipts });
 });

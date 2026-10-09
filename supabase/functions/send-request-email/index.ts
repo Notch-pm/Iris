@@ -53,9 +53,9 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveSmtp, type SmtpConfig, type SmtpRow } from "../_shared/email/config.ts";
 import { sendBrandedEmail, type EmailAttachment } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
-import { charteFromSocle, type EmailCharte, type SocleBrandingDto } from "../_shared/email/charte.ts";
 import { closureEmail, isClosureOutcome } from "../_shared/email/cloture.ts";
-import { pickDeclared } from "../_shared/identity/declared.ts";
+import { recipientIdentity } from "../_shared/email/destinataire.ts";
+import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
 import { checkUploadRow, type UploadRow } from "../_shared/files/uploads.ts";
 
 const supabase = createClient(
@@ -99,146 +99,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// ---- Socle (contacts-api) ---------------------------------------------------
-// Même accès que `create-request-from-procedure` : clé de service côté serveur,
-// périmètre porté par `X-Organization-Id` (racine Socle du tenant).
-
-function contactsApiBase(): string {
-  const explicit = Deno.env.get("SOCLE_CONTACTS_API_URL");
-  if (explicit) return explicit.replace(/\/+$/, "");
-  return publicApiBase().replace("public-api", "contacts-api");
-}
-
-/**
- * L'adresse portée AUJOURD'HUI par la fiche Socle de l'usager.
- *
- * `undefined` = fiche non lisible (Socle injoignable, non configuré, fiche
- * supprimée) : l'appelant retombe sur le dépôt. `null` = fiche lue, sans
- * adresse : c'est une réponse, pas une panne — on ne ressuscite pas une adresse
- * que l'usager a fait retirer du référentiel.
- */
-async function socleContactIdentity(
-  socleContactId: string,
-  socleRootId: string | null,
-): Promise<RecipientIdentity | undefined> {
-  const base = contactsApiBase();
-  const key = Deno.env.get("SOCLE_API_KEY");
-  if (base === "" || !key || !socleRootId) return undefined;
-  const headers: Record<string, string> = {
-    Authorization: `Bearer ${key}`,
-    "X-Organization-Id": socleRootId,
-  };
-  const res = await fetch(`${base}/v1/contacts/${socleContactId}`, {
-    headers,
-    signal: AbortSignal.timeout(10_000),
-  }).catch(() => null);
-  if (!res?.ok) {
-    console.error(`send-request-email: fiche Socle ${socleContactId} illisible (${res?.status ?? "réseau"})`);
-    return undefined;
-  }
-  const contact = await res.json().catch(() => null);
-  if (!isRecord(contact)) return undefined;
-  return declaredIdentity(contact);
-}
-
-/**
- * L'identité servie à la formule d'adresse. Mêmes cascades de synonymes que
- * partout (`DECLARED_KEYS`) : une fiche contacts-api et un dépôt partenaire s'y
- * lisent de la même façon, et personne ne recopie la table.
- */
-interface RecipientIdentity {
-  email: string | null;
-  civility: string | null;
-  fullName: string | null;
-}
-
-function declaredIdentity(source: unknown): RecipientIdentity {
-  // Nom d'USAGE avant nom de naissance : c'est celui sous lequel la personne
-  // se reconnaît, et le seul qu'on doive lui écrire.
-  const first = pickDeclared(source, "firstName");
-  const last = pickDeclared(source, "usageName") ?? pickDeclared(source, "lastName");
-  const composed = [first, last].filter(Boolean).join(" ").trim();
-  return {
-    email: pickDeclared(source, "email"),
-    civility: pickDeclared(source, "civility"),
-    // Une raison sociale tient lieu de nom pour une entreprise ou une
-    // association : c'est ainsi qu'on s'adresse à elle.
-    fullName: pickDeclared(source, "displayName")
-      ?? (composed !== "" ? composed : null)
-      ?? pickDeclared(source, "legalName"),
-  };
-}
-
-/**
- * L'adresse de l'usager telle qu'elle a été retenue AU DÉPÔT — le repli, quand
- * la demande ne porte aucune fiche Socle à relire (identité déclarée sans
- * rapprochement) ou que le référentiel est muet. Mêmes cascades de clés que
- * `requesterIdentity()` côté écran (contacts-api, publics Iris, synonymes
- * partenaires) : l'agent doit envoyer à l'adresse qu'il voit.
- */
-function recipientIdentity(snapshot: unknown, identityStatus: string): RecipientIdentity {
-  const anonymous: RecipientIdentity = { email: null, civility: null, fullName: null };
-  if (identityStatus === "anonyme") return anonymous;
-  const declared = isRecord(snapshot) && isRecord(snapshot.declared) ? snapshot.declared : {};
-  if (declared.anonymous === true) return anonymous;
-  return declaredIdentity(declared);
-}
-
-// ---- Socle (public-api) : la charte graphique de la collectivité -----------
-// Le bandeau et le bouton d'un message à l'usager portent SES couleurs et SON
-// logo. La source est le Socle, et rien d'autre :
-// `GET /v1/organizations/{id}/branding` sur l'organisation PORTEUSE de la
-// demande (`socle_scope_org_id`). La route RÉSOUT l'héritage elle-même — « le
-// logo de l'organisme concerné, ou à défaut celui de son organisation parente »
-// est donc déjà répondu quand Iris lit, sans remonter aucun arbre.
-//
-// ⚠️ Ne JAMAIS reconstituer la charte depuis `/v1/organizations/{id}` : les
-// colonnes brutes d'une organisation qui hérite sont nulles.
-//
-// ⚠️ DÉCORATIF, DONC JAMAIS BLOQUANT. Délai court et échec silencieux : un
-// Socle lent ou muet fait partir le message en habillage Iris, il ne l'empêche
-// pas de partir. C'est l'inverse exact du relais d'envoi, dont l'absence est,
-// elle, un refus — sans relais il n'y a pas de message ; sans charte il y a un
-// message sobre.
-//
-// Cache court en mémoire du worker (5 min, motif `getKeyRoots` de socle-proxy).
-// Une charte graphique change deux fois par décennie, et le Socle demande de ne
-// pas recopier durablement son référentiel : ni table, ni miroir, ni migration.
-const BRANDING_TTL_MS = 300_000;
-const charteCache = new Map<string, { charte: EmailCharte | null; at: number }>();
-
-function publicApiBase(): string {
-  return (Deno.env.get("SOCLE_API_URL") ?? "").replace(/\/+$/, "");
-}
-
-async function charteFor(socleOrgId: string | null): Promise<EmailCharte | null> {
-  const base = publicApiBase();
-  const key = Deno.env.get("SOCLE_API_KEY");
-  if (base === "" || !key || !socleOrgId) return null;
-
-  const hit = charteCache.get(socleOrgId);
-  if (hit && Date.now() - hit.at < BRANDING_TTL_MS) return hit.charte;
-
-  const res = await fetch(`${base}/v1/organizations/${socleOrgId}/branding`, {
-    headers: { Authorization: `Bearer ${key}` },
-    signal: AbortSignal.timeout(5_000),
-  }).catch(() => null);
-  if (!res?.ok) {
-    // 404 = hors du périmètre de la clé Socle (le Socle ne révèle pas
-    // l'existence de ce qu'on n'a pas le droit de voir) ; le reste est une
-    // panne. Dans les deux cas : habillage Iris, une ligne de journal, et
-    // surtout PAS de mise en cache — une panne d'une seconde ne doit pas
-    // dépeindre les messages des cinq minutes suivantes.
-    console.error(
-      `send-request-email: charte de ${socleOrgId} illisible (${res?.status ?? "réseau"})`,
-    );
-    return null;
-  }
-  const dto = (await res.json().catch(() => null)) as SocleBrandingDto | null;
-  const charte = charteFromSocle(dto);
-  charteCache.set(socleOrgId, { charte, at: Date.now() });
-  return charte;
-}
+// ---- Le Socle : fiche de l'usager et charte de la collectivité ----------------
+// Lectures partagées avec l'accusé de réception (`notifications-mailer`) :
+// `_shared/email/socleUsager.ts` (réseau) et `_shared/email/destinataire.ts`
+// (pur, testé). Fiche Socle d'abord, snapshot du dépôt en repli ; la charte est
+// décorative, donc jamais bloquante.
+const LOG = "send-request-email";
 
 interface DeclaredAttachment {
   storage_path: string;
@@ -360,7 +226,7 @@ Deno.serve(async (req) => {
       .select("socle_org_id")
       .eq("id", request.organization_id)
       .maybeSingle();
-    const live = await socleContactIdentity(request.socle_contact_id, org?.socle_org_id ?? null);
+    const live = await socleContactIdentity(request.socle_contact_id, org?.socle_org_id ?? null, LOG);
     // `undefined` = référentiel muet : on garde le dépôt plutôt que de refuser.
     // Une fiche LUE SANS adresse, elle, vaut réponse : on ne ressuscite pas une
     // adresse que l'usager a fait retirer du référentiel.
@@ -385,7 +251,7 @@ Deno.serve(async (req) => {
   // parent tout seul si ce service n'a pas de charte propre).
   const [{ smtp, tenantName }, charte] = await Promise.all([
     smtpForOrg(request.organization_id),
-    charteFor(request.socle_scope_org_id),
+    charteFor(request.socle_scope_org_id, LOG),
   ]);
 
   // ---- L'avis de clôture, composé ICI ---------------------------------------

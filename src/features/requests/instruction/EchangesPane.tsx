@@ -33,6 +33,7 @@ import { acceptAttribute } from "@fn/_shared/files/magic";
 import { kindLabel, sendableDocuments } from "./documents";
 import {
   MAX_EMAIL_ATTACHMENT_BYTES,
+  exchangeAuthor,
   hasDraftErrors,
   insertAtCaret,
   requestTemplateValues,
@@ -314,15 +315,15 @@ export function EchangesPane({
           bord du panneau défilant rognait l'une et l'autre. */}
       <div className="flex flex-col pb-3 pl-1">
         {ordered.map((mail) => {
-          const who = memberName(members, mail.sent_by);
+          const who = exchangeAuthor(members, mail.sent_by);
           return (
             <ThreadItem
               key={mail.id}
-              initials={initials(who)}
+              initials={initials(who.name)}
               meta={
                 <>
-                  <strong className="text-sm text-foreground">{who}</strong>
-                  <span>agent · envoyé le {formatTimeline(mail.sent_at ?? mail.created_at)}</span>
+                  <strong className="text-sm text-foreground">{who.name}</strong>
+                  <span>{who.role} · envoyé le {formatTimeline(mail.sent_at ?? mail.created_at)}</span>
                   <span className="truncate">à {mail.to_email}</span>
                   {mail.status === "echec" ? (
                     <Pill tone="error">Non envoyé</Pill>

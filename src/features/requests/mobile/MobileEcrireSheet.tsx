@@ -23,10 +23,11 @@ import type { Tables } from "@/types/database.types";
 import type { RequestEmail, TenantMember } from "../useRequests";
 import type { SendEmailPayload } from "../instruction/EchangesPane";
 import {
-  MAX_EMAIL_ATTACHMENT_BYTES, hasDraftErrors, requestTemplateValues, totalBytes, validateEmailDraft,
+  MAX_EMAIL_ATTACHMENT_BYTES, exchangeAuthor, hasDraftErrors, requestTemplateValues, totalBytes,
+  validateEmailDraft,
 } from "../instruction/courriel";
 import {
-  formatBytes, formatTimeline, memberName, type RequesterIdentity, type StageEvent,
+  formatBytes, formatTimeline, type RequesterIdentity, type StageEvent,
 } from "../instruction/instruction";
 import { defaultEmailSubject } from "./mobileRequests";
 
@@ -249,7 +250,7 @@ export function MobileEcrireSheet({
           <span className="text-sm font-bold">{mail.subject}</span>
           <p className="whitespace-pre-wrap text-sm leading-relaxed">{mail.body}</p>
           <span className="flex items-center gap-1.5 self-end text-[11px] font-semibold text-primary">
-            {memberName(members, mail.sent_by)} · {formatTimeline(mail.sent_at ?? mail.created_at)}
+            {exchangeAuthor(members, mail.sent_by).name} · {formatTimeline(mail.sent_at ?? mail.created_at)}
             {mail.status === "echec" ? <Pill tone="error">Non envoyé</Pill> : null}
           </span>
         </div>

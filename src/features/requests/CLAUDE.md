@@ -765,6 +765,10 @@ note interne → résolution avec texte de clôture → journal.
   **Échanges**, l'agent écrit un e-mail à l'usager, avec un modèle ou à la main, pièces
   jointes comprises. L'échange est enregistré dans `request_emails` (expéditeur, date et heure
   d'envoi, objet, corps réellement parti, pièces, modèle utilisé).
+  - **Accusé de réception automatique** (2026-10-09) : le fil peut porter un échange **sans
+    agent** (`sent_by` NULL) — l'accusé envoyé par Iris au dépôt (hors demandes issues de
+    Clara). `exchangeAuthor` (`courriel.ts`) l'affiche « Iris · envoi automatique », jamais
+    « Système / intégration · agent ». Détail : [`docs/emails.md`](../../../docs/emails.md).
   - **Rédaction assistée** (2026-09-24, `EmailAssistantPanel.tsx`, `useEmailAssistant.ts`,
     edge `request-email-assistant`, modules purs `_shared/ai/emailDraft.ts` et
     `pseudonymize.ts`) : devant un message **vide**, bandeau repliable « Assistant IA » à

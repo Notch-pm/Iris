@@ -9,6 +9,22 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## Note du 2026-10-09 — Iris accuse réception à l'usager (contrat inchangé)
+
+**Aucun champ, aucune route, aucun code d'erreur ne change.** Ce qui change, c'est ce qu'Iris
+**fait** après un `201` :
+
+- **Iris envoie à l'usager un accusé de réception** par courriel (« Nous avons bien reçu votre
+  demande » : référence, date de dépôt, organisme), aux couleurs de la collectivité, dans la
+  minute qui suit le dépôt. L'échange est visible des agents dans l'onglet Échanges.
+- **Les émetteurs ne doivent pas en envoyer un second.** Le portail Nora, qui annonçait « la
+  confirmation par courriel arrivera prochainement », peut retirer cette réserve.
+- Un rejeu (`200`), un dépôt anonyme ou sans adresse : aucun envoi.
+- **Exception : la source `clara`** n'en déclenche jamais — ses demandes naissent d'un
+  courrier traité par un agent, pas d'un dépôt de l'usager.
+
+---
+
 ## Note du 2026-09-23 — un nom d'usage seul fait entrer l'usager au référentiel (contrat inchangé)
 
 **Aucun champ, aucune route, aucun code d'erreur ne change.** Ce qui change, c'est ce qu'Iris

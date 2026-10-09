@@ -20,6 +20,7 @@ import {
   firstInstructionAt,
   formatBytes,
   formatDayMonth,
+  memberName,
   type RequesterIdentity,
   type StageEvent,
 } from "./instruction";
@@ -174,4 +175,20 @@ export function insertAtCaret(
     text: text.slice(0, at) + insertion + text.slice(at),
     caret: at + insertion.length,
   };
+}
+
+// ---- Auteur d'un échange ------------------------------------------------------
+
+/**
+ * Qui a envoyé un échange, tel que le fil l'affiche. `sent_by` NULL = envoi
+ * AUTOMATIQUE d'Iris (l'accusé de réception au dépôt, 2026-10-09) : ni
+ * « Système / intégration », mot d'écran de gestion, ni « agent », qui serait
+ * faux.
+ */
+export function exchangeAuthor(
+  members: { userId: string; displayName: string }[],
+  sentBy: string | null,
+): { name: string; role: string } {
+  if (!sentBy) return { name: "Iris", role: "envoi automatique" };
+  return { name: memberName(members, sentBy), role: "agent" };
 }

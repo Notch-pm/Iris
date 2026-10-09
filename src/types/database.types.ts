@@ -1142,7 +1142,7 @@ export type Database = {
           organization_id: string
           request_id: string
           sent_at: string | null
-          sent_by: string
+          sent_by: string | null
           status: string
           subject: string
           template_id: string | null
@@ -1157,7 +1157,7 @@ export type Database = {
           organization_id: string
           request_id: string
           sent_at?: string | null
-          sent_by: string
+          sent_by?: string | null
           status?: string
           subject: string
           template_id?: string | null
@@ -1172,7 +1172,7 @@ export type Database = {
           organization_id?: string
           request_id?: string
           sent_at?: string | null
-          sent_by?: string
+          sent_by?: string | null
           status?: string
           subject?: string
           template_id?: string | null
@@ -1439,6 +1439,67 @@ export type Database = {
             foreignKeyName: "request_messages_request_id_fkey"
             columns: ["request_id"]
             isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_receipts: {
+        Row: {
+          attempted_at: string | null
+          attempts: number
+          created_at: string
+          email_id: string | null
+          error: string | null
+          next_attempt_at: string | null
+          organization_id: string
+          request_id: string
+          settled_at: string | null
+          status: string
+        }
+        Insert: {
+          attempted_at?: string | null
+          attempts?: number
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          next_attempt_at?: string | null
+          organization_id: string
+          request_id: string
+          settled_at?: string | null
+          status?: string
+        }
+        Update: {
+          attempted_at?: string | null
+          attempts?: number
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          next_attempt_at?: string | null
+          organization_id?: string
+          request_id?: string
+          settled_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_receipts_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "request_emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_receipts_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_receipts_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
             referencedRelation: "requests"
             referencedColumns: ["id"]
           },
@@ -2065,6 +2126,28 @@ export type Database = {
           subscriptions: Json
         }[]
       }
+      claim_request_receipts: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          email_body: string
+          email_id: string
+          email_subject: string
+          email_to: string
+          identity_status: string
+          organisme: string
+          organization_name: string
+          receipt_org_id: string
+          receipt_request_id: string
+          received_at: string
+          reference: string
+          requester_snapshot: Json
+          socle_contact_id: string
+          socle_root_org_id: string
+          socle_scope_org_id: string
+          subject: string
+        }[]
+      }
       claim_storage_deletions: {
         Args: { p_limit?: number }
         Returns: {
@@ -2173,6 +2256,10 @@ export type Database = {
         Returns: string[]
       }
       email_template_variables: { Args: never; Returns: string[] }
+      enqueue_request_receipt: {
+        Args: { p_request_id: string }
+        Returns: boolean
+      }
       enqueue_storage_deletion: {
         Args: { p_org: string; p_path: string; p_reason: string }
         Returns: undefined
@@ -2498,6 +2585,10 @@ export type Database = {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
       }
+      settle_request_receipt: {
+        Args: { p_error?: string; p_ok: boolean; p_request_id: string }
+        Returns: undefined
+      }
       settle_storage_deletion: {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
@@ -2509,6 +2600,10 @@ export type Database = {
       }
       skip_notification_push: {
         Args: { p_id: string; p_reason: string }
+        Returns: undefined
+      }
+      skip_request_receipt: {
+        Args: { p_reason: string; p_request_id: string }
         Returns: undefined
       }
       smtp_config_for_org: {
@@ -2534,6 +2629,15 @@ export type Database = {
           p_subject: string
           p_template_id?: string
           p_template_name?: string
+          p_to_email: string
+        }
+        Returns: string
+      }
+      start_request_receipt_email: {
+        Args: {
+          p_body: string
+          p_request_id: string
+          p_subject: string
           p_to_email: string
         }
         Returns: string

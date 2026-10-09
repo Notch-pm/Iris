@@ -309,6 +309,13 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   intégralement par le serveur et exigeant le droit de **clôture** — c'est parce que le
   navigateur ne compose rien que l'ouverture à ce droit est sans risque ; le motif de clôture,
   lui, ne sort jamais.
+  Depuis le 2026-10-09, un quatrième chemin, sans agent : l'**accusé de réception au dépôt**
+  (guichet et API d'ingestion — **jamais pour une demande issue de Clara**, règle posée dans
+  `enqueue_request_receipt` ; aucune désactivation, décision PO). Les deux fonctions de dépôt
+  **enfilent** (`request_receipts`) et `notifications-mailer` **draine** — un relais qui tousse
+  ne fait jamais échouer un dépôt ; composé par le serveur (`_shared/email/accuse.ts`), tracé
+  dans `request_emails` avec `sent_by` NULL (« Iris · envoi automatique »). Pas de trigger sur
+  `requests`, pour qu'un jeu de démonstration n'écrive à personne.
   Depuis le 2026-08-30, ces deux messages à l'usager portent la **charte graphique de la
   collectivité** — couleur principale des bordures et du bouton, logo — lue chez le Socle
   (`GET /v1/organizations/{id}/branding`, scope `read`) pour l'organisation **porteuse de la

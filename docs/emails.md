@@ -335,6 +335,39 @@ en garder une seule.
 parce qu'un serveur de mail tousse. L'écran le dit (« La demande est bien résolue…, mais l'avis
 n'a pas pu partir »), et l'absence d'adresse est annoncée comme un fait, pas comme une erreur.
 
+### Accusé de réception au dépôt (2026-10-09)
+
+Toute demande déposée prévient l'usager qu'elle a été reçue, sans geste d'agent.
+
+| | |
+|---|---|
+| Déclencheur | Création par le guichet (`create-request-from-procedure`) ou par l'API d'ingestion (`requests-api` : portail Nora, partenaires) |
+| Exclu | Les demandes **issues de Clara** (`source = 'clara'`) : elles naissent d'un courrier, pas d'un dépôt de l'usager (décision PO). Aucune autre désactivation |
+| Objet | « Nous avons bien reçu votre demande » (**figé**) |
+| Composé par | Le **serveur** (`_shared/email/accuse.ts`) : salutation, objet et référence, date de dépôt (jour de Paris), organisme qui la traitera, invitation à conserver la référence, signature de la collectivité |
+| Destinataire | Fiche Socle relue, `requester_snapshot` en repli (`_shared/email/destinataire.ts`, partagé avec `send-request-email`). Dépôt anonyme ou aucune adresse ⇒ rien ne part |
+| Envoi | **Asynchrone** : file `request_receipts`, drainée par `notifications-mailer` sur le cron de chaque minute, 5 tentatives à temporisation croissante |
+| Enregistré | `request_emails` avec `sent_by` NULL — l'onglet Échanges l'affiche « Iris · envoi automatique » |
+| Habillage | Charte de la collectivité, comme les autres messages à l'usager |
+
+**Pourquoi une file et pas un envoi synchrone.** Ici l'envoi n'est pas le geste — le dépôt
+l'est. Un relais SMTP qui tousse ne doit ni faire échouer un dépôt, ni faire attendre l'usager
+au guichet ou le portail. Les deux fonctions de dépôt **enfilent** (`enqueue_request_receipt`,
+idempotente) et un échec d'enfilement n'est jamais un refus.
+
+**Pourquoi pas un trigger sur `requests`.** L'accusé répond à un DÉPÔT : seuls les deux
+points d'entrée savent qu'il y en a eu un. Un trigger écrirait aussi aux usagers des jeux de
+démonstration et des scripts de test, qui insèrent en base.
+
+**Ce qui ne sort pas** : le contenu du formulaire et la description — l'usager sait ce qu'il a
+déposé, et une réponse peut porter des données personnelles qu'un courriel n'a pas à recopier.
+Aucune promesse non plus (ni délai, ni « vous serez prévenu ») : une annulation ne prévient
+personne.
+
+**Sur une reprise**, le facteur renvoie le texte **enregistré** dans `request_emails`, pas un
+texte recomposé : la trace dit toujours ce qui est parti. Pendant les reprises l'échange reste
+« en cours » ; il ne passe « non envoyé » qu'à l'abandon.
+
 ### Charte graphique de la collectivité (2026-08-30)
 
 Les messages qui vont **à l'usager** — la réponse libre et l'avis de clôture — portent

@@ -410,6 +410,18 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   **Aucune écriture cliente et aucune suppression** : la seule porte est l'edge function
   `send-request-email`, en service_role, via `start_request_email` / `settle_request_email`.
   Le pendant de `request_messages` : celles-ci ne sortent jamais, celle-ci ne fait que sortir.
+  Depuis le 2026-10-09, **`sent_by` est NULLABLE** : NULL = envoi automatique d'Iris
+  (l'accusé de réception au dépôt, ci-dessous), ouvert par `start_request_receipt_email`.
+- **`request_receipts`** *(2026-10-09)* — boîte d'envoi des **accusés de réception** à
+  l'usager : une ligne par demande déposée (clé = `request_id`, donc jamais deux accusés),
+  `status` `pending|sending|sent|skipped|failed`, `attempts`, `next_attempt_at`, `error`,
+  `email_id` → l'échange lisible dans `request_emails`. Enfilée par
+  `enqueue_request_receipt` depuis les deux points de dépôt (`create-request-from-procedure`,
+  `requests-api`) — **jamais pour une demande `source = 'clara'`**, règle posée dans la RPC —,
+  drainée par `notifications-mailer` (`claim_request_receipts`, `settle_request_receipt`,
+  `skip_request_receipt`, même temporisation que les notifications). **Aucune policy
+  cliente.** Pas de trigger sur `requests` : un jeu de démonstration ou un script de test qui
+  insère en base n'écrit à personne. Test : `supabase/tests/accuse-reception.test.sql`.
 - **`request_attachments`** — pièces : `storage_path`
   (`{organization_id}/{request_id}/{uuid}-{slug}`), `checksum` (sha256 calculé par le serveur à
   la réception — porte unique, 2026-09), `copy_status` `copied|error` (`pending` a disparu avec

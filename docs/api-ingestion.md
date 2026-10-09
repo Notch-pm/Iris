@@ -199,6 +199,14 @@ Points de contrat :
 resolue_positive · resolue_negative · archivee` — avec `closure_motif`, ce sont les seules
 clés stables sur lesquelles coder.
 
+**Accusé de réception à l'usager** (depuis le 2026-10-09) : à la création (`201`), **Iris
+envoie lui-même** à l'usager un courriel « Nous avons bien reçu votre demande » — référence,
+date de dépôt, organisme —, aux couleurs de la collectivité, dans la minute. **N'en envoyez
+pas un second de votre côté.** Il part à l'adresse de la fiche Socle de l'usager (ou, à
+défaut, à l'`email` déclaré dans `requester`) ; un dépôt anonyme ou sans adresse n'en reçoit
+pas. Un rejeu (`200`) n'en renvoie pas. **Seule exception : la source `clara`**, dont les
+demandes naissent d'un courrier et non d'un dépôt de l'usager.
+
 ### Idempotence et conflits (comportement garanti, testé)
 
 | Situation | Résultat |

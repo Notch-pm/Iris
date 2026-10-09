@@ -116,6 +116,16 @@ async function pushConsentsToSocle(
   return true;
 }
 
+/**
+ * Enfile l'accusé de réception de la demande (`request_receipts`). Jamais un
+ * refus : la demande est créée, l'usager est devant l'agent, et un accusé
+ * manqué se rattrape par un échange écrit à la main.
+ */
+async function enqueueReceipt(requestId: string): Promise<void> {
+  const { error } = await supabase.rpc("enqueue_request_receipt", { p_request_id: requestId });
+  if (error) console.error("create-request-from-procedure: accusé de réception non enfilé", error);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
@@ -399,5 +409,10 @@ Deno.serve(async (req) => {
 
   // deno-lint-ignore no-explicit-any
   const result = created as any;
+
+  // Accusé de réception à l'usager (2026-10-09) : ENFILÉ ici, envoyé par
+  // `notifications-mailer`. La demande existe : un échec n'est jamais un refus.
+  await enqueueReceipt(result.id);
+
   return json(req, 201, { id: result.id, reference: result.reference });
 });

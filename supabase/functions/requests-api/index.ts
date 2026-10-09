@@ -767,6 +767,11 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
 
   const row = insert.data;
   await insertLinks(auth.organizationId, row.id, permalinks.links);
+  // Accusé de réception à l'usager (2026-10-09) : enfilé ici, envoyé par
+  // `notifications-mailer`. Une demande issue de Clara n'en reçoit pas — la
+  // règle vit dans `enqueue_request_receipt`, pas ici. Jamais un refus.
+  const receipt = await supabase.rpc("enqueue_request_receipt", { p_request_id: row.id });
+  if (receipt.error) console.error("requests-api: accusé de réception non enfilé", receipt.error);
   // La demande existe désormais : un échec ici n'est PAS une perte — le
   // rejeu à l'identique (200) rattachera ce qui manque.
   const attached = await attachUploads(auth, row.id, resolved);
