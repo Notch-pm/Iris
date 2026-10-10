@@ -2747,6 +2747,10 @@ export type Database = {
         Returns: Json
       }
       user_display_name: { Args: { p_user_id: string }; Returns: string }
+      user_can_create_on_organization: {
+        Args: { p_org_id: string; p_socle_org_id: string; p_user_id: string }
+        Returns: boolean
+      }
       user_has_request_right: {
         Args: {
           p_org_id: string

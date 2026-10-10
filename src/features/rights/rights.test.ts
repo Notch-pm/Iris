@@ -12,6 +12,7 @@ import {
   hasRight,
   isAdminOn,
   NIL_PROCEDURE_ID,
+  relayOrganizationIds,
   rightsFor,
   viewableProcedures,
   type MyRights,
@@ -283,5 +284,26 @@ describe("explainRight — RM-46", () => {
   it("l'admin plateforme s'explique lui-même", () => {
     const my = myRights([], { is_platform_admin: true });
     expect(explainRight(my, MAIRIE, D1, "cloture")).toEqual(["Administrateur de la plateforme"]);
+  });
+});
+
+describe("relayOrganizationIds — demande complexe relayée à Clara", () => {
+  it("retient le périmètre d'un profil qui crée sur au moins une démarche", () => {
+    const my = myRights([
+      profile({ name: "Voirie", scope_organization_ids: [VOIRIE], procedures: { [D1]: ["creation"] } }),
+      profile({ name: "CCAS lecture", scope_organization_ids: [CCAS], procedures: { [D2]: ["consultation"] } }),
+    ]);
+    expect(relayOrganizationIds(my)).toEqual(new Set([VOIRIE]));
+  });
+  it("compte la création accordée par défaut", () => {
+    const my = myRights([profile({ name: "Guichet", scope_organization_ids: [MAIRIE, CCAS], default: ["creation"] })]);
+    expect(relayOrganizationIds(my)).toEqual(new Set([MAIRIE, CCAS]));
+  });
+  it("ignore un profil inactif, et l'instruction seule", () => {
+    const my = myRights([
+      profile({ name: "Ancien", status: "inactive", scope_organization_ids: [MAIRIE], default: ["creation"] }),
+      profile({ name: "Instructeur", scope_organization_ids: [VOIRIE], default: ["instruction"] }),
+    ]);
+    expect(relayOrganizationIds(my).size).toBe(0);
   });
 });

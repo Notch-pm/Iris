@@ -103,7 +103,7 @@ function Group({ title, onEdit, rows, children }: {
  * saisie. L'obligatoire ferme les boutons de création tant qu'il n'est pas
  * coché (reflet — la garde est dans `create-request-from-procedure`).
  */
-function ConsentGroup({ consents, onToggle, organismName }: {
+export function ConsentGroup({ consents, onToggle, organismName }: {
   consents: Record<ConsentKind, boolean>;
   onToggle: (kind: ConsentKind, granted: boolean) => void;
   organismName: string | null;

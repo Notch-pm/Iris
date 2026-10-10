@@ -14,17 +14,16 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Check, ChevronDown, List, Map, Plus, Search, UserRound, X } from "lucide-react";
+import { Check, ChevronDown, List, Map, Search, UserRound, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
 import { useAuth } from "@/features/auth/AuthProvider";
-import { canCreateProcedure } from "@/features/rights/rights";
-import { useSocleProceduresCatalog } from "@/features/socle/useSocleCatalog";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { cn } from "@/lib/utils";
+import { NewRequestButton } from "../NewRequestButton";
 import { StatusBadge } from "../StatusBadge";
 import { TransitionDialog } from "../TransitionActions";
 import { memberName } from "../instruction/instruction";
@@ -52,7 +51,6 @@ export function TableauPage() {
   const since = React.useMemo(() => closedSince(new Date()), []);
   const board = useBoardRequests(orgId, since);
   const members = useTenantMembers(orgId);
-  const procCatalog = useSocleProceduresCatalog(orgId);
 
   const [filters, setFilters] = React.useState<BoardFilters>(EMPTY_BOARD_FILTERS);
   const [sort, setSort] = React.useState<BoardSort>("recent");
@@ -103,9 +101,6 @@ export function TableauPage() {
   const mine = isMineOnly(filters, myId);
   const mineCount = agentFacets.find((f) => f.value === myId)?.count ?? 0;
 
-  const canCreate =
-    rights.is_platform_admin ||
-    (procCatalog.data ?? []).some((o) => canCreateProcedure(rights, o.value));
   const nFilters = activeFilterCount(filters);
 
   if (!current) {
@@ -151,11 +146,7 @@ export function TableauPage() {
             <Button asChild variant="outline" size="sm">
               <Link to="/carte"><Map aria-hidden="true" /> Carte</Link>
             </Button>
-            {canCreate ? (
-              <Button asChild size="sm">
-                <Link to="/demandes/nouvelle"><Plus aria-hidden="true" /> Nouvelle demande</Link>
-              </Button>
-            ) : null}
+            <NewRequestButton />
           </div>
         </div>
 

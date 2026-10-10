@@ -10,11 +10,10 @@
 import * as React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ChevronDown, ChevronRight, Columns3, Download, Layers, Map, Plus, Rows3, Search,
+  ChevronDown, ChevronRight, Columns3, Download, Layers, Map, Rows3, Search,
   SlidersHorizontal, X,
 } from "lucide-react";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
-import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import {
   CheckList, ChipGroup, IconPill, ListPagination, PILL, PILL_ACTIVE, PILL_IDLE,
@@ -23,16 +22,13 @@ import { ariaSort, SortableHeader } from "@/components/ui/sortable-header";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import {
   useSocleOrganizationsCatalog,
-  useSocleProcedureActivations,
   useSocleProceduresCatalog,
 } from "@/features/socle/useSocleCatalog";
 import { canViewProcedure } from "@/features/rights/rights";
-import {
-  activationsByOrganisation,
-  creatableByOrganisation,
-} from "@/features/requests/creation/proposables";
+import { useCanCreateRequest } from "@/features/requests/creation/useCanCreateRequest";
 import { buildCsv, downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
+import { NewRequestButton } from "./NewRequestButton";
 import { StatusBadge } from "./StatusBadge";
 import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
 import {
@@ -164,7 +160,6 @@ export function RequestsListPage() {
   const members = useTenantMembers(orgId);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
   const procCatalog = useSocleProceduresCatalog(orgId);
-  const activations = useSocleProcedureActivations(orgId);
   // Catalogues Socle synchronisés quand disponibles, facettes observées sinon.
   // Restreint au périmètre (union des scope_organization_ids des profils actifs) —
   // admin plateforme : aucune restriction.
@@ -185,17 +180,9 @@ export function RequestsListPage() {
       ? procCatalog.data!.filter((o) => rights.is_platform_admin || canViewProcedure(rights, o.value))
       : (facets.data?.procedures ?? []);
   const sourceOptions = facets.data?.sources ?? [];
-  // « Nouvelle demande » : au moins un couple (organisme, démarche) à la fois
-  // ACTIVÉ dans le Socle et dans mes droits (RM-58 + activation, 2026-08-31) —
-  // reflet de confort, le serveur revalide le couple et le trigger t18 refuse
-  // une démarche non activée. Sans le croisement, le bouton mènerait à un
-  // parcours vide.
-  const canCreate =
-    creatableByOrganisation(
-      rights,
-      (procCatalog.data ?? []).map((o) => o.value),
-      activationsByOrganisation(activations.data ?? []),
-    ).size > 0;
+  // « Nouvelle demande » : même règle que toutes les entrées vers la création
+  // (`useCanCreateRequest`) — ici pour le séparateur qui précède le bouton.
+  const canCreate = useCanCreateRequest();
 
   if (!current) {
     return (
@@ -425,13 +412,7 @@ export function RequestsListPage() {
           {canCreate ? (
             <>
               <span className="mx-1 h-[22px] w-px bg-border" aria-hidden="true" />
-              <Button asChild size="sm" className="rounded-full px-3.5 text-[13px] font-bold">
-                <Link to="/demandes/nouvelle">
-                  <Plus />
-                  <span className="hidden lg:inline">Nouvelle demande</span>
-                  <span className="sr-only lg:hidden">Nouvelle demande</span>
-                </Link>
-              </Button>
+              <NewRequestButton />
             </>
           ) : null}
         </div>

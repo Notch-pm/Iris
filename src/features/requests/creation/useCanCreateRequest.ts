@@ -1,5 +1,6 @@
 // « Puis-je créer une demande ? » — UNE règle pour toutes les entrées vers le
-// parcours de création (tableau de bord, bouton de la liste, onglet mobile) :
+// parcours de création (tableau de bord, bouton `NewRequestButton` de la liste,
+// du tableau et de la carte, onglet mobile) :
 // au moins un couple (organisme, démarche) à la fois dans mes droits de
 // CRÉATION et ACTIVÉ dans le Socle (`creatableByOrganisation`, 2026-08-31).
 // Sans le croisement, l'entrée mènerait à un parcours vide. Reflet de

@@ -48,7 +48,11 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   `procedure_snapshot`), gardé par le trigger `t16_requests_require_procedure` — service_role
   compris. Le **snapshot de démarche est construit côté serveur** depuis Socle (edge
   functions) : jamais accepté comme vérité d'un navigateur ou d'un partenaire. Les demandes
-  historiques sans démarche restent lisibles et transitionnables. **Une démarche en
+  historiques sans démarche restent lisibles et transitionnables. Ce qui ne relève d'aucune
+  démarche n'entre pas dans Iris : c'est une **« demande complexe »** (2026-10-10), action
+  secondaire de « Nouvelle demande », que l'agent **relaie à Clara** (edge function
+  `relay-courrier-clara` → porte `iris-courrier` de Clara, canal « Relayé agent ») — Iris
+  n'en garde **ni ligne ni octet**. **Une démarche en
   `brouillon` n'est proposée nulle part dans Iris** (2026-08-30) : le paramétrage n'est pas
   fini, le Socle dit de ne la servir à personne — garde serveur sur la démarche rechargée dans
   `create-request-from-procedure`, pas seulement un filtre d'écran. Les démarches **internes**,
@@ -413,6 +417,16 @@ les invariants ci-dessus restent la référence.
   déclare l'intervention réalisée avec jusqu'à 4 justificatifs — documents ou photos prises
   à la caméra —, reçus par la porte unique avec la portée `intervention_id`, nature
   `intervention` hors du dossier de l'usager) →
+  [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
+- **Demande complexe** (`src/features/requests/complexe`, edge `relay-courrier-clara`, module
+  pur `_shared/clara/relay.ts`, 2026-10-10) : chevron du bouton « Nouvelle demande » (liste,
+  tableau, carte). Écran calqué sur le « Nouveau courrier » de Clara — deux étapes, onglets
+  Importer des fichiers / Coller un texte (dictée **masquée** pour l'instant, décision PO) —, puis
+  organisme, usager (`RequesterIdentification`) et consentements. Le serveur vérifie le droit
+  de **création sur au moins une démarche de l'organisme** (`user_can_create_on_organization`),
+  relit la fiche Socle, passe chaque fichier par la liste fermée, nomme l'agent, et transmet de
+  serveur à serveur (`CLARA_IRIS_INTAKE_URL` / `CLARA_IRIS_INTAKE_KEY`). Rien n'est stocké ;
+  idempotence par `submission_id` tiré à l'ouverture →
   [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
 - **Contacts / Usagers** (`src/features/contacts`) : identification du demandeur via
   `socle-proxy` (homonymes cherchés automatiquement, création, sans rapprochement,

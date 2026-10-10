@@ -240,6 +240,24 @@ export function creationOrganizationIds(my: MyRights, procedureId: string | null
   return out;
 }
 
+/**
+ * Organisations (déjà en sous-arbre) vers lesquelles l'agent peut relayer une
+ * « demande complexe » à Clara : celles où un profil actif accorde `création`
+ * sur au moins une démarche — ligne explicite ou défaut. Reflet de
+ * `user_can_create_on_organization` (SQL), qui reste seul juge.
+ */
+export function relayOrganizationIds(my: MyRights): Set<string> {
+  const out = new Set<string>();
+  for (const profile of my.profiles) {
+    if (profile.status !== "active") continue;
+    const creates = profile.default.includes("creation")
+      || Object.values(profile.procedures).some((rights) => rights.includes("creation"));
+    if (!creates) continue;
+    for (const orgId of profile.scope_organization_ids) out.add(orgId);
+  }
+  return out;
+}
+
 /** Noms des profils qui accordent `right` sur ce couple — RM-46 (« pourquoi ne puis-je pas ? »). */
 export function explainRight(
   my: MyRights,

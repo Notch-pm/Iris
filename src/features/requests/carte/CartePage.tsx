@@ -18,6 +18,7 @@ import { useQuartiers } from "@/features/socle/useQuartiers";
 import { useOrganisationAnchor } from "@/features/socle/useOrganisationAnchor";
 import { cn } from "@/lib/utils";
 import { memberName, PRIORITY_OPTIONS } from "../instruction/instruction";
+import { NewRequestButton } from "../NewRequestButton";
 import { useTenantMembers } from "../useRequests";
 import { InterventionMap, pinColor, type MapMarker } from "./InterventionMap";
 import {
@@ -110,6 +111,7 @@ export function CartePage() {
             <Button asChild variant="outline" size="sm">
               <Link to="/demandes"><List aria-hidden="true" /> Voir la liste</Link>
             </Button>
+            <NewRequestButton />
           </div>
         </div>
 

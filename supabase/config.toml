@@ -86,3 +86,9 @@ verify_jwt = false
 # demande).
 [functions.request-attachments]
 verify_jwt = false
+
+# « Demande complexe » relayée à Clara (2026-10-10) : JWT vérifié en code, droit
+# de création sur l'organisme revérifié en SQL, fichiers passés par la liste
+# fermée, puis relais de serveur à serveur. Iris ne conserve rien.
+[functions.relay-courrier-clara]
+verify_jwt = false
