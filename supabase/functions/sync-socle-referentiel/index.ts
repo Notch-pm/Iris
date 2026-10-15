@@ -25,6 +25,13 @@ import {
   type TenantRef,
 } from "./_shared/mapping.ts";
 import { smtpMirrorArgs, smtpWarning, type SocleSmtpDto } from "./_shared/smtp.ts";
+import {
+  CLARA_SOURCE_CODE,
+  CLARA_SOURCE_NAME,
+  diffClaraSources,
+  planClaraSources,
+  type ExistingSource,
+} from "./_shared/suiteSources.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -433,6 +440,53 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Source « clara » d'après les abonnements du Socle (public-api 1.42.0) :
+    // une collectivité abonnée à Iris ET à Clara reçoit d'office sa source,
+    // sans clé — Clara dépose avec sa clé PLATEFORME. Décocher Clara dans le
+    // Socle la suspend ; un Socle qui ne sert pas encore `applications` ne
+    // change rien (cf. planClaraSources). Un échec n'est qu'un avertissement.
+    let sourcesClaraOuvertes = 0;
+    let sourcesClaraSuspendues = 0;
+    try {
+      const targets = planClaraSources(observedTenants, orgs);
+      if (targets.length > 0) {
+        const { data: existing, error } = await supabase
+          .from("integration_sources")
+          .select("id, organization_id, status")
+          .eq("code", CLARA_SOURCE_CODE)
+          .in("organization_id", targets.map((t) => t.organizationId));
+        if (error) throw error;
+        const diff = diffClaraSources(targets, (existing ?? []) as ExistingSource[]);
+        if (diff.toCreate.length > 0) {
+          const { error: insertError } = await supabase.from("integration_sources").insert(
+            diff.toCreate.map((organizationId) => ({
+              organization_id: organizationId,
+              code: CLARA_SOURCE_CODE,
+              name: CLARA_SOURCE_NAME,
+              status: "active",
+            })),
+          );
+          if (insertError) throw insertError;
+        }
+        if (diff.toActivate.length > 0) {
+          const { error: e } = await supabase.from("integration_sources")
+            .update({ status: "active", updated_at: now }).in("id", diff.toActivate);
+          if (e) throw e;
+        }
+        if (diff.toSuspend.length > 0) {
+          const { error: e } = await supabase.from("integration_sources")
+            .update({ status: "suspended", updated_at: now }).in("id", diff.toSuspend);
+          if (e) throw e;
+        }
+        sourcesClaraOuvertes = diff.toCreate.length + diff.toActivate.length;
+        sourcesClaraSuspendues = diff.toSuspend.length;
+      }
+    } catch (err) {
+      const message = errorMessage(err);
+      console.error("sync-socle-referentiel sources clara:", message);
+      warnings.push(`sources Clara (abonnements du Socle) : ${message}`);
+    }
+
     // Une lecture d'activation manquée laisse le miroir en l'état — il faut le
     // DIRE : la garde t18 s'appuie dessus, et un miroir figé qu'on croit frais
     // se manifesterait plus tard par une démarche désactivée encore proposée.
@@ -470,6 +524,8 @@ Deno.serve(async (req) => {
       requests_scope_recalculees: requestsScopeRecalculees,
       smtp_synchronises: smtpSynchronises,
       smtp_retires: smtpRetires,
+      sources_clara_ouvertes: sourcesClaraOuvertes,
+      sources_clara_suspendues: sourcesClaraSuspendues,
       ...(warnings.length > 0 ? { warnings } : {}),
     };
     if (run) {

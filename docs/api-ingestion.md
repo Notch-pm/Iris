@@ -75,6 +75,17 @@ values (null, 'portail-citoyen', 'Portail usagers (Nora) — plateforme', 'activ
 -- puis la clé, comme pour toute source (integration_credentials, SHA-256 du clair)
 ```
 
+**Clara : la source par collectivité vient du Socle** (2026-10-15). Clara dépose avec une clé
+plateforme (source `clara`, organisation nulle, une seule clé par environnement). Les lignes
+`clara` **par collectivité** ne se créent plus à la main : `sync-socle-referentiel` lit le champ
+`applications` des organisations (Socle public-api 1.42.0) et **ouvre** la source `clara` d'un
+tenant abonné à Clara, la **suspend** quand Clara est décochée dans le Socle
+(`_shared/suiteSources.ts`, compteurs `sources_clara_ouvertes` / `sources_clara_suspendues`).
+Un Socle qui ne sert pas encore ce champ ne change rien. ⚠️ Conséquence : suspendre la source
+`clara` à la main dans Iris ne tient que jusqu'à la synchronisation suivante — l'interrupteur
+est l'abonnement dans le Socle. Les anciennes clés par collectivité restent valides tant
+qu'on ne les révoque pas.
+
 ## 2. Créer une demande — `POST /v1/requests` (scope `requests:write`)
 
 ```json
