@@ -706,7 +706,11 @@ frais par proxy / cache léger pour les démarches**.
 
 `socle_organizations` : le sous-arbre du tenant (id Socle, parent, nom, statut), synchronisé par
 cron nocturne + rafraîchissement manuel (edge `sync-socle-referentiel`, upsert idempotent par
-`socle_id`, soft-delete des disparus, journal `sync_runs`). C'est la **seule** réplication de
+`socle_id`, soft-delete des disparus, journal `sync_runs`). ⚠️ Tous les appels d'une synchronisation au Socle passent par une
+file cadencée (`sync-socle-referentiel/_shared/socleGate.ts`, 250 ms entre deux départs, pause
+partagée sur plafond) : la plateforme plafonne les appels edge → edge **par exécution**
+(« Rate limit exceeded for trace »), et 27 appels en rafale ont suffi le 2026-10-15 à faire
+sauter serveur d'envoi et activations. Décaler les crons n'y change rien. C'est la **seule** réplication de
 structure : elle est nécessaire parce que la hiérarchie porte la visibilité RLS par sous-arbre
 et les FK internes d'Iris (`demandes.socle_organization_id`) — mêmes raisons que Clara. Les
 champs Socle y sont réécrasés à chaque sync ; les futures colonnes de configuration Iris

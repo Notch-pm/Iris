@@ -313,16 +313,19 @@ contenu). Chaque demande porte son journal d'événements immuable (`request_eve
 
 ## 6. Exemples de raccordement (sans rien modifier côté Iris)
 
-- **Connecteur Clara** (livré côté Clara le 2026-08-23) : source `clara` enregistrée sur le
-  tenant, clé `requests:write`+`requests:read` en secret d'edge function Clara ; à la
-  création d'une action externe, POST de l'enveloppe avec `external_id` = id du ticket
-  d'action, `links` = `[{type: "courrier", id: <chrono>, url: <permalien>}]` ;
-  réconciliation par `GET ?updated_since=`. ⚠️ **Les pièces du courrier ne sont pas encore
-  transmises** (constat du 2026-09-19, DEM-2026-000055) : le connecteur est antérieur au
-  contrat 2.0.0 et ne dépose rien sur `POST /v1/uploads`. La suite attendue côté Clara est le
-  parcours du § 3 — un dépôt par fichier, puis `attachments: [{ upload_id }]` dans
-  l'enveloppe. Le mode « URL signée du bucket Clara » de la première version de ce guide n'a
-  jamais été mis en service.
+- **Connecteur Clara** (livré côté Clara le 2026-08-23, refondu le 2026-10-15) : **clé
+  plateforme** `clara` (une par environnement, scopes `requests:write`, `requests:read`,
+  `requests:read_tenant`) et en-tête `X-Socle-Root-Organization-Id` ; la source `clara` de
+  chaque collectivité est ouverte par `sync-socle-referentiel` d'après l'abonnement à Clara
+  dans le Socle (§ « Clé plateforme »). Plus aucune clé par collectivité : les quatre
+  d'origine ont été révoquées le 2026-10-15. À la création d'une action fondée sur une
+  démarche, POST de l'enveloppe avec `external_id` = id du ticket d'action, `links` =
+  `[{type: "courrier", id: <chrono>, url: <permalien>}]`, et les **pièces réclamées par le
+  formulaire** déposées d'abord sur `POST /v1/uploads` puis référencées par `upload_id` +
+  `form_field_key` (en service depuis le 2026-09 ; dépôt réel vérifié le 2026-10-15) ;
+  réconciliation par `GET ?updated_since=`. Seul manque assumé : ajouter des pièces à une
+  demande **déjà déposée** (`POST /v1/requests/{id}/attachments`, non implémenté côté Clara —
+  décision PO).
 - **Portail citoyen** : source `portail-citoyen`, clé côté serveur du portail ; dépôt à la
   soumission du formulaire avec `requester` déclaré (ou `socle_contact_id` si le compte est
   rapproché) et `form_data`.

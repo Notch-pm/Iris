@@ -206,7 +206,12 @@ du dernier administrateur (corrigé par `20260921100000`, cf.
 Socle choisie dans le référentiel (proxy, jamais un UUID saisi), synchro immédiate,
 rattachement de l'ouvrant, et **création des deux profils de reprise** (Administrateur, Agent)
 dans la même transaction, par la RPC existante. Décision PO du 2026-09-13 : à faire plus tard,
-le provisioning manuel tient pour l'instant.
+le provisioning manuel tient pour l'instant. **Avancée du 2026-10-15** : les **sources d'intégration** des
+applications de la gamme ne se provisionnent plus à la main — la synchronisation ouvre (ou
+suspend) la source `clara` d'un tenant d'après les abonnements du Socle
+(`_shared/suiteSources.ts`). Reste manuel : la création du **tenant** lui-même. La sync
+**globale** n'est lancée que par le cron de 04:00 — aucun écran ne la propose, même à un
+administrateur plateforme.
 
 ## O9 — Le reste de l'audit purge / performance du 2026-09-23
 
