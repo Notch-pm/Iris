@@ -25,6 +25,16 @@ import {
   type TenantRef,
 } from "./_shared/mapping.ts";
 import { smtpMirrorArgs, smtpWarning, type SocleSmtpDto } from "./_shared/smtp.ts";
+import { createSocleGate } from "./_shared/socleGate.ts";
+
+/**
+ * Tous les appels d'UNE synchronisation au Socle passent par cette file
+ * (cadence + plafonds, voir _shared/socleGate.ts). Recréée à chaque requête :
+ * une pause ne déborde pas sur l'exécution suivante.
+ */
+const newSocleGate = () =>
+  createSocleGate({ spacingMs: 250, maxRetries: 2, maxWaitMs: 60_000, timeoutMs: 20_000 });
+let socleFetch = newSocleGate();
 import {
   CLARA_SOURCE_CODE,
   CLARA_SOURCE_NAME,
@@ -132,10 +142,7 @@ async function resolveScope(req: Request, requestedOrgId: string | null): Promis
 }
 
 async function fetchSocle<T>(base: string, key: string, path: string): Promise<T> {
-  const res = await fetch(`${base}${path}`, {
-    headers: { Authorization: `Bearer ${key}` },
-    signal: AbortSignal.timeout(20_000),
-  });
+  const res = await socleFetch(`${base}${path}`, { Authorization: `Bearer ${key}` });
   if (!res.ok) {
     throw new Error(`Socle ${path} → ${res.status}`);
   }
@@ -162,10 +169,7 @@ async function fetchSocleSmtp(
   key: string,
   socleOrgId: string,
 ): Promise<{ status: number; dto: SocleSmtpDto | null }> {
-  const res = await fetch(`${base}/v1/organizations/${socleOrgId}/smtp`, {
-    headers: { Authorization: `Bearer ${key}` },
-    signal: AbortSignal.timeout(20_000),
-  });
+  const res = await socleFetch(`${base}/v1/organizations/${socleOrgId}/smtp`, { Authorization: `Bearer ${key}` });
   if (!res.ok) return { status: res.status, dto: null };
   return { status: res.status, dto: (await res.json()) as SocleSmtpDto };
 }
@@ -191,10 +195,7 @@ async function fetchActivations(
   socleOrgId: string,
 ): Promise<OrgActivation | null> {
   try {
-    const res = await fetch(`${base}/v1/procedures?enabled_for=${socleOrgId}`, {
-      headers: { Authorization: `Bearer ${key}` },
-      signal: AbortSignal.timeout(20_000),
-    });
+    const res = await socleFetch(`${base}/v1/procedures?enabled_for=${socleOrgId}`, { Authorization: `Bearer ${key}` });
     if (!res.ok) return null;
     const rows = await res.json() as { id?: unknown }[] | null;
     if (!Array.isArray(rows)) return null;
@@ -210,6 +211,7 @@ async function fetchActivations(
 }
 
 Deno.serve(async (req) => {
+  socleFetch = newSocleGate();
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders(req) });
   }
