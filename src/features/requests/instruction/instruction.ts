@@ -724,6 +724,20 @@ function describeEvent(
           + (lost ? " · affectation retirée" : ""),
       };
     }
+    case "request_linked": {
+      // Demandes liées (même incident) — `link_requests`.
+      const ref = typeof p.with_reference === "string" ? p.with_reference : null;
+      return {
+        label: "Liée à une demande du même incident",
+        detail: `${ref ?? "autre demande"} · ${who}${p.merged === true ? " · deux groupes fusionnés" : ""}`,
+      };
+    }
+    case "request_unlinked": {
+      return {
+        label: p.reason === "groupe_dissous" ? "Groupe de demandes liées dissous" : "Retirée des demandes liées",
+        detail: who,
+      };
+    }
     case "piece_qualifiee": {
       const conforme = p.compliance === "conforme";
       const name = typeof p.file_name === "string" ? p.file_name : "Pièce";

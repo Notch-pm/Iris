@@ -61,6 +61,7 @@ import {
 } from "./instruction/conformite";
 import { NotesPane } from "./instruction/NotesPane";
 import { ResumePane } from "./instruction/ResumePane";
+import { IncidentGroupCard } from "@/features/linking/IncidentGroupCard";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
 import { TransfertDialog } from "./instruction/TransfertDialog";
 import { transferOptions } from "./instruction/transfert";
@@ -813,6 +814,14 @@ export function RequestDetailPage() {
                   lieu={lieu}
                   links={links.data ?? []}
                   linkedSummaries={linkedSummaries.data ?? []}
+                  incident={
+                    <IncidentGroupCard
+                      orgId={orgId}
+                      requestId={r.id}
+                      procedureId={r.socle_procedure_id}
+                      canWrite={writer && !archived}
+                    />
+                  }
                   onEditAnswers={
                     editable && formSchema && formSchema.content.length > 0
                       ? () => { setAnswersError(null); setAnswersOpen(true); }

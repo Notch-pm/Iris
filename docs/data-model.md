@@ -486,6 +486,17 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
     agent ne voit que les membres qu'il consulte, aucun compteur d'invisibles) ;
     `procedure_link_settings` lisible par tout membre. Aucune écriture cliente.
   - Test : [`../supabase/tests/demandes-liees.test.sql`](../supabase/tests/demandes-liees.test.sql).
+  - **Recherche des demandes approchantes** (lot L2, migration `20261016140000`) :
+    `find_similar_requests(org, démarche, lat, lon, adresse, texte, exclure, limite)` (brouillon
+    du guichet) et `find_similar_requests_for(id)` (fiche), **SECURITY INVOKER** — bornées par le
+    RLS de `requests`. Préfiltre : démarche source ET candidate mutualisables, `received_at`
+    dans la fenêtre de la démarche source, ouverte ou résolue depuis moins de 30 jours, hors du
+    groupe de la source. Signaux bruts rendus : `distance_m` (`haversine_m`), similarité
+    trigramme de l'adresse et du texte (objet + description), même démarche, rayon. Score et
+    explication côté écran (`src/features/linking/similaires.ts`). 50 lignes au plus. La policy
+    de `request_locations` est passée à `EXISTS` demande visible (une fonction DEFINER par ligne
+    pesait sur le balayage). Test :
+    [`../supabase/tests/demandes-liees-recherche.test.sql`](../supabase/tests/demandes-liees-recherche.test.sql).
 - **`integration_deliveries`** — outbox du retour d'état (contrat §6) : `event_id` UNIQUE,
   `target` (`clara`), `status` `pending|delivered|failed`, `attempts`, `next_attempt_at`,
   `last_error`. **Aucune émission n'est encore branchée** (phase 4) ; aucune écriture cliente.
@@ -1473,7 +1484,7 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `request_links` | `EXISTS` demande visible (la ligne appartient à la source) | couple **écriture** sur la source ; trigger `request_links_check_scope` exige en plus la **consultation** de la cible (hors contexte de service) | — | `has_admin_scope` sur l'organisation de la demande |
 | `procedure_link_settings` | membre | — (RPC `save_procedure_link_settings`, administration de la racine) | — (idem) | — |
 | `request_groups` / `request_group_members` | `can_consult_request` d'au moins un membre / du membre | — (RPC `link_requests`) | — (idem, fusion) | — (RPC `unlink_request`) |
-| `request_locations` | `can_consult_request` | — (trigger `t32` DEFINER) | — (idem) | — (idem) |
+| `request_locations` | `EXISTS` demande visible (depuis `20261016140000`) | — (trigger `t32` DEFINER) | — (idem) | — (idem) |
 | `integration_deliveries` | membre (diagnostic) | — | — | — |
 | `notifications` | **soi seul** (`user_id = auth.uid()`) | — (triggers DEFINER) | — (RPC `mark_*_read`) | — |
 | `notification_preferences` | soi seul | soi seul | soi seul | soi seul |

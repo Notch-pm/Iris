@@ -382,6 +382,26 @@ describe("formAnswers", () => {
     expect(items[1]).toMatchObject({ label: "Pièce ajoutée", detail: "rib.pdf · Camille Martin" });
   });
 
+  it("nomme la liaison à une demande du même incident, la fusion et la dissolution", () => {
+    const items = activityItems({
+      events: [
+        { id: "e1", event_type: "request_linked", created_by: "u1", created_at: "2026-10-16T10:00:00Z",
+          payload: { group_id: "g", with_reference: "DEM-2026-000012", merged: true } },
+        { id: "e2", event_type: "request_unlinked", created_by: "u1", created_at: "2026-10-16T09:00:00Z",
+          payload: { group_id: "g", reason: "groupe_dissous" } },
+        { id: "e3", event_type: "request_unlinked", created_by: "u1", created_at: "2026-10-16T08:00:00Z",
+          payload: { group_id: "g" } },
+      ],
+      notes: [], nameOf: () => "Camille Martin",
+    });
+    expect(items[0]).toMatchObject({
+      label: "Liée à une demande du même incident",
+      detail: "DEM-2026-000012 · Camille Martin · deux groupes fusionnés",
+    });
+    expect(items[1].label).toBe("Groupe de demandes liées dissous");
+    expect(items[2].label).toBe("Retirée des demandes liées");
+  });
+
   it("nomme la modification des réponses, sans jamais citer les valeurs", () => {
     const items = activityItems({
       events: [{ id: "e1", event_type: "form_data_updated", created_by: "u1",

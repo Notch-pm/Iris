@@ -2,6 +2,7 @@
 // (étiquetées par le snapshot de démarche), lieu d'intervention (quand la
 // démarche pose la question) et demandes liées.
 
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { Check, ExternalLink, Pencil, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -30,10 +31,12 @@ interface Props {
    * d'instruction, sur une demande close, ou sans formulaire exploitable.
    */
   onEditAnswers: (() => void) | null;
+  /** Carte « Même incident » (demandes liées, `src/features/linking`) — rien hors démarche mutualisable. */
+  incident?: ReactNode;
 }
 
 export function ResumePane({
-  request: r, answers, formVersion, lieu, links, linkedSummaries, onEditAnswers,
+  request: r, answers, formVersion, lieu, links, linkedSummaries, onEditAnswers, incident,
 }: Props) {
   const channel = channelLabel(r.channel);
   const internalLinks = links.filter((l) => l.target_request_id);
@@ -97,6 +100,8 @@ export function ResumePane({
       </Surface>
 
       {lieu ? <LieuIntervention lieu={lieu} /> : null}
+
+      {incident}
 
       <ConsentementsDepot request={r} />
 

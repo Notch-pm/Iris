@@ -63,6 +63,9 @@ import {
 } from "@fn/create-request-from-procedure/_shared/procedureForm";
 import { PRIORITY_LABELS, STATUS_LABELS } from "../statuts";
 import { useLinkRequests } from "../useRequests";
+import { DraftSimilarSection, type DraftSimilarState } from "@/features/linking/DraftSimilarSection";
+import { draftIsSearchable, draftSimilarityInput, rankSimilar } from "@/features/linking/similaires";
+import { useDraftSimilarRequests, useLinkToGroup, useProcedureLinkable } from "@/features/linking/useLinking";
 import { useProcedureDocumentUrl } from "../procedure/useProcedureKnowledge";
 import { AssistantThreadProvider } from "../assistant/AssistantThreadProvider";
 import { FicheDemarcheDialog } from "../procedure/FicheDemarcheDialog";
@@ -147,6 +150,7 @@ export function NewRequestPage() {
   const activationRows = useSocleProcedureActivations(orgId);
   const create = useCreateFromProcedure();
   const linkRequests = useLinkRequests();
+  const linkToGroup = useLinkToGroup();
   const getContact = useGetContact();
   const documentUrl = useProcedureDocumentUrl();
   const draft = useCreationDraft(orgId, userId);
@@ -176,6 +180,8 @@ export function NewRequestPage() {
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string>>({});
   const [error, setError] = React.useState<string | null>(null);
   const [linked, setLinked] = React.useState<LinkedRequests>({});
+  // Signalements du même incident retenus — liés APRÈS création (groupe).
+  const [incidentLinked, setIncidentLinked] = React.useState<LinkedRequests>({});
   // « Fiche démarche » ouverte depuis le bouton « i » d'une carte — la démarche
   // CONSULTÉE, qui n'est pas forcément la démarche choisie.
   const [ficheRow, setFicheRow] = React.useState<SocleProcedureRow | null>(null);
@@ -289,6 +295,28 @@ export function NewRequestPage() {
     : nearby.isError ? "error"
     : "ready";
   const duplicates = nearbyScored.filter((i) => i.likelyDuplicate);
+
+  // ---- Signalements du même incident (démarche mutualisable) -----------------
+  // Recherche SERVEUR, automatique au récapitulatif seulement (décision PO
+  // 2026-10-16) : la saisie y est complète, et elle n'y bouge plus. Liaison
+  // après création, par `link_requests` (src/features/linking).
+  const incidentLinkable = useProcedureLinkable(orgId, procedureId || null);
+  const similarInput = React.useMemo(
+    () => draftSimilarityInput(schema, values, subject, bodyText),
+    [schema, values, subject, bodyText],
+  );
+  const similarEnabled = incidentLinkable === true && step === 4 && !created && draftIsSearchable(similarInput);
+  const draftSimilar = useDraftSimilarRequests(orgId, procedureId || null, similarInput, similarEnabled);
+  const similarScored = React.useMemo(
+    () => (draftSimilar.data ? rankSimilar(draftSimilar.data, new Date()) : []),
+    [draftSimilar.data],
+  );
+  const similarState: DraftSimilarState = !similarEnabled && !draftSimilar.data ? "idle"
+    : draftSimilar.isLoading ? "loading"
+    : draftSimilar.isError ? "error"
+    : "ready";
+  // Une autre démarche (ou une nouvelle saisie) rend caduques les liaisons retenues.
+  React.useEffect(() => setIncidentLinked({}), [procedureId]);
 
   // ---- Usager imposé (entrée depuis la fiche usager) --------------------------
   type ContactResolution = Extract<RequesterResolution, { kind: "contact" }>;
@@ -673,6 +701,15 @@ export function NewRequestPage() {
           setLinkError(err instanceof Error ? err.message : "liaison refusée");
         }
       }
+      // Même incident : une liaison par signalement retenu — chacune étend le
+      // groupe (ou fusionne le sien). Un refus est dit, il ne défait rien.
+      for (const targetId of Object.keys(incidentLinked)) {
+        try {
+          await linkToGroup.mutateAsync({ requestId: result.id, targetId });
+        } catch (err) {
+          setLinkError(err instanceof Error ? err.message : "liaison refusée");
+        }
+      }
       flash(printAfter
         ? `Demande ${result.reference} créée — récépissé envoyé à l'impression`
         : `Demande ${result.reference} créée — ${STATUS_LABELS.a_traiter.toLowerCase()}`);
@@ -1047,7 +1084,7 @@ export function NewRequestPage() {
               reference={created.reference}
               procedureName={procedure.snapshot.name}
               requesterLabel={requesterName ?? "demandeur"}
-              linkedReferences={Object.values(linked)}
+              linkedReferences={[...Object.values(linked), ...Object.values(incidentLinked)]}
               linkError={linkError}
               onPrint={() => window.print()}
               onRestart={restart}
@@ -1067,6 +1104,19 @@ export function NewRequestPage() {
           onOpenDocument={(doc) => void openKnowledgeDocument(doc)}
           openingDocument={documentUrl.isPending ? documentUrl.variables?.path ?? null : null}
           documentError={documentError}
+          incident={incidentLinkable === true ? (
+            <DraftSimilarSection
+              state={similarState}
+              items={similarScored}
+              linked={incidentLinked}
+              onToggle={(id, reference) => setIncidentLinked((l) => {
+                const nextLinks = { ...l };
+                if (nextLinks[id]) delete nextLinks[id];
+                else nextLinks[id] = reference;
+                return nextLinks;
+              })}
+            />
+          ) : null}
         />
 
         <div

@@ -2452,6 +2452,55 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      find_similar_requests: {
+        Args: {
+          p_address?: string
+          p_exclude_request_id?: string
+          p_lat?: number
+          p_limit?: number
+          p_lon?: number
+          p_org_id: string
+          p_procedure_id: string
+          p_text?: string
+        }
+        Returns: {
+          address_similarity: number
+          closed_at: string
+          distance_m: number
+          group_id: string
+          organisme: string
+          procedure_label: string
+          radius_m: number
+          received_at: string
+          reference: string
+          request_id: string
+          same_procedure: boolean
+          socle_procedure_id: string
+          status: string
+          subject: string
+          text_similarity: number
+        }[]
+      }
+      find_similar_requests_for: {
+        Args: { p_limit?: number; p_request_id: string }
+        Returns: {
+          address_similarity: number
+          closed_at: string
+          distance_m: number
+          group_id: string
+          organisme: string
+          procedure_label: string
+          radius_m: number
+          received_at: string
+          reference: string
+          request_id: string
+          same_procedure: boolean
+          socle_procedure_id: string
+          status: string
+          subject: string
+          text_similarity: number
+        }[]
+      }
       form_attachment_required: {
         Args: { p_field: Json; p_values: Json }
         Returns: boolean
@@ -2494,6 +2543,10 @@ export type Database = {
       has_knowledge_base_access_for: {
         Args: { p_org_id: string; p_user_id: string }
         Returns: boolean
+      }
+      haversine_m: {
+        Args: { p_lat1: number; p_lat2: number; p_lon1: number; p_lon2: number }
+        Returns: number
       }
       immutable_unaccent: { Args: { p_text: string }; Returns: string }
       ingest_request_attachments: {

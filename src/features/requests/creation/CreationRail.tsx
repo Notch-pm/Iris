@@ -43,6 +43,8 @@ interface Props {
   onOpenDocument: (doc: KnowledgeDocument) => void;
   openingDocument: string | null;
   documentError: string | null;
+  /** Section « Signalements similaires » — absente hors démarche mutualisable. */
+  incident?: React.ReactNode;
 }
 
 const TONE_TEXT = { haute: "text-destructive", moyenne: "text-secondary-foreground", faible: "text-muted-foreground" } as const;
@@ -53,7 +55,7 @@ const EMPTY_KNOWLEDGE = emptyKnowledge();
 
 export function CreationRail({
   reference, progress, lines, nearby, linked, onToggleLink, now,
-  procedure, onOpenDocument, openingDocument, documentError,
+  procedure, onOpenDocument, openingDocument, documentError, incident,
 }: Props) {
   const duplicates = nearby.items.filter((i) => i.likelyDuplicate).length;
   const [tab, setTab] = React.useState<RailTab>("demande");
@@ -207,6 +209,8 @@ export function CreationRail({
           );
         })}
       </section>
+      {/* Signalements du même incident (démarche mutualisable) — `src/features/linking`. */}
+      {incident}
       </div>
     </aside>
   );

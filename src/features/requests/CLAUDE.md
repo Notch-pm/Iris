@@ -248,7 +248,11 @@ note interne → résolution avec texte de clôture → journal.
     [`docs/demandes-liees.md`](../../../docs/demandes-liees.md), lot L1 livré le 2026-10-16 :
     groupes `request_groups` (RPC `link_requests` / `unlink_request`), démarches
     mutualisables (`procedure_link_settings`, section « Demandes liées » des Paramètres,
-    `src/features/linking/`), lieu recopié `request_locations`. Les « demandes proches »
+    `src/features/linking/`), lieu recopié `request_locations` ; lot L2 : recherche serveur
+    `find_similar_requests[_for]`, carte « Même incident » de l'onglet Résumé (slot `incident`
+    de `ResumePane`, recherche sur bouton seulement) et section « Signalements similaires » du
+    rail de création (slot `incident` de `CreationRail`, automatique au récapitulatif, liaison
+    après création). Les « demandes proches »
     rapprochent un même USAGER ; les demandes liées, des usagers DIFFÉRENTS pour un même lieu.
   - Score de rapprochement Socle = **classement relatif** à la réponse (contrat
     contacts-api) : affiché en barre relative au meilleur candidat, jamais en « % ».
