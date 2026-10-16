@@ -650,6 +650,15 @@ note interne → résolution avec texte de clôture → journal.
     (« Prendre en charge » sur son propre nom, mise en attente, retour à qualifier). La garde
     SQL reste seule juge : son refus s'affiche tel quel — dans le dialogue s'il est ouvert,
     en **bandeau** sinon (une transition directe n'a pas d'autre endroit où le porter).
+    Rien ne bouge avant la confirmation : la carte n'est pas déplacée au dépôt, et
+    « Annuler » la laisse dans sa colonne d'origine, statut inchangé.
+  - ⚠️ **La SUITE d'une transition est la même que sur la fiche** (retour PO 2026-10-16) :
+    `useClosureNotice` (`src/features/requests/useClosureNotice.ts`), partagé par la fiche,
+    la fiche mobile et le tableau — une résolution déposée ici envoie l'avis de clôture à
+    l'usager (sauf demande Clara), et un échec d'avis s'affiche dans son propre bandeau.
+    Jusque-là le tableau résolvait sans prévenir l'usager, alors que son dialogue
+    l'annonçait. Toute nouvelle suite d'une transition se pose dans ce hook, pas dans un
+    écran.
   - **Pendant le déplacement, seules les colonnes acceptables s'ouvrent** : `dropTargets`
     indexe `allowedTransitionsFor(statut, droits du couple)` par statut d'arrivée ; les
     autres colonnes refusent le dépôt (pas de `preventDefault` → le curseur dit « interdit »)
@@ -945,6 +954,11 @@ note interne → résolution avec texte de clôture → journal.
     clôture SANS composition serveur ferait d'Iris un relais ouvert pour quiconque peut clore.
   - Le dialogue **annonce l'objet exact** que recevra l'usager (`CLOSURE_NOTICE`, cité depuis
     `CLOSURE_SUBJECTS`) : l'agent doit reconnaître le message dans l'onglet Échanges.
+  - ⚠️ **Aucun avis pour une demande issue de Clara** (décision PO 2026-10-16, jumelle de
+    l'exclusion de l'accusé de réception) : `closureNoticeApplies(source)` — la fiche et la
+    fiche mobile n'appellent pas, le dialogue dit `NO_CLOSURE_NOTICE` au lieu d'annoncer un
+    envoi, et `send-request-email` refuse (`409 clara_origin`) pour un onglet resté sur une
+    version antérieure. Le commentaire de clôture reste au dossier (et lisible par l'API).
   - ⚠️ **L'envoi SUIT la transition, il ne la conditionne pas.** La demande est résolue quoi
     qu'il arrive. Un `no_recipient` est annoncé comme un fait (« aucun courriel : la demande ne
     porte pas d'adresse »), pas comme une erreur ; tout autre échec s'affiche en bandeau, en

@@ -87,6 +87,8 @@ export interface BoardRow {
   updated_at: string;
   identity_status: string;
   requester_snapshot: unknown;
+  /** Émetteur de la demande — `clara` n'appelle aucun avis de clôture. */
+  source: string;
 }
 
 // ---- Cartes -----------------------------------------------------------------
@@ -116,6 +118,8 @@ export interface BoardCardView {
   destinataireLabel: string;
   /** Assigné brut — l'assigné proposé par défaut dans le dialogue de transition. */
   assignedTo: string | null;
+  /** `requests.source` — décide de l'avis de clôture (`closureNoticeApplies`). */
+  source: string;
   agentId: string;
   agentLabel: string;
   agentInitials: string;
@@ -158,6 +162,7 @@ export function boardCard(row: BoardRow, agentName: string | null): BoardCardVie
     destinataireId: row.socle_organization_id ?? NO_DESTINATAIRE,
     destinataireLabel,
     assignedTo: row.assigned_to,
+    source: row.source,
     agentId: row.assigned_to ?? NO_AGENT,
     agentLabel,
     agentInitials: row.assigned_to ? initials(agentLabel) : "?",

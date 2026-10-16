@@ -26,6 +26,7 @@ function row(over: Partial<BoardRow> = {}): BoardRow {
     updated_at: "2026-08-21T09:00:00Z",
     identity_status: "rapprochee",
     requester_snapshot: { declared: { first_name: "Marie", last_name: "Durand" } },
+    source: "iris",
     ...over,
   };
 }

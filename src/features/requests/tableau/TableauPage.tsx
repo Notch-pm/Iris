@@ -25,7 +25,9 @@ import { useTenant } from "@/features/tenant/TenantProvider";
 import { cn } from "@/lib/utils";
 import { NewRequestButton } from "../NewRequestButton";
 import { StatusBadge } from "../StatusBadge";
+import { closureNoticeApplies } from "@fn/_shared/email/cloture";
 import { TransitionDialog } from "../TransitionActions";
+import { useClosureNotice } from "../useClosureNotice";
 import { memberName } from "../instruction/instruction";
 import { useEligibleAssignees, useTenantMembers } from "../useRequests";
 import type { RequestStatus, TransitionSpec } from "../statuts";
@@ -68,8 +70,12 @@ export function TableauPage() {
     toastTimer.current = window.setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2800);
   }, []);
 
+  // Même suite que la fiche : une résolution prévient l'usager (sauf Clara).
+  // Un avis qui échoue ne remet pas la transition en cause : bandeau à part.
+  const [noticeError, setNoticeError] = React.useState<string | null>(null);
+  const closureNoticeAfter = useClosureNotice({ flash, onFailure: setNoticeError });
   const transition = useBoardTransition({
-    onDone: (card, spec) => flash(transitionToast(card, spec.to)),
+    onDone: (card, spec) => closureNoticeAfter(card, spec.to, transitionToast(card, spec.to)),
   });
   // Assignés éligibles de la demande visée (RM-16) : le dialogue ne les demande
   // que si aucun assigné ne se déduit, mais alors il lui faut la bonne liste.
@@ -253,6 +259,23 @@ export function TableauPage() {
         </div>
       </header>
 
+      {noticeError ? (
+        <div
+          role="alert"
+          className="flex shrink-0 items-start gap-2 border-b border-destructive/30 bg-destructive/10 px-5 py-2.5 text-[12.5px] text-destructive"
+        >
+          <span className="min-w-0 flex-1">{noticeError}</span>
+          <button
+            type="button"
+            onClick={() => setNoticeError(null)}
+            className="rounded p-0.5 hover:bg-destructive/10"
+          >
+            <X className="size-3.5" aria-hidden="true" />
+            <span className="sr-only">Masquer l'erreur</span>
+          </button>
+        </div>
+      ) : null}
+
       {transition.bannerError ? (
         <div
           role="alert"
@@ -386,6 +409,7 @@ export function TableauPage() {
 
       <TransitionDialog
         runner={transition.runner}
+        closureNotice={closureNoticeApplies(transition.card?.source)}
         subtitle={
           transition.card ? `${transition.card.reference} — ${transition.card.subject}` : undefined
         }

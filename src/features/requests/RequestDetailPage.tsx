@@ -22,8 +22,8 @@ import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
 import { UsagerEditDialog } from "@/features/contacts/UsagerEditDialog";
 import { hasRight, isAdminOn, rightsFor } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
-import type { EdgeError } from "@/lib/edge";
 import { StatusBadge } from "./StatusBadge";
+import { closureNoticeApplies } from "@fn/_shared/email/cloture";
 import { TransitionDialog, useTransitionRunner } from "./TransitionActions";
 import {
   allowedTransitionsFor, canAdminWith, canProcessWith, canWriteWith, isFinal, STATUS_LABELS,
@@ -36,7 +36,8 @@ import {
   useUpdatePriority,
   type RequestAttachment, type TenantMember, type TransferResult,
 } from "./useRequests";
-import { useSendClosureEmail, useSendRequestEmail } from "./instruction/useSendRequestEmail";
+import { useSendRequestEmail } from "./instruction/useSendRequestEmail";
+import { useClosureNotice } from "./useClosureNotice";
 import { ActivityPane } from "./instruction/ActivityPane";
 import { DocumentsPane } from "./instruction/DocumentsPane";
 import { GenererDocumentDialog } from "./instruction/GenererDocumentDialog";
@@ -117,11 +118,11 @@ export function RequestDetailPage() {
   const sendEmail = useSendRequestEmail();
   const previewDocument = usePreviewDocument();
   const generateDocument = useGenerateDocument();
-  const sendClosure = useSendClosureEmail();
   const qualify = useQualifyAttachment();
   const attachPiece = useAttachRequestPiece();
   const updateFormData = useUpdateRequestFormData();
   const r = request.data ?? null;
+  const closureNotice = closureNoticeApplies(r?.source);
   const linkTargets = React.useMemo(
     () => (links.data ?? []).map((l) => l.target_request_id).filter((x): x is string => Boolean(x)),
     [links.data],
@@ -228,40 +229,12 @@ export function RequestDetailPage() {
     toastTimer.current = window.setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2800);
   }, []);
 
-  /**
-   * Une résolution PRÉVIENT l'usager (décision PO 2026-08-28) : l'avis part
-   * juste après, composé par le serveur depuis l'état enregistré.
-   *
-   * ⚠️ L'envoi suit la transition, il ne la conditionne pas. La demande est
-   * résolue quoi qu'il arrive ; un échec s'affiche comme tel, sans laisser
-   * croire que la clôture a échoué. Le cas le plus courant — aucune adresse au
-   * dossier — n'est pas une erreur : c'est un fait qu'on énonce.
-   */
+  // L'avis de clôture suit la transition — même suite que le tableau et le mobile.
+  const closureNoticeAfter = useClosureNotice({ flash, onFailure: setError });
   const onTransitionDone = React.useCallback(
-    (spec: TransitionSpec) => {
-      const done = `Statut : ${STATUS_LABELS[spec.to]}`;
-      if (spec.to !== "resolue_positive" && spec.to !== "resolue_negative") {
-        flash(done);
-        return;
-      }
-      flash(`${done} — envoi de l'avis à l'usager…`);
-      sendClosure
-        .mutateAsync({ requestId: id ?? "" })
-        .then(() => flash(`${done} — l'usager a été prévenu par courriel.`))
-        .catch((err: unknown) => {
-          const code = (err as EdgeError | null)?.code;
-          if (code === "no_recipient") {
-            flash(`${done} — aucun courriel : la demande ne porte pas d'adresse.`);
-            return;
-          }
-          flash(done);
-          setError(
-            `La demande est bien ${STATUS_LABELS[spec.to].toLowerCase()}, mais l'avis n'a pas pu partir : `
-              + (err instanceof Error ? err.message : "envoi impossible."),
-          );
-        });
-    },
-    [flash, id, sendClosure],
+    (spec: TransitionSpec) =>
+      closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`),
+    [closureNoticeAfter, id, r?.source],
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
@@ -1022,7 +995,7 @@ export function RequestDetailPage() {
         </div>
       </div>
 
-      <TransitionDialog runner={runner} members={eligibleMembers} />
+      <TransitionDialog runner={runner} members={eligibleMembers} closureNotice={closureNotice} />
 
       {/* Transfert vers un autre organisme responsable. La modale est le SEUL
           chemin : le menu du rail ne fait que la viser. */}

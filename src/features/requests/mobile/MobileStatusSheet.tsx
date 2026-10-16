@@ -21,7 +21,7 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MobileSheet } from "@/components/layout/mobile/MobilePage";
 import { cn } from "@/lib/utils";
-import type { TransitionDialogRunner, TransitionInput } from "../TransitionActions";
+import { NO_CLOSURE_NOTICE, type TransitionDialogRunner, type TransitionInput } from "../TransitionActions";
 import {
   MOTIF_LABELS, STATUS_LABELS, type ClosureMotif, type RequestStatus, type TransitionSpec,
 } from "../statuts";
@@ -39,10 +39,13 @@ interface Props {
   /** Miroir de la garde t17 (`instruction/conformite.ts`) — `null` = résolution positive ouverte. */
   piecesBlocking: string | null;
   onSubmit: (spec: TransitionSpec, input: TransitionInput, note: string) => void;
+  /** Faux pour une demande issue de Clara : aucun avis de clôture ne partira. */
+  closureNotice: boolean;
 }
 
 export function MobileStatusSheet({
   open, onOpenChange, status, transitions, members, runner, organizationName, piecesBlocking, onSubmit,
+  closureNotice,
 }: Props) {
   const [selectedTo, setSelectedTo] = React.useState<RequestStatus | "">("");
   const [assigneeId, setAssigneeId] = React.useState("");
@@ -187,7 +190,9 @@ export function MobileStatusSheet({
         <Field
           label="Message à l'usager"
           htmlFor="mst-closure"
-          hint="Facultatif — repris dans l'avis de clôture envoyé à l'usager."
+          hint={closureNotice
+            ? "Facultatif — repris dans l'avis de clôture envoyé à l'usager."
+            : NO_CLOSURE_NOTICE}
         >
           <Textarea id="mst-closure" value={closureText} onChange={(e) => setClosureText(e.target.value)} />
         </Field>

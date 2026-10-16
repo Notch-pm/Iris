@@ -96,7 +96,14 @@ interface DialogProps {
   members: TenantMember[];
   /** Demande visée, quand l'écran en instruit plusieurs (tableau des demandes). */
   subtitle?: React.ReactNode;
+  /** Faux pour une demande issue de Clara : aucun avis ne partira
+   *  (`closureNoticeApplies`), le dialogue ne doit pas l'annoncer. */
+  closureNotice?: boolean;
 }
+
+/** Ce que l'agent lit à la place quand aucun avis ne partira. */
+export const NO_CLOSURE_NOTICE =
+  "Demande issue de Clara : Iris n'envoie aucun courriel à l'usager. Ce commentaire reste au dossier.";
 
 /**
  * Ce que l'agent doit savoir avant d'écrire : un courriel PARTIRA, avec son
@@ -112,7 +119,7 @@ const CLOSURE_NOTICE: Partial<Record<RequestStatus, string>> = {
 };
 
 /** Dialogue motif / commentaire / assigné — monté une seule fois par fiche. */
-export function TransitionDialog({ runner, members, subtitle }: DialogProps) {
+export function TransitionDialog({ runner, members, subtitle, closureNotice = true }: DialogProps) {
   const { active } = runner;
   const [motif, setMotif] = React.useState<ClosureMotif | "">("");
   const [closureText, setClosureText] = React.useState("");
@@ -173,7 +180,9 @@ export function TransitionDialog({ runner, members, subtitle }: DialogProps) {
                 <Field
                   label="Commentaire pour l'usager (facultatif)"
                   htmlFor="tr-closure"
-                  hint={CLOSURE_NOTICE[active.to] ?? "Jamais une note interne — ce texte part à l'usager."}
+                  hint={closureNotice
+                    ? (CLOSURE_NOTICE[active.to] ?? "Jamais une note interne — ce texte part à l'usager.")
+                    : NO_CLOSURE_NOTICE}
                 >
                   <Textarea id="tr-closure" value={closureText}
                     onChange={(e) => setClosureText(e.target.value)} />

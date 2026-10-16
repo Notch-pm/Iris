@@ -311,6 +311,7 @@ Résoudre une demande prévient l'usager, sans que l'agent ait à rédiger quoi 
 | | |
 |---|---|
 | Déclencheur | Transition vers `resolue_positive` ou `resolue_negative`, depuis la fiche |
+| Exclu | Les demandes **issues de Clara** (`source = 'clara'`, décision PO 2026-10-16) : comme pour l'accusé de réception, Iris n'écrit rien à leur auteur — Clara tient la relation. Règle `closureNoticeApplies` (`cloture.ts`) : l'écran n'appelle pas, n'annonce pas d'envoi dans le dialogue, et `send-request-email` refuse (`409 clara_origin`) |
 | Objets | « Votre demande a été résolue positivement » · « Nous ne pouvons répondre positivement à votre demande » (**figés**, décision PO) |
 | Composé par | Le **serveur** (`_shared/email/cloture.ts`) — le navigateur n'envoie que l'identifiant de la demande |
 | Droit exigé | **Clôture** (et non instruction) : celui qui vient d'autoriser la transition |

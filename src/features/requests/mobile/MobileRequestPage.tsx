@@ -34,7 +34,7 @@ import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
 import { rightsFor, isAdminOn } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
 import { googleMapsDirectionsUrl } from "@/lib/carto";
-import type { EdgeError } from "@/lib/edge";
+import { closureNoticeApplies } from "@fn/_shared/email/cloture";
 import { useTransitionRunner, type TransitionInput } from "../TransitionActions";
 import {
   allowedTransitionsFor, canProcessWith, canWriteWith, PRIORITY_LABELS, STATUS_LABELS,
@@ -45,7 +45,8 @@ import {
   useRequestEmails, useRequestEvents, useRequestMessages, useTenantMembers,
   type RequestAttachment, type TenantMember,
 } from "../useRequests";
-import { useSendClosureEmail, useSendRequestEmail } from "../instruction/useSendRequestEmail";
+import { useSendRequestEmail } from "../instruction/useSendRequestEmail";
+import { useClosureNotice } from "../useClosureNotice";
 import { useAttachRequestPiece } from "../instruction/useEditRequestForm";
 import {
   activityItems, attachmentExt, buildStages, dueView, formAnswers, formatBytes, formatTimeline,
@@ -89,7 +90,6 @@ export function MobileRequestPage() {
   const socleContact = useSocleContact(orgId, canBrowseUsagers ? r?.socle_contact_id ?? null : null);
 
   const sendEmail = useSendRequestEmail();
-  const sendClosure = useSendClosureEmail();
   const attachPiece = useAttachRequestPiece();
   const addMessage = useAddMessage();
   const interventions = useRequestInterventions(id);
@@ -120,6 +120,7 @@ export function MobileRequestPage() {
     toastTimer.current = window.setTimeout(() => setToast((t) => ({ ...t, visible: false })), 2800);
   }, []);
 
+  const closureNoticeAfter = useClosureNotice({ flash, onFailure: setError });
   /** Miroir de `onTransitionDone` (bureau) : l'avis de clôture suit la
    *  transition, et une note tapée dans la feuille Statut part APRÈS elle. */
   const onTransitionDone = React.useCallback(
@@ -132,29 +133,9 @@ export function MobileRequestPage() {
           requestId: r.id, organizationId: r.organization_id, authorId: session?.user.id ?? "", body: note,
         });
       }
-      const done = `Statut : ${STATUS_LABELS[spec.to]}`;
-      if (spec.to !== "resolue_positive" && spec.to !== "resolue_negative") {
-        flash(done);
-        return;
-      }
-      flash(`${done} — envoi de l'avis à l'usager…`);
-      sendClosure
-        .mutateAsync({ requestId: id ?? "" })
-        .then(() => flash(`${done} — l'usager a été prévenu par courriel.`))
-        .catch((err: unknown) => {
-          const code = (err as EdgeError | null)?.code;
-          if (code === "no_recipient") {
-            flash(`${done} — aucun courriel : la demande ne porte pas d'adresse.`);
-            return;
-          }
-          flash(done);
-          setError(
-            `La demande est bien ${STATUS_LABELS[spec.to].toLowerCase()}, mais l'avis n'a pas pu partir : `
-              + (err instanceof Error ? err.message : "envoi impossible."),
-          );
-        });
+      closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`);
     },
-    [flash, id, r, sendClosure, addMessage, session],
+    [closureNoticeAfter, id, r, addMessage, session],
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
@@ -670,6 +651,7 @@ export function MobileRequestPage() {
         runner={runner}
         organizationName={current.organizationName}
         piecesBlocking={piecesBlocking}
+        closureNotice={closureNoticeApplies(r?.source)}
         onSubmit={submitStatus}
       />
 

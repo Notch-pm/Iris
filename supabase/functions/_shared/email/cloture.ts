@@ -39,6 +39,16 @@ export function isClosureOutcome(status: string): status is ClosureOutcome {
   return status === "resolue_positive" || status === "resolue_negative";
 }
 
+/**
+ * Une demande issue de Clara ne reçoit RIEN d'Iris (décision PO 2026-10-16) :
+ * ni accusé de réception (`enqueue_request_receipt`), ni avis de clôture. Elle
+ * naît d'un courrier, et c'est Clara qui tient la relation avec son auteur.
+ * Lue par l'écran (qui n'appelle pas) ET par `send-request-email` (qui refuse).
+ */
+export function closureNoticeApplies(source: string | null | undefined): boolean {
+  return source !== "clara";
+}
+
 export interface ClosureInput {
   outcome: ClosureOutcome;
   /** Référence de la demande — le seul repère dont dispose l'usager. */

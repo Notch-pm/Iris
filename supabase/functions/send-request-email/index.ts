@@ -53,7 +53,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveSmtp, type SmtpConfig, type SmtpRow } from "../_shared/email/config.ts";
 import { sendBrandedEmail, type EmailAttachment } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
-import { closureEmail, isClosureOutcome } from "../_shared/email/cloture.ts";
+import { closureEmail, closureNoticeApplies, isClosureOutcome } from "../_shared/email/cloture.ts";
 import { recipientIdentity } from "../_shared/email/destinataire.ts";
 import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
 import { checkUploadRow, type UploadRow } from "../_shared/files/uploads.ts";
@@ -180,7 +180,7 @@ Deno.serve(async (req) => {
     .from("requests")
     .select(
       "id, organization_id, socle_scope_org_id, socle_procedure_id, socle_contact_id, " +
-        "requester_snapshot, identity_status, reference, status, subject, closure_text",
+        "requester_snapshot, identity_status, reference, status, subject, closure_text, source",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -192,6 +192,12 @@ Deno.serve(async (req) => {
   if (closureMode && outcome === null) {
     return fail(req, 409, "not_closed",
       "L'avis de clôture ne concerne qu'une demande résolue.");
+  }
+  // Une demande issue de Clara ne reçoit rien d'Iris : l'écran n'appelle pas,
+  // la garde est ici pour un onglet resté ouvert sur une version antérieure.
+  if (closureMode && !closureNoticeApplies(request.source)) {
+    return fail(req, 409, "clara_origin",
+      "Une demande issue de Clara ne donne lieu à aucun avis de clôture depuis Iris.");
   }
 
   // Le mode clôture exige la CLÔTURE — le droit qui vient d'autoriser la

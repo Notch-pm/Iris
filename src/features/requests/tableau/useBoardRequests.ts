@@ -21,7 +21,7 @@ import { BOARD_MAX_CLOSED, BOARD_MAX_OPEN, type BoardRow } from "./tableau";
 const BOARD_SELECT =
   "id, reference, subject, status, priority, socle_procedure_id, socle_procedure_label, " +
   "socle_organization_id, socle_organization_label, socle_scope_org_id, assigned_to, " +
-  "received_at, updated_at, identity_status, requester_snapshot";
+  "received_at, updated_at, identity_status, requester_snapshot, source";
 
 export interface BoardBucket {
   rows: BoardRow[];

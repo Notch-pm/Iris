@@ -312,7 +312,8 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   `send-request-email` a un second mode : l'**avis de clôture** (`kind: "cloture"`), composé
   intégralement par le serveur et exigeant le droit de **clôture** — c'est parce que le
   navigateur ne compose rien que l'ouverture à ce droit est sans risque ; le motif de clôture,
-  lui, ne sort jamais.
+  lui, ne sort jamais — et l'avis **ne part jamais pour une demande issue de Clara**
+  (2026-10-16, `closureNoticeApplies` : Iris n'écrit rien à leur auteur, accusé compris).
   Depuis le 2026-10-09, un quatrième chemin, sans agent : l'**accusé de réception au dépôt**
   (guichet et API d'ingestion — **jamais pour une demande issue de Clara**, règle posée dans
   `enqueue_request_receipt` ; aucune désactivation, décision PO). Les deux fonctions de dépôt

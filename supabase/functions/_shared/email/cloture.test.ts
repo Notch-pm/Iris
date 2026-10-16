@@ -1,6 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { quotedSubject, salutation } from "./adresse.ts";
-import { closureEmail, CLOSURE_SUBJECTS, isClosureOutcome } from "./cloture.ts";
+import { closureEmail, closureNoticeApplies, CLOSURE_SUBJECTS, isClosureOutcome } from "./cloture.ts";
+
+describe("closureNoticeApplies", () => {
+  it("n'envoie rien pour une demande issue de Clara (décision PO 2026-10-16)", () => {
+    expect(closureNoticeApplies("clara")).toBe(false);
+  });
+  it("prévient l'usager pour toute autre origine", () => {
+    for (const source of ["iris", "nora", "partenaire", null, undefined]) {
+      expect(closureNoticeApplies(source)).toBe(true);
+    }
+  });
+});
 
 describe("salutation", () => {
   it("compose civilité et nom quand les deux sont là", () => {
