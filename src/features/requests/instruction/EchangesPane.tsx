@@ -1,8 +1,8 @@
 // Onglet « Échanges » : les e-mails envoyés à l'usager, et le composeur.
 //
 // LE COMPOSEUR RÉSOUT LES VARIABLES À L'INSERTION, pas à l'envoi. Choisir un
-// modèle remplit l'objet et le corps DÉJÀ personnalisés ; cliquer une variable
-// insère sa VALEUR au curseur, pas le jeton `{{…}}`. C'est la différence avec
+// modèle remplit l'objet et le corps DÉJÀ personnalisés ; choisir une variable
+// (menu « Insérer une variable… ») insère sa VALEUR au curseur, pas le jeton `{{…}}`. C'est la différence avec
 // l'éditeur de modèles des Paramètres, et elle est voulue : ici l'agent rédige
 // le message final, le voit tel qu'il partira, et c'est ce texte-là qui part.
 // Un trou — variable sans valeur pour cette demande — se voit donc tout de
@@ -358,9 +358,9 @@ export function EchangesPane({
               className="overflow-hidden rounded-xl border-[1.5px] border-primary/45 bg-card shadow-airbnb-md"
               onSubmit={(e) => void submit(e)}
             >
-              {/* Barre haute : variables (jeton + valeur résolue), modèle, pièce jointe. */}
+              {/* Barre haute : variables (menu, valeur résolue), modèle, pièce jointe. */}
               <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/35 px-3 py-2.5">
-                <VariableChips values={values} disabled={sending} onInsert={insertValue} />
+                <VariableSelect values={values} disabled={sending} onInsert={insertValue} />
                 <div className="ml-auto flex flex-wrap items-center gap-1.5">
                   <Select
                     aria-label="Modèle d'e-mail"
@@ -629,11 +629,18 @@ function ExchangeMessage({ mail, pieces, onDownload }: {
 }
 
 /**
- * Les variables qui ONT une valeur pour cette demande, chacune avec sa valeur
- * résolue (motif de la maquette : le jeton ET ce qu'il vaut ici). Les autres
- * ne sont pas proposées : offrir d'insérer du vide n'aiderait personne.
+ * Les variables qui ONT une valeur pour cette demande, dans un menu déroulant
+ * (retour PO 2026-10-16 : les pastilles prenaient trop de place). Chaque option
+ * dit encore le jeton ET ce qu'il vaut ici ; les variables sans valeur ne sont
+ * pas proposées — offrir d'insérer du vide n'aiderait personne.
+ *
+ * Choisir insère la valeur au curseur du dernier champ touché (le champ garde
+ * sa position de curseur pendant que le menu a le focus), puis le menu revient
+ * sur son invite : c'est une action, pas un réglage.
  */
-function VariableChips({ values, disabled, onInsert }: {
+const VARIABLE_VALUE_PREVIEW = 40;
+
+function VariableSelect({ values, disabled, onInsert }: {
   values: Record<string, string>;
   disabled: boolean;
   onInsert: (key: string) => void;
@@ -641,24 +648,27 @@ function VariableChips({ values, disabled, onInsert }: {
   const available = TEMPLATE_VARIABLES.filter((v) => values[v.key]);
   if (available.length === 0) return null;
   return (
-    <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-      <span className="shrink-0 text-xs font-semibold text-muted-foreground">Insérer une variable</span>
-      {available.map((v) => (
-        <button
-          key={v.key}
-          type="button"
-          disabled={disabled}
-          onClick={() => onInsert(v.key)}
-          title={`{{${v.key}}}`}
-          className="inline-flex h-[26px] items-center gap-1.5 rounded-full border border-border bg-card pl-2.5 pr-1 text-[11px] font-semibold transition-colors hover:border-primary hover:bg-primary/[0.08] active:scale-[0.98] disabled:opacity-50"
-        >
-          {v.label}
-          <span className="max-w-[200px] truncate rounded-full bg-muted px-[7px] py-[3px] font-normal leading-[14px] text-muted-foreground">
-            {values[v.key]}
-          </span>
-        </button>
-      ))}
-    </div>
+    <Select
+      aria-label="Insérer une variable"
+      title="Insère la valeur au curseur, dans l'objet ou le message."
+      className="h-8 w-auto max-w-[260px] text-xs font-semibold"
+      value=""
+      disabled={disabled}
+      onChange={(e) => { if (e.target.value) onInsert(e.target.value); }}
+    >
+      <option value="">Insérer une variable…</option>
+      {available.map((v) => {
+        const value = values[v.key];
+        const preview = value.length > VARIABLE_VALUE_PREVIEW
+          ? `${value.slice(0, VARIABLE_VALUE_PREVIEW - 1)}…`
+          : value;
+        return (
+          <option key={v.key} value={v.key} title={`{{${v.key}}} — ${value}`}>
+            {v.label} — {preview}
+          </option>
+        );
+      })}
+    </Select>
   );
 }
 
