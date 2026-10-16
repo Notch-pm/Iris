@@ -69,14 +69,28 @@ Ni PostGIS ni pgvector ne sont en place — et ni l'un ni l'autre n'est nécessa
 - **Statistiques** : inchangées — chaque demande compte pour sa propre résolution (t31), et
   `resolved_by` reste l'agent.
 
-### ⚠️ Question ouverte pour le PO
+### Décision PO (2026-10-16) — une demande « À traiter » se résout avec le groupe
 
-**Une demande encore « À traiter »** ne peut pas passer directement en `resolue_positive` :
-le workflow exige un passage par l'instruction. Proposition : le dialogue annonce « 2 demandes
-seront mises en instruction à votre nom puis résolues », et les **deux transitions sont
-réellement faites** — la garde est respectée à la lettre. Est-ce une lecture acceptable de la
-règle ? À défaut, ces demandes sont simplement **exclues** de la résolution commune positive
-(elles restent proposées pour une résolution négative, qui ne l'exige pas).
+> Lors d'une résolution commune, une demande à traiter peut être résolue également
+> automatiquement, sans prérequis de passage en instruction. L'agent qui résout une demande
+> et les demandes liées est considéré comme l'**instructeur de toutes**, s'il n'y avait pas
+> déjà d'agent instructeur affecté.
+
+**Mise en œuvre** — la décision s'obtient SANS ouvrir de brèche dans la garde :
+- L'agent n'a **rien à faire au préalable** : la RPC `resolve_linked_requests` enchaîne
+  elle-même, pour chaque demande `a_traiter`, `a_traiter → en_instruction → résolution`, dans
+  la même transaction. La matrice de `requests_guard_write` reste inchangée (aucune transition
+  `a_traiter → resolue_positive` n'est ouverte, ni pour l'écran, ni pour l'API) ; le journal
+  montre honnêtement les deux étapes, la première marquée « par résolution commune ».
+- **Affectation** : toute demande du lot **sans agent instructeur** est affectée à l'agent qui
+  résout ; une affectation existante est **conservée**. Cohérent avec la règle des
+  statistiques « l'agent qui a instruit = l'auteur de la résolution » (`resolved_by`).
+- **Ce qui reste exigé, demande par demande** (non couvert par la décision, donc inchangé) :
+  le droit de clôture de l'agent sur le couple de chaque demande, et la garde t17 — une pièce
+  **obligatoire** non qualifiée conforme ferme la résolution *positive* de cette demande-là,
+  qui apparaît alors dans le résultat partiel avec le motif.
+- La garde d'affectation s'applique aussi : affecter l'agent exige qu'il détienne
+  l'instruction sur le couple. Sinon, refus de cette demande, motif affiché.
 
 ## 2. Données
 
@@ -128,11 +142,11 @@ RLS), préfiltre puis rend des **signaux bruts** :
   `request_links`. Création, extension ou fusion de groupe ; événements `request_linked` /
   `request_unlinked` au journal. ⚠️ **Jamais `is_service_context()`** dans ces fonctions :
   droits revérifiés par `auth.uid()`.
-- **`resolve_linked_requests(ids, status, motif, closure_text, take_over)`** — **SECURITY
+- **`resolve_linked_requests(ids, status, motif, closure_text)`** — **SECURITY
   INVOKER**, pour que `requests_guard_write`, t17 et le journal t30 s'appliquent exactement
   comme à un `UPDATE` client. **Une transition par demande**, chacune dans son bloc
   `BEGIN … EXCEPTION` (le refus de l'une n'annule pas les autres), chaînage éventuel par
-  l'instruction (§1, question ouverte), résultat `{request_id, ok, error}[]`. La source de la
+  l'instruction et affectation de l'agent à défaut d'instructeur (§1, décision PO), résultat `{request_id, ok, error}[]`. La source de la
   résolution commune passe par `set_config` jusqu'à t30, qui la porte dans `status_changed`.
 - **Ordre à l'écran** : la demande courante par le chemin existant, puis la RPC pour les
   autres, puis — si la case est cochée — les avis par `send-request-email` (`kind:
@@ -169,7 +183,7 @@ RLS), préfiltre puis rend des **signaux bruts** :
 
 | Lot | Contenu |
 |---|---|
-| **L0** | Cette étude ; B6/B7 du backlog renvoyés ici ; réponse du PO à la question ouverte du §1 |
+| **L0** | Cette étude ; B6/B7 du backlog renvoyés ici ; décision PO du §1 (rendue le 2026-10-16) |
 | **L1** | Migrations (réglages, groupes, `request_locations` + reprise), RPC de liaison, test SQL d'étanchéité (inter-tenant, sous-arbres frères, fusion, démarche non mutualisable refusée), écran des Paramètres |
 | **L2** | `find_similar_requests`, `similaires.ts`, panneau de la fiche, section du guichet, carte « Demandes liées » |
 | **L3** | `resolve_linked_requests`, section du dialogue, avis optionnels, résultat partiel |
