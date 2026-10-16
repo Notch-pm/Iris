@@ -324,3 +324,33 @@ describe("export CSV", () => {
       .toBe("usagers-mairie-d-arles-accm-2026-08-23.csv");
   });
 });
+
+describe("filtre « Rôle »", () => {
+  const rows = [
+    row({ id: "e", display_name: "E", roles: [{ code: "elu" }] }),
+    row({ id: "i", display_name: "I", roles: [{ code: "interne" }] }),
+    row({ id: "b", display_name: "B", roles: [{ code: "interne" }, { code: "elu" }] }),
+    row({ id: "n", display_name: "N" }),
+  ];
+  const ids = (f: UsagerFilters) => filterUsagers(rows, f).map((r) => r.contact.id);
+
+  it("filtre en OU sur les rôles retenus", () => {
+    expect(ids(filters({ role: ["elu"] }))).toEqual(["e", "b"]);
+    expect(ids(filters({ role: ["elu", "interne"] }))).toEqual(["e", "i", "b"]);
+    expect(ids(EMPTY_FILTERS)).toEqual(["e", "i", "b", "n"]);
+  });
+
+  it("compte, libelle et retire la pastille", () => {
+    const f = toggleMultiFilter(EMPTY_FILTERS, "role", "elu");
+    expect(activeFilterCount(f)).toBe(1);
+    const chips = filterChips(f, () => undefined);
+    expect(chips.map((c) => c.label)).toEqual(["Élus"]);
+    expect(removeFilterChip(f, chips[0]!)).toEqual(EMPTY_FILTERS);
+  });
+
+  it("figure à l'export", () => {
+    const csv = buildCsv([rows[2]!], usagerCsvColumns());
+    expect(csv).toContain("Rôles");
+    expect(csv).toContain("Élu, Interne");
+  });
+});

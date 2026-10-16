@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   addressRows, channelLabel, civilityLabel, contactName, contactRows, contactStatusLabel,
-  contactTypeLabel, consentsSummary, consentViews, frDate, identityRows, isDarkColor,
+  contactRoleNotices, contactRoles, contactTypeLabel, consentsSummary, consentViews, frDate, identityRows, isDarkColor,
   isInactive, parseSocleConsents, usagerStats,
 } from "./usager";
 import type { SocleConsent, SocleContact } from "./rapprochement";
@@ -192,5 +192,29 @@ describe("consentsSummary", () => {
       consent_traitement: true, consent_traitement_at: "2026-09-20T08:00:00Z",
       consent_partage: false, consent_partage_at: "2026-09-20T08:00:00Z",
     } as SocleContact))).toBe("Traitement de la demande : accordé · Partage aux services : refusé");
+  });
+});
+
+describe("contactRoles — rôles codés du référentiel", () => {
+  it("tolère roles absent ou invalide", () => {
+    expect(contactRoles(contact({}))).toEqual([]);
+    expect(contactRoles(null)).toEqual([]);
+    expect(contactRoles({ roles: "x" as unknown as { code: string }[] })).toEqual([]);
+  });
+
+  it("ordonne Élu avant Interne, dédoublonne et ignore les codes inconnus", () => {
+    const roles = contactRoles(contact({
+      roles: [{ code: "interne" }, { code: "inconnu" }, { code: "elu" }, { code: "interne" }],
+    }));
+    expect(roles.map((r) => r.code)).toEqual(["elu", "interne"]);
+    expect(roles.map((r) => r.label)).toEqual(["Élu", "Interne"]);
+  });
+
+  it("compose les phrases du bandeau", () => {
+    expect(contactRoleNotices(contact({ roles: [{ code: "elu" }] })))
+      .toEqual(["Cet usager est un élu de la collectivité."]);
+    expect(contactRoleNotices(contact({ roles: [{ code: "interne" }] })))
+      .toEqual(["Cet usager est un contact interne (agent ou service de la collectivité)."]);
+    expect(contactRoleNotices(contact({}))).toEqual([]);
   });
 });

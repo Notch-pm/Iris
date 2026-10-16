@@ -526,3 +526,32 @@ describe("sanitizeContact — consentements RGPD", () => {
     expect(c.consent_partage_at).toBeNull();
   });
 });
+
+describe("sanitizeContact — rôles codés (contacts-api 1.3.0)", () => {
+  const withRoles = {
+    id: "c-5",
+    contact_type: "personne",
+    roles: [
+      { id: "r-3", name: "Agents municipaux", code: "interne" },
+      { id: "r-1", name: "Président de l'association", code: null },
+      { id: "r-2", name: "Élue", code: "elu" },
+      { id: "r-4", name: "Doublon", code: "elu" },
+      { id: "r-5", name: "Futur", code: "partenaire" },
+      "pas un objet",
+    ],
+  };
+
+  it("ne garde que les codes reconnus, sans id ni nom, élus d'abord, sans doublon", () => {
+    expect(sanitizeContact(withRoles)!.roles).toEqual([{ code: "elu" }, { code: "interne" }]);
+  });
+
+  it("reste idempotente", () => {
+    const once = sanitizeContact(withRoles)!;
+    expect(sanitizeContact(JSON.parse(JSON.stringify(once)))).toEqual(once);
+  });
+
+  it("rend un tableau vide sans rôle, ou sur une forme inattendue", () => {
+    expect(sanitizeContact({ id: "c-6" })!.roles).toEqual([]);
+    expect(sanitizeContact({ id: "c-7", roles: "elu" })!.roles).toEqual([]);
+  });
+});

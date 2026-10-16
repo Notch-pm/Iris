@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useWideLayout } from "@/components/layout/shellLayout";
 import { Badge } from "@/components/ui/badge";
+import { ContactRoleBadges } from "./ContactRoleBadges";
 import { Button } from "@/components/ui/button";
 import { InfoCell, SOON, Surface, SurfaceHead } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
@@ -256,6 +257,7 @@ function IdentiteCard({ contact }: { contact: SocleContact }) {
         <TypeIcon className="size-6 shrink-0 text-muted-foreground" aria-hidden="true" />
         <h1 className="text-xl font-bold leading-tight tracking-tight">{contactName(contact)}</h1>
         <Badge variant="secondary">{contactTypeLabel(contact.contact_type)}</Badge>
+        <ContactRoleBadges contact={contact} />
         {inactive ? <Badge variant="destructive">{contactStatusLabel(contact.status)}</Badge> : null}
         <Badge variant="outline" className="ml-auto">Référentiel</Badge>
       </div>

@@ -111,7 +111,13 @@ navigateur le 2026-08-20 dans le parcours de création.
     - Le nom de l'application d'origine (`source_app`) est affiché **tel quel** : le catalogue
       des applications de la gamme ne nous appartient pas, en inventer un libellé le ferait
       mentir un jour.
-  - Les blocs Clara qui n'existent toujours pas ici (rôles, références externes, notes
+  - **Rôles codés** (2026-10-16, contacts-api 1.3.0 : `elu`, `interne` — PAS des `contact_type`) :
+    `contactRoles` (`usager.ts`, pur/testé, tolère `roles` absent, Élu avant Interne, codes inconnus
+    ignorés) alimente `ContactRoleBadges` (pastille discrète : fiche usager, liste, bloc Usager de la
+    demande — seulement fiche Socle relue —, candidats du rapprochement, recherche globale), le filtre
+    multi « Rôle » de la liste (client, OU, colonne CSV « Rôles ») et le bandeau `ContactRoleNotices`,
+    informatif et NON bloquant, sous l'usager retenu à l'identification.
+  - Les blocs Clara qui n'existent toujours pas ici (références externes, notes
     internes, relations) sont ceux que la sanitisation du proxy ne transmet jamais — ils ne
     sont donc ni lus ni écrits. Les **consentements**, eux, ont quitté cette liste le
     2026-09-20 : Iris pose lui-même la question à chaque dépôt, il doit pouvoir montrer la

@@ -23,6 +23,7 @@ import { ArrowLeft, Loader2, UserRoundPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ContactRoleBadges, ContactRoleNotices } from "./ContactRoleBadges";
 import { Select } from "@/components/ui/select";
 import { AddressField } from "@/components/address/AddressField";
 import { cn } from "@/lib/utils";
@@ -125,6 +126,7 @@ function CandidateRow({ candidate, maxScore, onPick }: {
         <span className="flex min-w-0 flex-col gap-0.5">
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-[15px] font-bold leading-tight">{summary.title}</span>
+            <ContactRoleBadges contact={contact} />
             {nameOnly ? (
               <span className="rounded-full bg-secondary/60 px-1.5 py-0.5 text-[10px] font-bold leading-none text-secondary-foreground">
                 Nom seul — à vérifier
@@ -320,13 +322,17 @@ export function RequesterIdentification({
         ? "Sans rapprochement — identité déclarée (assumé)"
         : "Aucune identité conservée";
     return (
-      <div className="flex w-full max-w-[1180px] items-center justify-between gap-3 rounded-[14px] border border-primary/30 bg-primary/[0.04] px-4 py-3">
+      <div className="flex w-full max-w-[1180px] flex-col gap-2">
+      <div className="flex w-full items-center justify-between gap-3 rounded-[14px] border border-primary/30 bg-primary/[0.04] px-4 py-3">
         <span className="flex min-w-0 items-center gap-3">
           <span className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-full bg-primary text-[13px] font-bold text-primary-foreground" aria-hidden="true">
             {initialsOf(title)}
           </span>
           <span className="flex min-w-0 flex-col">
-            <span className="text-[15px] font-bold leading-tight">{title}</span>
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-[15px] font-bold leading-tight">{title}</span>
+              {resolution.kind === "contact" ? <ContactRoleBadges contact={resolution.contact} /> : null}
+            </span>
             <span className="truncate text-xs text-muted-foreground">{sub}</span>
           </span>
         </span>
@@ -339,6 +345,8 @@ export function RequesterIdentification({
             Modifier
           </Button>
         )}
+      </div>
+      {resolution.kind === "contact" ? <ContactRoleNotices contact={resolution.contact} /> : null}
       </div>
     );
   }

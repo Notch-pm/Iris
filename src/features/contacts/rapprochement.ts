@@ -46,6 +46,12 @@ export interface SocleContact {
   consent_partage_at?: string | null;
   /** Historique des recueils, du plus récent au plus ancien (fiche seule). */
   consents?: SocleConsent[];
+  /**
+   * Rôles codés du référentiel (contacts-api 1.3.0 : `elu`, `interne`) — ce ne
+   * sont PAS des `contact_type`. Absent tant que le proxy n'est pas déployé :
+   * lire par `contactRoles`, jamais directement.
+   */
+  roles?: { code: string }[];
 }
 
 /** Un recueil de consentement, tel que `socle-proxy` le transmet. */

@@ -12,7 +12,7 @@
 import { csvFilename, type CsvColumn } from "@/lib/csv";
 import { consentStatement } from "@fn/_shared/consents/catalog";
 import type { SocleContact } from "./rapprochement";
-import { contactName, contactStatusLabel, contactTypeLabel } from "./usager";
+import { contactName, contactRoles, contactStatusLabel, contactTypeLabel } from "./usager";
 
 /** Une ligne = une fiche du Socle + les compteurs Iris du périmètre du lecteur. */
 export interface UsagerRow {
@@ -141,6 +141,12 @@ export const TYPE_OPTIONS = [
   { value: "administration", label: "Administration" },
 ] as const;
 
+/** Rôles codés du référentiel (contacts-api 1.3.0). */
+export const ROLE_OPTIONS = [
+  { value: "elu", label: "Élus" },
+  { value: "interne", label: "Internes" },
+] as const;
+
 export type UsagerStatusFilter = "active" | "archived" | "all";
 
 export const STATUS_OPTIONS: { value: UsagerStatusFilter; label: string }[] = [
@@ -179,6 +185,8 @@ export interface UsagerFilters {
   search: string;
   /** Publics retenus — vide = tous. */
   type: string[];
+  /** Rôles codés retenus (`elu`, `interne`) — vide = tous ; un usager qui en porte un seul suffit. */
+  role: string[];
   /** Actifs / archivés / tous — SEUL filtre servi par le Socle (il change la requête). */
   status: UsagerStatusFilter;
   /** Identifiants de quartier (ou `NO_QUARTIER`) — vide = tous. */
@@ -192,11 +200,11 @@ export interface UsagerFilters {
 }
 
 export const EMPTY_FILTERS: UsagerFilters = {
-  search: "", type: [], status: "active", quartier: [], partage: [], total: "", open: "",
+  search: "", type: [], role: [], status: "active", quartier: [], partage: [], total: "", open: "",
 };
 
 /** Critères à plusieurs valeurs (cases à cocher). */
-export type MultiFilterKey = "type" | "quartier" | "partage";
+export type MultiFilterKey = "type" | "role" | "quartier" | "partage";
 /** Critères exclusifs (une valeur au plus ; re-choisir la valeur la retire). */
 export type SingleFilterKey = "total" | "open";
 
@@ -213,7 +221,7 @@ export function toggleSingleFilter(filters: UsagerFilters, key: SingleFilterKey,
 /** Nombre de critères actifs (pastille du bouton « Filtres ») — le statut par défaut ne compte pas. */
 export function activeFilterCount(filters: UsagerFilters): number {
   return (
-    filters.type.length + filters.quartier.length + filters.partage.length +
+    filters.type.length + filters.role.length + filters.quartier.length + filters.partage.length +
     (filters.total !== "" ? 1 : 0) + (filters.open !== "" ? 1 : 0) +
     (filters.status !== EMPTY_FILTERS.status ? 1 : 0) +
     (filters.search.trim() !== "" ? 1 : 0)
@@ -237,6 +245,9 @@ export function filterChips(
   }
   for (const v of filters.type) {
     chips.push({ key: "type", value: v, label: TYPE_OPTIONS.find((o) => o.value === v)?.label ?? v });
+  }
+  for (const v of filters.role) {
+    chips.push({ key: "role", value: v, label: ROLE_OPTIONS.find((o) => o.value === v)?.label ?? v });
   }
   for (const v of filters.partage) {
     const label = PARTAGE_LABELS[v as PartageState] ?? v;
@@ -278,6 +289,9 @@ export function filterUsagers(rows: readonly UsagerRow[], filters: UsagerFilters
   const openTest = bucketTest(OPEN_BUCKETS, filters.open);
   return rows.filter((row) => {
     if (filters.type.length > 0 && !filters.type.includes(row.contact.contact_type ?? "")) return false;
+    if (filters.role.length > 0 && !contactRoles(row.contact).some((r) => filters.role.includes(r.code))) {
+      return false;
+    }
     if (filters.quartier.length > 0 && !filters.quartier.includes(row.contact.quartier?.id ?? NO_QUARTIER)) {
       return false;
     }
@@ -497,6 +511,7 @@ export function paginate<T>(rows: readonly T[], page: number): T[] {
 export function usagerCsvColumns(): CsvColumn<UsagerRow>[] {
   return [
     { header: "Type", accessor: (r) => contactTypeLabel(r.contact.contact_type) },
+    { header: "Rôles", accessor: (r) => contactRoles(r.contact).map((x) => x.label).join(", ") },
     { header: "Nom", accessor: (r) => contactName(r.contact) },
     { header: "Courriel", accessor: (r) => r.contact.email ?? "" },
     { header: "Téléphone mobile", accessor: (r) => r.contact.mobile_phone ?? "" },

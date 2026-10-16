@@ -288,7 +288,10 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   ⚠️ `geom` ne franchit la frontière que par CETTE route : `sanitizeContact` continue de le
   retirer du quartier d'une fiche usager — un polygone par ligne d'annuaire serait du poids pur. Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
   `internal_notes`, consentements, relations, `external_references` ne sont **jamais**
-  transmis au navigateur ; champs Socle inconnus tolérés (ignorés). `X-Organization-Id`
+  transmis au navigateur ; champs Socle inconnus tolérés (ignorés). Les **rôles** d'une
+  fiche passent depuis le 2026-10-16, réduits aux rôles **codés** reconnus (`elu`,
+  `interne` — contacts-api 1.3.0) et à leur seul code (`CONTACT_ROLE_CODES`) : pastille
+  « Élu » / « Interne », filtre de la liste des usagers, signal au guichet. `X-Organization-Id`
   toujours dérivé côté serveur.
 - **Profils de droits** (10 migrations `20260822100000` à `20260822100900`) : 5 tables
   `permission_*`, moteur de combinaison par couple (`permission_pairs_of`), `requests.

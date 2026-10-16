@@ -6,7 +6,7 @@
 // et le parcours au clavier se décident ici ; le composant ne fait qu'afficher.
 
 import type { SocleContact } from "@/features/contacts/rapprochement";
-import { contactName } from "@/features/contacts/usager";
+import { contactName, contactRoles, type ContactRoleView } from "@/features/contacts/usager";
 import { STATUS_LABELS, type RequestStatus } from "@/features/requests/statuts";
 
 /** En deçà, on ne cherche pas : trois caractères ramèneraient tout le tenant. */
@@ -89,6 +89,8 @@ export interface UsagerResult {
   name: string;
   /** Ville de l'adresse — vide si le référentiel n'en porte pas. */
   city: string;
+  /** Rôles codés reconnus (vide si aucun). */
+  roles: ContactRoleView[];
 }
 
 export type SearchResult = RequestResult | UsagerResult;
@@ -138,6 +140,7 @@ export function toUsagerResult(contact: SocleContact): UsagerResult {
     href: `/usagers/${contact.id}`,
     name: contactName(contact),
     city: contact.city?.trim() ?? "",
+    roles: contactRoles(contact),
   };
 }
 

@@ -980,6 +980,7 @@ export function RequestDetailPage() {
               socleContactId={r.socle_contact_id}
               identityError={socleContact.isError}
               identityPending={socleContact.isLoading}
+              contact={socleContact.data ?? null}
               otherRequests={otherRequests.data ?? []}
               otherLoading={otherRequests.isLoading}
               // Reflet du DROIT, pas de l'état de chargement : la carte pose le

@@ -15,6 +15,7 @@
 // (`usagers.ts`, pur).
 
 import * as React from "react";
+import { ContactRoleBadges } from "./ContactRoleBadges";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Building2, ChevronDown, ChevronRight, Download, HeartHandshake, Landmark, Layers, Rows3,
@@ -38,7 +39,7 @@ import { useCanBrowseUsagers, useContactRequestCounts, useUsagers, USAGERS_MAX }
 import {
   activeFilterCount, buildRows, contactPhone, DEFAULT_SORT, EMPTY_FILTERS, filterChips,
   filterUsagers, GROUP_KEYS, GROUP_LABELS, groupUsagers, OPEN_BUCKETS, orderByGroup, PAGE_SIZE,
-  pageCount, paginate, PARTAGE_LABELS, PARTAGE_OPTIONS, partageState, partageStatement,
+  pageCount, paginate, PARTAGE_LABELS, PARTAGE_OPTIONS, partageState, ROLE_OPTIONS, partageStatement,
   quartierOptions, removeFilterChip, sortUsagers, STATUS_OPTIONS, toggleMultiFilter,
   toggleSingleFilter, toggleSort, TOTAL_BUCKETS, TYPE_OPTIONS, usagerCsvColumns,
   usagersExportFilename,
@@ -150,6 +151,7 @@ function UsagerTableRow({ row, dense }: { row: UsagerRow; dense: boolean }) {
         <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
           <Icon className="size-4 shrink-0" aria-hidden="true" />
           <span className="truncate">{contactTypeLabel(c.contact_type)}</span>
+          <ContactRoleBadges contact={c} className="shrink-0" />
         </span>
       </td>
       <td className="max-w-0 truncate px-3 text-[13px] text-muted-foreground">{c.email ?? "—"}</td>
@@ -387,6 +389,7 @@ export function UsagersListPage() {
                 onToggle={toggleMulti("partage")}
               />
               <ChipGroup label="Type" options={TYPE_OPTIONS} selected={filters.type} onToggle={toggleMulti("type")} />
+              <ChipGroup label="Rôle" options={ROLE_OPTIONS} selected={filters.role} onToggle={toggleMulti("role")} />
               <ChipGroup
                 label="Fiches"
                 single

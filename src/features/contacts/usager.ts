@@ -149,6 +149,44 @@ export function isDarkColor(color: string): boolean {
   return (r * 299 + g * 587 + b * 114) / 1000 < 140;
 }
 
+// ---- Rôles codés du référentiel ------------------------------------------------
+//
+// contacts-api 1.3.0 : une fiche peut porter des rôles codés, distincts du
+// `contact_type`. Catalogue fermé côté Iris (jumeau de `CONTACT_ROLE_CODES` du
+// proxy) : un code inconnu n'est jamais affiché.
+
+export type ContactRoleCode = "elu" | "interne";
+
+export interface ContactRoleView {
+  code: ContactRoleCode;
+  label: string;
+  /** Phrase du bandeau d'identification au guichet. */
+  notice: string;
+}
+
+/** Dans l'ordre de lecture : Élu avant Interne. */
+const CONTACT_ROLES: readonly ContactRoleView[] = [
+  { code: "elu", label: "Élu", notice: "Cet usager est un élu de la collectivité." },
+  {
+    code: "interne",
+    label: "Interne",
+    notice: "Cet usager est un contact interne (agent ou service de la collectivité).",
+  },
+];
+
+/** Rôles reconnus de la fiche, ordonnés et dédoublonnés ; `roles` absent ⇒ []. */
+export function contactRoles(contact: Pick<SocleContact, "roles"> | null | undefined): ContactRoleView[] {
+  const roles = contact?.roles;
+  if (!Array.isArray(roles)) return [];
+  const codes = new Set(roles.map((r) => r?.code));
+  return CONTACT_ROLES.filter((r) => codes.has(r.code));
+}
+
+/** Phrases du bandeau d'identification (une par rôle reconnu). */
+export function contactRoleNotices(contact: Pick<SocleContact, "roles"> | null | undefined): string[] {
+  return contactRoles(contact).map((r) => r.notice);
+}
+
 // ---- Demandes de l'usager ---------------------------------------------------
 
 export interface UsagerRequestLike {

@@ -829,7 +829,8 @@ note interne → résolution avec texte de clôture → journal.
     **rail vertical continu**, ligne de méta « Nom · agent · envoyé le … · à adresse »,
     message encadré — et **le composeur est le dernier tour du fil**, avatar de l'agent
     cerclé, méta « Vous · adresse » : plus de carte détachée. Le composeur porte en barre
-    haute les **puces de variables avec leur valeur résolue**, le sélecteur de modèle, le
+    haute le **menu « Insérer une variable… »** (chaque option : libellé et valeur résolue —
+    il remplace les puces depuis le 2026-10-16, qui prenaient trop de place), le sélecteur de modèle, le
     bouton « Pièce jointe » et, s'il y en a, les documents du dossier ; objet et message
     sans cadre propre (le cadre, c'est le composeur) ; pied « Variables fusionnées avec la
     fiche de … » + « Envoyer l'échange ». Un envoi impossible (anonyme, sans adresse,
@@ -837,11 +838,11 @@ note interne → résolution avec texte de clôture → journal.
     repris de la maquette : les accusés de lecture et les réponses de l'usager (Iris n'a ni
     l'un ni l'autre — l'usager ne peut pas répondre).
   - **Le composeur résout les variables à l'INSERTION, pas à l'envoi.** Choisir un modèle
-    remplit l'objet et le corps déjà personnalisés ; cliquer une pastille insère la **valeur**
+    remplit l'objet et le corps déjà personnalisés ; choisir une variable insère la **valeur**
     au curseur, pas le jeton `{{…}}`. C'est la différence assumée avec l'éditeur de modèles des
     Paramètres : ici l'agent rédige le message final, le voit tel qu'il partira, et c'est ce
     texte-là qui part. Un trou — variable sans valeur pour cette demande — se voit donc tout de
-    suite. Les pastilles ne proposent d'ailleurs **que** les variables qui ont une valeur.
+    suite. Le menu ne propose d'ailleurs **que** les variables qui ont une valeur.
   - ⚠️ **Une valeur absente ⇒ la clé est OMISE** (`requestTemplateValues`), jamais un repli.
     « Identité déclarée », « Utilisateur », « Système / intégration », « date inconnue », et
     l'e-mail de l'agent que `useTenantMembers` met à défaut de nom : ce sont des mots d'écran

@@ -11,6 +11,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { useCanBrowseUsagers } from "@/features/contacts/useUsagers";
 import { StatusBadge } from "@/features/requests/StatusBadge";
 import { useTenant } from "@/features/tenant/TenantProvider";
@@ -26,7 +27,12 @@ function ResultRow({ result }: { result: SearchResult }) {
   if (result.kind === "usager") {
     return (
       <span className="flex w-full flex-col items-start gap-0.5 text-left">
-        <span className="w-full truncate text-[13px] font-semibold">{result.name}</span>
+        <span className="flex w-full items-center gap-2">
+          <span className="min-w-0 truncate text-[13px] font-semibold">{result.name}</span>
+          {result.roles.map((role) => (
+            <Badge key={role.code} variant="muted" className="shrink-0 px-2 py-px text-[11px]">{role.label}</Badge>
+          ))}
+        </span>
         <span className="w-full truncate text-[11.5px] text-muted-foreground">
           {result.city === "" ? "Ville inconnue" : result.city}
         </span>

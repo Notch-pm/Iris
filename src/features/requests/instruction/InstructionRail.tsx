@@ -15,6 +15,8 @@ import { StatusBadge } from "../StatusBadge";
 import type { TransferOption } from "./transfert";
 import type { TransitionSpec } from "../statuts";
 import type { RequestSummary, TenantMember } from "../useRequests";
+import { ContactRoleBadges } from "@/features/contacts/ContactRoleBadges";
+import type { SocleContact } from "@/features/contacts/rapprochement";
 import { Avatar, SOON, Surface } from "@/components/ui/surface";
 import {
   initials,
@@ -289,6 +291,8 @@ interface UsagerProps {
   identityError: boolean;
   /** Relecture EN COURS : on attend plutôt que de montrer le dépôt puis basculer. */
   identityPending: boolean;
+  /** Fiche Socle relue, si elle l'est : seule source des rôles codés (pastille). */
+  contact?: SocleContact | null;
   otherRequests: RequestSummary[];
   otherLoading: boolean;
   /** Reflet du droit de création dans le tenant (garde réelle : socle-proxy).
@@ -299,7 +303,7 @@ interface UsagerProps {
 }
 
 export function UsagerCard({
-  identity, changes, socleContactId, identityError, identityPending,
+  identity, changes, socleContactId, identityError, identityPending, contact,
   otherRequests, otherLoading, canEdit, onEdit,
 }: UsagerProps) {
   const [open, setOpen] = React.useState(false);
@@ -376,7 +380,10 @@ export function UsagerCard({
       <div className="flex items-center gap-[11px]">
         <Avatar initials={identity.initials} size="lg" muted={identity.anonymous || !identity.known} />
         <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-bold">{identity.name}</span>
+          <span className="flex min-w-0 items-center gap-1.5">
+            <span className="truncate text-sm font-bold">{identity.name}</span>
+            {contact ? <ContactRoleBadges contact={contact} className="shrink-0" /> : null}
+          </span>
           {identity.subtitle ? <span className="text-[11.5px] text-muted-foreground">{identity.subtitle}</span> : null}
         </span>
       </div>

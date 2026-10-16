@@ -32,8 +32,13 @@ import { readAudiences, type AudienceKey } from "../../_shared/procedures/audien
  * 2026-09-20, et c'est un changement de doctrine délibéré : Iris pose lui-même
  * ces deux questions à chaque dépôt, un agent doit donc pouvoir lire ce que
  * l'usager a accepté. Ce qui reste exclu l'est toujours : `internal_notes`,
- * relations, rôles, références externes — et les consentements OBSOLÈTES
+ * relations, références externes — et les consentements OBSOLÈTES
  * `consent_email` / `consent_sms`, qu'aucun écran d'Iris ne montre.
+ *
+ * Les RÔLES passent depuis le 2026-10-16, mais seulement les rôles CODÉS que la
+ * gamme reconnaît (`CONTACT_ROLE_CODES`, contacts-api 1.3.0) et par leur seul
+ * code : le catalogue de rôles est libre et propre à chaque racine, son nom se
+ * renomme — Iris affiche ses propres libellés.
  */
 const CONTACT_FIELDS = [
   "id", "contact_type", "status", "display_name",
@@ -68,6 +73,21 @@ function sanitizeConsent(raw: any): Record<string, unknown> | null {
   return out;
 }
 
+/** Rôles codés du Socle reconnus par la gamme : élus, et agents/services de la collectivité. */
+export const CONTACT_ROLE_CODES = ["elu", "interne"] as const;
+
+/**
+ * `roles` → `{ code }[]`, codes reconnus seulement, dans l'ordre du catalogue,
+ * sans doublon. Idempotent : la sortie est relue telle quelle au second tour.
+ */
+function sanitizeRoles(raw: any): { code: string }[] {
+  if (!Array.isArray(raw)) return [];
+  const present = new Set(
+    raw.map((r: any) => (typeof r === "object" && r !== null ? r.code : null)),
+  );
+  return CONTACT_ROLE_CODES.filter((code) => present.has(code)).map((code) => ({ code }));
+}
+
 export function sanitizeContact(raw: any): Record<string, unknown> | null {
   if (typeof raw !== "object" || raw === null || typeof raw.id !== "string") return null;
   const out: Record<string, unknown> = {};
@@ -79,6 +99,7 @@ export function sanitizeContact(raw: any): Record<string, unknown> | null {
   out.consents = Array.isArray(raw.consents)
     ? raw.consents.map(sanitizeConsent).filter((c: unknown) => c !== null)
     : [];
+  out.roles = sanitizeRoles(raw.roles);
   // Quartier résolu (id, name, color) — seul objet imbriqué conservé.
   const q = raw.quartier;
   out.quartier =

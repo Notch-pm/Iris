@@ -81,8 +81,10 @@ describe("résultats", () => {
       href: "/usagers/c1",
       name: "Marie Dupont",
       city: "Aix-en-Provence",
+      roles: [],
     });
     expect(toUsagerResult(contact({ city: null })).city).toBe("");
+    expect(toUsagerResult(contact({ roles: [{ code: "elu" }] })).roles.map((r) => r.label)).toEqual(["Élu"]);
   });
 });
 
