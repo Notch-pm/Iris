@@ -1,7 +1,7 @@
 # Dette technique — backlog
 
 > **Public** : équipe Iris · **Question traitée** : qu'est-ce qui est assumé comme dette, et
-> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-09-23
+> que faut-il faire pour la solder ? · **Dernière mise à jour** : 2026-10-16
 
 Ce document ne recopie rien : il ne porte que la dette **sans autre domicile** (outillage,
 conventions, transverse). La dette de modèle de données et d'API vit là où elle se constate :
@@ -114,7 +114,11 @@ coût des snapshots :
 demandes par collectivité (PO, 2026-08-26). À cette échelle, rien de tout cela ne se voit.
 Détail et chiffres : [`data-model.md`](data-model.md) § « Pourquoi figer l'identité au dépôt ».
 
-## O5 — Une migration appliquée sans miroir dans le dépôt
+## O5 — Une migration appliquée sans miroir dans le dépôt — ✅ soldé le 2026-10-16
+
+**Soldé** : miroir écrit depuis `supabase_migrations.schema_migrations.statements`
+(`20260826160548_echanges_usager_commentaire_purge.sql`, md5 identique à la version
+appliquée). La migration ne faisait que corriger un `comment on table public.request_emails`.
 
 **Constat (2026-08-26)** : `echanges_usager_commentaire_purge` (appliquée le 2026-08-26 à
 16:05 UTC) n'a **pas** de fichier miroir dans `supabase/migrations/`. La convention du dépôt
@@ -229,6 +233,9 @@ mesurés sur la base réelle (`pg_stat_statements`, advisors) :
   tables, opérations unitaires), correctif trivial sans changement de sémantique.
   ⚠️ `is_org_member(p_org_id)` et ses sœurs prennent un argument qui varie par ligne : les
   envelopper dans `(select …)` n'aurait pas de sens.
+  **Correctif écrit le 2026-10-16** (`20261016120000_rls_initplan_auth_uid.sql`, `ALTER POLICY`
+  sur les expressions relues dans `pg_policy`, rôles et commandes inchangés) — **à appliquer**,
+  puis vérifier que l'advisor `auth_rls_initplan` ne les cite plus.
 - **33 clés étrangères sans index** (advisor), surtout des colonnes d'auteur (`created_by`,
   `uploaded_by`, `assigned_by`…) et `organization_id` de tables satellites
   (`notifications`, `request_emails`, `request_interventions`, `integration_deliveries`). Aucune
@@ -246,3 +253,39 @@ mesurés sur la base réelle (`pg_stat_statements`, advisors) :
 - **`integration_deliveries`** (outbox du retour vers Clara, phase 4) n'a pas encore
   d'écrivain : prévoir la purge des lignes `delivered` / `failed` **dans le même lot** que le
   worker, pas après coup.
+
+## O10 — Le typage Deno des edge functions ne garde plus rien
+
+**Constat (2026-10-16)** : `npx deno check --node-modules-dir=none send-request-email/index.ts`
+rend **26 erreurs** avant toute modification, toutes de la même forme
+(`Property 'status' does not exist on type 'GenericStringError'`). Le `select` de
+`supabase-js` est écrit en **chaînes concaténées** (`"a, b, " + "c, d"`) : le parseur de types
+du client ne sait inférer qu'un littéral, la ligne lue devient donc une erreur typée, et chaque
+accès à une colonne échoue au typage. Le déploiement, lui, passe (il ne vérifie pas les types).
+Sans `--node-modules-dir=none`, la vérification s'arrête plus tôt encore, sur `npm:nodemailer@6`
+introuvable dans `node_modules`.
+
+**Pourquoi ça compte** : la mémoire de travail prescrit « typer d'abord avec `deno check` »
+avant un déploiement ; en l'état, une vraie erreur se noie dans 26 fausses. Les modules purs de
+`_shared/` restent couverts par `tsc -b` et vitest — ce sont les `index.ts` qui ne le sont plus.
+
+**Piste** : écrire chaque `select` en un seul littéral (ou typer la ligne explicitement), puis
+ajouter un `deno check` de toutes les fonctions à la CI ; recenser d'abord les autres fonctions
+touchées (même motif probable dans `notifications-mailer`, `create-request-from-procedure`…).
+
+## O11 — L'avis de clôture se perd si le navigateur meurt avant l'envoi
+
+**Constat (2026-10-16)** : l'avis de clôture à l'usager est envoyé par le **navigateur**, juste
+après la transition (`useClosureNotice`, partagé depuis ce jour par la fiche, le mobile et le
+tableau). Si l'onglet se ferme, perd le réseau ou plante entre les deux, la demande est résolue
+mais l'avis ne part pas — et **rien ne le trace** : aucune ligne `request_emails`, aucune
+anomalie, l'agent ne le saura pas.
+
+**Pourquoi ça compte** : c'est le seul message automatique de fin de parcours. Un usager peut
+ne jamais apprendre que sa demande est close.
+
+**Piste** : le motif existe déjà — l'**accusé de réception** est enfilé par le serveur
+(`request_receipts`) et drainé par `notifications-mailer`. Faire de même pour la clôture :
+enfiler l'avis côté serveur au moment de la transition (trigger ou RPC sur la résolution, hors
+`source = 'clara'`), drainer sur cron, et ne laisser au navigateur que l'affichage. Le mode
+`kind: "cloture"` de `send-request-email` deviendrait alors un reliquat à retirer.
