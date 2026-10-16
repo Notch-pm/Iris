@@ -244,6 +244,12 @@ note interne → résolution avec texte de clôture → journal.
     explicite** par l'agent : `useLinkRequests` insère des `request_links` `liee_a` dans
     les deux sens APRÈS création (RLS writer + trigger de périmètre ; échec affiché, jamais
     bloquant). Décision humaine, aucune clôture automatique.
+    ⚠️ **À ne pas confondre avec les « demandes liées » (même incident)** — chantier
+    [`docs/demandes-liees.md`](../../../docs/demandes-liees.md), lot L1 livré le 2026-10-16 :
+    groupes `request_groups` (RPC `link_requests` / `unlink_request`), démarches
+    mutualisables (`procedure_link_settings`, section « Demandes liées » des Paramètres,
+    `src/features/linking/`), lieu recopié `request_locations`. Les « demandes proches »
+    rapprochent un même USAGER ; les demandes liées, des usagers DIFFÉRENTS pour un même lieu.
   - Score de rapprochement Socle = **classement relatif** à la réponse (contrat
     contacts-api) : affiché en barre relative au meilleur candidat, jamais en « % ».
   - **Onglet « Procédure » du rail** (livré le 2026-08-28, différé depuis le 2026-08-21) :

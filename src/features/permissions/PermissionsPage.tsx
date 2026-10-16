@@ -6,7 +6,7 @@
 
 import * as React from "react";
 import {
-  AlertTriangle, ArrowLeft, Building2, ClipboardList, Copy, KeyRound, Layers, Mail, Pencil,
+  AlertTriangle, ArrowLeft, Building2, ClipboardList, Copy, KeyRound, Layers, Link2, Mail, Pencil,
   Plus, Power, RefreshCw, Settings, Sparkles, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import {
@@ -33,6 +33,7 @@ import { ProfileDialog } from "./ProfileDialog";
 import { EmailTemplatesPanel } from "@/features/templates/EmailTemplatesPanel";
 import { OrganisationsPanel } from "@/features/templates/OrganisationsPanel";
 import { AiUsagePanel } from "@/features/ai/AiUsagePanel";
+import { LinkSettingsPanel } from "@/features/linking/LinkSettingsPanel";
 import { useInviteMember, useSendMemberPasswordReset } from "./useComptes";
 import {
   useAllProcedureRows, useAssignProfile, useAuditLog, useCoverageReport, useDeleteProfile,
@@ -41,7 +42,7 @@ import {
 } from "./usePermissions";
 
 type SectionId =
-  | "profils" | "utilisateurs" | "couverture" | "modeles" | "referentiel" | "journal" | "ia";
+  | "profils" | "utilisateurs" | "couverture" | "modeles" | "liees" | "referentiel" | "journal" | "ia";
 type Section = "menu" | SectionId;
 
 // Motif Clara (`SettingsPage`) : une page d'accueil « Paramètres » faite de blocs
@@ -70,6 +71,12 @@ const SECTIONS: { id: SectionId; title: string; description: string; icon: typeo
     title: "Modèles d'e-mail",
     description: "Textes réutilisables pour répondre à un usager, avec variables de la demande.",
     icon: Mail,
+  },
+  {
+    id: "liees",
+    title: "Demandes liées",
+    description: "Démarches où plusieurs usagers signalent le même incident : liaison et résolution commune.",
+    icon: Link2,
   },
   {
     id: "referentiel",
@@ -661,6 +668,8 @@ export function PermissionsPage() {
       {section === "modeles" ? <EmailTemplatesPanel orgId={orgId} /> : null}
 
       {section === "ia" ? <AiUsagePanel orgId={orgId} /> : null}
+
+      {section === "liees" ? <LinkSettingsPanel orgId={orgId} /> : null}
 
       {section === "referentiel" ? (
         <OrganisationsPanel orgId={orgId} sync={sync} onOpenCoverage={() => setSection("couverture")} />

@@ -116,6 +116,10 @@ réponse décide de tout le reste : modèle, droits, notifications, statistiques
 
 ## B6 — Liens entre les demandes
 
+> **2026-10-16 — à l'étude, avec B7** : [`demandes-liees.md`](demandes-liees.md) (groupe
+> « même incident » sans demande principale, détection serveur, résolution commune). Le
+> texte ci-dessous reste le constat de départ.
+
 **Ce qui existe déjà, et qu'il faut regarder avant de concevoir** : la fiche porte des
 **demandes liées** (`useLinkRequests`, `useRequestSummaries`), et le parcours de création
 détecte les **demandes proches**. Il y a donc une liaison, mais sans qualification.
@@ -128,6 +132,9 @@ B7 : les trois gagneraient à être cadrés ensemble.
 **Touche** : `src/features/requests/` (fiche, création).
 
 ## B7 — Résolution groupée
+
+> **2026-10-16 — à l'étude, avec B6** : [`demandes-liees.md`](demandes-liees.md) §1 et §4
+> (une transition par demande, résultat partiel, avis au choix de l'agent).
 
 **Ce qui existe.** Les transitions passent toutes par le **dialogue commun** de la fiche, que
 le tableau réutilise déjà pour un dépôt. La garde `requests_guard_write` juge **demande par

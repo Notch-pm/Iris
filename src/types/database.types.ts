@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.5"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
@@ -881,6 +881,51 @@ export type Database = {
           },
         ]
       }
+      procedure_link_settings: {
+        Row: {
+          enabled: boolean
+          organization_id: string
+          radius_m: number
+          socle_procedure_id: string
+          updated_at: string
+          updated_by: string | null
+          window_days: number
+        }
+        Insert: {
+          enabled?: boolean
+          organization_id: string
+          radius_m?: number
+          socle_procedure_id: string
+          updated_at?: string
+          updated_by?: string | null
+          window_days?: number
+        }
+        Update: {
+          enabled?: boolean
+          organization_id?: string
+          radius_m?: number
+          socle_procedure_id?: string
+          updated_at?: string
+          updated_by?: string | null
+          window_days?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "procedure_link_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "procedure_link_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       push_subscriptions: {
         Row: {
           auth: string
@@ -1255,6 +1300,88 @@ export type Database = {
           },
         ]
       }
+      request_group_members: {
+        Row: {
+          added_at: string
+          added_by: string | null
+          group_id: string
+          organization_id: string
+          request_id: string
+        }
+        Insert: {
+          added_at?: string
+          added_by?: string | null
+          group_id: string
+          organization_id: string
+          request_id: string
+        }
+        Update: {
+          added_at?: string
+          added_by?: string | null
+          group_id?: string
+          organization_id?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_group_members_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "request_groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_group_members_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_groups: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          organization_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          organization_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_groups_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       request_interventions: {
         Row: {
           completed_at: string | null
@@ -1391,6 +1518,41 @@ export type Database = {
             foreignKeyName: "request_links_target_request_id_fkey"
             columns: ["target_request_id"]
             isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_locations: {
+        Row: {
+          address_norm: string | null
+          lat: number | null
+          lon: number | null
+          organization_id: string
+          request_id: string
+          updated_at: string
+        }
+        Insert: {
+          address_norm?: string | null
+          lat?: number | null
+          lon?: number | null
+          organization_id: string
+          request_id: string
+          updated_at?: string
+        }
+        Update: {
+          address_norm?: string | null
+          lat?: number | null
+          lon?: number | null
+          organization_id?: string
+          request_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_locations_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
             referencedRelation: "requests"
             referencedColumns: ["id"]
           },
@@ -2361,6 +2523,11 @@ export type Database = {
       is_org_member: { Args: { p_org_id: string }; Returns: boolean }
       is_platform_admin: { Args: never; Returns: boolean }
       is_service_context: { Args: never; Returns: boolean }
+      link_requests: { Args: { p_a: string; p_b: string }; Returns: Json }
+      location_value_parts: {
+        Args: { p_value: Json }
+        Returns: Record<string, unknown>
+      }
       mail_context_for_user: {
         Args: { p_user_id: string }
         Returns: {
@@ -2415,6 +2582,7 @@ export type Database = {
       }
       my_rights: { Args: { p_org_id: string }; Returns: Json }
       nil_procedure: { Args: never; Returns: string }
+      normalize_address: { Args: { p_text: string }; Returns: string }
       notification_channels_for: {
         Args: { p_kind: string; p_user_id: string }
         Returns: {
@@ -2448,6 +2616,10 @@ export type Database = {
         Returns: {
           socle_org_id: string
         }[]
+      }
+      procedure_linkable: {
+        Args: { p_org_id: string; p_procedure_id: string }
+        Returns: boolean
       }
       purge_attachment_upload: { Args: { p_id: string }; Returns: undefined }
       purge_consumed_uploads: { Args: { p_days?: number }; Returns: number }
@@ -2508,6 +2680,7 @@ export type Database = {
         }[]
       }
       request_exists: { Args: { p_id: string }; Returns: boolean }
+      request_group_max_size: { Args: never; Returns: number }
       request_intervention: {
         Args: {
           p_comment: string
@@ -2516,6 +2689,10 @@ export type Database = {
           p_requested_for: string
         }
         Returns: Json
+      }
+      request_location_of: {
+        Args: { p_form_data: Json; p_form_schema: Json }
+        Returns: Record<string, unknown>
       }
       request_pieces_blocking: {
         Args: { p_form_data: Json; p_form_schema: Json; p_request_id: string }
@@ -2553,6 +2730,16 @@ export type Database = {
         Returns: Json
       }
       save_permission_profile: { Args: { p: Json }; Returns: Json }
+      save_procedure_link_settings: {
+        Args: {
+          p_enabled: boolean
+          p_org_id: string
+          p_procedure_id: string
+          p_radius_m?: number
+          p_window_days?: number
+        }
+        Returns: Json
+      }
       search_requests: {
         Args: { p_limit?: number; p_org_id: string; p_query: string }
         Returns: {
@@ -2746,11 +2933,12 @@ export type Database = {
         Args: { p_request_id: string; p_socle_org_id: string }
         Returns: Json
       }
-      user_display_name: { Args: { p_user_id: string }; Returns: string }
+      unlink_request: { Args: { p_request_id: string }; Returns: Json }
       user_can_create_on_organization: {
         Args: { p_org_id: string; p_socle_org_id: string; p_user_id: string }
         Returns: boolean
       }
+      user_display_name: { Args: { p_user_id: string }; Returns: string }
       user_has_request_right: {
         Args: {
           p_org_id: string

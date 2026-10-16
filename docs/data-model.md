@@ -460,6 +460,32 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   insère APRÈS création deux liens `liee_a` symétriques (demande ↔ cible) en une seule
   insertion — RLS writer + trigger de périmètre revalident ; échec affiché, jamais bloquant.
   Aucune clôture `doublon` automatique : la décision reste humaine.
+- **Demandes liées — « même incident »** (2026-10-16, migration `20261016120000`, étude
+  [`demandes-liees.md`](demandes-liees.md)) : distinct de `liee_a`, qui reste un « voir
+  aussi » sans effet.
+  - **`procedure_link_settings`** (PK `organization_id, socle_procedure_id`) — démarches
+    **mutualisables** + `radius_m` (10–5 000, défaut 150) et `window_days` (1–365, défaut 60)
+    qui borneront la recherche de demandes approchantes. Absente = non mutualisable (*fail
+    closed*). Écriture par la seule RPC `save_procedure_link_settings` (administration de la
+    **racine** : une démarche appartient à la racine). `procedure_linkable(org, proc)` la lit.
+  - **`request_groups`** + **`request_group_members`** (`request_id` **UNIQUE** : un groupe au
+    plus par demande ; FK `ON DELETE CASCADE` vers `requests`, la purge RGPD reste possible).
+    **Aucune colonne sur `requests`** : `requests_guard_write` n'est pas touchée. Écriture par
+    `link_requests(a, b)` (crée, étend ou **fusionne** ; verrou consultatif par tenant ; 200
+    membres au plus) et `unlink_request(id)` (un groupe d'une seule demande est **dissous**,
+    `reason: groupe_dissous` au journal de la survivante) — événements `request_linked` /
+    `request_unlinked`. Les deux RPC sont DEFINER et revérifient les droits par `auth.uid()`.
+  - **`request_locations`** (PK `request_id`) — le lieu d'intervention **recopié du
+    formulaire** par `t32_requests_location_sync` (INSERT, UPDATE de `form_data` ou du
+    snapshot) : point déclaré du champ `location`, sinon `intervention_lieu`, sinon adresse de
+    l'ancien bloc (`intervention_*`), normalisée par `normalize_address`. **Rien n'est
+    géocodé.** ⚠️ L'ancien bloc à clés vides (builder Socle, indexé par id) n'est pas reconnu :
+    pas de lieu plutôt qu'un faux lieu. Index btree `(organization_id, lat, lon)` et GIN
+    trigramme sur `address_norm`, pour le lot L2.
+  - RLS : lecture des trois tables de groupe/lieu = `can_consult_request` de la demande (un
+    agent ne voit que les membres qu'il consulte, aucun compteur d'invisibles) ;
+    `procedure_link_settings` lisible par tout membre. Aucune écriture cliente.
+  - Test : [`../supabase/tests/demandes-liees.test.sql`](../supabase/tests/demandes-liees.test.sql).
 - **`integration_deliveries`** — outbox du retour d'état (contrat §6) : `event_id` UNIQUE,
   `target` (`clara`), `status` `pending|delivered|failed`, `attempts`, `next_attempt_at`,
   `last_error`. **Aucune émission n'est encore branchée** (phase 4) ; aucune écriture cliente.
@@ -1445,6 +1471,9 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `attachment_uploads` | — | — | — | — *(service_role seul : zone d'attente des pièces)* |
 | `request_emails` | `EXISTS` demande visible (un échange avec l'usager n'est pas une note interne) | **aucune** — service seul | **aucune** — le corps doit rester celui qui est parti | **aucune** — un e-mail parti ne se dé-envoie pas |
 | `request_links` | `EXISTS` demande visible (la ligne appartient à la source) | couple **écriture** sur la source ; trigger `request_links_check_scope` exige en plus la **consultation** de la cible (hors contexte de service) | — | `has_admin_scope` sur l'organisation de la demande |
+| `procedure_link_settings` | membre | — (RPC `save_procedure_link_settings`, administration de la racine) | — (idem) | — |
+| `request_groups` / `request_group_members` | `can_consult_request` d'au moins un membre / du membre | — (RPC `link_requests`) | — (idem, fusion) | — (RPC `unlink_request`) |
+| `request_locations` | `can_consult_request` | — (trigger `t32` DEFINER) | — (idem) | — (idem) |
 | `integration_deliveries` | membre (diagnostic) | — | — | — |
 | `notifications` | **soi seul** (`user_id = auth.uid()`) | — (triggers DEFINER) | — (RPC `mark_*_read`) | — |
 | `notification_preferences` | soi seul | soi seul | soi seul | soi seul |

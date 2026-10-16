@@ -111,6 +111,11 @@ d'extension ci-dessus (une entrée dans `SECTIONS` + un bloc conditionnel) :
   organisation par organisation. `ReferentielPanel` (état de la synchro) y reste affiché en
   dessous — c'est là qu'on vient quand une organisation manque à l'arbre.
 
+Une troisième, **« Demandes liées »** (2026-10-16), vit dans `src/features/linking`
+(`LinkSettingsPanel`) : les démarches mutualisables, leur rayon et leur fenêtre — écriture par
+la RPC `save_procedure_link_settings`, lecture seule pour qui n'administre pas la racine
+(`isAdminOn(rights, socleOrgId)`). Doctrine : [`docs/demandes-liees.md`](../../../docs/demandes-liees.md).
+
 Le périmètre documenté de cette feature reste « permissions + rights » : ces deux panneaux
 n'y vivent pas, seul leur branchement est ici.
 
