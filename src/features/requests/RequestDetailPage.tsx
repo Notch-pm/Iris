@@ -24,7 +24,8 @@ import { hasRight, isAdminOn, rightsFor } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { closureNoticeApplies } from "@fn/_shared/email/cloture";
-import { TransitionDialog, useTransitionRunner } from "./TransitionActions";
+import { TransitionDialog, useTransitionRunner, type TransitionInput } from "./TransitionActions";
+import { useGroupResolution } from "@/features/linking/GroupResolution";
 import {
   allowedTransitionsFor, canAdminWith, canProcessWith, canWriteWith, isFinal, STATUS_LABELS,
   type RequestRights, type RequestStatus, type TransitionSpec,
@@ -232,16 +233,30 @@ export function RequestDetailPage() {
 
   // L'avis de clôture suit la transition — même suite que le tableau et le mobile.
   const closureNoticeAfter = useClosureNotice({ flash, onFailure: setError });
+  // Résolution commune des demandes liées (même incident) — APRÈS la demande
+  // courante, jamais à sa place : src/features/linking/GroupResolution.tsx.
+  const groupResolution = useGroupResolution({
+    orgId, requestId: id ?? "", procedureId: r?.socle_procedure_id ?? null, flash, onFailure: setError,
+  });
+  const groupAfter = groupResolution.after;
   const onTransitionDone = React.useCallback(
-    (spec: TransitionSpec) =>
-      closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`),
-    [closureNoticeAfter, id, r?.source],
+    (spec: TransitionSpec, input: TransitionInput) => {
+      closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`);
+      void groupAfter(spec, input);
+    },
+    [closureNoticeAfter, groupAfter, id, r?.source],
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
     assignedTo: r?.assigned_to ?? null,
     onDone: onTransitionDone,
   });
+  // À chaque ouverture du dialogue : toutes les demandes liées recochées,
+  // personne prévenu tant que l'agent ne l'a pas décidé.
+  const resetGroup = groupResolution.reset;
+  React.useEffect(() => {
+    if (runner.active) resetGroup();
+  }, [runner.active, resetGroup]);
 
   if (!current) return null;
   if (transferredAway) {
@@ -1005,7 +1020,12 @@ export function RequestDetailPage() {
         </div>
       </div>
 
-      <TransitionDialog runner={runner} members={eligibleMembers} closureNotice={closureNotice} />
+      <TransitionDialog
+        runner={runner}
+        members={eligibleMembers}
+        closureNotice={closureNotice}
+        extra={groupResolution.section}
+      />
 
       {/* Transfert vers un autre organisme responsable. La modale est le SEUL
           chemin : le menu du rail ne fait que la viser. */}

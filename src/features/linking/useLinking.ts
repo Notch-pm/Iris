@@ -24,6 +24,9 @@ export interface GroupMember {
   procedureLabel: string | null;
   organisme: string | null;
   receivedAt: string;
+  /** `requests.source` — une demande issue de Clara ne reçoit aucun avis d'Iris. */
+  source: string | null;
+  assignedTo: string | null;
 }
 
 export interface RequestGroup {
@@ -46,7 +49,7 @@ export function useRequestGroup(requestId: string | undefined, enabled = true) {
       if (!own) return null;
       const { data, error: membersError } = await supabase
         .from("request_group_members")
-        .select("request_id, added_at, requests(id, reference, subject, status, socle_procedure_label, socle_organization_label, received_at)")
+        .select("request_id, added_at, requests(id, reference, subject, status, socle_procedure_label, socle_organization_label, received_at, source, assigned_to)")
         .eq("group_id", own.group_id)
         .order("added_at");
       if (membersError) throw membersError;
@@ -57,7 +60,7 @@ export function useRequestGroup(requestId: string | undefined, enabled = true) {
         members.push({
           id: r.id, reference: r.reference, subject: r.subject, status: r.status,
           procedureLabel: r.socle_procedure_label, organisme: r.socle_organization_label,
-          receivedAt: r.received_at,
+          receivedAt: r.received_at, source: r.source, assignedTo: r.assigned_to,
         });
       }
       return { groupId: own.group_id, members };

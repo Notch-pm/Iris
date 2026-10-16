@@ -1,9 +1,11 @@
 # Demandes liées — étude fonctionnelle et technique
 
 > **Public** : PO et équipe Iris · **Question traitée** : comment identifier les demandes qui
-> signalent le même incident, les lier, et les résoudre ensemble ? · **Statut** : lots **L1 et L2
-> livrés** le 2026-10-16 (réglages, groupes, lieux, liaison ; recherche serveur, carte « Même
-> incident » de la fiche, « Signalements similaires » du guichet) ; L3 à L5 à venir · **Date** : 2026-10-16
+> signalent le même incident, les lier, et les résoudre ensemble ? · **Statut** : lots **L1, L2 et
+> L3 livrés** le 2026-10-16 (réglages, groupes, lieux, liaison ; recherche serveur, carte « Même
+> incident », « Signalements similaires » du guichet ; résolution commune depuis la fiche) ;
+> L4 (assistant) et L5 à venir — le tableau et le mobile ne proposent pas encore la
+> résolution commune · **Date** : 2026-10-16
 
 Plusieurs habitants signalent souvent le même incident — un nid-de-poule, un lampadaire
 éteint, un dépôt sauvage. Aujourd'hui chacun de ces signalements s'instruit et se clôt

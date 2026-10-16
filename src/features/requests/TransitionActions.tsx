@@ -50,7 +50,8 @@ export interface TransitionRunner extends TransitionDialogRunner {
 export function useTransitionRunner(opts: {
   requestId: string;
   assignedTo: string | null;
-  onDone?: (spec: TransitionSpec) => void;
+  /** Après une transition réussie — avec ce que l'agent a saisi (motif, commentaire). */
+  onDone?: (spec: TransitionSpec, input: TransitionInput) => void;
 }): TransitionRunner {
   const { session } = useAuth();
   const apply = useApplyTransition();
@@ -64,7 +65,7 @@ export function useTransitionRunner(opts: {
     try {
       await apply.mutateAsync({ requestId, spec, ...input });
       setActive(null);
-      onDone?.(spec);
+      onDone?.(spec, input);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transition refusée.");
     }
@@ -99,6 +100,8 @@ interface DialogProps {
   /** Faux pour une demande issue de Clara : aucun avis ne partira
    *  (`closureNoticeApplies`), le dialogue ne doit pas l'annoncer. */
   closureNotice?: boolean;
+  /** Section supplémentaire pour cette transition (résolution commune des demandes liées). */
+  extra?: (spec: TransitionSpec) => React.ReactNode;
 }
 
 /** Ce que l'agent lit à la place quand aucun avis ne partira. */
@@ -119,7 +122,7 @@ const CLOSURE_NOTICE: Partial<Record<RequestStatus, string>> = {
 };
 
 /** Dialogue motif / commentaire / assigné — monté une seule fois par fiche. */
-export function TransitionDialog({ runner, members, subtitle, closureNotice = true }: DialogProps) {
+export function TransitionDialog({ runner, members, subtitle, closureNotice = true, extra }: DialogProps) {
   const { active } = runner;
   const [motif, setMotif] = React.useState<ClosureMotif | "">("");
   const [closureText, setClosureText] = React.useState("");
@@ -188,6 +191,7 @@ export function TransitionDialog({ runner, members, subtitle, closureNotice = tr
                     onChange={(e) => setClosureText(e.target.value)} />
                 </Field>
               ) : null}
+              {extra?.(active)}
               {runner.error ? <p role="alert" className="text-sm text-destructive">{runner.error}</p> : null}
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={runner.close}>Annuler</Button>

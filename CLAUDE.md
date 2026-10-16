@@ -37,6 +37,11 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   conforme (`t17_requests_require_pieces_conformes`). `en_attente` s'intitule « En attente
   d'information » : c'est là que va une demande dont une pièce est déclarée non conforme.
   Aucun 8ᵉ statut n'est à créer pour un nouveau besoin d'attente.
+  **Résolution commune des demandes liées** (même incident, décision PO 2026-10-16) : une
+  demande « À traiter » se résout avec son groupe sans geste préalable — c'est la RPC
+  `resolve_linked_requests` qui l'ENCHAÎNE par l'instruction, la matrice de la garde n'est pas
+  ouverte ; l'agent qui résout devient l'instructeur des demandes qui n'en ont pas
+  ([`docs/demandes-liees.md`](docs/demandes-liees.md)).
 - **Vocabulaire** : « catégorie » désigne exclusivement les catégories de **démarches** du
   Socle. La position d'une demande dans son cycle de vie est un **statut**. L'organisation
   Socle qui reçoit et traite une demande s'appelle **organisme** partout où un agent la lit

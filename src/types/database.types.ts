@@ -2581,6 +2581,15 @@ export type Database = {
         Args: { p_value: Json }
         Returns: Record<string, unknown>
       }
+      log_group_resolution: {
+        Args: {
+          p_chained: string[]
+          p_request_ids: string[]
+          p_source_request_id: string
+          p_took_over: string[]
+        }
+        Returns: undefined
+      }
       mail_context_for_user: {
         Args: { p_user_id: string }
         Returns: {
@@ -2768,6 +2777,23 @@ export type Database = {
       request_search_text: {
         Args: { p_reference: string; p_subject: string }
         Returns: string
+      }
+      resolve_linked_requests: {
+        Args: {
+          p_closure_text?: string
+          p_motif?: string
+          p_request_ids: string[]
+          p_source_request_id: string
+          p_status: string
+        }
+        Returns: {
+          chained: boolean
+          error: string
+          ok: boolean
+          reference: string
+          request_id: string
+          took_over: boolean
+        }[]
       }
       revoke_permission_profile: {
         Args: { p_profile_id: string; p_user_id: string }

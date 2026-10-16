@@ -497,6 +497,18 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
     de `request_locations` est passée à `EXISTS` demande visible (une fonction DEFINER par ligne
     pesait sur le balayage). Test :
     [`../supabase/tests/demandes-liees-recherche.test.sql`](../supabase/tests/demandes-liees-recherche.test.sql).
+  - **Résolution commune** (lot L3, migration `20261016160000`, décision PO 2026-10-16) :
+    `resolve_linked_requests(source, ids[], statut, motif, commentaire)`, **SECURITY INVOKER** —
+    chaque UPDATE traverse RLS, `requests_guard_write`, t17, t30 et t31 comme un UPDATE client.
+    Seule une **résolution** se propage. Pour chaque demande, dans un bloc `BEGIN … EXCEPTION`
+    (le refus de l'une n'annule pas les autres et la remet EXACTEMENT dans son état) :
+    affectation à l'agent qui résout **s'il n'y a pas d'instructeur**, passage par
+    `en_instruction` **fait par le serveur** si besoin, puis résolution avec le motif et le
+    commentaire de la source. ⚠️ La matrice de la garde n'est PAS ouverte (`a_traiter →
+    resolue_*` reste interdit à tout UPDATE direct). Résultat par demande `{ok, error,
+    took_over, chained}`. Journal par `log_group_resolution` (DEFINER, ne consigne que des faits
+    revérifiés) : `resolved_with_group` sur chaque demande, `group_resolution` sur la source.
+    Test : [`../supabase/tests/demandes-liees-resolution.test.sql`](../supabase/tests/demandes-liees-resolution.test.sql).
 - **`integration_deliveries`** — outbox du retour d'état (contrat §6) : `event_id` UNIQUE,
   `target` (`clara`), `status` `pending|delivered|failed`, `attempts`, `next_attempt_at`,
   `last_error`. **Aucune émission n'est encore branchée** (phase 4) ; aucune écriture cliente.

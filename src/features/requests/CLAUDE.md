@@ -252,7 +252,10 @@ note interne → résolution avec texte de clôture → journal.
     `find_similar_requests[_for]`, carte « Même incident » de l'onglet Résumé (slot `incident`
     de `ResumePane`, recherche sur bouton seulement) et section « Signalements similaires » du
     rail de création (slot `incident` de `CreationRail`, automatique au récapitulatif, liaison
-    après création). Les « demandes proches »
+    après création) ; lot L3 : résolution commune — `TransitionDialog` accepte une section
+    `extra(spec)` et `useTransitionRunner.onDone` reçoit désormais `(spec, input)` ; la fiche y
+    monte `useGroupResolution` (`src/features/linking/GroupResolution.tsx`). Le tableau et le
+    mobile ne la proposent pas encore. Les « demandes proches »
     rapprochent un même USAGER ; les demandes liées, des usagers DIFFÉRENTS pour un même lieu.
   - Score de rapprochement Socle = **classement relatif** à la réponse (contrat
     contacts-api) : affiché en barre relative au meilleur candidat, jamais en « % ».
