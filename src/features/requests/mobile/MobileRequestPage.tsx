@@ -69,6 +69,7 @@ import { stageDotLit, stageDots } from "./mobileRequests";
 import { MobileInstruireDrawer } from "./MobileInstruireDrawer";
 import { MobileStatusSheet } from "./MobileStatusSheet";
 import { useGroupResolution } from "@/features/linking/GroupResolution";
+import { IncidentGroupCard } from "@/features/linking/IncidentGroupCard";
 import { MobileEcrireSheet } from "./MobileEcrireSheet";
 
 export function MobileRequestPage() {
@@ -556,6 +557,16 @@ export function MobileRequestPage() {
             </div>
           ) : null}
         </div>
+
+        {/* Même incident — la carte du bureau, même hooks, même RPC (démarche mutualisable seulement). */}
+        {!intervenantOnly ? (
+          <IncidentGroupCard
+            orgId={current.organizationId}
+            requestId={r.id}
+            procedureId={r.socle_procedure_id}
+            canWrite={writer && !archived}
+          />
+        ) : null}
 
         {/* Pièces */}
         <div className="flex flex-col gap-2 rounded-[14px] border border-border bg-card p-3.5 shadow-airbnb-sm">

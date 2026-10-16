@@ -4,7 +4,8 @@
 > signalent le même incident, les lier, et les résoudre ensemble ? · **Statut** : lots **L1 à L4
 > livrés** le 2026-10-16 (réglages, groupes, lieux, liaison ; recherche serveur, carte « Même
 > incident », « Signalements similaires » du guichet ; résolution commune depuis la
-> fiche, le tableau et le mobile ; assistant de rapprochement sur la fiche) ; L5 à venir · **Date** : 2026-10-16
+> fiche, le tableau et le mobile ; assistant de rapprochement sur la fiche) ; **L5 livré**
+> le même jour (pastilles de la liste, carte « Même incident » sur la fiche mobile) · **Date** : 2026-10-16
 
 Plusieurs habitants signalent souvent le même incident — un nid-de-poule, un lampadaire
 éteint, un dépôt sauvage. Aujourd'hui chacun de ces signalements s'instruit et se clôt
@@ -178,7 +179,8 @@ RLS), préfiltre puis rend des **signaux bruts** :
 - **Création** : section « Signalements similaires » à côté des « Demandes proches » (même
   usager) ; liaison après création, jamais bloquante.
 - **Dialogue de transition** : la section du §1 — le tableau des demandes en hérite.
-- Hors V1 : pastille « liée (N) » sur la liste, mobile, détection à l'ingestion.
+- Liste et mobile : livrés au lot L5 (§7). Détection à l'ingestion : par la pastille de la
+  liste, calculée à l'affichage — aucune notification.
 
 ## 7. Lots
 
@@ -189,7 +191,7 @@ RLS), préfiltre puis rend des **signaux bruts** :
 | **L2** | `find_similar_requests`, `similaires.ts`, panneau de la fiche, section du guichet, carte « Demandes liées » |
 | **L3** | `resolve_linked_requests`, section du dialogue, avis optionnels, résultat partiel |
 | **L4** | Assistant de rapprochement |
-| **L5** (option) | Détection à l'ingestion (portail, API), pastille de liste, mobile |
+| **L5** | Pastilles de la liste (« Liée à N », « Même incident ? ») par la RPC `request_link_hints` — c'est ainsi que les demandes arrivées SANS agent (portail, partenaires, Clara) sont repérées : **à l'affichage, jamais par une notification** (choix prudent par défaut, faute de consigne PO) ; carte « Même incident » sur la fiche mobile |
 
 ## Vérification prévue
 

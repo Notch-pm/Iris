@@ -87,6 +87,8 @@ export function scoreSimilar(c: SimilarCandidate, now: Date): ScoredSimilar {
   // dépôt de gravats et un nid-de-poule au 12 rue des Lilas (adresse 0,87,
   // texte 0,17) ressortaient « probables » à 72. Sans les deux, la proposition
   // reste (même adresse, c'est une piste), plafonnée sous le seuil.
+  // ⚠️ JUMEAU SQL : `request_link_hints` (migration 20261016180000) recompte cette
+  // même règle pour la pastille « Même incident ? » de la liste — à modifier ensemble.
   const likely = place >= 0.5 && text >= LIKELY_MIN_TEXT;
   const bounded = Math.max(0, Math.min(100, Math.round(raw)));
   const score = likely ? bounded : Math.min(bounded, LIKELY_THRESHOLD - 1);

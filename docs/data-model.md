@@ -509,6 +509,15 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
     took_over, chained}`. Journal par `log_group_resolution` (DEFINER, ne consigne que des faits
     revérifiés) : `resolved_with_group` sur chaque demande, `group_resolution` sur la source.
     Test : [`../supabase/tests/demandes-liees-resolution.test.sql`](../supabase/tests/demandes-liees-resolution.test.sql).
+  - **Pastilles de la liste** (lot L5, migration `20261016180000`) :
+    `request_link_hints(ids[])`, **SECURITY INVOKER**, 50 identifiants au plus (une page de
+    liste) : `group_size` = membres du groupe **visibles** (la demande comprise, 0 hors groupe)
+    et `likely_similar` = demandes « même incident probable » rendues par
+    `find_similar_requests_for`, pour une demande OUVERTE seulement. La règle « probable »
+    (lieu ≥ 0,5 — distance ≤ rayon/2 ou adresse ≥ 0,5 — ET texte ≥ 0,3) est le **jumeau SQL**
+    de `scoreSimilar` (`src/features/linking/similaires.ts`) : à modifier ensemble. Aucun
+    stockage, aucune notification. Test :
+    [`../supabase/tests/demandes-liees-pastilles.test.sql`](../supabase/tests/demandes-liees-pastilles.test.sql).
 - **`integration_deliveries`** — outbox du retour d'état (contrat §6) : `event_id` UNIQUE,
   `target` (`clara`), `status` `pending|delivered|failed`, `attempts`, `next_attempt_at`,
   `last_error`. **Aucune émission n'est encore branchée** (phase 4) ; aucune écriture cliente.

@@ -31,6 +31,8 @@ import { cn } from "@/lib/utils";
 import { NewRequestButton } from "./NewRequestButton";
 import { StatusBadge } from "./StatusBadge";
 import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
+import { LinkHintBadges } from "@/features/linking/LinkHintBadges";
+import { useLinkHints, type LinkHint } from "@/features/linking/useLinking";
 import {
   activeFilterCount, DEFAULT_SORT, EXPORT_MAX_ROWS, exportFilename, filterChips, GROUP_KEYS,
   GROUP_LABELS, groupRows, pageWindow, removeFilterChip, requestCsvColumns, toggleFilterValue,
@@ -79,7 +81,7 @@ const COLUMNS: { key: SortKey | null; title: string; className: string; align?: 
 
 // ---- Ligne ----------------------------------------------------------------------
 
-function RequestRow({ r, dense }: { r: RequestListItem; dense: boolean }) {
+function RequestRow({ r, dense, hint }: { r: RequestListItem; dense: boolean; hint?: LinkHint }) {
   const navigate = useNavigate();
   const href = `/demandes/${r.id}`;
   return (
@@ -100,7 +102,10 @@ function RequestRow({ r, dense }: { r: RequestListItem; dense: boolean }) {
         </Link>
       </td>
       <td className="max-w-0 px-3">
-        <div className="truncate text-[13.5px] font-semibold text-foreground">{r.subject}</div>
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[13.5px] font-semibold text-foreground">{r.subject}</span>
+          <LinkHintBadges hint={hint} />
+        </div>
         {dense ? null : (
           <div className="truncate text-xs text-muted-foreground">
             {r.socle_procedure_label ?? "Sans démarche"}
@@ -156,6 +161,8 @@ export function RequestsListPage() {
 
   const orgId = current?.organizationId ?? "";
   const list = useRequestsList(orgId, filters, page, sort, groupKey);
+  // Pastilles « demandes liées » de la page affichée — un appel, borné par le RLS.
+  const hints = useLinkHints((list.data?.items ?? []).map((r) => r.id));
   const facets = useRequestFacets(orgId);
   const members = useTenantMembers(orgId);
   const orgCatalog = useSocleOrganizationsCatalog(orgId);
@@ -527,12 +534,14 @@ export function RequestsListPage() {
                         </button>
                       </td>
                     </tr>
-                    {isCollapsed ? null : g.items.map((r) => <RequestRow key={r.id} r={r} dense={dense} />)}
+                    {isCollapsed ? null : g.items.map((r) => (
+                      <RequestRow key={r.id} r={r} dense={dense} hint={hints.data?.get(r.id)} />
+                    ))}
                   </React.Fragment>
                 );
               })
             ) : (
-              items.map((r) => <RequestRow key={r.id} r={r} dense={dense} />)
+              items.map((r) => <RequestRow key={r.id} r={r} dense={dense} hint={hints.data?.get(r.id)} />)
             )}
           </tbody>
         </table>

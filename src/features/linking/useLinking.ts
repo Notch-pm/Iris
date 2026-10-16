@@ -109,6 +109,32 @@ export function useDraftSimilarRequests(
   });
 }
 
+export interface LinkHint {
+  /** Membres VISIBLES du groupe « même incident », la demande comprise ; 0 hors groupe. */
+  groupSize: number;
+  /** Demandes approchantes « même incident probable », visibles et hors groupe. */
+  likelySimilar: number;
+}
+
+/**
+ * Pastilles de la liste (lot L5) : un appel pour les lignes de la page. C'est
+ * ainsi que les demandes arrivées sans agent (portail, partenaires, Clara) sont
+ * repérées — à l'affichage, jamais par une notification.
+ */
+export function useLinkHints(requestIds: string[]) {
+  const key = [...requestIds].sort().join(",");
+  return useQuery({
+    queryKey: ["request-link-hints", key],
+    enabled: requestIds.length > 0,
+    staleTime: 60_000,
+    queryFn: async (): Promise<Map<string, LinkHint>> => {
+      const { data, error } = await supabase.rpc("request_link_hints", { p_request_ids: requestIds.slice(0, 50) });
+      if (error) throw error;
+      return new Map((data ?? []).map((h) => [h.request_id, { groupSize: h.group_size, likelySimilar: h.likely_similar }]));
+    },
+  });
+}
+
 export type AssistantVerdict = "meme" | "different" | "incertain";
 
 export interface AssistantOpinion {
@@ -135,6 +161,7 @@ export function useSimilarityAssistant() {
 function invalidateLinking(qc: ReturnType<typeof useQueryClient>) {
   void qc.invalidateQueries({ queryKey: ["request-group"] });
   void qc.invalidateQueries({ queryKey: ["similar-requests"] });
+  void qc.invalidateQueries({ queryKey: ["request-link-hints"] });
   void qc.invalidateQueries({ queryKey: ["request_events"] });  // journal (useSatellite)
 }
 

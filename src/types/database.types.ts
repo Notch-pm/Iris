@@ -2752,6 +2752,14 @@ export type Database = {
         }
         Returns: Json
       }
+      request_link_hints: {
+        Args: { p_request_ids: string[] }
+        Returns: {
+          group_size: number
+          likely_similar: number
+          request_id: string
+        }[]
+      }
       request_location_of: {
         Args: { p_form_data: Json; p_form_schema: Json }
         Returns: Record<string, unknown>
