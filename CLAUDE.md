@@ -603,6 +603,11 @@ les invariants ci-dessus restent la référence.
   notes internes**. Le texte à améliorer est **pseudonymisé de façon réversible** (`⟦P1⟧`) :
   un jeton perdu ⇒ refus, jamais un texte amputé. Droit d'instruction ; rien n'est stocké →
   [`docs/assistant-ia.md`](docs/assistant-ia.md) § 9.
+- **Assistant de rapprochement des demandes liées** (2026-10-16, edge
+  `request-similarity-assistant`) : sur geste de l'agent, un avis « même incident / autre /
+  incertain » sur les propositions de la carte « Même incident » — il annote, **il ne lie
+  jamais** ; candidates relues sous RLS, identité masquée, clés opaques →
+  [`docs/assistant-ia.md`](docs/assistant-ia.md) § 10.
 
 ## Conventions
 

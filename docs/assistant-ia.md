@@ -584,3 +584,26 @@ donnée de l'agent. Le snapshot du dépôt n'est relu que pour reconnaître ces 
 n'est jamais envoyé. La promesse reste bornée : un nom qu'Iris ne connaît pas (un tiers cité)
 peut passer. Entrée plafonnée à 4 500 caractères (la réécriture doit tenir sous les 2 000
 jetons de sortie du guichet).
+
+## 10. Rapprochement des demandes liées (2026-10-16)
+
+Edge `request-similarity-assistant`, module pur `_shared/ai/similarity.ts` (lot L4 de
+[`demandes-liees.md`](demandes-liees.md)). Sur la carte « Même incident » de la fiche, le
+bouton **« Affiner avec l'assistant »** demande, pour les propositions de la recherche (10 au
+plus), si chacune signale le **même incident** que la demande consultée.
+
+- **Sur geste de l'agent seulement** ; droit d'**écriture** sur la demande (celui de lier).
+- **Il annote, il ne lie jamais** : « même incident », « autre incident » ou « incertain »,
+  avec un motif d'une phrase ; l'agent lie par `link_requests`.
+- **Candidates relues avec le JWT de l'agent** (RLS) : une demande illisible ⇒ 400, jamais
+  envoyée au modèle.
+- **Identité** : contexte par `REQUEST_CONTEXT_COLUMNS` + `contextBlock`, termes d'identité de
+  TOUS les dépôts du lot masqués (`maskTerms`) dans le prompt et dans les motifs rendus. Même
+  promesse bornée qu'ailleurs, écrite sous le bouton.
+- **Sortie structurée sans outil** : une ligne `[[VERDICT: C2 | meme | motif]]` par candidate,
+  clés opaques `C1…C10` attribuées par le serveur ; clé non offerte ou verdict hors vocabulaire
+  ignorés (`parseVerdicts`). Aucun avis exploitable ⇒ 502.
+- Alias Socle `rapprochement-demandes` ; refus du guichet par `mapSocleFailure`. Rien n'est
+  stocké (`useMutation` sans `queryKey`). Vérifié en navigateur le 2026-10-16 (ACCM) : un dépôt
+  de gravats et un nid-de-poule à la même adresse → « autre incident ».
+- Pas encore au guichet (saisie en cours) : la recherche y est proposée, pas l'avis.

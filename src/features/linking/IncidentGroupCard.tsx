@@ -10,14 +10,15 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Link2, Loader2, Search } from "lucide-react";
+import { Link2, Loader2, Search, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Surface, SurfaceHead } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/features/requests/StatusBadge";
 import { rankSimilar, type ScoredSimilar } from "./similaires";
 import {
-  useLinkToGroup, useProcedureLinkable, useRequestGroup, useSimilarRequests, useUnlinkFromGroup,
+  useLinkToGroup, useProcedureLinkable, useRequestGroup, useSimilarityAssistant, useSimilarRequests,
+  useUnlinkFromGroup, type AssistantOpinion,
 } from "./useLinking";
 
 interface Props {
@@ -27,6 +28,9 @@ interface Props {
   /** Droit d'écriture (création, instruction ou clôture) sur la demande — reflet, la RPC décide. */
   canWrite: boolean;
 }
+
+/** Jumeau de `MAX_CANDIDATES` (_shared/ai/similarity.ts) : le serveur refuse au-delà. */
+const MAX_ASSISTANT_CANDIDATES = 10;
 
 const TONE_TEXT = {
   haute: "text-destructive",
@@ -45,7 +49,15 @@ export function IncidentGroupCard({ orgId, requestId, procedureId, canWrite }: P
   const similar = useSimilarRequests(requestId, searching && linkable === true);
   const link = useLinkToGroup();
   const unlink = useUnlinkFromGroup();
+  const assistant = useSimilarityAssistant();
   const now = React.useMemo(() => new Date(), [similar.dataUpdatedAt]);
+  // Avis de l'assistant, valables pour la liste de propositions qui les a reçus.
+  const opinions = React.useMemo(
+    () => new Map((assistant.data?.verdicts ?? []).map((v) => [v.request_id, v])),
+    [assistant.data],
+  );
+  const resetAssistant = assistant.reset;
+  React.useEffect(() => resetAssistant(), [similar.dataUpdatedAt, resetAssistant]);
 
   const proposals = React.useMemo<ScoredSimilar[]>(
     () => (similar.data ? rankSimilar(similar.data, now) : []),
@@ -137,17 +149,43 @@ export function IncidentGroupCard({ orgId, requestId, procedureId, canWrite }: P
               fenêtre réglée pour cette démarche.
             </p>
           ) : (
-            <ul className="flex flex-col gap-2">
-              {proposals.map((p) => (
-                <SimilarRow
-                  key={p.request_id}
-                  item={p}
-                  canLink={canWrite}
-                  busy={busy}
-                  onLink={() => link.mutate({ requestId, targetId: p.request_id })}
-                />
-              ))}
-            </ul>
+            <>
+              {canWrite ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline" size="sm" className="h-8 gap-1.5 text-xs"
+                    disabled={assistant.isPending}
+                    onClick={() => assistant.mutate({
+                      requestId, candidateIds: proposals.slice(0, MAX_ASSISTANT_CANDIDATES).map((p) => p.request_id),
+                    })}
+                  >
+                    {assistant.isPending
+                      ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                      : <Sparkles className="size-3.5" aria-hidden="true" />}
+                    Affiner avec l'assistant
+                  </Button>
+                  <span className="text-[11px] text-muted-foreground">
+                    Aucun champ d'identité connu n'est transmis ; un nom écrit en texte libre peut passer.
+                    L'assistant donne un avis, il ne lie rien.
+                  </span>
+                </div>
+              ) : null}
+              {assistant.isError ? (
+                <p role="alert" className="text-xs text-destructive">{errorText(assistant.error)}</p>
+              ) : null}
+              <ul className="flex flex-col gap-2">
+                {proposals.map((p) => (
+                  <SimilarRow
+                    key={p.request_id}
+                    item={p}
+                    canLink={canWrite}
+                    busy={busy}
+                    opinion={opinions.get(p.request_id) ?? null}
+                    onLink={() => link.mutate({ requestId, targetId: p.request_id })}
+                  />
+                ))}
+              </ul>
+            </>
           )}
         </section>
       ) : null}
@@ -155,11 +193,19 @@ export function IncidentGroupCard({ orgId, requestId, procedureId, canWrite }: P
   );
 }
 
-export function SimilarRow({ item, canLink, busy, onLink, linked = false, compact = false }: {
+const OPINION = {
+  meme: { label: "Assistant : même incident", tone: "text-primary" },
+  different: { label: "Assistant : autre incident", tone: "text-muted-foreground" },
+  incertain: { label: "Assistant : incertain", tone: "text-secondary-foreground" },
+} as const;
+
+export function SimilarRow({ item, canLink, busy, onLink, linked = false, compact = false, opinion = null }: {
   item: ScoredSimilar;
   canLink: boolean;
   busy: boolean;
   onLink: () => void;
+  /** Avis de l'assistant, quand l'agent l'a demandé. */
+  opinion?: AssistantOpinion | null;
   /** Guichet : la liaison est retenue, elle se fera à la création. */
   linked?: boolean;
   compact?: boolean;
@@ -187,6 +233,15 @@ export function SimilarRow({ item, canLink, busy, onLink, linked = false, compac
         {item.likely ? <span className="text-[11px] font-bold text-destructive">Même incident probable</span> : null}
       </div>
       <p className="text-[11.5px] leading-relaxed text-muted-foreground">{item.reasons.join(" · ")}</p>
+      {opinion ? (
+        <p className="flex items-start gap-1.5 rounded-lg bg-muted/50 px-2 py-1.5 text-[11.5px] leading-relaxed">
+          <Sparkles className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
+          <span>
+            <span className={cn("font-bold", OPINION[opinion.verdict].tone)}>{OPINION[opinion.verdict].label}</span>
+            {opinion.reason ? ` — ${opinion.reason}` : null}
+          </span>
+        </p>
+      ) : null}
       <div className="flex gap-1.5">
         {canLink ? (
           <Button

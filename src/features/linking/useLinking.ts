@@ -5,6 +5,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { invokeEdge } from "@/lib/edge";
 import { useLinkSettings } from "./useLinkSettings";
 import type { DraftSimilarityInput, SimilarCandidate } from "./similaires";
 
@@ -105,6 +106,29 @@ export function useDraftSimilarRequests(
       if (error) throw error;
       return (data ?? []) as SimilarCandidate[];
     },
+  });
+}
+
+export type AssistantVerdict = "meme" | "different" | "incertain";
+
+export interface AssistantOpinion {
+  request_id: string;
+  verdict: AssistantVerdict;
+  reason: string;
+}
+
+/**
+ * Avis de l'assistant sur les propositions (lot L4) — sur geste de l'agent
+ * seulement, une `useMutation` sans `queryKey` : rien n'est mis en cache, rien
+ * n'est stocké. L'assistant annote ; il ne lie jamais.
+ */
+export function useSimilarityAssistant() {
+  return useMutation({
+    mutationFn: async (input: { requestId: string; candidateIds: string[] }) =>
+      await invokeEdge<{ verdicts: AssistantOpinion[]; unanswered: number }>("request-similarity-assistant", {
+        request_id: input.requestId,
+        candidate_ids: input.candidateIds,
+      }),
   });
 }
 
