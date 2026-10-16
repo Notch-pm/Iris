@@ -68,6 +68,7 @@ import { DeclarerInterventionSheet } from "../interventions/mobile/DeclarerInter
 import { stageDotLit, stageDots } from "./mobileRequests";
 import { MobileInstruireDrawer } from "./MobileInstruireDrawer";
 import { MobileStatusSheet } from "./MobileStatusSheet";
+import { useGroupResolution } from "@/features/linking/GroupResolution";
 import { MobileEcrireSheet } from "./MobileEcrireSheet";
 
 export function MobileRequestPage() {
@@ -123,8 +124,14 @@ export function MobileRequestPage() {
   const closureNoticeAfter = useClosureNotice({ flash, onFailure: setError });
   /** Miroir de `onTransitionDone` (bureau) : l'avis de clôture suit la
    *  transition, et une note tapée dans la feuille Statut part APRÈS elle. */
+  // Résolution commune des demandes liées — même geste qu'au bureau.
+  const groupResolution = useGroupResolution({
+    orgId: current?.organizationId ?? "", requestId: id ?? "", procedureId: r?.socle_procedure_id ?? null,
+    flash, onFailure: setError,
+  });
+  const groupAfter = groupResolution.after;
   const onTransitionDone = React.useCallback(
-    (spec: TransitionSpec) => {
+    (spec: TransitionSpec, input: TransitionInput) => {
       setStatusOpen(false);
       const note = pendingNoteRef.current;
       pendingNoteRef.current = null;
@@ -134,14 +141,20 @@ export function MobileRequestPage() {
         });
       }
       closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`);
+      void groupAfter(spec, input);
     },
-    [closureNoticeAfter, id, r, addMessage, session],
+    [closureNoticeAfter, groupAfter, id, r, addMessage, session],
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
     assignedTo: r?.assigned_to ?? null,
     onDone: onTransitionDone,
   });
+  // À chaque ouverture de la feuille : demandes liées recochées, personne prévenu.
+  const resetGroup = groupResolution.reset;
+  React.useEffect(() => {
+    if (statusOpen) resetGroup();
+  }, [statusOpen, resetGroup]);
 
   function goBack() {
     if (window.history.state && typeof window.history.state.idx === "number" && window.history.state.idx > 0) {
@@ -653,6 +666,7 @@ export function MobileRequestPage() {
         piecesBlocking={piecesBlocking}
         closureNotice={closureNoticeApplies(r?.source)}
         onSubmit={submitStatus}
+        extra={groupResolution.section}
       />
 
       <MobileEcrireSheet

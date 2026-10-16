@@ -41,11 +41,13 @@ interface Props {
   onSubmit: (spec: TransitionSpec, input: TransitionInput, note: string) => void;
   /** Faux pour une demande issue de Clara : aucun avis de clôture ne partira. */
   closureNotice: boolean;
+  /** Section supplémentaire pour la transition choisie (résolution commune des demandes liées). */
+  extra?: (spec: TransitionSpec) => React.ReactNode;
 }
 
 export function MobileStatusSheet({
   open, onOpenChange, status, transitions, members, runner, organizationName, piecesBlocking, onSubmit,
-  closureNotice,
+  closureNotice, extra,
 }: Props) {
   const [selectedTo, setSelectedTo] = React.useState<RequestStatus | "">("");
   const [assigneeId, setAssigneeId] = React.useState("");
@@ -201,6 +203,8 @@ export function MobileStatusSheet({
       <Field label="Note interne" htmlFor="mst-note" hint="Facultatif — non visible par l'usager">
         <Textarea id="mst-note" value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
+
+      {selectedSpec && extra ? extra(selectedSpec) : null}
 
       {blocked ? <p role="alert" className="text-sm text-destructive">{blocked}</p> : null}
       {runner.error ? <p role="alert" className="text-sm text-destructive">{runner.error}</p> : null}

@@ -44,6 +44,8 @@ export interface ScoredSimilar extends SimilarCandidate {
 
 /** Au-delà, la demande est mise en avant (« même incident probable »). */
 export const LIKELY_THRESHOLD = 60;
+/** Similarité de texte (trigrammes) à partir de laquelle deux descriptions convergent. */
+export const LIKELY_MIN_TEXT = 0.3;
 /** En deçà, la demande n'est pas proposée du tout : du bruit, pas une piste. */
 export const MIN_SCORE = 20;
 /** Combien de propositions au plus. */
@@ -80,7 +82,14 @@ export function scoreSimilar(c: SimilarCandidate, now: Date): ScoredSimilar {
   const text = Math.max(0, Math.min(1, c.text_similarity ?? 0));
   const open = OPEN.has(c.status);
   const raw = 60 * place + 25 * text + (c.same_procedure ? 10 : 0) + (open ? 5 : 0);
-  const score = Math.max(0, Math.min(100, Math.round(raw)));
+  // « Même incident probable » exige LES DEUX : un lieu proche ET une description
+  // qui converge. Le lieu seul ne suffit pas — vu en recette le 2026-10-16 : un
+  // dépôt de gravats et un nid-de-poule au 12 rue des Lilas (adresse 0,87,
+  // texte 0,17) ressortaient « probables » à 72. Sans les deux, la proposition
+  // reste (même adresse, c'est une piste), plafonnée sous le seuil.
+  const likely = place >= 0.5 && text >= LIKELY_MIN_TEXT;
+  const bounded = Math.max(0, Math.min(100, Math.round(raw)));
+  const score = likely ? bounded : Math.min(bounded, LIKELY_THRESHOLD - 1);
 
   const reasons: string[] = [];
   if (c.distance_m !== null && c.distance_m <= c.radius_m) {
@@ -100,8 +109,8 @@ export function scoreSimilar(c: SimilarCandidate, now: Date): ScoredSimilar {
   return {
     ...c,
     score,
-    tone: score >= LIKELY_THRESHOLD ? "haute" : score >= 35 ? "moyenne" : "faible",
-    likely: score >= LIKELY_THRESHOLD,
+    tone: likely ? "haute" : score >= 35 ? "moyenne" : "faible",
+    likely,
     reasons,
   };
 }

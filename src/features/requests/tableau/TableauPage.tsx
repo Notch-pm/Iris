@@ -27,6 +27,7 @@ import { NewRequestButton } from "../NewRequestButton";
 import { StatusBadge } from "../StatusBadge";
 import { closureNoticeApplies } from "@fn/_shared/email/cloture";
 import { TransitionDialog } from "../TransitionActions";
+import { useGroupResolution, type GroupResolution } from "@/features/linking/GroupResolution";
 import { useClosureNotice } from "../useClosureNotice";
 import { memberName } from "../instruction/instruction";
 import { useEligibleAssignees, useTenantMembers } from "../useRequests";
@@ -74,9 +75,28 @@ export function TableauPage() {
   // Un avis qui échoue ne remet pas la transition en cause : bandeau à part.
   const [noticeError, setNoticeError] = React.useState<string | null>(null);
   const closureNoticeAfter = useClosureNotice({ flash, onFailure: setNoticeError });
+  // Résolution commune des demandes liées : même geste que la fiche. La demande
+  // visée change à chaque dépôt — le hook la suit (`transition.card`), et le
+  // rappel de fin de transition le lit par une référence pour ne pas tourner en rond.
+  const groupAfter = React.useRef<GroupResolution["after"] | null>(null);
   const transition = useBoardTransition({
-    onDone: (card, spec) => closureNoticeAfter(card, spec.to, transitionToast(card, spec.to)),
+    onDone: (card, spec, input) => {
+      closureNoticeAfter(card, spec.to, transitionToast(card, spec.to));
+      void groupAfter.current?.(spec, input);
+    },
   });
+  const groupResolution = useGroupResolution({
+    orgId,
+    requestId: transition.card?.id ?? "",
+    procedureId: transition.card?.procedureId ?? null,
+    flash,
+    onFailure: setNoticeError,
+  });
+  groupAfter.current = groupResolution.after;
+  const resetGroup = groupResolution.reset;
+  React.useEffect(() => {
+    if (transition.runner.active) resetGroup();
+  }, [transition.runner.active, resetGroup]);
   // Assignés éligibles de la demande visée (RM-16) : le dialogue ne les demande
   // que si aucun assigné ne se déduit, mais alors il lui faut la bonne liste.
   const eligible = useEligibleAssignees(transition.card?.id);
@@ -410,6 +430,7 @@ export function TableauPage() {
       <TransitionDialog
         runner={transition.runner}
         closureNotice={closureNoticeApplies(transition.card?.source)}
+        extra={groupResolution.section}
         subtitle={
           transition.card ? `${transition.card.reference} — ${transition.card.subject}` : undefined
         }

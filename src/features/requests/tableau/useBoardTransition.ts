@@ -27,7 +27,8 @@ export interface BoardTransition {
 }
 
 export function useBoardTransition(opts: {
-  onDone: (card: BoardCardView, spec: TransitionSpec) => void;
+  /** Après une transition réussie — avec ce que l'agent a saisi (motif, commentaire). */
+  onDone: (card: BoardCardView, spec: TransitionSpec, input: TransitionInput) => void;
 }): BoardTransition {
   const { session } = useAuth();
   const apply = useApplyTransition();
@@ -53,7 +54,7 @@ export function useBoardTransition(opts: {
         await apply_({ requestId: target.id, spec, ...input });
         setActive(null);
         setCard(null);
-        onDone(target, spec);
+        onDone(target, spec, input);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Transition refusée.");
       } finally {

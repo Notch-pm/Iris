@@ -26,8 +26,8 @@ describe("distanceLabel", () => {
 });
 
 describe("scoreSimilar", () => {
-  it("une demande au même point, même démarche, ouverte = même incident probable", () => {
-    const s = scoreSimilar(cand({ distance_m: 5 }), NOW);
+  it("même point ET description qui converge = même incident probable", () => {
+    const s = scoreSimilar(cand({ distance_m: 5, text_similarity: 0.4 }), NOW);
     expect(s.score).toBeGreaterThanOrEqual(LIKELY_THRESHOLD);
     expect(s.likely).toBe(true);
     expect(s.tone).toBe("haute");
@@ -53,6 +53,14 @@ describe("scoreSimilar", () => {
     expect(scoreSimilar(cand({ address_similarity: 0.9 }), NOW).reasons).toContain("même adresse");
     expect(scoreSimilar(cand({ address_similarity: 0.6 }), NOW).reasons).toContain("adresse proche");
     expect(scoreSimilar(cand({ address_similarity: 0.4 }), NOW).reasons.join()).not.toMatch(/adresse/);
+  });
+
+  it("le lieu seul ne fait pas un « même incident probable » (recette : gravats ≠ nid-de-poule)", () => {
+    const s = scoreSimilar(cand({ address_similarity: 0.87, text_similarity: 0.17 }), NOW);
+    expect(s.likely).toBe(false);
+    expect(s.score).toBeLessThan(LIKELY_THRESHOLD);
+    expect(s.tone).toBe("moyenne");
+    expect(s.reasons).toContain("même adresse");
   });
 
   it("le texte seul ne fait jamais un « même incident probable »", () => {
