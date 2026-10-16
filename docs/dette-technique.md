@@ -233,9 +233,11 @@ mesurés sur la base réelle (`pg_stat_statements`, advisors) :
   tables, opérations unitaires), correctif trivial sans changement de sémantique.
   ⚠️ `is_org_member(p_org_id)` et ses sœurs prennent un argument qui varie par ligne : les
   envelopper dans `(select …)` n'aurait pas de sens.
-  **Correctif écrit le 2026-10-16** (`20261016120000_rls_initplan_auth_uid.sql`, `ALTER POLICY`
-  sur les expressions relues dans `pg_policy`, rôles et commandes inchangés) — **à appliquer**,
-  puis vérifier que l'advisor `auth_rls_initplan` ne les cite plus.
+  ✅ **Soldé le 2026-10-16** (`20261016120000_rls_initplan_auth_uid.sql`, `ALTER POLICY` sur
+  les expressions relues dans `pg_policy`, rôles et commandes inchangés) : appliqué par
+  `supabase db query --linked -f` — donc **sans ligne** dans `schema_migrations` —, et les six
+  policies relues en base portent toutes `(SELECT auth.uid())`. L'advisor n'a pas pu être
+  relu (connecteur sans droits ce jour-là).
 - **33 clés étrangères sans index** (advisor), surtout des colonnes d'auteur (`created_by`,
   `uploaded_by`, `assigned_by`…) et `organization_id` de tables satellites
   (`notifications`, `request_emails`, `request_interventions`, `integration_deliveries`). Aucune
