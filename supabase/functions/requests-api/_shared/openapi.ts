@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.5.0";
+export const CONTRACT_VERSION = "2.6.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -224,6 +224,24 @@ const envelopeSchema = {
         + "`consentement_non_transmis_au_socle`).",
       ].join("\n\n"),
     },
+    guest_access: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        tracking_url: {
+          type: ["string", "null"],
+          format: "uri",
+          maxLength: 500,
+          description: "Page de suivi de votre portail (https), citée dans l'accusé de réception.",
+        },
+      },
+      description:
+        "**Suivi en ligne accepté par l'usager** (2.6.0, facultatif). Iris tire un **code d'accès** " +
+        "(10 caractères, `XXXX-XXXX-XX`), le rend **une seule fois** dans la réponse 201 " +
+        "(`guest_access.code`) et le cite dans l'accusé de réception. Exige une adresse de " +
+        "courriel déclarée (`requester.email`), sinon 422. Hors empreinte : un rejeu (200) ne rend " +
+        "jamais de code — Iris n'en garde que l'empreinte. Voir le tag « Usager ».",
+    },
     attachments: { type: "array", maxItems: 50, items: attachmentRefSchema },
     context: {
       type: "object",
@@ -275,6 +293,47 @@ const requestResourceSchema = {
     updated_at: { type: "string", format: "date-time" },
     closed_at: { type: "string", format: "date-time", nullable: true },
     url: { type: "string", nullable: true, description: "URL de consultation dans l'app Iris." },
+  },
+} as const;
+
+const citizenAttachmentSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid" },
+    file_name: { type: "string" },
+    mime_type: { type: "string", nullable: true },
+    size: { type: "integer", nullable: true },
+  },
+} as const;
+
+/** Vue USAGER (2.6.0) — liste blanche distincte de `Request` : ni motif de clôture, ni agents. */
+const citizenRequestSchema = {
+  type: "object",
+  properties: {
+    id: { type: "string", format: "uuid" },
+    reference: { type: "string", example: "DEM-2026-000123" },
+    subject: { type: "string" },
+    procedure_name: { type: "string", nullable: true },
+    status: requestResourceSchema.properties.status,
+    received_at: { type: "string", format: "date-time" },
+    updated_at: { type: "string", format: "date-time" },
+    closed_at: { type: "string", format: "date-time", nullable: true },
+    closure_text: { type: "string", nullable: true, description: "Rédigé pour l'usager ; présent une fois la demande close." },
+    attachments: { type: "array", items: citizenAttachmentSchema, description: "Pièces déposées avec la demande." },
+    messages: {
+      type: "array",
+      description: "Messages envoyés à l'usager, du plus ancien au plus récent.",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string", format: "uuid" },
+          subject: { type: "string" },
+          body: { type: "string" },
+          sent_at: { type: "string", format: "date-time" },
+          attachments: { type: "array", items: citizenAttachmentSchema },
+        },
+      },
+    },
   },
 } as const;
 
@@ -373,6 +432,8 @@ export function buildOpenApi(baseUrl: string) {
         "(2026-09)** : filtre `socle_contact_id` sur `GET /v1/requests` et scope",
         "`requests:read_tenant` (les demandes d'un usager, toutes sources) — ajout additif. **2.5.0",
         "(2026-09)** : `GET /v1/requests/{id}/timeline` (scope `requests:read_tenant`) — ajout additif.",
+        "**2.6.0 (2026-10)** : accès invité de l'usager — `guest_access` à l'ingestion, routes",
+        "`/v1/citizen/*` (scope `requests:citizen`) — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -390,6 +451,13 @@ export function buildOpenApi(baseUrl: string) {
         description:
           "Dépôt des fichiers (multipart, vérifiés par Iris), puis rattachement par upload_id " +
           "dans l'enveloppe ou après coup. Jamais de contenu inline dans une enveloppe JSON.",
+      },
+      {
+        name: "Usager",
+        description:
+          "Ce que l'USAGER lui-même lit de sa demande, pour un portail (scope `requests:citizen`) : " +
+          "vue en liste blanche — jamais notes internes, motif de clôture, agents ni journal. " +
+          "Accès invité par courriel + référence + code d'accès.",
       },
       { name: "Contrat", description: "Le présent document, servi publiquement." },
     ],
@@ -422,6 +490,7 @@ export function buildOpenApi(baseUrl: string) {
         UploadReceipt: uploadReceiptSchema,
         LinkRef: linkRefSchema,
         Request: requestResourceSchema,
+        CitizenRequest: citizenRequestSchema,
       },
     },
     paths: {
@@ -537,6 +606,13 @@ export function buildOpenApi(baseUrl: string) {
                     attachments_registered: {
                       type: "integer",
                       description: "Pièces rattachées au dossier — synchrone, à la réponse elles y sont.",
+                    },
+                    guest_access: {
+                      type: ["object", "null"],
+                      properties: { code: { type: "string", pattern: "^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}$" } },
+                      description:
+                        "Présent seulement si `guest_access` était demandé : le code d'accès à afficher " +
+                        "à l'usager, ou `null` si l'accès n'a pas pu s'ouvrir (la demande est créée quand même).",
                     },
                   },
                 },
@@ -686,6 +762,70 @@ export function buildOpenApi(baseUrl: string) {
             "400": err("Références invalides, ou upload_id inconnu / expiré / déjà rattaché."),
             "404": err("Demande hors périmètre ou inexistante."),
             "502": err("Stockage indisponible — rien n'est rattaché, réessayez."),
+          },
+        },
+      },
+      "/v1/citizen/access": {
+        post: {
+          tags: ["Usager"],
+          summary: "Vérifier un accès invité (courriel + référence + code)",
+          description:
+            "Rend l'identifiant de la demande si les trois éléments concordent. **Une seule réponse " +
+            "d'échec (404)**, que la référence soit inconnue, le code faux, l'accès verrouillé " +
+            "(5 échecs = 1 heure) ou expiré (90 jours après la clôture) : un portail ne doit jamais " +
+            "pouvoir dire si une demande existe. Limitez aussi les essais de votre côté.",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }],
+          requestBody: { required: true, content: { "application/json": { schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["reference", "email", "code"],
+            properties: {
+              reference: { type: "string", example: "DEM-2026-000042" },
+              email: { type: "string", format: "email" },
+              code: { type: "string", description: "Casse, espaces et tirets indifférents ; O/0 et I/L/1 confondus." },
+            },
+          } } } },
+          responses: {
+            "200": { description: "Accès accordé.", content: { "application/json": { schema: {
+              type: "object", properties: { request_id: { type: "string", format: "uuid" } },
+            } } } },
+            "404": err("Accès refusé — sans dire pourquoi."),
+          },
+        },
+      },
+      "/v1/citizen/requests/{id}": {
+        get: {
+          tags: ["Usager"],
+          summary: "Vue usager d'une demande",
+          description:
+            "Ce que l'usager peut lire de SA demande : référence, objet, démarche, statut, dates, " +
+            "texte de clôture (une fois close), ses pièces, et les messages qu'Iris lui a envoyés " +
+            "(le code d'accès y est masqué). Demande à accès invité ouvert, non expiré ; 404 sinon.",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          responses: {
+            "200": { description: "La vue usager.", content: { "application/json": { schema: {
+              type: "object", properties: { request: { $ref: "#/components/schemas/CitizenRequest" } },
+            } } } },
+            "404": err("Inconnue, hors périmètre ou accès expiré."),
+          },
+        },
+      },
+      "/v1/citizen/requests/{id}/attachments/{attachment_id}": {
+        get: {
+          tags: ["Usager"],
+          summary: "Télécharger une pièce visible par l'usager",
+          description: "Rend une URL signée valable 60 secondes. Jamais une pièce d'instruction interne.",
+          parameters: [
+            { $ref: "#/components/parameters/TenantHeader" },
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+            { name: "attachment_id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          responses: {
+            "200": { description: "URL de téléchargement.", content: { "application/json": { schema: {
+              type: "object",
+              properties: { url: { type: "string", format: "uri" }, expires_in: { type: "integer", example: 60 } },
+            } } } },
+            "404": err("Pièce inconnue ou non visible par l'usager."),
           },
         },
       },

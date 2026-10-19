@@ -303,6 +303,28 @@ qu'il faut corriger, ou l'activation dans le Socle. Les pièces déjà déposée
   demande depuis la fiche usager et l'espace élu). Les notes internes ne sortent **que** par
   cette route, donc que vers une application de la gamme : un partenaire reçoit 403.
 
+### 4 bis. L'usager suit SA demande — accès invité (2.6.0, scope `requests:citizen`)
+
+Pour un **portail** (Nora, source `portail-citoyen`) : l'usager qui dépose sans compte et
+accepte le suivi en ligne lit sa demande avec **courriel + référence + code d'accès**.
+
+1. Au dépôt, l'enveloppe porte `guest_access: { tracking_url }` et un `requester.email`
+   (sinon 422). La réponse `201` rend `guest_access.code` — **une seule fois** : affichez-le.
+   L'accusé de réception le cite aussi, avec la page de suivi.
+2. `POST /v1/citizen/access` `{ reference, email, code }` → `{ request_id }`, ou **un seul 404**
+   pour tous les échecs. 5 échecs verrouillent la demande 1 heure ; l'accès expire 90 jours
+   après la clôture. Limitez aussi les essais par visiteur de votre côté.
+3. `GET /v1/citizen/requests/{id}` → la **vue usager** (`_shared/citizenView.ts`), et
+   `GET /v1/citizen/requests/{id}/attachments/{attachment_id}` → URL signée de 60 s.
+
+C'est au portail de lier `request_id` à la session du visiteur : Iris vérifie le tenant, la
+source et que l'accès est ouvert et non expiré, pas qui tient la session. Ni `/timeline`, ni
+`serializeRequest` (qui porte `closure_motif`) ne servent cette vue.
+
+**Mise en service** : secret d'edge function `IRIS_ACCESS_CODE_PEPPER` (32 caractères au
+moins, aléatoire). Sans lui, le dépôt passe mais `guest_access` vaut `null`, et
+`/v1/citizen/access` répond 500. Changer le poivre invalide tous les codes déjà remis.
+
 ## 5. Traçabilité
 
 Chaque appel est journalisé (`integration_api_logs` : clé, méthode, chemin, statut — jamais le

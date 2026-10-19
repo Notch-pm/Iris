@@ -11,13 +11,15 @@
 //   · message composé ICI (`_shared/email/accuse.ts`), aux couleurs de la
 //     collectivité porteuse (charte lue chez le Socle, jamais bloquante) ;
 //   · trace dans `request_emails`, ouverte AVANT l'envoi, sans agent
-//     (`sent_by` NULL). Sur une reprise, on renvoie le texte ENREGISTRÉ.
+//     (`sent_by` NULL). Sur une reprise, on renvoie le texte ENREGISTRÉ ;
+//   · code d'accès invité (suivi en ligne) : l'échange enregistré n'en garde
+//     qu'un masque ; le clair vient de la file, qui l'oublie au règlement.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type { SmtpConfig } from "../_shared/email/config.ts";
 import { sendBrandedEmail } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
-import { receiptEmail } from "../_shared/email/accuse.ts";
+import { receiptEmail, revealAccessCode } from "../_shared/email/accuse.ts";
 import { recipientIdentity } from "../_shared/email/destinataire.ts";
 import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
 
@@ -41,6 +43,9 @@ interface ClaimedReceipt {
   email_subject: string | null;
   email_body: string | null;
   attempts: number;
+  /** Code d'accès invité EN CLAIR (suivi en ligne accepté au dépôt) — jamais enregistré dans l'échange. */
+  access_code: string | null;
+  tracking_url: string | null;
 }
 
 export interface ReceiptCounters {
@@ -112,6 +117,7 @@ export async function drainReceipts(
         organisme: row.organisme,
         recipient: { civility: who.civility, fullName: who.fullName },
         tenantName: row.organization_name,
+        access: row.access_code ? { trackingUrl: row.tracking_url } : null,
       });
       subject = composed.subject;
       body = composed.body;
@@ -136,7 +142,8 @@ export async function drainReceipts(
       await sendBrandedEmail(
         smtp,
         to,
-        usagerEmailContent(subject, body),
+        // L'échange enregistré porte le code MASQUÉ ; seul le message envoyé porte le clair.
+        usagerEmailContent(subject, revealAccessCode(body, row.access_code)),
         usagerBrand(row.organization_name, charte),
       );
       await settle(id, true);

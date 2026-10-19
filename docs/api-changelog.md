@@ -9,6 +9,31 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.6.0 — 2026-10-19 — Accès invité de l'usager à sa demande
+
+Projet Sceaux (espace usager, lot L2). **Ajout additif** : rien ne change pour qui ne s'en sert pas.
+
+- **`guest_access` à l'ingestion** (`POST /v1/requests`, facultatif) : l'usager a accepté de
+  suivre sa demande en ligne. Iris tire un **code d'accès** (`XXXX-XXXX-XX`, ≈ 50 bits), le rend
+  **une seule fois** dans la réponse `201` (`guest_access.code`) et le cite dans l'accusé de
+  réception, avec `guest_access.tracking_url` (la page de suivi du portail). Exige une adresse
+  déclarée (`requester.email`), sinon `422`. Hors empreinte ; un rejeu (`200`) ne rend jamais de
+  code. `guest_access: null` dans la réponse : l'accès n'a pas pu s'ouvrir, la demande existe.
+- **Scope `requests:citizen`** (donné aux clés plateforme `portail-citoyen`) et trois routes, tag
+  « Usager » :
+  - `POST /v1/citizen/access` — courriel + référence + code → `{ request_id }`. **Un seul `404`**
+    pour tous les échecs (inconnue, faux code, verrouillée après 5 échecs pour 1 heure, expirée
+    90 jours après la clôture) ;
+  - `GET /v1/citizen/requests/{id}` — la **vue usager** (`CitizenRequest`) : référence, objet,
+    démarche, statut, dates, texte de clôture une fois close, pièces déposées, messages envoyés à
+    l'usager. **Jamais** `closure_motif`, notes internes, agents, journal ni pièces d'instruction ;
+  - `GET /v1/citizen/requests/{id}/attachments/{attachment_id}` — URL signée de 60 secondes.
+- **Ce qu'Iris garde** : des empreintes HMAC poivrées du code et de l'adresse
+  (`IRIS_ACCESS_CODE_PEPPER`), jamais le clair. L'accusé enregistré dans l'onglet Échanges
+  porte le code **masqué** (`••••-••••-••`) ; seul le message envoyé porte le clair.
+
+---
+
 ## Note du 2026-10-09 — Iris accuse réception à l'usager (contrat inchangé)
 
 **Aucun champ, aucune route, aucun code d'erreur ne change.** Ce qui change, c'est ce qu'Iris

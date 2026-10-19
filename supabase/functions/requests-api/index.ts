@@ -44,8 +44,24 @@ import {
   hasDeclaredIdentity,
   hasStrongMatch,
   matchIdentityFromDeclared,
+  pickDeclared,
 } from "../_shared/identity/declared.ts";
 import { normalizeConsents, type ConsentRecord } from "../_shared/consents/catalog.ts";
+import {
+  accessCodeHash,
+  accessEmailHash,
+  newAccessCode,
+  normalizeAccessCode,
+  normalizeAccessEmail,
+  pepperFrom,
+} from "../_shared/access/accessCode.ts";
+import {
+  CITIZEN_ATTACHMENT_SELECT,
+  CITIZEN_EMAIL_SELECT,
+  CITIZEN_REQUEST_SELECT,
+  isCitizenVisibleAttachment,
+  serializeCitizenRequest,
+} from "./_shared/citizenView.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -588,6 +604,13 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
     return fail("forbidden", "socle_root_organization_id hors du périmètre de l'intégration.");
   }
 
+  // Suivi en ligne (2.6.0) : l'accès se prouve par l'adresse DÉCLARÉE au dépôt.
+  // Sans elle, le code ne servirait à rien — on le dit au partenaire.
+  const guestEmail = env.guest_access ? normalizeAccessEmail(pickDeclared(env.requester ?? null, "email")) : null;
+  if (env.guest_access && guestEmail === null) {
+    return fail("unprocessable", "guest_access exige une adresse de courriel déclarée (requester.email).");
+  }
+
   // Les pièces d'abord : l'empreinte porte leur CONTENU (relu en zone
   // d'attente), et un rejeu doit pouvoir relire une pièce déjà rattachée.
   const resolved = await resolveUploads(auth, env.attachments ?? [], true);
@@ -770,8 +793,13 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
   // Accusé de réception à l'usager (2026-10-09) : enfilé ici, envoyé par
   // `notifications-mailer`. Une demande issue de Clara n'en reçoit pas — la
   // règle vit dans `enqueue_request_receipt`, pas ici. Jamais un refus.
-  const receipt = await supabase.rpc("enqueue_request_receipt", { p_request_id: row.id });
-  if (receipt.error) console.error("requests-api: accusé de réception non enfilé", receipt.error);
+  // Avec le suivi en ligne, `register_request_access` enfile l'accusé ET lui
+  // confie le code dans la même transaction.
+  const accessCode = guestEmail !== null ? await openGuestAccess(row.id, guestEmail, env.guest_access?.tracking_url ?? null) : null;
+  if (accessCode === null) {
+    const receipt = await supabase.rpc("enqueue_request_receipt", { p_request_id: row.id });
+    if (receipt.error) console.error("requests-api: accusé de réception non enfilé", receipt.error);
+  }
   // La demande existe désormais : un échec ici n'est PAS une perte — le
   // rejeu à l'identique (200) rattachera ce qui manque.
   const attached = await attachUploads(auth, row.id, resolved);
@@ -781,7 +809,128 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
     created: true,
     request: serializeRequest(row, APP_URL),
     attachments_registered: attached.registered,
+    // Le SEUL moment où le code existe en clair hors de la file d'envoi. Un
+    // rejeu (200) ne le rend jamais : Iris n'en garde que l'empreinte.
+    ...(env.guest_access ? { guest_access: accessCode === null ? null : { code: accessCode } } : {}),
   });
+}
+
+// ---- Accès invité de l'usager (contrat 2.6.0) --------------------------------
+//
+// Courriel + référence + code d'accès → la vue USAGER d'une demande du portail
+// (`_shared/citizenView.ts`), jamais la vue partenaire ni /timeline. Iris garde
+// des empreintes HMAC poivrées (IRIS_ACCESS_CODE_PEPPER) ; sans poivre, aucun
+// accès ne s'ouvre et le dépôt passe quand même (« ne devine rien », mais ne
+// fait jamais perdre une demande). Migration 20261019150000_acces_usager_invite.
+
+const CITIZEN_SCOPE = "requests:citizen";
+const CITIZEN_ACCESS_PATH = "/v1/citizen/access";
+const ACCESS_DENIED = "Ces informations ne permettent pas d'accéder à une demande.";
+/** Durée d'une URL de pièce : le temps de cliquer, pas de la partager. */
+const CITIZEN_DOWNLOAD_SECONDS = 60;
+const ACCESS_AFTER_CLOSURE_MS = 90 * 24 * 60 * 60 * 1000;
+
+function accessPepper(): string | null {
+  return pepperFrom(Deno.env.get("IRIS_ACCESS_CODE_PEPPER"));
+}
+
+/** Tire le code, enregistre ses empreintes, enfile l'accusé. `null` si l'accès n'a pas pu s'ouvrir. */
+async function openGuestAccess(requestId: string, email: string, trackingUrl: string | null): Promise<string | null> {
+  const pepper = accessPepper();
+  if (pepper === null) {
+    console.error("requests-api: IRIS_ACCESS_CODE_PEPPER absent — dépôt sans accès invité");
+    return null;
+  }
+  const code = newAccessCode();
+  const { data, error } = await supabase.rpc("register_request_access", {
+    p_request_id: requestId,
+    p_code_hash: await accessCodeHash(pepper, normalizeAccessCode(code)!),
+    p_email_hash: await accessEmailHash(pepper, email),
+    p_tracking_url: trackingUrl,
+    p_code: code,
+  });
+  if (error || data !== true) {
+    console.error("requests-api: accès invité non ouvert", error ?? "déjà ouvert");
+    return null;
+  }
+  return code;
+}
+
+async function handleCitizenAccess(auth: AuthContext, req: Request): Promise<Response> {
+  const body = await req.json().catch(() => null);
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return fail("bad_request", "Corps JSON attendu : { reference, email, code }.");
+  }
+  const { reference, email, code } = body as Record<string, unknown>;
+  const pepper = accessPepper();
+  if (pepper === null) return fail("internal_error", "Accès invité non configuré.");
+  const normalizedEmail = normalizeAccessEmail(email);
+  const normalizedCode = normalizeAccessCode(code);
+  // Une saisie mal formée reçoit la même réponse qu'un mauvais code : rien ne
+  // distingue « inconnue », « verrouillée », « expirée » ou « fausse ».
+  if (typeof reference !== "string" || reference.length > 40 || normalizedEmail === null || normalizedCode === null) {
+    return fail("not_found", ACCESS_DENIED);
+  }
+  const { data, error } = await supabase.rpc("check_request_access", {
+    p_organization_id: auth.organizationId,
+    p_source: auth.sourceCode,
+    p_reference: reference,
+    p_email_hash: await accessEmailHash(pepper, normalizedEmail),
+    p_code_hash: await accessCodeHash(pepper, normalizedCode),
+  });
+  if (error) {
+    console.error("requests-api: vérification d'accès", error);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  if (typeof data !== "string") return fail("not_found", ACCESS_DENIED);
+  return json(200, { request_id: data });
+}
+
+/** La demande, si l'usager peut encore y accéder : du tenant, de la source, accès ouvert, non expiré. */
+async function citizenAccessible(auth: AuthContext, id: string): Promise<boolean> {
+  const [request, access] = await Promise.all([
+    supabase.from("requests").select("id, closed_at")
+      .eq("id", id).eq("organization_id", auth.organizationId).eq("source", auth.sourceCode)
+      .maybeSingle(),
+    supabase.from("request_access_codes").select("request_id")
+      .eq("request_id", id).eq("organization_id", auth.organizationId)
+      .maybeSingle(),
+  ]);
+  if (!request.data || !access.data) return false;
+  const closed = request.data.closed_at ? Date.parse(request.data.closed_at) : null;
+  return closed === null || Date.now() - closed <= ACCESS_AFTER_CLOSURE_MS;
+}
+
+async function citizenEmailsAndAttachments(id: string) {
+  const [emails, attachments] = await Promise.all([
+    supabase.from("request_emails").select(CITIZEN_EMAIL_SELECT).eq("request_id", id),
+    supabase.from("request_attachments").select(CITIZEN_ATTACHMENT_SELECT).eq("request_id", id),
+  ]);
+  if (emails.error || attachments.error) return null;
+  return { emails: emails.data ?? [], attachments: attachments.data ?? [] };
+}
+
+async function handleCitizenRequest(auth: AuthContext, id: string): Promise<Response> {
+  if (!(await citizenAccessible(auth, id))) return fail("not_found", "Ressource introuvable.");
+  const request = await supabase.from("requests").select(CITIZEN_REQUEST_SELECT)
+    .eq("id", id).eq("organization_id", auth.organizationId).maybeSingle();
+  const related = await citizenEmailsAndAttachments(id);
+  if (!request.data || related === null) return fail("internal_error", "Erreur serveur.");
+  return json(200, { request: serializeCitizenRequest(request.data, related.emails, related.attachments) });
+}
+
+async function handleCitizenAttachment(auth: AuthContext, id: string, attachmentId: string): Promise<Response> {
+  if (!(await citizenAccessible(auth, id))) return fail("not_found", "Ressource introuvable.");
+  const related = await citizenEmailsAndAttachments(id);
+  if (related === null) return fail("internal_error", "Erreur serveur.");
+  const sent = new Set<string>(related.emails.filter((e) => e.status === "envoye").map((e) => e.id));
+  // deno-lint-ignore no-explicit-any
+  const row = related.attachments.find((a: any) => a.id === attachmentId);
+  if (!row || !isCitizenVisibleAttachment(row, sent)) return fail("not_found", "Ressource introuvable.");
+  const signed = await supabase.storage.from(BUCKET)
+    .createSignedUrl(row.storage_path, CITIZEN_DOWNLOAD_SECONDS, { download: row.file_name });
+  if (signed.error || !signed.data?.signedUrl) return fail("internal_error", "Erreur serveur.");
+  return json(200, { url: signed.data.signedUrl, expires_in: CITIZEN_DOWNLOAD_SECONDS });
 }
 
 async function findOwnRequest(auth: AuthContext, id: string) {
@@ -950,6 +1099,8 @@ Deno.serve(async (req) => {
   const idMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})$/i);
   const attachMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/attachments$/i);
   const timelineMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/timeline$/i);
+  const citizenMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})$/i);
+  const citizenFileMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/i);
 
   if (path === UPLOAD_PATH && method === "POST") {
     response = requireScope("requests:write") ?? await handleUpload(auth, req);
@@ -968,7 +1119,20 @@ Deno.serve(async (req) => {
   } else if (attachMatch && method === "POST" && UUID_RE.test(attachMatch[1])) {
     requestId = attachMatch[1];
     response = requireScope("requests:write") ?? await handleAddAttachments(auth, requestId, req);
-  } else if (path === "/v1/requests" || idMatch || attachMatch || timelineMatch) {
+  } else if (path === CITIZEN_ACCESS_PATH && method === "POST") {
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAccess(auth, req);
+  } else if (citizenMatch && method === "GET" && UUID_RE.test(citizenMatch[1])) {
+    requestId = citizenMatch[1];
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenRequest(auth, requestId);
+  } else if (
+    citizenFileMatch && method === "GET" && UUID_RE.test(citizenFileMatch[1]) && UUID_RE.test(citizenFileMatch[2])
+  ) {
+    requestId = citizenFileMatch[1];
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAttachment(auth, requestId, citizenFileMatch[2]);
+  } else if (
+    path === "/v1/requests" || idMatch || attachMatch || timelineMatch ||
+    path === CITIZEN_ACCESS_PATH || citizenMatch || citizenFileMatch
+  ) {
     response = fail("method_not_allowed", "Méthode non prévue sur cette route.");
   } else {
     response = fail("not_found", "Ressource introuvable.");
