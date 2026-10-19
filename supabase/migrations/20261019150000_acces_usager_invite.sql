@@ -16,9 +16,17 @@
 --     lisible des agents) n'en garde qu'un masque. Le clair attend dans la file
 --     `request_receipts.access_code` — service_role seul — et en est effacé dès
 --     que l'accusé est réglé (envoyé, abandonné ou sans objet).
---   · Les essais : 5 échecs verrouillent la demande une heure. Une réponse
---     unique pour « inconnue », « verrouillée », « expirée » et « faux code » :
---     le portail ne dit jamais si une référence existe.
+--   · Les essais : 5 mauvais codes AVEC LA BONNE ADRESSE verrouillent la
+--     demande une heure. Une adresse fausse ne compte pas : sinon, les
+--     références se suivant, n'importe qui verrouillerait le suivi de toute
+--     une ville en 5 requêtes par référence (relecture de sécurité 2026-10-19).
+--     Une réponse unique pour « inconnue », « verrouillée », « expirée » et
+--     « faux code » : le portail ne dit jamais si une référence existe.
+--   · L'adresse fait foi : l'accusé ne porte le code que s'il part à
+--     l'adresse déclarée, et la vue usager ne montre que les messages envoyés
+--     à cette adresse. Une demande rattachée à la fiche d'une AUTRE personne
+--     (téléphone partagé, rattachement corrigé par un agent) ne lui ouvre
+--     donc rien, et ne montre rien d'elle au déposant.
 --   · La durée : l'accès vaut tant que la demande est ouverte, puis 90 jours
 --     après sa clôture.
 --
@@ -66,6 +74,11 @@ create table public.request_access_codes (
 );
 comment on table public.request_access_codes is
   'Accès invité de l''usager à SA demande (courriel + référence + code d''accès). Empreintes HMAC poivrées seulement. service_role uniquement — aucune policy.';
+-- La vérification cherche par (tenant, source, référence) : à 100 000 demandes
+-- par ville, pas de balayage.
+create index if not exists requests_org_source_reference_idx
+  on public.requests (organization_id, source, reference);
+
 comment on column public.request_access_codes.tracking_url is
   'Page de suivi du portail qui a déposé (https://<collectivité>/suivi), citée dans l''accusé.';
 
@@ -144,7 +157,12 @@ begin
     return null;
   end if;
 
-  if v_access.code_hash = p_code_hash and v_access.email_hash = p_email_hash then
+  -- Une adresse fausse ne compte pas comme un essai (voir l'en-tête).
+  if v_access.email_hash <> p_email_hash then
+    return null;
+  end if;
+
+  if v_access.code_hash = p_code_hash then
     update public.request_access_codes
        set failed_attempts = 0, locked_until = null, last_used_at = now()
      where request_id = v_access.request_id;
@@ -164,7 +182,7 @@ begin
 end;
 $fn$;
 comment on function public.check_request_access(uuid, text, text, text, text) is
-  'Vérifie courriel + référence + code d''accès (empreintes) et rend la demande, sinon NULL — sans distinguer inconnue, verrouillée, expirée ou fausse. 5 échecs = 1 h de verrou. service_role uniquement.';
+  'Vérifie courriel + référence + code d''accès (empreintes) et rend la demande, sinon NULL — sans distinguer inconnue, verrouillée, expirée ou fausse. 5 mauvais codes avec la bonne adresse = 1 h de verrou ; une adresse fausse ne compte pas. service_role uniquement.';
 revoke execute on function public.check_request_access(uuid, text, text, text, text) from public, anon, authenticated;
 grant execute on function public.check_request_access(uuid, text, text, text, text) to service_role;
 
@@ -196,7 +214,8 @@ returns table (
   email_body          text,
   attempts            int,
   access_code         text,
-  tracking_url        text
+  tracking_url        text,
+  access_email_hash   text
 )
 language plpgsql security definer set search_path = '' as $fn$
 begin
@@ -225,7 +244,7 @@ begin
          r.socle_contact_id, r.requester_snapshot, r.identity_status, r.reference,
          r.subject, r.socle_organization_label, r.received_at,
          c.eid, e.to_email, e.subject, e.body, c.n,
-         c.code, a.tracking_url
+         c.code, a.tracking_url, a.email_hash
     from claimed c
     join public.requests r on r.id = c.rid
     join public.organizations o on o.id = r.organization_id

@@ -17,7 +17,8 @@
 export const CITIZEN_REQUEST_SELECT =
   "id, reference, status, subject, procedure_snapshot, received_at, updated_at, closed_at, closure_text";
 
-export const CITIZEN_EMAIL_SELECT = "id, subject, body, sent_at, status";
+// `to_email` sert au filtre « envoyé à l'adresse déclarée » (index.ts) ; il ne sort pas.
+export const CITIZEN_EMAIL_SELECT = "id, subject, body, sent_at, status, to_email";
 
 export const CITIZEN_ATTACHMENT_SELECT =
   "id, file_name, mime_type, file_size, kind, email_id, superseded_by, storage_path, created_at";
@@ -60,6 +61,24 @@ export function isCitizenVisibleAttachment(row: Row, sentEmailIds: ReadonlySet<s
   if (row.kind === "instruction_interne") return false;
   if (row.email_id) return sentEmailIds.has(row.email_id);
   return row.kind === "demande" && !row.superseded_by;
+}
+
+/**
+ * Les messages envoyés à l'adresse DÉCLARÉE au dépôt, et à elle seule.
+ * `hashEmail` rend l'empreinte d'une adresse (`null` si illisible) ; on la
+ * compare à celle de l'accès. Une demande rattachée à la fiche d'une autre
+ * personne lui écrit à SON adresse : ces messages ne sortent pas.
+ */
+export async function ownEmails(
+  emails: Row[],
+  declaredHash: string,
+  hashEmail: (email: unknown) => Promise<string | null>,
+): Promise<Row[]> {
+  const own: Row[] = [];
+  for (const email of emails) {
+    if ((await hashEmail(email?.to_email)) === declaredHash) own.push(email);
+  }
+  return own;
 }
 
 function attachment(row: Row): CitizenAttachment {

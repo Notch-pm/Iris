@@ -60,6 +60,7 @@ import {
   CITIZEN_EMAIL_SELECT,
   CITIZEN_REQUEST_SELECT,
   isCitizenVisibleAttachment,
+  ownEmails,
   serializeCitizenRequest,
 } from "./_shared/citizenView.ts";
 
@@ -856,7 +857,22 @@ async function openGuestAccess(requestId: string, email: string, trackingUrl: st
   return code;
 }
 
+/**
+ * Toute vérification d'accès dure au moins ce temps : une référence existante
+ * (verrou de ligne, écriture) ne doit pas répondre plus lentement qu'une
+ * référence inconnue — la mesure trahirait ce que le 404 unique tait.
+ */
+const ACCESS_CHECK_FLOOR_MS = 400;
+
 async function handleCitizenAccess(auth: AuthContext, req: Request): Promise<Response> {
+  const started = Date.now();
+  const response = await checkCitizenAccess(auth, req);
+  const wait = ACCESS_CHECK_FLOOR_MS - (Date.now() - started);
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  return response;
+}
+
+async function checkCitizenAccess(auth: AuthContext, req: Request): Promise<Response> {
   const body = await req.json().catch(() => null);
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
     return fail("bad_request", "Corps JSON attendu : { reference, email, code }.");
@@ -886,42 +902,59 @@ async function handleCitizenAccess(auth: AuthContext, req: Request): Promise<Res
   return json(200, { request_id: data });
 }
 
-/** La demande, si l'usager peut encore y accéder : du tenant, de la source, accès ouvert, non expiré. */
-async function citizenAccessible(auth: AuthContext, id: string): Promise<boolean> {
+/**
+ * L'empreinte de l'adresse déclarée, si l'usager peut encore accéder à la
+ * demande : du tenant, de la source, accès ouvert, non expiré. `null` sinon.
+ */
+async function citizenAccessible(auth: AuthContext, id: string): Promise<string | null> {
   const [request, access] = await Promise.all([
     supabase.from("requests").select("id, closed_at")
       .eq("id", id).eq("organization_id", auth.organizationId).eq("source", auth.sourceCode)
       .maybeSingle(),
-    supabase.from("request_access_codes").select("request_id")
+    supabase.from("request_access_codes").select("request_id, email_hash")
       .eq("request_id", id).eq("organization_id", auth.organizationId)
       .maybeSingle(),
   ]);
-  if (!request.data || !access.data) return false;
+  if (!request.data || !access.data) return null;
   const closed = request.data.closed_at ? Date.parse(request.data.closed_at) : null;
-  return closed === null || Date.now() - closed <= ACCESS_AFTER_CLOSURE_MS;
+  return closed === null || Date.now() - closed <= ACCESS_AFTER_CLOSURE_MS ? access.data.email_hash : null;
 }
 
-async function citizenEmailsAndAttachments(id: string) {
+/**
+ * Les messages et pièces de la demande — seulement les messages envoyés à
+ * l'adresse DÉCLARÉE au dépôt. Une demande rattachée à la fiche d'une autre
+ * personne (téléphone partagé, rattachement corrigé) lui écrit à SON adresse :
+ * ces messages-là ne regardent pas le déposant, et ne sortent pas.
+ */
+async function citizenEmailsAndAttachments(id: string, emailHash: string) {
+  const pepper = accessPepper();
+  if (pepper === null) return null;
   const [emails, attachments] = await Promise.all([
     supabase.from("request_emails").select(CITIZEN_EMAIL_SELECT).eq("request_id", id),
     supabase.from("request_attachments").select(CITIZEN_ATTACHMENT_SELECT).eq("request_id", id),
   ]);
   if (emails.error || attachments.error) return null;
-  return { emails: emails.data ?? [], attachments: attachments.data ?? [] };
+  const own = await ownEmails(emails.data ?? [], emailHash, async (value) => {
+    const email = normalizeAccessEmail(value);
+    return email === null ? null : await accessEmailHash(pepper, email);
+  });
+  return { emails: own, attachments: attachments.data ?? [] };
 }
 
 async function handleCitizenRequest(auth: AuthContext, id: string): Promise<Response> {
-  if (!(await citizenAccessible(auth, id))) return fail("not_found", "Ressource introuvable.");
+  const emailHash = await citizenAccessible(auth, id);
+  if (emailHash === null) return fail("not_found", "Ressource introuvable.");
   const request = await supabase.from("requests").select(CITIZEN_REQUEST_SELECT)
     .eq("id", id).eq("organization_id", auth.organizationId).maybeSingle();
-  const related = await citizenEmailsAndAttachments(id);
+  const related = await citizenEmailsAndAttachments(id, emailHash);
   if (!request.data || related === null) return fail("internal_error", "Erreur serveur.");
   return json(200, { request: serializeCitizenRequest(request.data, related.emails, related.attachments) });
 }
 
 async function handleCitizenAttachment(auth: AuthContext, id: string, attachmentId: string): Promise<Response> {
-  if (!(await citizenAccessible(auth, id))) return fail("not_found", "Ressource introuvable.");
-  const related = await citizenEmailsAndAttachments(id);
+  const emailHash = await citizenAccessible(auth, id);
+  if (emailHash === null) return fail("not_found", "Ressource introuvable.");
+  const related = await citizenEmailsAndAttachments(id, emailHash);
   if (related === null) return fail("internal_error", "Erreur serveur.");
   const sent = new Set<string>(related.emails.filter((e) => e.status === "envoye").map((e) => e.id));
   // deno-lint-ignore no-explicit-any

@@ -20,6 +20,7 @@ import type { SmtpConfig } from "../_shared/email/config.ts";
 import { sendBrandedEmail } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
 import { receiptEmail, revealAccessCode } from "../_shared/email/accuse.ts";
+import { accessEmailHash, normalizeAccessEmail, pepperFrom } from "../_shared/access/accessCode.ts";
 import { recipientIdentity } from "../_shared/email/destinataire.ts";
 import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
 
@@ -46,6 +47,21 @@ interface ClaimedReceipt {
   /** Code d'accès invité EN CLAIR (suivi en ligne accepté au dépôt) — jamais enregistré dans l'échange. */
   access_code: string | null;
   tracking_url: string | null;
+  /** Empreinte de l'adresse DÉCLARÉE au dépôt : le code ne part qu'à elle. */
+  access_email_hash: string | null;
+}
+
+/**
+ * Le destinataire est-il l'adresse déclarée au dépôt ? Si la demande a été
+ * rattachée à la fiche d'une AUTRE personne (téléphone partagé), l'accusé part
+ * à cette personne — sans le code, qui ne lui ouvrirait rien et ne la regarde
+ * pas. Sans poivre, on ne peut pas comparer : pas de code.
+ */
+async function sentToDeclared(to: string, emailHash: string | null): Promise<boolean> {
+  const pepper = pepperFrom(Deno.env.get("IRIS_ACCESS_CODE_PEPPER"));
+  const email = normalizeAccessEmail(to);
+  if (pepper === null || emailHash === null || email === null) return false;
+  return (await accessEmailHash(pepper, email)) === emailHash;
 }
 
 export interface ReceiptCounters {
@@ -110,6 +126,7 @@ export async function drainReceipts(
         await skip(id, "aucune adresse de courriel");
         continue;
       }
+      const withCode = row.access_code !== null && await sentToDeclared(to, row.access_email_hash);
       const composed = receiptEmail({
         reference: row.reference,
         requestSubject: row.subject,
@@ -117,7 +134,7 @@ export async function drainReceipts(
         organisme: row.organisme,
         recipient: { civility: who.civility, fullName: who.fullName },
         tenantName: row.organization_name,
-        access: row.access_code ? { trackingUrl: row.tracking_url } : null,
+        access: withCode ? { trackingUrl: row.tracking_url } : null,
       });
       subject = composed.subject;
       body = composed.body;
@@ -143,6 +160,7 @@ export async function drainReceipts(
         smtp,
         to,
         // L'échange enregistré porte le code MASQUÉ ; seul le message envoyé porte le clair.
+        // Sans masque (accusé composé sans le code), rien n'est substitué.
         usagerEmailContent(subject, revealAccessCode(body, row.access_code)),
         usagerBrand(row.organization_name, charte),
       );

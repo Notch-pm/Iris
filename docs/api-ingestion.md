@@ -312,9 +312,11 @@ accepte le suivi en ligne lit sa demande avec **courriel + référence + code d'
    (sinon 422). La réponse `201` rend `guest_access.code` — **une seule fois** : affichez-le.
    L'accusé de réception le cite aussi, avec la page de suivi.
 2. `POST /v1/citizen/access` `{ reference, email, code }` → `{ request_id }`, ou **un seul 404**
-   pour tous les échecs. 5 échecs verrouillent la demande 1 heure ; l'accès expire 90 jours
-   après la clôture. Limitez aussi les essais par visiteur de votre côté.
-3. `GET /v1/citizen/requests/{id}` → la **vue usager** (`_shared/citizenView.ts`), et
+   pour tous les échecs. 5 mauvais codes avec la bonne adresse verrouillent la demande 1 heure
+   (une adresse fausse ne compte pas : sinon on verrouillerait toute une ville en énumérant les
+   références) ; l'accès expire 90 jours après la clôture. Limitez aussi les essais par visiteur.
+3. `GET /v1/citizen/requests/{id}` → la **vue usager** (`_shared/citizenView.ts`) — messages
+   envoyés à l'adresse déclarée seulement —, et
    `GET /v1/citizen/requests/{id}/attachments/{attachment_id}` → URL signée de 60 s.
 
 C'est au portail de lier `request_id` à la session du visiteur : Iris vérifie le tenant, la

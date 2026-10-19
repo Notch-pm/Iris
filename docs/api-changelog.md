@@ -22,15 +22,18 @@ Projet Sceaux (espace usager, lot L2). **Ajout additif** : rien ne change pour q
 - **Scope `requests:citizen`** (donné aux clés plateforme `portail-citoyen`) et trois routes, tag
   « Usager » :
   - `POST /v1/citizen/access` — courriel + référence + code → `{ request_id }`. **Un seul `404`**
-    pour tous les échecs (inconnue, faux code, verrouillée après 5 échecs pour 1 heure, expirée
-    90 jours après la clôture) ;
+    pour tous les échecs (inconnue, faux code, verrouillée après 5 mauvais codes donnés avec la
+    bonne adresse — une adresse fausse ne compte pas —, expirée 90 jours après la clôture), et
+    une durée de réponse plancher ;
   - `GET /v1/citizen/requests/{id}` — la **vue usager** (`CitizenRequest`) : référence, objet,
     démarche, statut, dates, texte de clôture une fois close, pièces déposées, messages envoyés à
-    l'usager. **Jamais** `closure_motif`, notes internes, agents, journal ni pièces d'instruction ;
+    **l'adresse déclarée au dépôt** (pas ceux d'une autre fiche à laquelle la demande serait
+    rattachée). **Jamais** `closure_motif`, notes internes, agents, journal ni pièces d'instruction ;
   - `GET /v1/citizen/requests/{id}/attachments/{attachment_id}` — URL signée de 60 secondes.
 - **Ce qu'Iris garde** : des empreintes HMAC poivrées du code et de l'adresse
   (`IRIS_ACCESS_CODE_PEPPER`), jamais le clair. L'accusé enregistré dans l'onglet Échanges
-  porte le code **masqué** (`••••-••••-••`) ; seul le message envoyé porte le clair.
+  porte le code **masqué** (`••••-••••-••`) ; seul le message envoyé porte le clair, et seulement
+  s'il part à l'adresse déclarée.
 
 ---
 

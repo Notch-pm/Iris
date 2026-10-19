@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCitizenVisibleAttachment, serializeCitizenRequest } from "./citizenView";
+import { isCitizenVisibleAttachment, ownEmails, serializeCitizenRequest } from "./citizenView";
 
 const REQUEST = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -76,5 +76,19 @@ describe("isCitizenVisibleAttachment", () => {
   });
   it("refuse une pièce sans fichier", () => {
     expect(isCitizenVisibleAttachment({ ...ATTACHMENTS[0], storage_path: null }, sent)).toBe(false);
+  });
+});
+
+describe("ownEmails", () => {
+  const hash = async (value: unknown) => (typeof value === "string" ? `h:${value.trim().toLowerCase()}` : null);
+
+  it("ne garde que les messages envoyés à l'adresse déclarée", async () => {
+    const emails = [
+      { id: "e1", to_email: "Deposant@Example.fr" },
+      { id: "e2", to_email: "autre.personne@example.fr" },
+      { id: "e3", to_email: null },
+    ];
+    const own = await ownEmails(emails, "h:deposant@example.fr", hash);
+    expect(own.map((e) => e.id)).toEqual(["e1"]);
   });
 });
