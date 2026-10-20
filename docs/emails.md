@@ -2,7 +2,7 @@
 
 > **Public** : développeuses et développeurs, et l'administrateur qui met un tenant en
 > service · **Question traitée** : par où partent les mails d'Iris, avec quel gabarit, et que
-> faut-il configurer pour qu'ils partent ? · **Dernière mise à jour** : 2026-08-30
+> faut-il configurer pour qu'ils partent ? · **Dernière mise à jour** : 2026-10-21
 
 Iris envoie aujourd'hui **deux familles de messages** — et la distinction commande tout le
 reste de ce document, jusqu'à l'habillage :
@@ -14,7 +14,7 @@ reste de ce document, jusqu'à l'habillage :
 | **Réinitialisation de mot de passe** | l'agent depuis `/mot-de-passe-oublie` (self-service) | GoTrue → hook `auth-email-hook` |
 | **Réinitialisation de mot de passe** | un administrateur ayant autorité sur le compte, bouton « lien de réinitialisation » | edge function `admin-users` (`send_password_reset`) |
 | **Activation de compte (invitation)** | un administrateur qui invite un agent | edge function `admin-users` (`invite_user`) |
-| **Notification métier** (affectation, retrait, changement de statut, note interne, mention, nouvelle demande, **demande transférée**) | la BASE, par trigger — jamais le client | boîte d'envoi drainée sur cron par `notifications-mailer` |
+| **Notification métier** (affectation, retrait, changement de statut, note interne, mention, nouvelle demande, **demande transférée**, **réponse de l'usager** `citizen_replied`) | la BASE, par trigger — jamais le client | boîte d'envoi drainée sur cron par `notifications-mailer` |
 
 **À l'USAGER** — des messages de la collectivité à ses habitants, à la marque et **aux
 couleurs de la collectivité** (§ 4, « Charte graphique de la collectivité ») :
@@ -23,6 +23,8 @@ couleurs de la collectivité** (§ 4, « Charte graphique de la collectivité »
 |---|---|---|
 | **Réponse à l'usager** | un agent, depuis l'onglet Échanges de la fiche | edge function `send-request-email` (synchrone) |
 | **Avis de clôture** | la résolution d'une demande, composée par le serveur | edge function `send-request-email` (`kind: "cloture"`) |
+| **Accusé de réception** | le dépôt d'une demande | file `request_receipts`, drainée par `notifications-mailer` |
+| **Nouveau code d'accès** | « code perdu » sur le portail, ou un agent depuis la fiche | file `request_access_mails`, drainée par `notifications-mailer` |
 
 Tous partagent le gabarit et le serveur d'envoi décrits ci-dessous.
 
@@ -368,6 +370,34 @@ personne.
 **Sur une reprise**, le facteur renvoie le texte **enregistré** dans `request_emails`, pas un
 texte recomposé : la trace dit toujours ce qui est parti. Pendant les reprises l'échange reste
 « en cours » ; il ne passe « non envoyé » qu'à l'abandon.
+
+### Nouveau code d'accès au suivi en ligne (2026-10-21, lot L4a)
+
+L'usager qui a déposé sans compte suit sa demande avec courriel + référence + code d'accès
+(modèle : [`data-model.md`](data-model.md), `request_access_codes`). Iris n'en garde que
+l'empreinte : **un code ne se renvoie pas, il se remplace**.
+
+| | |
+|---|---|
+| Déclencheur | « Code perdu » sur le portail (`POST /v1/citizen/access/resend`, réponse `202` unique, 3 renvois par 24 h et par demande), ou un agent ayant le droit d'**instruction** (fiche › « Suivi en ligne sans compte » › « Envoyer un nouveau code », edge function `request-guest-access`) |
+| Exclu | Accès coupé par un agent ou expiré (90 jours après la clôture) : rien ne part, et le portail répond pareil dans tous les cas |
+| Objet | « Votre nouveau code d'accès » (**figé**) |
+| Composé par | Le **serveur** (`_shared/email/codeAcces.ts`) : référence, objet, lien de suivi du portail, mention que l'ancien code ne vaut plus ; pour un renvoi demandé par l'usager, « ignorez ce message si ce n'est pas vous » |
+| Destinataire | L'adresse **déclarée au dépôt**, vérifiée contre l'empreinte — jamais une adresse saisie ailleurs. L'agent n'en choisit pas |
+| Envoi | **Asynchrone** : file `request_access_mails`, drainée par `notifications-mailer/accessMails.ts`, mêmes reprises que les accusés (5 tentatives) |
+| Enregistré | `request_emails`, code **masqué** : l'onglet Échanges n'en montre jamais le clair |
+| Habillage | Charte de la collectivité |
+
+L'adresse et le code attendent **en clair** dans la file le temps de l'envoi et en sont effacés
+au règlement. Le clair n'est jamais rendu à un agent (qui pourrait sinon ouvrir la demande au
+nom de l'usager) ni écrit dans les journaux. Un code plus récent abandonne l'envoi d'un plus
+ancien encore en file, et met à jour le code d'un accusé de réception pas encore parti.
+
+**Notification agent `citizen_replied`** (2026-10-21, lot L4b) : quand l'usager répond en ligne,
+l'affectataire (sinon les agents ayant l'instruction) reçoit une notification doublée d'un
+e-mail, au gabarit **agent**. Elle dit **qu'**il a écrit (et le nombre de pièces), jamais **ce
+qu'**il a écrit : le message se lit dans l'onglet Échanges, sous RLS. Catalogue :
+`_shared/email/notifications.ts`.
 
 ### Charte graphique de la collectivité (2026-08-30)
 

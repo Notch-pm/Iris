@@ -2,7 +2,7 @@
 
 > **Public** : PO et équipe Iris · **Question traitée** : qu'est-ce qui a été demandé, pas
 > encore arbitré, et que faut-il savoir avant de s'y mettre ? · **Dernière mise à jour** :
-> 2026-09-20
+> 2026-10-21
 
 Ce document porte les demandes **produit** en attente. Il ne double pas
 [`dette-technique.md`](dette-technique.md), qui traite de ce qui est **assumé comme dette** :
@@ -157,12 +157,63 @@ rejoint le vocabulaire arrêté le 2026-08-30 (« Organisme », cf.
 ⚠️ Toute reprise du header touche le **DS Notch/Ariane** et la parité avec Clara, qui est
 délibérée : lire `CLAUDE.md` § Conventions avant d'y toucher.
 
+## B10 — Pièces envoyées par l'usager en réponse : hors dossier, hors conformité
+
+**Ce qui existe** (lot L4b, 2026-10-21). L'usager qui répond en ligne peut joindre jusqu'à 5
+pièces. Elles restent **dans l'échange** (`request_attachments.citizen_message_id`) : visibles
+dans l'onglet Échanges, mais ni dans « Pièces de la demande » ni dans la qualification de
+conformité — comme les pièces d'un e-mail.
+
+**À trancher par le PO.** Un agent doit-il pouvoir **« verser au dossier »** une pièce reçue en
+réponse (elle deviendrait une pièce de la demande, qualifiable, éventuellement en remplacement
+d'une pièce non conforme) ? Sans ce geste, le cas le plus courant — « voici la pièce qui
+manquait » — oblige à la redéposer à la main. Piste : un geste explicite de l'agent
+(instruction), jamais automatique, via `attach_request_piece`.
+
+**Touche** : `EchangesPane`, `record_citizen_message`, `attach_request_piece`.
+
+## B11 — Double notification de l'agent assigné
+
+**Ce qui existe.** Quand l'usager répond sur une demande `en_attente`, `record_citizen_message`
+la remet `en_instruction` : l'affectataire reçoit **deux** notifications pour un seul geste —
+`status_changed` (le retour en instruction) et `citizen_replied` (la réponse).
+
+**À trancher par le PO.** Garder les deux (chacune dit vrai), ou supprimer `status_changed` pour
+ce retour-là (la réponse l'explique déjà) ?
+
+**Touche** : triggers `t40_*` des notifications, `record_citizen_message`.
+
+## B12 — L4c : courriels à l'usager à chaque changement de statut et nouveau message
+
+**Prochain chantier de l'espace usager** (projet Sceaux). Un courriel à l'usager à chaque
+changement de statut de sa demande et à chaque nouveau message de l'agent.
+
+Cadre posé par le PO (à confirmer avant de démarrer) :
+
+- **Désactivables** : une préférence de l'usager, **propagée par Nora** (qui tient le compte) ;
+  activés par défaut ;
+- **Le contenu n'est jamais dans le courriel** : seulement un lien vers l'espace usager ou
+  `/suivi` ;
+- **L'accusé de réception reste obligatoire** : la préférence ne le coupe pas ;
+- à instruire : file dédiée sur le motif de `request_access_mails`, usagers sans compte (pas de
+  préférence à lire : toujours envoyés ?), demandes `source = 'clara'` (exclues, comme l'accusé),
+  et lien de suivi à citer (`request_access_codes.tracking_url`).
+
+**Touche** : migration (file), `notifications-mailer`, `_shared/email/`, contrat `requests-api`
+(préférence), Nora. Ne pas démarrer sans l'accord du PO.
+
 ---
 
 ## Entrées sorties de ce document
 
 Les numéros ne sont pas réattribués : une entrée traitée laisse son numéro derrière elle, pour
 que qui l'a en tête retrouve où elle a atterri.
+
+- **Espace usager — code perdu, coupure d'accès, réponse de l'usager** · livrés le
+  **2026-10-21** : lot L4a (contrat 2.8.0 — renvoi du code perdu, coupure et nouveau code par un
+  agent ; [`data-model.md`](data-model.md) `request_access_codes` / `request_access_mails`,
+  [`emails.md`](emails.md) « Nouveau code d'accès ») et lot L4b (contrat 2.9.0 — l'usager répond
+  en ligne ; `request_citizen_messages`). Restent B10 à B12 ci-dessus.
 
 - **B9 — Tableau de bord (page d'accueil)** · arbitrée par le PO le **2026-09-19**, livrée le
   jour même sur le motif de l'accueil de Clara : six cartes (reçues, mises en instruction,

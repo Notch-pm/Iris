@@ -124,6 +124,8 @@ Socle du tenant sinon — voir [`data-model.md`](data-model.md#tables)) et
 | **Transfert** d'organisation | Instruction sur le couple actuel ; cible = toute organisation du sous-arbre du tenant, y compris hors périmètre de l'auteur (perte d'accès immédiate) |
 | **Requalification** de démarche | Instruction sur le couple actuel **et** sur le couple cible |
 | **Solliciter un intervenant** | Instruction sur le couple **et** demande `en_instruction` ; l'intervenant doit détenir un profil actif `is_intervenant` couvrant l'organisation porteuse (`eligible_intervenants`) |
+| **Suivi en ligne sans compte** (encart de la fiche, edge `request-guest-access`, lot L4a) | **Instruction** sur le couple de la demande (`request_right_for`), pour les trois actions : voir l'état de l'accès, le **couper**, **envoyer un nouveau code** (à l'adresse déclarée au dépôt ; le code n'est jamais rendu à l'agent). Sans le droit, la réponse est celle d'une demande inexistante (404). L'encart n'est pas affiché sans instruction |
+| **Messages de l'usager** (onglet Échanges, lot L4b) | **Consultation** (`can_consult_request`) pour les lire, comme les e-mails échangés. Aucune écriture par un agent : seule `record_citizen_message` (service, appelée par l'API après ses contrôles) en crée |
 | **Déclarer une intervention réalisée** | L'intervenant sollicité, et lui seul (admin plateforme compris) — aucun droit sur le couple n'est exigé |
 
 ## Règles d'exploitation
