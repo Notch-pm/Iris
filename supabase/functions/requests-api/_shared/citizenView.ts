@@ -125,3 +125,33 @@ export function serializeCitizenRequest(request: Row, emails: Row[], attachments
     })),
   };
 }
+
+// ---- « Mes demandes » : la liste d'une fiche (contrat 2.7.0) ---------------
+
+export const CITIZEN_LIST_SELECT =
+  "id, reference, status, subject, procedure_snapshot, received_at, updated_at, closed_at";
+
+export interface CitizenRequestSummary {
+  id: string;
+  reference: string;
+  subject: string;
+  procedure_name: string | null;
+  status: string;
+  received_at: string;
+  updated_at: string;
+  closed_at: string | null;
+}
+
+/** Une ligne de « Mes demandes » — encore moins que la vue d'une demande. */
+export function serializeCitizenRequestSummary(row: Row): CitizenRequestSummary {
+  return {
+    id: row.id,
+    reference: row.reference,
+    subject: row.subject,
+    procedure_name: procedureName(row.procedure_snapshot),
+    status: row.status,
+    received_at: row.received_at,
+    updated_at: row.updated_at,
+    closed_at: row.closed_at ?? null,
+  };
+}

@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.6.0";
+export const CONTRACT_VERSION = "2.7.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -433,7 +433,10 @@ export function buildOpenApi(baseUrl: string) {
         "`requests:read_tenant` (les demandes d'un usager, toutes sources) — ajout additif. **2.5.0",
         "(2026-09)** : `GET /v1/requests/{id}/timeline` (scope `requests:read_tenant`) — ajout additif.",
         "**2.6.0 (2026-10)** : accès invité de l'usager — `guest_access` à l'ingestion, routes",
-        "`/v1/citizen/*` (scope `requests:citizen`) — ajout additif.",
+        "`/v1/citizen/*` (scope `requests:citizen`) — ajout additif. **2.7.0 (2026-10)** :",
+        "« Mes demandes » d'un compte du portail (`GET /v1/citizen/contacts/{id}/requests`),",
+        "jeton court `X-Citizen-Token` sur les lectures usager, demande soustraite à l'espace usager",
+        "par un agent (`citizen_visible`) — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -472,6 +475,17 @@ export function buildOpenApi(baseUrl: string) {
         },
       },
       parameters: {
+        CitizenToken: {
+          name: "X-Citizen-Token",
+          in: "header",
+          required: false,
+          schema: { type: "string" },
+          description:
+            "Jeton court (2.7.0) signé par le portail avec un SECOND secret, propre à la vue usager : " +
+            "`<charge base64url>.<HMAC-SHA256>`, charge `{ v: 1, t: <racine Socle>, sub, e?, exp }`, " +
+            "`sub` = `request:<id>` (invité) ou `contact:<id>` (compte, avec `e` = son adresse), " +
+            "durée de 15 minutes au plus. OBLIGATOIRE dès qu'Iris est configuré pour l'exiger.",
+        },
         TenantHeader: {
           name: "X-Socle-Root-Organization-Id",
           in: "header",
@@ -491,6 +505,20 @@ export function buildOpenApi(baseUrl: string) {
         LinkRef: linkRefSchema,
         Request: requestResourceSchema,
         CitizenRequest: citizenRequestSchema,
+        CitizenRequestSummary: {
+          type: "object",
+          description: "Une ligne de « Mes demandes » (2.7.0).",
+          properties: {
+            id: { type: "string", format: "uuid" },
+            reference: { type: "string" },
+            subject: { type: "string" },
+            procedure_name: { type: "string", nullable: true },
+            status: requestResourceSchema.properties.status,
+            received_at: { type: "string", format: "date-time" },
+            updated_at: { type: "string", format: "date-time" },
+            closed_at: { type: "string", format: "date-time", nullable: true },
+          },
+        },
       },
     },
     paths: {
@@ -793,6 +821,34 @@ export function buildOpenApi(baseUrl: string) {
           },
         },
       },
+      "/v1/citizen/contacts/{id}/requests": {
+        get: {
+          tags: ["Usager"],
+          summary: "« Mes demandes » : les demandes d'une fiche, pour son compte connecté",
+          description:
+            "Toutes les demandes rattachées à la fiche du Socle `{id}`, quelle que soit leur source, " +
+            "sauf celles qu'un agent a soustraites à l'espace usager. Les plus récentes d'abord ; " +
+            "page suivante par `before` = `next_before`. **Jeton court obligatoire** " +
+            "(`X-Citizen-Token`, sujet `contact:{id}`) : sans lui, 404.",
+          parameters: [
+            { $ref: "#/components/parameters/TenantHeader" },
+            { $ref: "#/components/parameters/CitizenToken" },
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+            { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 50, default: 20 } },
+            { name: "before", in: "query", required: false, schema: { type: "string", format: "date-time" } },
+          ],
+          responses: {
+            "200": { description: "Une page de demandes.", content: { "application/json": { schema: {
+              type: "object",
+              properties: {
+                requests: { type: "array", items: { $ref: "#/components/schemas/CitizenRequestSummary" } },
+                next_before: { type: ["string", "null"], format: "date-time" },
+              },
+            } } } },
+            "404": err("Jeton absent, invalide ou pour une autre fiche."),
+          },
+        },
+      },
       "/v1/citizen/requests/{id}": {
         get: {
           tags: ["Usager"],
@@ -801,7 +857,7 @@ export function buildOpenApi(baseUrl: string) {
             "Ce que l'usager peut lire de SA demande : référence, objet, démarche, statut, dates, " +
             "texte de clôture (une fois close), ses pièces, et les messages qu'Iris lui a envoyés " +
             "(le code d'accès y est masqué). Demande à accès invité ouvert, non expiré ; 404 sinon.",
-          parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { $ref: "#/components/parameters/CitizenToken" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
           responses: {
             "200": { description: "La vue usager.", content: { "application/json": { schema: {
               type: "object", properties: { request: { $ref: "#/components/schemas/CitizenRequest" } },
@@ -817,6 +873,7 @@ export function buildOpenApi(baseUrl: string) {
           description: "Rend une URL signée valable 60 secondes. Jamais une pièce d'instruction interne.",
           parameters: [
             { $ref: "#/components/parameters/TenantHeader" },
+            { $ref: "#/components/parameters/CitizenToken" },
             { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
             { name: "attachment_id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
           ],

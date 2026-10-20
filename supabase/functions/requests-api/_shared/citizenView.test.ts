@@ -92,3 +92,14 @@ describe("ownEmails", () => {
     expect(own.map((e) => e.id)).toEqual(["e1"]);
   });
 });
+
+describe("serializeCitizenRequestSummary", () => {
+  it("une ligne de « Mes demandes » : ni texte de clôture, ni motif, ni formulaire", async () => {
+    const { serializeCitizenRequestSummary } = await import("./citizenView");
+    const line = serializeCitizenRequestSummary(REQUEST);
+    expect(Object.keys(line).sort()).toEqual([
+      "closed_at", "id", "procedure_name", "received_at", "reference", "status", "subject", "updated_at",
+    ]);
+    expect(JSON.stringify(line)).not.toContain("reorientation");
+  });
+});

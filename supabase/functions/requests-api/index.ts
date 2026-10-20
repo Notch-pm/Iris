@@ -60,9 +60,12 @@ import {
   CITIZEN_EMAIL_SELECT,
   CITIZEN_REQUEST_SELECT,
   isCitizenVisibleAttachment,
+  CITIZEN_LIST_SELECT,
   ownEmails,
   serializeCitizenRequest,
+  serializeCitizenRequestSummary,
 } from "./_shared/citizenView.ts";
+import { CITIZEN_TOKEN_HEADER, type CitizenSubject, verifyCitizenToken } from "./_shared/citizenToken.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -926,40 +929,132 @@ async function citizenAccessible(auth: AuthContext, id: string): Promise<string 
 }
 
 /**
- * Les messages et pièces de la demande — seulement les messages envoyés à
- * l'adresse DÉCLARÉE au dépôt. Une demande rattachée à la fiche d'une autre
- * personne (téléphone partagé, rattachement corrigé) lui écrit à SON adresse :
- * ces messages-là ne regardent pas le déposant, et ne sortent pas.
+ * Le second secret de la vue usager (contrat 2.7.0) : posé, il rend le jeton
+ * court OBLIGATOIRE sur toute lecture `/v1/citizen/*` ; absent, seul l'accès
+ * invité reste ouvert (compatibilité du portail le temps de le déployer), et
+ * les lectures d'une fiche (compte connecté) sont fermées.
  */
-async function citizenEmailsAndAttachments(id: string, emailHash: string) {
+function citizenTokenSecret(): string | null {
+  const value = Deno.env.get("IRIS_CITIZEN_TOKEN_SECRET");
+  return value && value.length >= 32 ? value : null;
+}
+
+async function citizenSubject(auth: AuthContext, req: Request): Promise<CitizenSubject | null> {
+  const secret = citizenTokenSecret();
+  if (secret === null) return null;
+  return await verifyCitizenToken(
+    secret,
+    req.headers.get(CITIZEN_TOKEN_HEADER),
+    auth.socleRootOrgId,
+    Math.floor(Date.now() / 1000),
+  );
+}
+
+/**
+ * Qui lit CETTE demande, et lesquels de ses messages lui reviennent — ou
+ * `null` (404) :
+ *   · un compte connecté (jeton `contact:`) : une demande de SA fiche, non
+ *     soustraite par un agent, toutes sources ; les messages envoyés à
+ *     l'adresse de son compte ;
+ *   · un invité (jeton `request:`, ou sans jeton tant que le secret n'est
+ *     pas posé) : sa demande à code d'accès ; les messages envoyés à
+ *     l'adresse déclarée au dépôt.
+ */
+async function citizenReader(
+  auth: AuthContext,
+  req: Request,
+  id: string,
+  // deno-lint-ignore no-explicit-any
+): Promise<{ keep: (emails: any[]) => Promise<any[]> } | null> {
+  const secret = citizenTokenSecret();
+  const subject = await citizenSubject(auth, req);
+  if (secret !== null && subject === null) return null;
+
+  if (subject?.kind === "contact") {
+    const { data } = await supabase.from("requests").select("id")
+      .eq("id", id).eq("organization_id", auth.organizationId)
+      .eq("socle_contact_id", subject.id).eq("citizen_visible", true)
+      .maybeSingle();
+    if (!data) return null;
+    const email = subject.email;
+    return {
+      keep: async (emails) =>
+        email === null ? [] : await ownEmails(emails, email, async (value) => normalizeAccessEmail(value)),
+    };
+  }
+  if (subject?.kind === "request" && subject.id !== id) return null;
+
+  const emailHash = await citizenAccessible(auth, id);
   const pepper = accessPepper();
-  if (pepper === null) return null;
+  if (emailHash === null || pepper === null) return null;
+  return {
+    keep: async (emails) =>
+      await ownEmails(emails, emailHash, async (value) => {
+        const email = normalizeAccessEmail(value);
+        return email === null ? null : await accessEmailHash(pepper, email);
+      }),
+  };
+}
+
+/**
+ * Les messages et pièces de la demande — seulement les messages qui
+ * reviennent au lecteur (`citizenReader`). Une demande rattachée à la fiche
+ * d'une autre personne lui écrit à SON adresse : ces messages-là ne sortent pas.
+ */
+// deno-lint-ignore no-explicit-any
+async function citizenEmailsAndAttachments(id: string, keep: (emails: any[]) => Promise<any[]>) {
   const [emails, attachments] = await Promise.all([
     supabase.from("request_emails").select(CITIZEN_EMAIL_SELECT).eq("request_id", id),
     supabase.from("request_attachments").select(CITIZEN_ATTACHMENT_SELECT).eq("request_id", id),
   ]);
   if (emails.error || attachments.error) return null;
-  const own = await ownEmails(emails.data ?? [], emailHash, async (value) => {
-    const email = normalizeAccessEmail(value);
-    return email === null ? null : await accessEmailHash(pepper, email);
-  });
-  return { emails: own, attachments: attachments.data ?? [] };
+  return { emails: await keep(emails.data ?? []), attachments: attachments.data ?? [] };
 }
 
-async function handleCitizenRequest(auth: AuthContext, id: string): Promise<Response> {
-  const emailHash = await citizenAccessible(auth, id);
-  if (emailHash === null) return fail("not_found", "Ressource introuvable.");
+async function handleCitizenRequest(auth: AuthContext, req: Request, id: string): Promise<Response> {
+  const reader = await citizenReader(auth, req, id);
+  if (reader === null) return fail("not_found", "Ressource introuvable.");
   const request = await supabase.from("requests").select(CITIZEN_REQUEST_SELECT)
     .eq("id", id).eq("organization_id", auth.organizationId).maybeSingle();
-  const related = await citizenEmailsAndAttachments(id, emailHash);
+  const related = await citizenEmailsAndAttachments(id, reader.keep);
   if (!request.data || related === null) return fail("internal_error", "Erreur serveur.");
   return json(200, { request: serializeCitizenRequest(request.data, related.emails, related.attachments) });
 }
 
-async function handleCitizenAttachment(auth: AuthContext, id: string, attachmentId: string): Promise<Response> {
-  const emailHash = await citizenAccessible(auth, id);
-  if (emailHash === null) return fail("not_found", "Ressource introuvable.");
-  const related = await citizenEmailsAndAttachments(id, emailHash);
+/** « Mes demandes » : les demandes visibles d'une fiche, pour son compte connecté (jeton obligatoire). */
+async function handleCitizenContactRequests(auth: AuthContext, req: Request, contactId: string, url: URL): Promise<Response> {
+  const subject = await citizenSubject(auth, req);
+  if (subject === null || subject.kind !== "contact" || subject.id !== contactId) {
+    return fail("not_found", "Ressource introuvable.");
+  }
+  const rawLimit = Number.parseInt(url.searchParams.get("limit") ?? "", 10);
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(rawLimit, 1), 50) : 20;
+  let query = supabase.from("requests").select(CITIZEN_LIST_SELECT)
+    .eq("organization_id", auth.organizationId)
+    .eq("socle_contact_id", contactId)
+    .eq("citizen_visible", true)
+    .order("received_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(limit + 1);
+  const before = url.searchParams.get("before");
+  if (before !== null) {
+    if (Number.isNaN(Date.parse(before))) return fail("bad_request", "before : date ISO attendue.");
+    query = query.lt("received_at", before);
+  }
+  const { data, error } = await query;
+  if (error) return fail("internal_error", "Erreur serveur.");
+  const rows = data ?? [];
+  const page = rows.slice(0, limit);
+  return json(200, {
+    requests: page.map(serializeCitizenRequestSummary),
+    next_before: rows.length > limit ? page[page.length - 1].received_at : null,
+  });
+}
+
+async function handleCitizenAttachment(auth: AuthContext, req: Request, id: string, attachmentId: string): Promise<Response> {
+  const reader = await citizenReader(auth, req, id);
+  if (reader === null) return fail("not_found", "Ressource introuvable.");
+  const related = await citizenEmailsAndAttachments(id, reader.keep);
   if (related === null) return fail("internal_error", "Erreur serveur.");
   const sent = new Set<string>(related.emails.filter((e) => e.status === "envoye").map((e) => e.id));
   // deno-lint-ignore no-explicit-any
@@ -1138,6 +1233,7 @@ Deno.serve(async (req) => {
   const attachMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/attachments$/i);
   const timelineMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/timeline$/i);
   const citizenMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})$/i);
+  const citizenContactMatch = path.match(/^\/v1\/citizen\/contacts\/([0-9a-f-]{36})\/requests$/i);
   const citizenFileMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/i);
 
   if (path === UPLOAD_PATH && method === "POST") {
@@ -1161,15 +1257,17 @@ Deno.serve(async (req) => {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAccess(auth, req);
   } else if (citizenMatch && method === "GET" && UUID_RE.test(citizenMatch[1])) {
     requestId = citizenMatch[1];
-    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenRequest(auth, requestId);
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenRequest(auth, req, requestId);
   } else if (
     citizenFileMatch && method === "GET" && UUID_RE.test(citizenFileMatch[1]) && UUID_RE.test(citizenFileMatch[2])
   ) {
     requestId = citizenFileMatch[1];
-    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAttachment(auth, requestId, citizenFileMatch[2]);
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAttachment(auth, req, requestId, citizenFileMatch[2]);
+  } else if (citizenContactMatch && method === "GET" && UUID_RE.test(citizenContactMatch[1])) {
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenContactRequests(auth, req, citizenContactMatch[1], url);
   } else if (
     path === "/v1/requests" || idMatch || attachMatch || timelineMatch ||
-    path === CITIZEN_ACCESS_PATH || citizenMatch || citizenFileMatch
+    path === CITIZEN_ACCESS_PATH || citizenMatch || citizenFileMatch || citizenContactMatch
   ) {
     response = fail("method_not_allowed", "Méthode non prévue sur cette route.");
   } else {

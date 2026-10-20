@@ -113,3 +113,15 @@ describe("contrat 2.6.0 — accès invité de l'usager", () => {
     expect(Object.keys(spec.components.schemas.IngestEnvelope.properties)).toContain("guest_access");
   });
 });
+
+describe("contrat 2.7.0 — « Mes demandes » et jeton court", () => {
+  const spec = buildOpenApi("https://iris.example/functions/v1/requests-api");
+  it("publie la liste d'une fiche et le jeton sur les lectures usager", () => {
+    const paths = spec.paths as Record<string, Record<string, { parameters?: { $ref?: string }[] }>>;
+    expect(paths["/v1/citizen/contacts/{id}/requests"]).toBeDefined();
+    for (const path of ["/v1/citizen/contacts/{id}/requests", "/v1/citizen/requests/{id}", "/v1/citizen/requests/{id}/attachments/{attachment_id}"]) {
+      expect(paths[path].get.parameters?.some((p) => p.$ref === "#/components/parameters/CitizenToken"), path).toBe(true);
+    }
+    expect(Object.keys(spec.components.schemas.CitizenRequestSummary.properties)).not.toContain("closure_text");
+  });
+});
