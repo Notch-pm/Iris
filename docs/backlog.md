@@ -65,7 +65,7 @@ pas parce que les deux entrées emploient le même mot qu'elles parlent du même
 ## B9 — Retrait d'un consentement RGPD par l'usager
 
 **Ce qui existe.** Depuis le 2026-09-20, deux consentements sont recueillis **à chaque dépôt**
-(traitement, obligatoire ; partage aux services, facultatif) et consignés à deux endroits :
+(traitement, obligatoire ; partage avec les services, facultatif) et consignés à deux endroits :
 `requests.consents` (la trace du dépôt, **immuable**) et le référentiel Socle
 (`contact_consents` + état dérivé sur la fiche). La fiche usager `/usagers/:contactId` les
 **affiche** — état, date, phrase exacte soumise, historique des recueils — mais en **lecture

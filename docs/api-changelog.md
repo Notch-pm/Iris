@@ -9,6 +9,18 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.7.1 — 2026-10-20 — phrase du consentement « partage »
+
+**Correctif de texte, sans changement de forme.** La phrase composée par le serveur pour le
+consentement `partage` devient « J'accepte de partager ces informations avec les services de
+l'organisme « {nom} » afin d'améliorer le traitement de ma demande et de mes futures
+demandes. » (repli sans nom : « … avec les services de la collectivité … »). L'ancienne
+formulation (« aux services de {nom} ») ne s'accordait pas avec un nom commençant par une
+voyelle ou un article. Les recueils déjà consignés gardent leur phrase d'origine (preuve
+immuable) ; un émetteur ne compose jamais la phrase lui-même.
+
+---
+
 ## 2.7.0 — 2026-10-20 — « Mes demandes » d'un compte du portail, jeton court
 
 Projet Sceaux (espace usager, lot L3b). **Ajout additif.**

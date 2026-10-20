@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.7.0";
+export const CONTRACT_VERSION = "2.7.1";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -200,7 +200,7 @@ const envelopeSchema = {
             enum: ["traitement", "partage"],
             description:
               "`traitement` — utilisation des informations pour instruire la demande ; "
-              + "`partage` — partage aux services de la collectivité.",
+              + "`partage` — partage avec les services de la collectivité.",
           },
           granted: { type: "boolean" },
         },

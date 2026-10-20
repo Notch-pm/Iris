@@ -212,7 +212,7 @@ note interne → résolution avec texte de clôture → journal.
   - **Consentements RGPD au récapitulatif** (2026-09-20, `ConsentGroup` dans
     `RequestSummary.tsx`, catalogue `@fn/_shared/consents/catalog` pur/testé) : les **deux**
     questions posées à l'usager, quelle que soit la démarche — traitement (obligatoire) et
-    partage aux services de l'organisme principal (facultatif, **coché** d'office). L'agent les
+    partage avec les services de l'organisme principal (facultatif, **coché** d'office). L'agent les
     lit à l'usager et coche ; sans l'obligatoire, « Créer la demande » et « Créer et imprimer »
     restent fermés, avec la raison en pied d'écran.
     - **Leur place est au RÉCAPITULATIF**, pas au formulaire : c'est le moment du dépôt, pas

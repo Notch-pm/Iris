@@ -42,7 +42,7 @@ export function contactPhone(contact: SocleContact): string {
 // ---- Consentement au partage -------------------------------------------------
 
 /**
- * Consentement « partage » d'une fiche (partage aux services de l'organisme
+ * Consentement « partage » d'une fiche (partage avec les services de l'organisme
  * principal, question posée à chaque dépôt depuis le 2026-09-20).
  *
  * ⚠️ TROIS états, pas deux — même doctrine que la fiche usager (`consentViews`) :

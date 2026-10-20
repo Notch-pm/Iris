@@ -160,7 +160,7 @@ Points de contrat :
   | `kind` | Ce que l'usager accepte | Régime |
   |---|---|---|
   | `traitement` | Que les informations fournies servent à instruire sa demande | **Obligatoire** — un dépôt ne se valide pas sans lui |
-  | `partage` | Que ces informations soient partagées aux services de la collectivité, pour cette demande et les suivantes | Facultatif, à proposer **coché** |
+  | `partage` | Que ces informations soient partagées avec les services de la collectivité, pour cette demande et les suivantes | Facultatif, à proposer **coché** |
 
   - **N'envoyez que `kind` et `granted`.** La phrase exacte consignée est recomposée par Iris
     depuis le nom de l'organisme principal ; un `statement` fourni est **refusé** (400). C'est
