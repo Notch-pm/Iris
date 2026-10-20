@@ -65,7 +65,8 @@ describe("serializeCitizenRequest", () => {
   it("les messages envoyés seulement, dans l'ordre, avec leurs pièces", () => {
     expect(view.messages.map((m) => m.id)).toEqual(["e1", "e2"]);
     expect(view.messages[1].attachments.map((a) => a.id)).toEqual(["a4"]);
-    expect(Object.keys(view.messages[1]).sort()).toEqual(["attachments", "body", "id", "sent_at", "subject"]);
+    expect(Object.keys(view.messages[1]).sort()).toEqual(["attachments", "body", "direction", "id", "sent_at", "subject"]);
+    expect(view.messages.every((m) => m.direction === "agent")).toBe(true);
   });
 });
 
@@ -101,5 +102,36 @@ describe("serializeCitizenRequestSummary", () => {
       "closed_at", "id", "procedure_name", "received_at", "reference", "status", "subject", "updated_at",
     ]);
     expect(JSON.stringify(line)).not.toContain("reorientation");
+  });
+});
+
+describe("messages de l'usager (L4b, 2.9.0)", () => {
+  const OWN = [{ id: "m1", body: "Voici le justificatif.", created_at: "2026-10-03T09:00:00Z", author_kind: "invite", socle_contact_id: null }];
+  const PIECES = [
+    ...ATTACHMENTS,
+    { id: "a7", file_name: "justificatif.pdf", mime_type: "application/pdf", file_size: 30, kind: "demande", email_id: null, citizen_message_id: "m1", superseded_by: null, storage_path: "o/r/a7" },
+    { id: "a8", file_name: "autre-canal.pdf", mime_type: "application/pdf", file_size: 30, kind: "demande", email_id: null, citizen_message_id: "m9", superseded_by: null, storage_path: "o/r/a8" },
+  ];
+  const view = serializeCitizenRequest(REQUEST, EMAILS, PIECES, OWN);
+
+  it("intercalés par date avec les envois, direction « usager », sans objet ni rien d'autre", () => {
+    expect(view.messages.map((m) => [m.id, m.direction])).toEqual([["e1", "agent"], ["m1", "usager"], ["e2", "agent"]]);
+    const mine = view.messages[1];
+    expect(mine).toEqual({
+      id: "m1", direction: "usager", subject: null, body: "Voici le justificatif.", sent_at: "2026-10-03T09:00:00Z",
+      attachments: [{ id: "a7", file_name: "justificatif.pdf", mime_type: "application/pdf", size: 30 }],
+    });
+    expect(JSON.stringify(view)).not.toContain("author_kind");
+  });
+
+  it("ses pièces restent dans SON message : jamais dans les pièces de la demande ; celles d'un message d'un autre canal, nulle part", () => {
+    expect(view.attachments.map((a) => a.id)).toEqual(["a1"]);
+    expect(JSON.stringify(view)).not.toContain("autre-canal.pdf");
+  });
+
+  it("isCitizenVisibleAttachment : la pièce d'un message ne se voit qu'avec ce message", () => {
+    expect(isCitizenVisibleAttachment(PIECES[6], new Set(), new Set(["m1"]))).toBe(true);
+    expect(isCitizenVisibleAttachment(PIECES[6], new Set(), new Set())).toBe(false);
+    expect(isCitizenVisibleAttachment({ ...PIECES[6], kind: "instruction_interne" }, new Set(), new Set(["m1"]))).toBe(false);
   });
 });

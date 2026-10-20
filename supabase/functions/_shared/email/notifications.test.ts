@@ -338,3 +338,21 @@ describe("notificationEmail — interventions (2026-09-14)", () => {
     }
   });
 });
+
+describe("notificationEmail — réponse de l'usager (L4b, 2026-10-21)", () => {
+  it("dit QUE l'usager a écrit, jamais CE qu'il a écrit ; compte ses pièces", () => {
+    const base = { reference: "DEM-2026-000042", subject: "Nid-de-poule rue des Lilas", status: "en_attente" };
+    const mail = notificationEmail(input({ kind: "citizen_replied", payload: { ...base, pieces: 2 } }));
+    expect(mail.subject).toBe("DEM-2026-000042 — Réponse de l'usager — Iris · ACCM");
+    expect(mail.paragraphs).toContain("L'usager a répondu en ligne sur la demande DEM-2026-000042 — Nid-de-poule rue des Lilas.");
+    expect(mail.paragraphs).toContain("2 pièces jointes accompagnent son message.");
+    expect(mail.paragraphs).toContain("Son message est dans l'onglet Échanges de la demande.");
+    expect(notificationEmail(input({ kind: "citizen_replied", payload: { ...base, pieces: 1 } })).paragraphs)
+      .toContain("Une pièce jointe accompagne son message.");
+    expect(notificationEmail(input({ kind: "citizen_replied", payload: { ...base, pieces: 0 } })).paragraphs.join(" "))
+      .not.toContain("pièce");
+    // Un corps glissé dans le payload ne sort jamais.
+    const leaked = notificationEmail(input({ kind: "citizen_replied", payload: { ...base, body: "TEXTE PRIVÉ" } as never }));
+    expect(JSON.stringify(leaked)).not.toContain("TEXTE PRIVÉ");
+  });
+});

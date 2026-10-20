@@ -31,7 +31,7 @@ import {
 } from "./statuts";
 import {
   createAttachmentUrl, useAddMessage, useAssignRequest, useDeleteMessage, useEligibleAssignees, useMentionableUsers,
-  useRequest, useRequestAttachments, useRequestEmails, useRequestEvents, useRequestLinks,
+  useRequest, useRequestAttachments, useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestLinks,
   useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useTransferRequest,
   useSetCitizenVisibility, useUpdatePriority,
   type RequestAttachment, type TenantMember, type TransferResult,
@@ -49,6 +49,7 @@ import {
   closureOutcome, visibleTemplates, emptyDocuments,
 } from "@fn/_shared/document/templates";
 import { interventionDocuments, usagerPieces } from "./instruction/documents";
+import { isExchangePiece } from "./instruction/citizenMessages";
 import { EchangesPane, type ComposerDraft, type SendEmailPayload } from "./instruction/EchangesPane";
 import { QualificationDialog, type QualificationSubmit } from "./instruction/QualificationDialog";
 import { AjouterPieceDialog } from "./instruction/AjouterPieceDialog";
@@ -113,6 +114,7 @@ export function RequestDetailPage() {
   const attachments = useRequestAttachments(id);
   const messages = useRequestMessages(id);
   const emails = useRequestEmails(id);
+  const citizenMessages = useRequestCitizenMessages(id);
   const links = useRequestLinks(id);
   const members = useTenantMembers(orgId);
   const eligibleAssignees = useEligibleAssignees(id);
@@ -370,7 +372,7 @@ export function RequestDetailPage() {
   // Pièces ACTIVES, déclarées telles quelles au moteur de validation : les
   // conditions se rejouent exactement comme à l'écran.
   const activeDeclarations = usagerAttachments
-    .filter((a) => !a.email_id && !a.superseded_by)
+    .filter((a) => !isExchangePiece(a) && !a.superseded_by)
     .map((a) => ({
       form_field_key: a.form_field_key ?? "",
       file_name: a.file_name,
@@ -414,7 +416,7 @@ export function RequestDetailPage() {
     { key: "resume", label: "Résumé", count: null },
     // Le compteur suit l'onglet : les pièces d'un e-mail sortant vivent sous
     // leur échange, pas dans « Pièces de la demande ».
-    { key: "docs", label: "Documents", count: usagerAttachments.filter((a) => !a.email_id).length },
+    { key: "docs", label: "Documents", count: usagerAttachments.filter((a) => !isExchangePiece(a)).length },
     ...(intervenantOnly ? [] : [
       { key: "echanges" as const, label: "Échanges", count: null },
       { key: "notes" as const, label: "Notes internes", count: noteList.length },
@@ -873,6 +875,7 @@ export function RequestDetailPage() {
                   request={r}
                   identity={identity}
                   emails={emails.data ?? []}
+                  citizenMessages={citizenMessages.data ?? []}
                   attachments={attachmentList}
                   members={memberList}
                   events={events.data ?? []}

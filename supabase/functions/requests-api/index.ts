@@ -63,6 +63,7 @@ import {
   CITIZEN_REQUEST_SELECT,
   isCitizenVisibleAttachment,
   CITIZEN_LIST_SELECT,
+  CITIZEN_OWN_MESSAGE_SELECT,
   ownEmails,
   serializeCitizenRequest,
   serializeCitizenRequestSummary,
@@ -522,6 +523,23 @@ async function attachUploads(
 ): Promise<{ registered: number } | Response> {
   const pending = resolved.filter((r) => r.row.consumed_at === null);
   if (pending.length === 0) return { registered: 0 };
+  const moved = await moveUploads(auth, requestId, pending);
+  if (moved !== null) return moved;
+  const { data, error } = await supabase.rpc("ingest_request_attachments", {
+    p_request_id: requestId,
+    p_org: auth.organizationId,
+    p_source: auth.sourceId,
+    p_items: pending.map((p) => ({ upload_id: p.row.id, form_field_key: p.ref.form_field_key ?? null })),
+  });
+  if (error) {
+    console.error("requests-api: ingest_request_attachments en échec", error);
+    return fail("bad_request", `Pièces non rattachées : ${error.message}`);
+  }
+  return { registered: typeof data === "number" ? data : pending.length };
+}
+
+/** Déplace sous la demande les objets encore en attente ; `null` si tout est en place, sinon la réponse d'échec. */
+async function moveUploads(auth: AuthContext, requestId: string, pending: ResolvedUpload[]): Promise<Response | null> {
   const bucket = supabase.storage.from(BUCKET);
   for (const item of pending) {
     if (!isStagingPath(item.row.storage_path)) continue;
@@ -539,17 +557,7 @@ async function attachUploads(
     if (updateError) return fail("internal_error", "Erreur serveur.");
     item.row.storage_path = dest;
   }
-  const { data, error } = await supabase.rpc("ingest_request_attachments", {
-    p_request_id: requestId,
-    p_org: auth.organizationId,
-    p_source: auth.sourceId,
-    p_items: pending.map((p) => ({ upload_id: p.row.id, form_field_key: p.ref.form_field_key ?? null })),
-  });
-  if (error) {
-    console.error("requests-api: ingest_request_attachments en échec", error);
-    return fail("bad_request", `Pièces non rattachées : ${error.message}`);
-  }
-  return { registered: typeof data === "number" ? data : pending.length };
+  return null;
 }
 
 async function insertLinks(
@@ -1016,12 +1024,28 @@ async function citizenSubject(auth: AuthContext, req: Request): Promise<CitizenS
  *     pas posé) : sa demande à code d'accès ; les messages envoyés à
  *     l'adresse déclarée au dépôt.
  */
+/**
+ * Ce qu'un lecteur de la vue usager voit et peut faire :
+ *   · `keep` — les messages SORTANTS qui lui reviennent (son adresse) ;
+ *   · `ownMessages` — les messages qu'IL a écrits en ligne (2.9.0) : par son
+ *     compte (sa fiche), ou par le code d'accès — jamais ceux de l'autre canal,
+ *     qui peut être une autre personne (rattachement à tort) ;
+ *   · `author` — comment s'enregistre un message qu'il écrit.
+ */
+interface CitizenReader {
+  // deno-lint-ignore no-explicit-any
+  keep: (emails: any[]) => Promise<any[]>;
+  // deno-lint-ignore no-explicit-any
+  ownMessages: (messages: any[]) => any[];
+  author: { kind: "compte"; contactId: string } | { kind: "invite"; contactId: null };
+}
+
 async function citizenReader(
   auth: AuthContext,
   req: Request,
   id: string,
   // deno-lint-ignore no-explicit-any
-): Promise<{ keep: (emails: any[]) => Promise<any[]> } | null> {
+): Promise<CitizenReader | null> {
   const secret = citizenTokenSecret();
   const subject = await citizenSubject(auth, req);
   if (secret !== null && subject === null) return null;
@@ -1033,9 +1057,12 @@ async function citizenReader(
       .maybeSingle();
     if (!data) return null;
     const email = subject.email;
+    const contactId = subject.id;
     return {
       keep: async (emails) =>
         email === null ? [] : await ownEmails(emails, email, async (value) => normalizeAccessEmail(value)),
+      ownMessages: (messages) => messages.filter((m) => m.author_kind === "compte" && m.socle_contact_id === contactId),
+      author: { kind: "compte", contactId },
     };
   }
   if (subject?.kind === "request" && subject.id !== id) return null;
@@ -1049,6 +1076,8 @@ async function citizenReader(
         const email = normalizeAccessEmail(value);
         return email === null ? null : await accessEmailHash(pepper, email);
       }),
+    ownMessages: (messages) => messages.filter((m) => m.author_kind === "invite"),
+    author: { kind: "invite", contactId: null },
   };
 }
 
@@ -1057,14 +1086,18 @@ async function citizenReader(
  * reviennent au lecteur (`citizenReader`). Une demande rattachée à la fiche
  * d'une autre personne lui écrit à SON adresse : ces messages-là ne sortent pas.
  */
-// deno-lint-ignore no-explicit-any
-async function citizenEmailsAndAttachments(id: string, keep: (emails: any[]) => Promise<any[]>) {
-  const [emails, attachments] = await Promise.all([
+async function citizenEmailsAndAttachments(id: string, reader: CitizenReader) {
+  const [emails, attachments, messages] = await Promise.all([
     supabase.from("request_emails").select(CITIZEN_EMAIL_SELECT).eq("request_id", id),
     supabase.from("request_attachments").select(CITIZEN_ATTACHMENT_SELECT).eq("request_id", id),
+    supabase.from("request_citizen_messages").select(CITIZEN_OWN_MESSAGE_SELECT).eq("request_id", id),
   ]);
-  if (emails.error || attachments.error) return null;
-  return { emails: await keep(emails.data ?? []), attachments: attachments.data ?? [] };
+  if (emails.error || attachments.error || messages.error) return null;
+  return {
+    emails: await reader.keep(emails.data ?? []),
+    attachments: attachments.data ?? [],
+    ownMessages: reader.ownMessages(messages.data ?? []),
+  };
 }
 
 async function handleCitizenRequest(auth: AuthContext, req: Request, id: string): Promise<Response> {
@@ -1072,9 +1105,11 @@ async function handleCitizenRequest(auth: AuthContext, req: Request, id: string)
   if (reader === null) return fail("not_found", "Ressource introuvable.");
   const request = await supabase.from("requests").select(CITIZEN_REQUEST_SELECT)
     .eq("id", id).eq("organization_id", auth.organizationId).maybeSingle();
-  const related = await citizenEmailsAndAttachments(id, reader.keep);
+  const related = await citizenEmailsAndAttachments(id, reader);
   if (!request.data || related === null) return fail("internal_error", "Erreur serveur.");
-  return json(200, { request: serializeCitizenRequest(request.data, related.emails, related.attachments) });
+  return json(200, {
+    request: serializeCitizenRequest(request.data, related.emails, related.attachments, related.ownMessages),
+  });
 }
 
 /** « Mes demandes » : les demandes visibles d'une fiche, pour son compte connecté (jeton obligatoire). */
@@ -1115,15 +1150,85 @@ async function handleCitizenContactRequests(auth: AuthContext, req: Request, con
   });
 }
 
+// ---- L'usager répond (contrat 2.9.0, lot L4b) --------------------------------
+
+const CITIZEN_MESSAGE_MAX_CHARS = 5000;
+const CITIZEN_MESSAGE_MAX_PIECES = 5;
+/** Par demande : un usager qui écrit plus souvent n'écrit plus, il inonde. */
+const CITIZEN_MESSAGES_PER_HOUR = 10;
+
+async function handleCitizenMessage(auth: AuthContext, req: Request, id: string): Promise<Response> {
+  const reader = await citizenReader(auth, req, id);
+  if (reader === null) return fail("not_found", "Ressource introuvable.");
+  const body = await req.json().catch(() => null);
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return fail("bad_request", "Corps JSON attendu : { body, attachments? }.");
+  }
+  const input = body as Record<string, unknown>;
+  const unknown = Object.keys(input).filter((k) => k !== "body" && k !== "attachments");
+  if (unknown.length > 0) return fail("bad_request", `Champ inconnu : ${unknown.join(", ")}.`);
+  const text = typeof input.body === "string" ? input.body.trim() : "";
+  if (text === "" || text.length > CITIZEN_MESSAGE_MAX_CHARS) {
+    return fail("bad_request", `body : texte de 1 à ${CITIZEN_MESSAGE_MAX_CHARS} caractères.`);
+  }
+  const rawPieces = input.attachments ?? [];
+  if (!Array.isArray(rawPieces) || rawPieces.length > CITIZEN_MESSAGE_MAX_PIECES) {
+    return fail("bad_request", `attachments : ${CITIZEN_MESSAGE_MAX_PIECES} pièces au plus.`);
+  }
+  const refs: AttachmentRef[] = [];
+  for (const [i, piece] of rawPieces.entries()) {
+    const record = typeof piece === "object" && piece !== null && !Array.isArray(piece) ? (piece as Record<string, unknown>) : null;
+    const uploadId = record?.upload_id;
+    if (record === null || typeof uploadId !== "string" || !UUID_RE.test(uploadId) || Object.keys(record).length !== 1) {
+      return fail("bad_request", `attachments[${i}] : { upload_id } attendu.`);
+    }
+    refs.push({ upload_id: uploadId });
+  }
+  if (new Set(refs.map((ref) => ref.upload_id)).size !== refs.length) {
+    return fail("bad_request", "attachments : une même pièce deux fois.");
+  }
+
+  const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const { count, error: countError } = await supabase.from("request_citizen_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("request_id", id).gte("created_at", since);
+  if (countError) return fail("internal_error", "Erreur serveur.");
+  if ((count ?? 0) >= CITIZEN_MESSAGES_PER_HOUR) {
+    return fail("too_many_requests", "Trop de messages sur cette demande en peu de temps : réessayez plus tard.");
+  }
+
+  const resolved = await resolveUploads(auth, refs, false);
+  if (resolved instanceof Response) return resolved;
+  const moved = await moveUploads(auth, id, resolved);
+  if (moved !== null) return moved;
+
+  const { data, error } = await supabase.rpc("record_citizen_message", {
+    p_request_id: id,
+    p_org: auth.organizationId,
+    p_source: auth.sourceId,
+    p_author_kind: reader.author.kind,
+    p_contact_id: reader.author.contactId,
+    p_body: text,
+    p_items: resolved.map((p) => ({ upload_id: p.row.id })),
+  });
+  if (error) {
+    if (error.code === "P0409") return fail("conflict", "Cette demande est close : elle ne reçoit plus de message.");
+    console.error("requests-api: message de l'usager non enregistré", error);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  return json(201, { message: { id: data, attachments: resolved.length } });
+}
+
 async function handleCitizenAttachment(auth: AuthContext, req: Request, id: string, attachmentId: string): Promise<Response> {
   const reader = await citizenReader(auth, req, id);
   if (reader === null) return fail("not_found", "Ressource introuvable.");
-  const related = await citizenEmailsAndAttachments(id, reader.keep);
+  const related = await citizenEmailsAndAttachments(id, reader);
   if (related === null) return fail("internal_error", "Erreur serveur.");
   const sent = new Set<string>(related.emails.filter((e) => e.status === "envoye").map((e) => e.id));
+  const own = new Set<string>(related.ownMessages.map((m) => m.id));
   // deno-lint-ignore no-explicit-any
   const row = related.attachments.find((a: any) => a.id === attachmentId);
-  if (!row || !isCitizenVisibleAttachment(row, sent)) return fail("not_found", "Ressource introuvable.");
+  if (!row || !isCitizenVisibleAttachment(row, sent, own)) return fail("not_found", "Ressource introuvable.");
   const signed = await supabase.storage.from(BUCKET)
     .createSignedUrl(row.storage_path, CITIZEN_DOWNLOAD_SECONDS, { download: row.file_name });
   if (signed.error || !signed.data?.signedUrl) return fail("internal_error", "Erreur serveur.");
@@ -1297,6 +1402,7 @@ Deno.serve(async (req) => {
   const attachMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/attachments$/i);
   const timelineMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/timeline$/i);
   const citizenMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})$/i);
+  const citizenMessageMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/messages$/i);
   const citizenContactMatch = path.match(/^\/v1\/citizen\/contacts\/([0-9a-f-]{36})\/requests$/i);
   const citizenFileMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/i);
 
@@ -1321,6 +1427,9 @@ Deno.serve(async (req) => {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenResend(auth, req);
   } else if (path === CITIZEN_ACCESS_PATH && method === "POST") {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAccess(auth, req);
+  } else if (citizenMessageMatch && method === "POST" && UUID_RE.test(citizenMessageMatch[1])) {
+    requestId = citizenMessageMatch[1];
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenMessage(auth, req, requestId);
   } else if (citizenMatch && method === "GET" && UUID_RE.test(citizenMatch[1])) {
     requestId = citizenMatch[1];
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenRequest(auth, req, requestId);
@@ -1333,7 +1442,7 @@ Deno.serve(async (req) => {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenContactRequests(auth, req, citizenContactMatch[1], url);
   } else if (
     path === "/v1/requests" || idMatch || attachMatch || timelineMatch ||
-    path === CITIZEN_ACCESS_PATH || path === CITIZEN_RESEND_PATH || citizenMatch || citizenFileMatch || citizenContactMatch
+    path === CITIZEN_ACCESS_PATH || path === CITIZEN_RESEND_PATH || citizenMatch || citizenMessageMatch || citizenFileMatch || citizenContactMatch
   ) {
     response = fail("method_not_allowed", "Méthode non prévue sur cette route.");
   } else {

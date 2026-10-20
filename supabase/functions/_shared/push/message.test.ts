@@ -92,3 +92,12 @@ describe("truncate", () => {
     expect(truncate("court", 12)).toBe("court");
   });
 });
+
+describe("citizen_replied (L4b)", () => {
+  it("un titre, et une phrase sans texte libre", () => {
+    expect(PUSH_TITLES.citizen_replied).toBe("Réponse de l'usager");
+    expect(pushSentence("citizen_replied", {})).toBe("L'usager a répondu en ligne.");
+    expect(pushSentence("citizen_replied", { pieces: 1 })).toBe("L'usager a répondu en ligne (1 pièce jointe).");
+    expect(pushSentence("citizen_replied", { pieces: 3 })).toBe("L'usager a répondu en ligne (3 pièces jointes).");
+  });
+});

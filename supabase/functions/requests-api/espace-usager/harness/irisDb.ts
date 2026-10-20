@@ -98,6 +98,70 @@ const STUB_SCHEMA = `
     returns void language sql as $$
       update public.request_emails set status = case when p_ok then 'envoye' else 'echec' end,
         sent_at = case when p_ok then now() end where id = p_id $$;
+
+  -- Lot L4b (20261021120000) : réponse de l'usager — zone d'attente des pièces,
+  -- journal, notifications, membres, droits (doublures pilotées par des tables).
+  alter table public.request_attachments
+    add column organization_id uuid, add column checksum text, add column copy_status text,
+    add column uploaded_by uuid;
+  create table public.attachment_uploads (
+    id uuid primary key default gen_random_uuid(),
+    organization_id uuid not null, scope_request_id uuid, integration_source_id uuid, uploaded_by uuid,
+    storage_path text not null, file_name text not null, mime_type text, file_size int, checksum text,
+    expires_at timestamptz not null default now() + interval '1 day', consumed_at timestamptz,
+    discarded_at timestamptz, request_attachment_id uuid);
+  create table public.request_events (
+    id uuid primary key default gen_random_uuid(), organization_id uuid not null,
+    request_id uuid not null references public.requests(id) on delete cascade,
+    event_type text not null, payload jsonb not null default '{}', created_by uuid,
+    created_at timestamptz not null default now());
+  create table public.notifications (
+    id uuid primary key default gen_random_uuid(), organization_id uuid, user_id text not null,
+    request_id uuid, kind text not null, actor_id uuid, payload jsonb not null default '{}',
+    in_app boolean not null default true, email_status text, created_at timestamptz not null default now());
+  create table public.notification_preferences (user_id text, kind text);
+  create table public.organization_members (organization_id uuid not null, user_id text not null);
+  -- Qui détient « instruction » (doublure de request_right_for) : une ligne par agent.
+  create table public.stub_instructors (user_id text primary key);
+  create function public.request_right_for(p_user_id text, p_org_id uuid, p_socle_org_id uuid, p_proc text, p_right text)
+    returns boolean language sql stable
+    as $$ select p_right = 'instruction' and exists (select 1 from public.stub_instructors i where i.user_id = p_user_id) $$;
+  create function public.notification_channels_for(p_user_id text, p_kind text)
+    returns table (use_in_app boolean, use_email boolean) language sql stable as $$ select true, true $$;
+  create function public.push_notification(p_user_id text, p_actor_id uuid, p_org_id uuid, p_request_id uuid,
+    p_kind text, p_reference text, p_subject text, p_extra jsonb default '{}')
+    returns void language sql as $$
+      insert into public.notifications (organization_id, user_id, request_id, kind, actor_id, payload, email_status)
+      select p_org_id, p_user_id, p_request_id, p_kind, p_actor_id,
+             jsonb_build_object('reference', p_reference, 'subject', p_subject) || coalesce(p_extra, '{}'), 'pending'
+       where p_user_id is not null $$;
+  create function public.satellite_check_request_org() returns trigger language plpgsql as $$
+    begin
+      if not exists (select 1 from public.requests r where r.id = new.request_id and r.organization_id = new.organization_id) then
+        raise exception 'satellite : demande d''un autre tenant';
+      end if;
+      return new;
+    end $$;
+  create function public.forbid_change() returns trigger language plpgsql as $$
+    begin raise exception '% immuable : % interdit.', tg_table_name, tg_op; end $$;
+  create function public.can_consult_request(uuid) returns boolean language sql stable
+    as $$ select coalesce(current_setting('app.right', true), '') = '1' $$;
+  -- Mêmes gardes que la vraie RPC (20260910100000) : un déposant (la source),
+  -- même tenant, ni retirée, ni consommée, ni expirée, objet DÉJÀ sous la demande.
+  create function public.consume_attachment_upload(p_id uuid, p_org uuid, p_request_id uuid, p_actor uuid, p_source uuid)
+    returns public.attachment_uploads language plpgsql as $$
+    declare v public.attachment_uploads%rowtype;
+    begin
+      if (p_actor is null) = (p_source is null) then raise exception 'consume : un déposant exactement'; end if;
+      select * into v from public.attachment_uploads where id = p_id and organization_id = p_org for update;
+      if not found or v.consumed_at is not null or v.discarded_at is not null or v.expires_at < now()
+         or v.integration_source_id is distinct from p_source
+         or v.storage_path not like p_org::text || '/' || p_request_id::text || '/%' then
+        raise exception 'consume : pièce refusée';
+      end if;
+      update public.attachment_uploads set consumed_at = now() where id = p_id returning * into v;
+      return v;
+    end $$;
 `;
 
 let shared: PGlite | null = null;
@@ -109,6 +173,7 @@ export async function createIrisDb(): Promise<PGlite> {
     "20261019150000_acces_usager_invite.sql",
     "20261020150000_espace_usager_mes_demandes.sql",
     "20261021090000_acces_invite_renvoi_coupure.sql",
+    "20261021120000_reponse_usager.sql",
   ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }
@@ -123,7 +188,8 @@ export async function freshIrisDb(): Promise<PGlite> {
   }
   await shared.exec(`
     select set_config('app.service', '1', false);
-    truncate table public.request_access_mails, public.request_access_codes, public.request_receipts, public.request_messages,
+    truncate table public.notifications, public.request_events, public.attachment_uploads,
+      public.organization_members, public.stub_instructors, public.request_citizen_messages, public.request_access_mails, public.request_access_codes, public.request_receipts, public.request_messages,
       public.request_attachments, public.request_emails, public.requests, public.integration_api_logs,
       public.integration_credentials, public.integration_sources, public.organizations, public.users restart identity cascade;
     select set_config('app.service', '', false);

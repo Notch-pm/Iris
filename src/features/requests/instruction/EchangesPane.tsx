@@ -51,6 +51,7 @@ import {
 } from "./instruction";
 import { EmailAssistantPanel } from "./EmailAssistantPanel";
 import { useDraftEmail, useImproveEmail, type DraftKind } from "./useEmailAssistant";
+import { citizenChannelLabel, mergeThread, piecesByExchange, type RequestCitizenMessage } from "./citizenMessages";
 
 /**
  * Brouillon déposé dans le composeur par un autre bloc de la fiche. Chaque
@@ -80,6 +81,8 @@ interface Props {
   request: Tables<"requests">;
   identity: RequesterIdentity;
   emails: RequestEmail[];
+  /** Réponses de l'usager en ligne (L4b), intercalées par date avec les envois. */
+  citizenMessages?: RequestCitizenMessage[];
   attachments: RequestAttachment[];
   members: TenantMember[];
   events: StageEvent[];
@@ -100,7 +103,7 @@ interface Props {
 }
 
 export function EchangesPane({
-  request, identity, emails, attachments, members, events, tenantName,
+  request, identity, emails, citizenMessages = [], attachments, members, events, tenantName,
   canInstruct, archived, sending, draft, onDraftApplied, onSend, onDownload,
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
@@ -160,19 +163,13 @@ export function EchangesPane({
   const tooHeavy = total > MAX_EMAIL_ATTACHMENT_BYTES;
 
   // Les pièces d'un échange donné — les autres restent dans l'onglet Documents.
-  const piecesOf = React.useMemo(() => {
-    const map = new Map<string, RequestAttachment[]>();
-    for (const a of attachments) {
-      if (!a.email_id) continue;
-      map.set(a.email_id, [...(map.get(a.email_id) ?? []), a]);
-    }
-    return map;
-  }, [attachments]);
+  const piecesOf = React.useMemo(() => piecesByExchange(attachments), [attachments]);
 
   const ordered = React.useMemo(
-    // Chronologique : le fil se lit du premier envoi au composeur, en bas.
-    () => [...emails].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-    [emails],
+    // Chronologique : le fil se lit du premier envoi au composeur, en bas ; les
+    // réponses de l'usager s'y intercalent à leur date.
+    () => mergeThread(emails, citizenMessages),
+    [emails, citizenMessages],
   );
 
   function applyTemplate(id: string) {
@@ -278,7 +275,10 @@ export function EchangesPane({
   // aucune fiche de référentiel à compléter.
   const completable = Boolean(request.socle_contact_id);
   const me = memberName(members, session?.user.id ?? null);
-  const lastSent = ordered.length > 0 ? ordered[ordered.length - 1] : null;
+  // L'en-tête parle des ENVOIS du service : une réponse de l'usager n'en est pas un.
+  const lastSent = emails.length > 0
+    ? [...emails].sort((a, b) => a.created_at.localeCompare(b.created_at))[emails.length - 1]
+    : null;
   const usagerName = identity.anonymous ? "l'usager" : identity.name;
 
   const closedReason = !recipient
@@ -298,14 +298,14 @@ export function EchangesPane({
         <span className="flex items-center gap-[7px] text-[13px] font-semibold text-muted-foreground">
           <Mail className="size-3.5 shrink-0" aria-hidden="true" />
           <span>
-            Échanges par courriel avec{" "}
+            Échanges avec{" "}
             <span className="text-foreground">{usagerName}</span>
           </span>
         </span>
         <span className="text-xs text-muted-foreground">
           {lastSent
             ? `Dernier envoi le ${formatTimeline(lastSent.sent_at ?? lastSent.created_at)}`
-            : "Aucun échange enregistré"}
+            : ordered.length > 0 ? "Aucun envoi — l'usager a écrit en ligne" : "Aucun échange enregistré"}
         </span>
       </div>
 
@@ -314,7 +314,27 @@ export function EchangesPane({
           `pb-3` : celle de la bordure basse et de l'ombre du composeur — le
           bord du panneau défilant rognait l'une et l'autre. */}
       <div className="flex flex-col pb-3 pl-1">
-        {ordered.map((mail) => {
+        {ordered.map((entry) => {
+          if (entry.kind === "citizen") {
+            const message = entry.message;
+            return (
+              <ThreadItem
+                key={message.id}
+                initials={initials(usagerName)}
+                meta={
+                  <>
+                    <strong className="text-sm text-foreground">Message de l'usager</strong>
+                    <span>
+                      {citizenChannelLabel(message.author_kind)} · reçu le {formatTimeline(message.created_at)}
+                    </span>
+                  </>
+                }
+              >
+                <CitizenMessageBody message={message} pieces={piecesOf.get(message.id) ?? []} onDownload={onDownload} />
+              </ThreadItem>
+            );
+          }
+          const mail = entry.mail;
           const who = exchangeAuthor(members, mail.sent_by);
           return (
             <ThreadItem
@@ -586,6 +606,47 @@ function ThreadItem({ initials: letters, meta, children, last = false, ring = fa
   );
 }
 
+function PieceList({ pieces, onDownload }: {
+  pieces: RequestAttachment[];
+  onDownload: (attachment: RequestAttachment) => void;
+}) {
+  if (pieces.length === 0) return null;
+  return (
+    <ul className="flex flex-wrap gap-1.5 pt-1">
+      {pieces.map((piece) => (
+        <li key={piece.id}>
+          <button
+            type="button"
+            onClick={() => onDownload(piece)}
+            className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-[11.5px] font-semibold transition-colors hover:bg-secondary"
+          >
+            <Paperclip className="size-3.5" aria-hidden="true" />
+            {piece.file_name}
+            <span className="font-normal text-muted-foreground">
+              {attachmentExt(piece.file_name, piece.mime_type)}
+              {formatBytes(piece.file_size) ? ` · ${formatBytes(piece.file_size)}` : ""}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Une réponse de l'usager : son texte tel qu'il l'a écrit, et ses pièces. */
+function CitizenMessageBody({ message, pieces, onDownload }: {
+  message: RequestCitizenMessage;
+  pieces: RequestAttachment[];
+  onDownload: (attachment: RequestAttachment) => void;
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/[0.04] px-4 py-3.5">
+      <p className="whitespace-pre-wrap break-words text-sm leading-[1.6]">{message.body}</p>
+      <PieceList pieces={pieces} onDownload={onDownload} />
+    </div>
+  );
+}
+
 function ExchangeMessage({ mail, pieces, onDownload }: {
   mail: RequestEmail;
   pieces: RequestAttachment[];
@@ -600,26 +661,7 @@ function ExchangeMessage({ mail, pieces, onDownload }: {
         <p role="alert" className="text-[11.5px] text-destructive">{mail.error}</p>
       ) : null}
 
-      {pieces.length > 0 ? (
-        <ul className="flex flex-wrap gap-1.5 pt-1">
-          {pieces.map((piece) => (
-            <li key={piece.id}>
-              <button
-                type="button"
-                onClick={() => onDownload(piece)}
-                className="inline-flex h-7 items-center gap-1.5 rounded-full border border-border bg-card px-2.5 text-[11.5px] font-semibold transition-colors hover:bg-secondary"
-              >
-                <Paperclip className="size-3.5" aria-hidden="true" />
-                {piece.file_name}
-                <span className="font-normal text-muted-foreground">
-                  {attachmentExt(piece.file_name, piece.mime_type)}
-                  {formatBytes(piece.file_size) ? ` · ${formatBytes(piece.file_size)}` : ""}
-                </span>
-              </button>
-            </li>
-          ))}
-        </ul>
-      ) : null}
+      <PieceList pieces={pieces} onDownload={onDownload} />
 
       {mail.template_name ? (
         <span className="text-[11px] text-muted-foreground">Modèle « {mail.template_name} »</span>

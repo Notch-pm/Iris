@@ -313,7 +313,7 @@ describe("ce que la vue montre — liste blanche", () => {
     const view = await call("GET", `/v1/citizen/requests/${r.id}`, { token });
     expect(view.body.request.messages.map((m: { subject: string }) => m.subject)).toEqual(["Pour Alice"]);
     expect(view.text).not.toContain("Confidentiel tiers");
-    expect(Object.keys(view.body.request.messages[0]).sort()).toEqual(["attachments", "body", "id", "sent_at", "subject"]);
+    expect(Object.keys(view.body.request.messages[0]).sort()).toEqual(["attachments", "body", "direction", "id", "sent_at", "subject"]);
   });
 
   it("jeton de fiche sans adresse : aucun message (l'adresse filtre, jamais l'inverse)", async () => {
@@ -702,5 +702,130 @@ describe("version d'accès (g) — coupure et nouveau code ferment les sessions 
     await world.sql("select revoke_request_access($1, null)", [r.id]);
     const token = await world.token({ kind: "contact", id: ALICE, email: "usager@example.org" }, { g: 99 });
     expect((await call("GET", `/v1/citizen/requests/${r.id}`, { token })).status).toBe(200);
+  });
+});
+
+describe("POST /v1/citizen/requests/{id}/messages — l'usager répond (2.9.0, L4b)", () => {
+  const CODE = "ABCD-EFGH-JK";
+  const TEXT = "Voici le justificatif demandé.";
+  async function guestRequest(partial: Record<string, unknown> = {}) {
+    const r = await world.addRequest(world.sceaux, partial);
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    return r;
+  }
+  const post = async (id: string, json: unknown, token: string | null) =>
+    await call("POST", `/v1/citizen/requests/${id}/messages`, { json, token });
+  const guestToken = (id: string) => world.token({ kind: "request", id }, { g: 1 });
+  const view = async (id: string, token: string) => (await call("GET", `/v1/citizen/requests/${id}`, { token })).body.request;
+
+  it("invité (jeton request: + g) : 201, le message et ses pièces sont enregistrés, la demande attendue repasse en instruction", async () => {
+    const r = await guestRequest({ status: "en_attente" });
+    const u = await world.addUpload(world.sceaux);
+    const reply = await post(r.id, { body: TEXT, attachments: [{ upload_id: u }] }, await guestToken(r.id));
+    expect(reply.status, reply.text).toBe(201);
+    expect(reply.body.message.attachments).toBe(1);
+    const [m] = await world.sql("select author_kind, socle_contact_id, body from request_citizen_messages where request_id = $1", [r.id]);
+    expect(m).toEqual({ author_kind: "invite", socle_contact_id: null, body: TEXT });
+    expect((await world.sql<{ status: string }>("select status from requests where id = $1", [r.id]))[0].status).toBe("en_instruction");
+    const [piece] = await world.sql<{ storage_path: string }>(
+      "select storage_path from request_attachments where citizen_message_id = $1",
+      [reply.body.message.id],
+    );
+    expect(piece.storage_path.startsWith(`${world.sceaux.orgId}/${r.id}/`)).toBe(true);
+  });
+
+  it("compte (jeton contact:) : 201, enregistré au nom de SA fiche", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const reply = await post(r.id, { body: TEXT }, await asContact(ALICE));
+    expect(reply.status, reply.text).toBe(201);
+    const [m] = await world.sql("select author_kind, socle_contact_id from request_citizen_messages where request_id = $1", [r.id]);
+    expect(m).toEqual({ author_kind: "compte", socle_contact_id: ALICE });
+  });
+
+  it("404 uniforme : sans jeton, jeton d'une autre demande, de l'autre fiche, accès coupé, autre collectivité", async () => {
+    const r = await guestRequest();
+    const other = await guestRequest();
+    const mine = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    expect((await post(r.id, { body: TEXT }, null)).status).toBe(404);
+    expect((await post(r.id, { body: TEXT }, await guestToken(other.id))).status).toBe(404);
+    expect((await post(mine.id, { body: TEXT }, await asContact(BOB))).status).toBe(404);
+    const elsewhere = await call("POST", `/v1/citizen/requests/${r.id}/messages`, {
+      json: { body: TEXT },
+      token: await world.token({ kind: "request", id: r.id }, { g: 1, tenant: ANTONY_ROOT }),
+      tenant: ANTONY_ROOT,
+    });
+    expect(elsewhere.status).toBe(404);
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    expect((await post(r.id, { body: TEXT }, await world.token({ kind: "request", id: r.id }, { g: 2 }))).status).toBe(404);
+    expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+  });
+
+  it("400 : corps vide, trop long, champ inconnu, plus de 5 pièces, pièce en double, mal formée ou d'une autre clé", async () => {
+    const r = await guestRequest();
+    const token = await guestToken(r.id);
+    const u = await world.addUpload(world.sceaux);
+    const [other] = await world.sql<{ id: string }>("insert into integration_sources (code, organization_id) values ('partenaire', $1) returning id", [world.sceaux.orgId]);
+    const foreign = await world.addUpload(world.sceaux, {}, other.id);
+    const many = await Promise.all(Array.from({ length: 6 }, () => world.addUpload(world.sceaux)));
+    const bodies: unknown[] = [
+      { body: "   " },
+      { body: "x".repeat(5001) },
+      { body: TEXT, subject: "objet" },
+      { body: TEXT, attachments: many.map((upload_id) => ({ upload_id })) },
+      { body: TEXT, attachments: [{ upload_id: u }, { upload_id: u }] },
+      { body: TEXT, attachments: [{ upload_id: "pas-un-uuid" }] },
+      { body: TEXT, attachments: [{ upload_id: u, form_field_key: "x" }] },
+      { body: TEXT, attachments: [{ upload_id: foreign }] },
+      [TEXT],
+    ];
+    for (const json of bodies) {
+      expect((await post(r.id, json, token)).status, JSON.stringify(json).slice(0, 60)).toBe(400);
+    }
+    expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+  });
+
+  it("409 sur une demande close ; rien n'est écrit", async () => {
+    const r = await guestRequest({ status: "resolue_positive", closed_at: new Date().toISOString() });
+    const reply = await post(r.id, { body: TEXT }, await guestToken(r.id));
+    expect(reply.status).toBe(409);
+    expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+  });
+
+  it("429 au 11e message en une heure sur la même demande", async () => {
+    const r = await guestRequest();
+    const token = await guestToken(r.id);
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await post(r.id, { body: `${TEXT} ${i}` }, token)).status);
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(201));
+    expect(statuses[10]).toBe(429);
+  });
+
+  it("vue : direction « usager », sans objet ; chaque canal ne voit que ses propres messages", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    await post(r.id, { body: "écrit depuis le suivi" }, await guestToken(r.id));
+    await post(r.id, { body: "écrit depuis le compte" }, await asContact(ALICE));
+    const mine = (v: { messages: { direction: string; body: string; subject: unknown }[] }) =>
+      v.messages.filter((m) => m.direction === "usager").map((m) => [m.body, m.subject]);
+    expect(mine(await view(r.id, await guestToken(r.id)))).toEqual([["écrit depuis le suivi", null]]);
+    expect(mine(await view(r.id, await asContact(ALICE)))).toEqual([["écrit depuis le compte", null]]);
+  });
+
+  it("pièces d'un message : dans SON message, téléchargeables par son auteur seulement, jamais dans les pièces de la demande", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    const u = await world.addUpload(world.sceaux, { file_name: "justificatif-invite.pdf" });
+    await post(r.id, { body: TEXT, attachments: [{ upload_id: u }] }, await guestToken(r.id));
+    const guestView = await view(r.id, await guestToken(r.id));
+    const message = guestView.messages.find((m: { direction: string }) => m.direction === "usager");
+    expect(message.attachments.map((a: { file_name: string }) => a.file_name)).toEqual(["justificatif-invite.pdf"]);
+    expect(guestView.attachments).toEqual([]);
+    const pieceId = message.attachments[0].id;
+    const download = await call("GET", `/v1/citizen/requests/${r.id}/attachments/${pieceId}`, { token: await guestToken(r.id) });
+    expect(download.status).toBe(200);
+    // Le compte (autre canal) ne voit ni le message ni sa pièce.
+    expect(JSON.stringify(await view(r.id, await asContact(ALICE)))).not.toContain("justificatif-invite.pdf");
+    const blocked = await call("GET", `/v1/citizen/requests/${r.id}/attachments/${pieceId}`, { token: await asContact(ALICE) });
+    expect(blocked.status).toBe(404);
   });
 });

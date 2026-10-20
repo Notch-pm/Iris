@@ -9,6 +9,21 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.9.0 — 2026-10-21 — l'usager répond en ligne
+
+Projet Sceaux (espace usager, lot L4b). **Ajout additif.**
+
+- **`POST /v1/citizen/requests/{id}/messages`** `{ body, attachments?: [{ upload_id }] }` (scope
+  `requests:citizen`, jeton court obligatoire) : un message de l'usager sur SA demande, 5 000
+  caractères et 5 pièces au plus (pièces déposées d'abord par `POST /v1/uploads`). Une demande
+  `en_attente` repasse `en_instruction` ; les agents sont prévenus (notification
+  `citizen_replied`). 409 sur une demande close, 429 au-delà de 10 messages par heure.
+- **Vue usager** (`GET /v1/citizen/requests/{id}`) : chaque message porte `direction`
+  (`agent` | `usager`) ; un message de l'usager a `subject: null`. Ses pièces sont rattachées à
+  son message. Un lecteur ne voit que les messages écrits par SON canal (compte ou code d'accès).
+
+---
+
 ## 2.8.0 — 2026-10-21 — accès invité : code perdu, coupure, nouveau code
 
 Projet Sceaux (espace usager, lot L4a). **Ajout additif.**

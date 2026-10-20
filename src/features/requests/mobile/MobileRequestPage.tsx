@@ -42,7 +42,7 @@ import {
 } from "../statuts";
 import {
   createAttachmentUrl, useAddMessage, useEligibleAssignees, useRequest, useRequestAttachments,
-  useRequestEmails, useRequestEvents, useRequestMessages, useTenantMembers,
+  useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestMessages, useTenantMembers,
   type RequestAttachment, type TenantMember,
 } from "../useRequests";
 import { useSendRequestEmail } from "../instruction/useSendRequestEmail";
@@ -57,6 +57,7 @@ import { GuestAccessCard } from "../instruction/GuestAccessCard";
 import { citizenVisibilityView } from "../instruction/citizenVisibility";
 import { plainBody } from "../instruction/mentions";
 import { inlineViewable, interventionDocuments, usagerPieces } from "../instruction/documents";
+import { isExchangePiece } from "../instruction/citizenMessages";
 import { blockingMessage, motifLabel, pieceRequirements } from "../instruction/conformite";
 import {
   canComplete, formatDay, interventionStatusLabel, interventionTone, isLate, isoDay, solicitGate,
@@ -85,6 +86,7 @@ export function MobileRequestPage() {
   const attachments = useRequestAttachments(id);
   const messages = useRequestMessages(id);
   const emails = useRequestEmails(id);
+  const citizenMessages = useRequestCitizenMessages(id);
   const members = useTenantMembers(orgId);
   const eligibleAssignees = useEligibleAssignees(id);
   const canBrowseUsagers = useCanBrowseUsagers();
@@ -220,7 +222,7 @@ export function MobileRequestPage() {
   const interventionProofs = interventionDocuments(attachmentList);
   const requirements = pieceRequirements(r.procedure_snapshot, r.form_data, usagerAttachments);
   const piecesBlocking = blockingMessage(requirements);
-  const pieces = usagerAttachments.filter((a) => !a.email_id && !a.superseded_by);
+  const pieces = usagerAttachments.filter((a) => !isExchangePiece(a) && !a.superseded_by);
   const activity = activityItems({ events: events.data ?? [], notes: messages.data ?? [], nameOf, motifLabel });
   const activityShown = showAllActivity ? activity : activity.slice(0, 8);
   const interventionList = interventions.data ?? [];
@@ -675,6 +677,8 @@ export function MobileRequestPage() {
         request={r}
         identity={identity}
         emails={emails.data ?? []}
+        citizenMessages={citizenMessages.data ?? []}
+        attachments={attachments.data ?? []}
         members={memberList}
         events={events.data ?? []}
         tenantName={current.organizationName}

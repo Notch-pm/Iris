@@ -21,7 +21,10 @@ export const CITIZEN_REQUEST_SELECT =
 export const CITIZEN_EMAIL_SELECT = "id, subject, body, sent_at, status, to_email";
 
 export const CITIZEN_ATTACHMENT_SELECT =
-  "id, file_name, mime_type, file_size, kind, email_id, superseded_by, storage_path, created_at";
+  "id, file_name, mime_type, file_size, kind, email_id, citizen_message_id, superseded_by, storage_path, created_at";
+
+/** Les messages de l'usager (L4b, contrat 2.9.0). Le filtre « les siens » se fait dans index.ts. */
+export const CITIZEN_OWN_MESSAGE_SELECT = "id, body, created_at, author_kind, socle_contact_id";
 
 export interface CitizenAttachment {
   id: string;
@@ -32,7 +35,10 @@ export interface CitizenAttachment {
 
 export interface CitizenMessage {
   id: string;
-  subject: string;
+  /** `agent` : envoyé à l'usager ; `usager` : écrit par lui en ligne (2.9.0). */
+  direction: "agent" | "usager";
+  /** Objet du courriel ; `null` pour un message de l'usager (il n'en a pas). */
+  subject: string | null;
   body: string;
   sent_at: string;
   attachments: CitizenAttachment[];
@@ -55,11 +61,20 @@ export interface CitizenRequest {
 // deno-lint-ignore no-explicit-any
 type Row = any;
 
-/** Une pièce que l'usager peut voir : jamais un document d'instruction interne, jamais sans fichier. */
-export function isCitizenVisibleAttachment(row: Row, sentEmailIds: ReadonlySet<string>): boolean {
+/**
+ * Une pièce que l'usager peut voir : jamais un document d'instruction interne,
+ * jamais sans fichier. Une pièce d'un échange ne se voit qu'avec SON échange :
+ * envoyé à son adresse (`email_id`), ou écrit par lui (`citizen_message_id`).
+ */
+export function isCitizenVisibleAttachment(
+  row: Row,
+  sentEmailIds: ReadonlySet<string>,
+  ownMessageIds: ReadonlySet<string> = new Set(),
+): boolean {
   if (!row || typeof row.storage_path !== "string" || row.storage_path === "") return false;
   if (row.kind === "instruction_interne") return false;
   if (row.email_id) return sentEmailIds.has(row.email_id);
+  if (row.citizen_message_id) return ownMessageIds.has(row.citizen_message_id);
   return row.kind === "demande" && !row.superseded_by;
 }
 
@@ -96,12 +111,37 @@ function procedureName(snapshot: unknown): string | null {
   return typeof name === "string" && name.trim() !== "" ? name : null;
 }
 
-export function serializeCitizenRequest(request: Row, emails: Row[], attachments: Row[]): CitizenRequest {
+export function serializeCitizenRequest(
+  request: Row,
+  emails: Row[],
+  attachments: Row[],
+  ownMessages: Row[] = [],
+): CitizenRequest {
   const sent = emails
     .filter((e) => e?.status === "envoye" && typeof e.sent_at === "string")
     .sort((a, b) => a.sent_at.localeCompare(b.sent_at));
   const sentIds = new Set<string>(sent.map((e) => e.id));
-  const visible = attachments.filter((a) => isCitizenVisibleAttachment(a, sentIds));
+  const own = ownMessages.filter((m) => typeof m?.id === "string" && typeof m.created_at === "string");
+  const ownIds = new Set<string>(own.map((m) => m.id));
+  const visible = attachments.filter((a) => isCitizenVisibleAttachment(a, sentIds, ownIds));
+  const messages: CitizenMessage[] = [
+    ...sent.map((e) => ({
+      id: e.id,
+      direction: "agent" as const,
+      subject: e.subject,
+      body: e.body,
+      sent_at: e.sent_at,
+      attachments: visible.filter((a) => a.email_id === e.id).map(attachment),
+    })),
+    ...own.map((m) => ({
+      id: m.id,
+      direction: "usager" as const,
+      subject: null,
+      body: m.body,
+      sent_at: m.created_at,
+      attachments: visible.filter((a) => a.citizen_message_id === m.id).map(attachment),
+    })),
+  ].sort((a, b) => a.sent_at.localeCompare(b.sent_at));
 
   return {
     id: request.id,
@@ -115,14 +155,8 @@ export function serializeCitizenRequest(request: Row, emails: Row[], attachments
     // Rédigé pour l'usager, mais seulement une fois la demande close : un
     // brouillon laissé sur une demande rouverte n'est pas une réponse.
     closure_text: request.closed_at ? (request.closure_text ?? null) : null,
-    attachments: visible.filter((a) => !a.email_id).map(attachment),
-    messages: sent.map((e) => ({
-      id: e.id,
-      subject: e.subject,
-      body: e.body,
-      sent_at: e.sent_at,
-      attachments: visible.filter((a) => a.email_id === e.id).map(attachment),
-    })),
+    attachments: visible.filter((a) => !a.email_id && !a.citizen_message_id).map(attachment),
+    messages,
   };
 }
 

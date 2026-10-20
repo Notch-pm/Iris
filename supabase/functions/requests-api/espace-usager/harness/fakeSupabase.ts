@@ -32,7 +32,7 @@ class Query implements PromiseLike<Result> {
   private action: "select" | "update" | "insert" = "select";
   private cols = "*";
   private values: Record<string, unknown> = {};
-  private filters: { col: string; op: "=" | "<" | ">="; value: unknown }[] = [];
+  private filters: { col: string; op: "=" | "<" | ">=" | "in"; value: unknown }[] = [];
   private orFilter: string | null = null;
   private orders: { col: string; asc: boolean }[] = [];
   private max: number | null = null;
@@ -69,6 +69,10 @@ class Query implements PromiseLike<Result> {
   }
   gte(col: string, value: unknown) {
     this.filters.push({ col, op: ">=", value });
+    return this;
+  }
+  in(col: string, values: unknown[]) {
+    this.filters.push({ col, op: "in", value: values });
     return this;
   }
   or(expression: string) {
@@ -110,7 +114,7 @@ class Query implements PromiseLike<Result> {
     for (const f of this.filters) {
       if (!IDENT.test(f.col)) throw new Error("colonne non prévue : " + f.col);
       params.push(f.value);
-      parts.push(`${f.col} ${f.op} $${params.length}`);
+      parts.push(f.op === "in" ? `${f.col}::text = any($${params.length}::text[])` : `${f.col} ${f.op} $${params.length}`);
     }
     if (this.orFilter !== null) {
       // Seule forme émise par `handleCitizenContactRequests` : received_at.lt."X",and(received_at.eq."X",id.lt.Y)
@@ -207,6 +211,9 @@ class Query implements PromiseLike<Result> {
   }
 }
 
+/** Déplacements de stockage demandés (zone d'attente → demande), pour les tests. */
+export const moves: { bucket: string; from: string; to: string }[] = [];
+
 export function createFakeSupabase(db: PGlite) {
   return {
     from: (table: string) => new Query(db, table),
@@ -215,14 +222,26 @@ export function createFakeSupabase(db: PGlite) {
         const keys = Object.keys(params);
         for (const k of keys) if (!IDENT.test(k)) throw new Error("paramètre non prévu : " + k);
         const call = `public.${name}(${keys.map((k, i) => `${k} => $${i + 1}`).join(", ")})`;
-        const res = await db.query<{ r: unknown }>(`select ${call} as r`, keys.map((k) => params[k]));
+        // Un tableau d'objets (ou un objet) part en jsonb, comme PostgREST le fait.
+        const values = keys.map((k) => {
+          const v = params[k];
+          const json = (Array.isArray(v) && v.some((x) => x !== null && typeof x === "object"))
+            || (v !== null && typeof v === "object" && !Array.isArray(v));
+          return json ? JSON.stringify(v) : v;
+        });
+        const res = await db.query<{ r: unknown }>(`select ${call} as r`, values);
         return { data: plain(res.rows[0]?.r ?? null), error: null };
       } catch (error) {
-        return { data: null, error: { message: error instanceof Error ? error.message : String(error) } };
+        return { data: null, error: { message: error instanceof Error ? error.message : String(error), code: (error as { code?: string }).code } };
       }
     },
     storage: {
       from: (bucket: string) => ({
+        /** Le déplacement réel n'existe pas ici : on le consigne, les tests le lisent. */
+        async move(from: string, to: string) {
+          moves.push({ bucket, from, to });
+          return { data: null, error: null };
+        },
         async createSignedUrl(path: string, seconds: number, options?: { download?: string }) {
           return {
             data: { signedUrl: `https://storage.test/${bucket}/${path}?exp=${seconds}&dl=${encodeURIComponent(options?.download ?? "")}` },

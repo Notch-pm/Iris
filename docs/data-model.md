@@ -412,6 +412,16 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   Le pendant de `request_messages` : celles-ci ne sortent jamais, celle-ci ne fait que sortir.
   Depuis le 2026-10-09, **`sent_by` est NULLABLE** : NULL = envoi automatique d'Iris
   (l'accusé de réception au dépôt, ci-dessous), ouvert par `start_request_receipt_email`.
+- **`request_citizen_messages`** *(2026-10-21, lot L4b)* — messages **entrants** : l'usager
+  répond en ligne sur SA demande, depuis son compte (`author_kind = 'compte'`, `socle_contact_id`
+  de sa fiche) ou depuis le suivi sans compte (`'invite'`). `body` (≤ 5 000 caractères),
+  `created_at`. **Écrit par `record_citizen_message` seule** (service_role, appelée par
+  `requests-api` après ses contrôles) : message, pièces consommées de `attachment_uploads`
+  (`request_attachments.citizen_message_id`, exclusive de `email_id`), retour
+  `en_attente` → `en_instruction`, journal `message_usager_recu`, notifications
+  `citizen_replied` — une transaction ; refus `P0409` sur une demande close. Lecture : qui
+  consulte la demande. Immuable (`forbid_change`). Les pièces d'un message restent dans
+  l'échange (ni Documents, ni qualification), comme celles d'un e-mail.
 - **`request_receipts`** *(2026-10-09)* — boîte d'envoi des **accusés de réception** à
   l'usager : une ligne par demande déposée (clé = `request_id`, donc jamais deux accusés),
   `status` `pending|sending|sent|skipped|failed`, `attempts`, `next_attempt_at`, `error`,
@@ -895,7 +905,8 @@ fabriquer pour autrui.
 
 - Colonnes : `organization_id`, `user_id` (destinataire), `request_id`, `kind`
   (`assigned` | `unassigned` | `status_changed` | `note_added` | `new_request_in_scope` |
-  `mentioned` | `transferred_in`),
+  `mentioned` | `transferred_in` | `intervention_requested` | `intervention_completed` |
+  `citizen_replied` — réponse de l'usager en ligne, L4b, à l'affectataire sinon aux instructeurs),
   `payload jsonb`, `actor_id` (NULL = système/ingestion), `created_at`, `read_at`.
 - Trois FK en `on delete cascade` : la purge RGPD d'une demande emporte ses notifications.
 - Index : `(user_id, organization_id, created_at desc)` pour le volet, index **partiel**
@@ -1444,6 +1455,7 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `request_attachments` | `EXISTS` demande visible | **—** *(depuis le 2026-09-08 : RPC DEFINER `attach_request_piece` / service_role, alimentées par `attachment_uploads` — l'ancienne policy ne vérifiait pas `storage_path`)* | — (RPC `qualify_request_attachment`) | `has_admin_scope` sur l'organisation de la demande |
 | `attachment_uploads` | — | — | — | — *(service_role seul : zone d'attente des pièces)* |
 | `request_emails` | `EXISTS` demande visible (un échange avec l'usager n'est pas une note interne) | **aucune** — service seul | **aucune** — le corps doit rester celui qui est parti | **aucune** — un e-mail parti ne se dé-envoie pas |
+| `request_citizen_messages` | `can_consult_request` | **aucune** — RPC `record_citizen_message` (service_role) | **aucune** — immuable | **aucune** — cascade de la demande |
 | `request_links` | `EXISTS` demande visible (la ligne appartient à la source) | couple **écriture** sur la source ; trigger `request_links_check_scope` exige en plus la **consultation** de la cible (hors contexte de service) | — | `has_admin_scope` sur l'organisation de la demande |
 | `integration_deliveries` | membre (diagnostic) | — | — | — |
 | `notifications` | **soi seul** (`user_id = auth.uid()`) | — (triggers DEFINER) | — (RPC `mark_*_read`) | — |

@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.8.0";
+export const CONTRACT_VERSION = "2.9.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -824,6 +824,45 @@ export function buildOpenApi(baseUrl: string) {
               },
             } } } },
             "404": err("Accès refusé — sans dire pourquoi."),
+          },
+        },
+      },
+      "/v1/citizen/requests/{id}/messages": {
+        post: {
+          tags: ["Usager"],
+          summary: "L'usager répond sur SA demande (2.9.0)",
+          description:
+            "Un message de l'usager, avec jusqu'à 5 pièces déjà déposées en zone d'attente (`POST /v1/uploads`). " +
+            "**Jeton court obligatoire**, comme pour lire la demande : sujet `request:{id}` (invité, avec `g`) ou " +
+            "`contact:{fiche}` (compte). Une demande « en attente de votre réponse » repasse en instruction ; les " +
+            "agents sont prévenus. Demande close (résolue, annulée, archivée) : 409. 10 messages par heure et par demande.",
+          parameters: [
+            { $ref: "#/components/parameters/TenantHeader" },
+            { $ref: "#/components/parameters/CitizenToken" },
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          requestBody: { required: true, content: { "application/json": { schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["body"],
+            properties: {
+              body: { type: "string", minLength: 1, maxLength: 5000 },
+              attachments: {
+                type: "array", maxItems: 5,
+                items: { type: "object", additionalProperties: false, required: ["upload_id"], properties: { upload_id: { type: "string", format: "uuid" } } },
+              },
+            },
+          } } } },
+          responses: {
+            "201": { description: "Message enregistré.", content: { "application/json": { schema: {
+              type: "object", properties: { message: { type: "object", properties: {
+                id: { type: "string", format: "uuid" }, attachments: { type: "integer" },
+              } } },
+            } } } },
+            "400": err("Corps invalide, ou pièce inconnue, expirée ou déposée par une autre clé."),
+            "404": err("Jeton absent ou invalide, ou demande qui n'est pas la sienne."),
+            "409": err("Demande close : elle ne reçoit plus de message."),
+            "429": err("Trop de messages sur cette demande en peu de temps."),
           },
         },
       },

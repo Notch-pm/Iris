@@ -242,6 +242,39 @@ export class IrisWorld {
     );
   }
 
+  /**
+   * Une pièce en zone d'attente, comme `POST /v1/uploads` la laisse : objet sous
+   * `{org}/_staging/{id}`, déposée par la source de la clé pour CETTE collectivité
+   * (celle que l'authentification retient) — ou par `sourceId`, pour tester le
+   * refus d'une pièce d'un autre déposant.
+   */
+  async addUpload(tenant: Tenant, partial: Record<string, unknown> = {}, sourceId: string | null = null): Promise<string> {
+    const source = sourceId !== null
+      ? { rows: [{ id: sourceId }] }
+      : await this.db.query<{ id: string }>(
+        "select id from integration_sources where code = 'portail-citoyen' and organization_id = $1 limit 1",
+        [tenant.orgId],
+      );
+    const id = crypto.randomUUID();
+    const row = {
+      id,
+      organization_id: tenant.orgId,
+      integration_source_id: source.rows[0].id,
+      storage_path: `${tenant.orgId}/_staging/${id}`,
+      file_name: "justificatif.pdf",
+      mime_type: "application/pdf",
+      file_size: 2048,
+      checksum: "c".repeat(64),
+      ...partial,
+    };
+    const keys = Object.keys(row);
+    await this.db.query(
+      `insert into attachment_uploads (${keys.join(", ")}) values (${keys.map((_, i) => "$" + (i + 1)).join(", ")})`,
+      keys.map((k) => (row as Record<string, unknown>)[k]),
+    );
+    return id;
+  }
+
   async sql<T = Record<string, unknown>>(query: string, params: unknown[] = []): Promise<T[]> {
     return (await this.db.query<T>(query, params)).rows;
   }

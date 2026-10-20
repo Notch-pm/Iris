@@ -14,6 +14,7 @@ export type RequestAttachment = Tables<"request_attachments">;
 export type RequestAssignment = Tables<"request_assignments">;
 export type RequestMessage = Tables<"request_messages">;
 export type RequestEmail = Tables<"request_emails">;
+export type RequestCitizenMessage = Tables<"request_citizen_messages">;
 export type RequestLink = Tables<"request_links">;
 
 export const PAGE_SIZE = 20;
@@ -179,6 +180,9 @@ export const useRequestLinks = (id: string | undefined) => useSatellite<RequestL
  *  l'écriture n'a qu'une porte, l'edge function `send-request-email`. */
 export const useRequestEmails = (id: string | undefined) =>
   useSatellite<RequestEmail>("request_emails", id);
+/** Réponses de l'USAGER en ligne (lot L4b) — écrites par le serveur seul. */
+export const useRequestCitizenMessages = (id: string | undefined) =>
+  useSatellite<RequestCitizenMessage>("request_citizen_messages", id);
 
 export interface TenantMember {
   userId: string;
@@ -277,6 +281,7 @@ function useInvalidateRequest() {
         "request_messages",
         "request_attachments",
         "request_emails",
+        "request_citizen_messages",
         "request_links",
         "request_interventions",
         "eligible-assignees",

@@ -46,6 +46,7 @@ export const PUSH_TITLES: Record<string, string> = {
   transferred_in: "Demande transférée",
   intervention_requested: "Intervention demandée",
   intervention_completed: "Intervention réalisée",
+  citizen_replied: "Réponse de l'usager",
 };
 
 /** Longueur maximale du corps : au-delà, les systèmes tronquent eux-mêmes, mal. */
@@ -109,6 +110,10 @@ export function pushSentence(kind: string, payload: NotificationPayload): string
         ? `${name} a déclaré l'intervention réalisée le ${day}.`
         : `${name} a déclaré l'intervention réalisée.`;
     }
+    case "citizen_replied":
+      return typeof payload.pieces === "number" && payload.pieces > 0
+        ? `L'usager a répondu en ligne (${payload.pieces === 1 ? "1 pièce jointe" : `${payload.pieces} pièces jointes`}).`
+        : "L'usager a répondu en ligne.";
     default:
       return "Cette demande a évolué.";
   }
