@@ -9,6 +9,30 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.7.0 — 2026-10-20 — « Mes demandes » d'un compte du portail, jeton court
+
+Projet Sceaux (espace usager, lot L3b). **Ajout additif.**
+
+- **`GET /v1/citizen/contacts/{id}/requests`** (scope `requests:citizen`) : les demandes
+  rattachées à une fiche du Socle, **toutes sources**, les plus récentes d'abord, pagination par
+  `before` / `next_before`. Ligne `CitizenRequestSummary` (référence, objet, démarche, statut,
+  dates). `GET /v1/citizen/requests/{id}` et ses pièces servent aussi un compte connecté : une
+  demande de SA fiche, messages envoyés à l'adresse de son compte.
+- **Jeton court `X-Citizen-Token`** sur toutes les lectures `/v1/citizen/*` : signé par le portail
+  avec un second secret (`IRIS_CITIZEN_TOKEN_SECRET`), 15 minutes au plus, lié à ce qu'il ouvre
+  (`request:<id>` pour un invité, `contact:<id>` + adresse pour un compte). Dès que le secret est
+  posé côté Iris, il est **obligatoire** ; la clé plateforme seule ne lit plus rien. Les lectures
+  d'une fiche l'exigent toujours.
+- **`requests.citizen_visible`** : un agent ayant le droit d'instruction peut soustraire une
+  demande à l'espace usager (confidentialité, rattachement à corriger).
+- **Rapprochement à l'ingestion corrigé et durci** : le contrat `contacts-api` est enfin respecté
+  (critères à plat, réponse en tableau, raisons `email`/`phone`/`siret`) — jusqu'ici aucun
+  rapprochement n'aboutissait et chaque dépôt créait une fiche. Règle : UNE fiche sûre — personne :
+  courriel ou téléphone ET nom identiques ; structure : SIRET, ou courriel et nom — sinon une
+  fiche neuve.
+
+---
+
 ## 2.6.0 — 2026-10-19 — Accès invité de l'usager à sa demande
 
 Projet Sceaux (espace usager, lot L2). **Ajout additif** : rien ne change pour qui ne s'en sert pas.
