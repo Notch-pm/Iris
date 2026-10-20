@@ -42,7 +42,7 @@ import {
   contactCreatePayload,
   contactIdentitySnapshot,
   hasDeclaredIdentity,
-  hasStrongMatch,
+  isSafeIngestMatch,
   matchIdentityFromDeclared,
   pickDeclared,
 } from "../_shared/identity/declared.ts";
@@ -179,13 +179,18 @@ async function resolveRequester(
   // tente dès qu'il y a de quoi chercher, même si la fiche ne pourrait pas être
   // créée : un courriel seul retrouve un usager connu (jusqu'au 2026-09-23, un
   // contenu de création vide court-circuitait aussi la recherche).
-  const matchRes = await socleContactsFetch("/v1/contacts/match", socleRootOrgId, { identity: criteria });
+  // Contrat contacts-api : les critères à plat, une réponse en TABLEAU
+  // `[{ contact, score, reasons }]`. (Jusqu'au 2026-10-20, Iris envoyait
+  // `{ identity }` — refusé en 400 — et lisait `body.matches` : le
+  // rapprochement n'aboutissait jamais.) Une SEULE fiche sûre, sinon une
+  // fiche neuve : entre deux candidates, Iris ne choisit pas.
+  const matchRes = await socleContactsFetch("/v1/contacts/match", socleRootOrgId, criteria);
   if (matchRes?.ok) {
     const body = await matchRes.json().catch(() => null);
-    const matches = Array.isArray(body?.matches) ? body.matches : [];
-    const strong = matches.find((m: Record<string, unknown>) => hasStrongMatch(m?.reasons));
+    const matches = Array.isArray(body) ? body : [];
+    const safe = matches.filter((m: Record<string, unknown>) => isSafeIngestMatch(criteria.contact_type, m?.reasons));
     // deno-lint-ignore no-explicit-any
-    const contact = (strong as any)?.contact;
+    const contact = safe.length === 1 ? (safe[0] as any)?.contact : null;
     if (contact && typeof contact.id === "string") {
       return {
         socleContactId: contact.id,

@@ -156,23 +156,35 @@ export function matchIdentityFromDeclared(declared: unknown): MatchIdentityPaylo
 }
 
 /**
- * Raisons de rapprochement qui reposent sur un IDENTIFIANT FORT. Jumeau de
- * `STRONG_REASONS` côté écran (RequesterIdentification).
- *
- * ⚠️ Un nom identique ne suffit JAMAIS à réutiliser une fiche. À l'écran, un
- * agent tranche ; à l'ingestion, personne ne tranche — rattacher une demande à
- * l'homonyme d'un habitant serait pire qu'un doublon : c'est une fuite de
- * données d'un usager vers un autre.
+ * Raisons de rapprochement qui reposent sur un IDENTIFIANT FORT — vocabulaire
+ * du contrat `contacts-api` (`email`, `phone`, `siret`, `name_exact`,
+ * `name_similar`, `birth_date`). Jusqu'au 2026-10-20, Iris attendait
+ * `email_exact`/`phone_exact`/`siret_exact`, que le Socle n'a jamais
+ * renvoyés : aucun rapprochement n'aboutissait, chaque dépôt créait une fiche.
  */
-const STRONG_MATCH_REASONS = new Set([
-  "email_exact",
-  "phone_exact",
-  "siret_exact",
-]);
+const STRONG_MATCH_REASONS = new Set(["email", "phone", "siret"]);
 
 export function hasStrongMatch(reasons: unknown): boolean {
   if (!Array.isArray(reasons)) return false;
   return reasons.some((r) => typeof r === "string" && STRONG_MATCH_REASONS.has(r));
+}
+
+/**
+ * La règle de l'INGESTION, où personne ne tranche (espace usager, décision PO
+ * du 2026-10-19) : une demande rattachée à une fiche est visible dans l'espace
+ * de son titulaire. Il faut donc plus qu'un identifiant partagé — un téléphone
+ * de foyer, une adresse familiale :
+ *   · une personne : courriel ou téléphone identique ET nom identique ;
+ *   · une structure : SIRET identique, ou courriel identique ET nom identique.
+ * ⚠️ Un nom seul ne suffit jamais : rattacher la demande d'un habitant à son
+ * homonyme serait pire qu'un doublon — une fuite d'un usager vers un autre.
+ */
+export function isSafeIngestMatch(contactType: ContactType, reasons: unknown): boolean {
+  if (!Array.isArray(reasons)) return false;
+  const has = (r: string) => reasons.includes(r);
+  if (contactType !== "personne" && has("siret")) return true;
+  if (contactType !== "personne") return has("email") && has("name_exact");
+  return (has("email") || has("phone")) && has("name_exact");
 }
 
 /**

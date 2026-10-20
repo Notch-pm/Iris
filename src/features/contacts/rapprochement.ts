@@ -165,15 +165,13 @@ export function liveSearchIdentity(
 
 /** Libellés FR des raisons de rapprochement Socle (raison inconnue = affichée telle quelle). */
 export const MATCH_REASON_LABELS: Record<string, string> = {
+  // Vocabulaire du contrat contacts-api (MATCH_REASONS du Socle).
   name_exact: "Nom identique",
   name_similar: "Nom similaire",
-  usage_name_match: "Nom usuel correspondant",
-  legal_name_exact: "Raison sociale identique",
-  legal_name_similar: "Raison sociale similaire",
-  siret_exact: "SIRET identique",
-  email_exact: "E-mail identique",
-  phone_exact: "Téléphone identique",
-  birth_date_match: "Date de naissance correspondante",
+  siret: "SIRET identique",
+  email: "E-mail identique",
+  phone: "Téléphone identique",
+  birth_date: "Date de naissance identique",
 };
 
 export function reasonLabel(reason: string): string {
