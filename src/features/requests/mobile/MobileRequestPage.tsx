@@ -16,7 +16,7 @@
 import * as React from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
-  Camera, Check, HardHat, MessageSquare, MoreHorizontal, Navigation, Phone, Plus, RefreshCw,
+  Camera, Check, EyeOff, HardHat, MessageSquare, MoreHorizontal, Navigation, Phone, Plus, RefreshCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -53,6 +53,7 @@ import {
   headerSubtitle, memberName, requesterView,
 } from "../instruction/instruction";
 import { directionsTarget, interventionLocation } from "../instruction/lieu";
+import { citizenVisibilityView } from "../instruction/citizenVisibility";
 import { plainBody } from "../instruction/mentions";
 import { inlineViewable, interventionDocuments, usagerPieces } from "../instruction/documents";
 import { blockingMessage, motifLabel, pieceRequirements } from "../instruction/conformite";
@@ -182,6 +183,9 @@ export function MobileRequestPage() {
   };
   const writer = canWriteWith(rr);
   const canInstruct = canProcessWith(rr);
+  // Lecture seule ici : le changement se fait depuis la fiche de bureau (un
+  // seul chemin d'écriture, avec sa confirmation).
+  const citizenView = citizenVisibilityView(r.socle_contact_id, r.citizen_visible);
   const status = r.status as RequestStatus;
   const transitions = writer ? allowedTransitionsFor(status, rr) : [];
   const archived = status === "archivee";
@@ -491,6 +495,12 @@ export function MobileRequestPage() {
               ) : null}
             </div>
           )}
+          {citizenView && !citizenView.visible ? (
+            <p className="flex items-center gap-1.5 text-[13px] font-semibold text-secondary-foreground">
+              <EyeOff className="size-4 shrink-0" aria-hidden="true" />
+              {citizenView.statusLabel}
+            </p>
+          ) : null}
         </div>
 
         {/* Lieu d'intervention */}

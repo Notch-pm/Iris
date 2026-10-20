@@ -1606,6 +1606,7 @@ export type Database = {
           assigned_to: string | null
           body: string | null
           channel: string | null
+          citizen_visible: boolean
           closed_at: string | null
           closure_motif: string | null
           closure_text: string | null
@@ -1649,6 +1650,7 @@ export type Database = {
           assigned_to?: string | null
           body?: string | null
           channel?: string | null
+          citizen_visible?: boolean
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null
@@ -1692,6 +1694,7 @@ export type Database = {
           assigned_to?: string | null
           body?: string | null
           channel?: string | null
+          citizen_visible?: boolean
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null

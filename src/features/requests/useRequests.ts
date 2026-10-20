@@ -328,6 +328,31 @@ export function useUpdatePriority() {
   });
 }
 
+/**
+ * Visibilité dans l'espace usager du portail (`requests.citizen_visible`).
+ * Droit d'instruction exigé : la garde est `t14_requests_guard_citizen_visibility`,
+ * dont le refus remonte tel quel.
+ */
+export function useSetCitizenVisibility() {
+  const invalidate = useInvalidateRequest();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { requestId: string; visible: boolean }) => {
+      const { error } = await supabase
+        .from("requests")
+        .update({ citizen_visible: input.visible })
+        .eq("id", input.requestId);
+      if (error) throw error;
+    },
+    onSuccess: (_data, vars) => {
+      invalidate(vars.requestId);
+      // Listes qui portent l'état : fiche usager et « autres demandes ».
+      void queryClient.invalidateQueries({ queryKey: ["contact-requests"] });
+      void queryClient.invalidateQueries({ queryKey: ["requester-requests"] });
+    },
+  });
+}
+
 export interface RequestSummary {
   id: string;
   reference: string;
@@ -373,6 +398,9 @@ export function useRequesterRequests(orgId: string, socleContactId: string | nul
   });
 }
 
+/** Ligne de la fiche usager : la liste, plus la visibilité dans l'espace usager. */
+export type ContactRequestItem = RequestListItem & { citizen_visible: boolean };
+
 /**
  * Toutes les demandes d'un usager Socle dans le tenant (fiche usager) — le RLS
  * borne la visibilité au périmètre du lecteur : la fiche peut donc n'en
@@ -382,16 +410,16 @@ export function useContactRequests(orgId: string, socleContactId: string | null)
   return useQuery({
     queryKey: ["contact-requests", orgId, socleContactId],
     enabled: Boolean(orgId && socleContactId),
-    queryFn: async (): Promise<RequestListItem[]> => {
+    queryFn: async (): Promise<ContactRequestItem[]> => {
       const { data, error } = await supabase
         .from("requests")
-        .select(LIST_SELECT)
+        .select(`${LIST_SELECT}, citizen_visible`)
         .eq("organization_id", orgId)
         .eq("socle_contact_id", socleContactId!)
         .order("created_at", { ascending: false })
         .limit(200);
       if (error) throw error;
-      return (data ?? []) as RequestListItem[];
+      return (data ?? []) as ContactRequestItem[];
     },
   });
 }

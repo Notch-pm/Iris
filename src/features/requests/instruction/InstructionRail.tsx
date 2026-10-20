@@ -7,12 +7,13 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Building2, Check, ChevronDown, ChevronUp, ChevronsUp, History, Loader2, Minus, Pencil } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronUp, ChevronsUp, Eye, EyeOff, History, Loader2, Minus, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
 import type { TransferOption } from "./transfert";
+import type { CitizenVisibilityView } from "./citizenVisibility";
 import type { TransitionSpec } from "../statuts";
 import type { RequestSummary, TenantMember } from "../useRequests";
 import { ContactRoleBadges } from "@/features/contacts/ContactRoleBadges";
@@ -300,11 +301,15 @@ interface UsagerProps {
    *  n'est pas là : le voir surgir en cours de chargement déplacerait l'en-tête. */
   canEdit: boolean;
   onEdit: () => void;
+  /** État de visibilité dans l'espace usager ; `null` sans fiche rattachée. */
+  citizenVisibility: CitizenVisibilityView | null;
+  /** Reflet du droit d'instruction (garde réelle : `t14`). Absent = lecture seule. */
+  onChangeCitizenVisibility?: (() => void) | null;
 }
 
 export function UsagerCard({
   identity, changes, socleContactId, identityError, identityPending, contact,
-  otherRequests, otherLoading, canEdit, onEdit,
+  otherRequests, otherLoading, canEdit, onEdit, citizenVisibility, onChangeCitizenVisibility,
 }: UsagerProps) {
   const [open, setOpen] = React.useState(false);
   const [showDeposited, setShowDeposited] = React.useState(false);
@@ -445,6 +450,29 @@ export function UsagerCard({
       )}
       {socleContactId ? (
         <p className="truncate font-mono text-[10.5px] text-muted-foreground" title={socleContactId}>Référentiel · {socleContactId}</p>
+      ) : null}
+      {citizenVisibility ? (
+        <div className="flex flex-col items-start gap-1 border-t border-border pt-2.5">
+          <p className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+            {citizenVisibility.visible
+              ? <Eye className="size-3.5 shrink-0" aria-hidden="true" />
+              : <EyeOff className="size-3.5 shrink-0" aria-hidden="true" />}
+            <span className={cn(!citizenVisibility.visible && "font-semibold text-secondary-foreground")}>
+              {citizenVisibility.statusLabel}
+            </span>
+          </p>
+          {onChangeCitizenVisibility ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-[26px] px-2 text-[11.5px]"
+              onClick={onChangeCitizenVisibility}
+            >
+              {citizenVisibility.actionLabel}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
       <div className="flex flex-wrap gap-1.5 border-t border-border pt-2.5">
         <Button type="button" variant="outline" size="sm" className="h-[30px] text-xs" {...SOON}>Contacter</Button>

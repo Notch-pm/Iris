@@ -13,7 +13,7 @@
 import * as React from "react";
 import { Link, useParams } from "react-router-dom";
 import {
-  ArrowLeft, Building2, Check, CheckCircle2, HeartHandshake, Landmark, Mail, MinusCircle,
+  ArrowLeft, Building2, Check, CheckCircle2, EyeOff, HeartHandshake, Landmark, Mail, MinusCircle,
   Pencil, Plus, User, XCircle,
 } from "lucide-react";
 import { useWideLayout } from "@/components/layout/shellLayout";
@@ -29,9 +29,10 @@ import { useSocleProceduresCatalog } from "@/features/socle/useSocleCatalog";
 import { StatusBadge } from "@/features/requests/StatusBadge";
 import { formatBytes, formatDateTime } from "@/features/requests/instruction/instruction";
 import { inlineViewable } from "@/features/requests/instruction/documents";
+import { citizenHiddenBadge } from "@/features/requests/instruction/citizenVisibility";
 import {
   createAttachmentUrl, useContactAttachments, useContactRequests,
-  type RequestAttachment, type RequestListItem,
+  type ContactRequestItem, type RequestAttachment,
 } from "@/features/requests/useRequests";
 import { useSocleContact } from "./useContacts";
 import { UsagerEditDialog } from "./UsagerEditDialog";
@@ -456,7 +457,8 @@ function DocumentGroup({ group, onOpen }: {
   );
 }
 
-function RequestRow({ request: r }: { request: RequestListItem }) {
+function RequestRow({ request: r }: { request: ContactRequestItem }) {
+  const hidden = citizenHiddenBadge(r.citizen_visible);
   return (
     <tr className="border-b border-border/60 last:border-0 hover:bg-muted/50">
       <td className="px-4 py-3">
@@ -466,7 +468,20 @@ function RequestRow({ request: r }: { request: RequestListItem }) {
       </td>
       <td className="max-w-[320px] truncate px-4 py-3">{r.subject}</td>
       <td className="px-4 py-3">{r.socle_procedure_label ?? "Demande historique"}</td>
-      <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
+      <td className="px-4 py-3">
+        <div className="flex flex-wrap items-center gap-1.5">
+          <StatusBadge status={r.status} />
+          {hidden ? (
+            <span
+              className="inline-flex items-center gap-1 rounded-full bg-secondary/25 px-2 py-0.5 text-[11px] font-semibold text-secondary-foreground"
+              title="Cette demande n'apparaît pas dans l'espace en ligne de l'usager"
+            >
+              <EyeOff className="size-3" aria-hidden="true" />
+              {hidden}
+            </span>
+          ) : null}
+        </div>
+      </td>
       <td className="px-4 py-3 text-muted-foreground">{formatDateTime(r.created_at)}</td>
     </tr>
   );
