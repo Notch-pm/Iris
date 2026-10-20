@@ -42,9 +42,11 @@ import {
   contactCreatePayload,
   contactIdentitySnapshot,
   hasDeclaredIdentity,
+  heldByPortalAccount,
   isSafeIngestMatch,
   matchIdentityFromDeclared,
   pickDeclared,
+  postalCodesDiffer,
 } from "../_shared/identity/declared.ts";
 import { normalizeConsents, type ConsentRecord } from "../_shared/consents/catalog.ts";
 import {
@@ -191,7 +193,13 @@ async function resolveRequester(
   if (matchRes?.ok) {
     const body = await matchRes.json().catch(() => null);
     const matches = Array.isArray(body) ? body : [];
-    const safe = matches.filter((m: Record<string, unknown>) => isSafeIngestMatch(criteria.contact_type, m?.reasons));
+    const declaredPostal = pickDeclared(declared, "postalCode");
+    const safe = matches.filter((m: Record<string, unknown>) =>
+      isSafeIngestMatch(criteria.contact_type, m?.reasons, {
+        portalAccount: heldByPortalAccount(m?.contact),
+        postalMismatch: postalCodesDiffer(declaredPostal, (m?.contact as { postal_code?: unknown } | null)?.postal_code),
+      })
+    );
     // deno-lint-ignore no-explicit-any
     const contact = safe.length === 1 ? (safe[0] as any)?.contact : null;
     if (contact && typeof contact.id === "string") {
@@ -1036,10 +1044,18 @@ async function handleCitizenContactRequests(auth: AuthContext, req: Request, con
     .order("received_at", { ascending: false })
     .order("id", { ascending: false })
     .limit(limit + 1);
+  // Curseur `<received_at>_<id>` : deux demandes reçues au même instant ne
+  // se sautent pas d'une page à l'autre.
   const before = url.searchParams.get("before");
   if (before !== null) {
-    if (Number.isNaN(Date.parse(before))) return fail("bad_request", "before : date ISO attendue.");
-    query = query.lt("received_at", before);
+    const [at, id] = before.split("_");
+    if (Number.isNaN(Date.parse(at ?? "")) || (id !== undefined && !UUID_RE.test(id))) {
+      return fail("bad_request", "before : curseur invalide.");
+    }
+    const iso = new Date(at).toISOString();
+    query = id === undefined
+      ? query.lt("received_at", iso)
+      : query.or(`received_at.lt."${iso}",and(received_at.eq."${iso}",id.lt.${id})`);
   }
   const { data, error } = await query;
   if (error) return fail("internal_error", "Erreur serveur.");
@@ -1047,7 +1063,7 @@ async function handleCitizenContactRequests(auth: AuthContext, req: Request, con
   const page = rows.slice(0, limit);
   return json(200, {
     requests: page.map(serializeCitizenRequestSummary),
-    next_before: rows.length > limit ? page[page.length - 1].received_at : null,
+    next_before: rows.length > limit ? `${page[page.length - 1].received_at}_${page[page.length - 1].id}` : null,
   });
 }
 

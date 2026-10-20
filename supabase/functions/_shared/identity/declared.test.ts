@@ -6,7 +6,9 @@ import {
   declaredContactType,
   hasDeclaredIdentity,
   hasStrongMatch,
+  heldByPortalAccount,
   isSafeIngestMatch,
+  postalCodesDiffer,
   matchIdentityFromDeclared,
   pickDeclared,
 } from "./declared";
@@ -113,6 +115,24 @@ describe("hasStrongMatch — le vocabulaire du contrat contacts-api", () => {
     expect(hasStrongMatch(["name_exact", "name_similar"])).toBe(false);
     expect(hasStrongMatch(undefined)).toBe(false);
     expect(hasStrongMatch([null, 42])).toBe(false);
+  });
+});
+
+describe("isSafeIngestMatch — fiche tenue par un compte du portail, signal contraire", () => {
+  const portal = { portalAccount: true, postalMismatch: false };
+  it("⚠️ une fiche à compte ne se rejoint plus par téléphone", () => {
+    expect(isSafeIngestMatch("personne", ["phone", "name_exact"], portal)).toBe(false);
+    expect(isSafeIngestMatch("personne", ["email", "name_exact"], portal)).toBe(true);
+  });
+  it("⚠️ un code postal différent rend la correspondance non sûre", () => {
+    expect(isSafeIngestMatch("personne", ["email", "name_exact"], { portalAccount: false, postalMismatch: true })).toBe(false);
+    expect(postalCodesDiffer("92330", "92 330")).toBe(false);
+    expect(postalCodesDiffer("92330", "92160")).toBe(true);
+    expect(postalCodesDiffer(null, "92160")).toBe(false);
+  });
+  it("reconnaît une fiche tenue par un compte", () => {
+    expect(heldByPortalAccount({ external_references: [{ source: "clara" }, { source: "portail_citoyen" }] })).toBe(true);
+    expect(heldByPortalAccount({ external_references: [] })).toBe(false);
   });
 });
 

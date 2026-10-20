@@ -16,7 +16,7 @@
 
 export const CITIZEN_TOKEN_HEADER = "x-citizen-token";
 /** Au-delà, un jeton est refusé même bien signé : il doit rester court. */
-export const CITIZEN_TOKEN_MAX_SECONDS = 15 * 60;
+export const CITIZEN_TOKEN_MAX_SECONDS = 3 * 60;
 
 export type CitizenSubject = { kind: "request"; id: string } | { kind: "contact"; id: string; email: string | null };
 

@@ -26,10 +26,12 @@ create index if not exists requests_org_contact_citizen_idx
 
 -- Seul le droit d'instruction change la visibilité côté usager (le contrôle
 -- d'édition du dossier, `requests_guard_transition`, liste ses colonnes une à
--- une : celle-ci a donc sa propre garde).
+-- une : celle-ci a donc sa propre garde). SECURITY INVOKER, comme t10/t11 :
+-- en DEFINER, `is_service_context()` lirait le propriétaire et serait toujours
+-- vrai (relecture de sécurité du 2026-10-20, I1).
 create or replace function public.requests_guard_citizen_visibility()
 returns trigger
-language plpgsql security definer set search_path = '' as $fn$
+language plpgsql security invoker set search_path = '' as $fn$
 begin
   if new.citizen_visible is distinct from old.citizen_visible
      and not public.is_service_context()

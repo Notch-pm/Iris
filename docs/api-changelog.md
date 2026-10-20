@@ -19,7 +19,7 @@ Projet Sceaux (espace usager, lot L3b). **Ajout additif.**
   dates). `GET /v1/citizen/requests/{id}` et ses pièces servent aussi un compte connecté : une
   demande de SA fiche, messages envoyés à l'adresse de son compte.
 - **Jeton court `X-Citizen-Token`** sur toutes les lectures `/v1/citizen/*` : signé par le portail
-  avec un second secret (`IRIS_CITIZEN_TOKEN_SECRET`), 15 minutes au plus, lié à ce qu'il ouvre
+  avec un second secret (`IRIS_CITIZEN_TOKEN_SECRET`), 3 minutes au plus, lié à ce qu'il ouvre
   (`request:<id>` pour un invité, `contact:<id>` + adresse pour un compte). Dès que le secret est
   posé côté Iris, il est **obligatoire** ; la clé plateforme seule ne lit plus rien. Les lectures
   d'une fiche l'exigent toujours.

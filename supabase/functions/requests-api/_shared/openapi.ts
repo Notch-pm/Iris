@@ -484,7 +484,7 @@ export function buildOpenApi(baseUrl: string) {
             "Jeton court (2.7.0) signé par le portail avec un SECOND secret, propre à la vue usager : " +
             "`<charge base64url>.<HMAC-SHA256>`, charge `{ v: 1, t: <racine Socle>, sub, e?, exp }`, " +
             "`sub` = `request:<id>` (invité) ou `contact:<id>` (compte, avec `e` = son adresse), " +
-            "durée de 15 minutes au plus. OBLIGATOIRE dès qu'Iris est configuré pour l'exiger.",
+            "durée de 3 minutes au plus. OBLIGATOIRE dès qu'Iris est configuré pour l'exiger.",
         },
         TenantHeader: {
           name: "X-Socle-Root-Organization-Id",
@@ -835,14 +835,14 @@ export function buildOpenApi(baseUrl: string) {
             { $ref: "#/components/parameters/CitizenToken" },
             { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
             { name: "limit", in: "query", required: false, schema: { type: "integer", minimum: 1, maximum: 50, default: 20 } },
-            { name: "before", in: "query", required: false, schema: { type: "string", format: "date-time" } },
+            { name: "before", in: "query", required: false, schema: { type: "string" }, description: "Curseur `next_before` de la page précédente." },
           ],
           responses: {
             "200": { description: "Une page de demandes.", content: { "application/json": { schema: {
               type: "object",
               properties: {
                 requests: { type: "array", items: { $ref: "#/components/schemas/CitizenRequestSummary" } },
-                next_before: { type: ["string", "null"], format: "date-time" },
+                next_before: { type: ["string", "null"], description: "Curseur opaque de la page suivante." },
               },
             } } } },
             "404": err("Jeton absent, invalide ou pour une autre fiche."),
