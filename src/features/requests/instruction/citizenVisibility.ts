@@ -53,9 +53,9 @@ export function citizenVisibilityView(
       }
     : {
         visible,
-        statusLabel: "Soustraite à l'espace usager",
-        actionLabel: "Rendre visible dans l'espace usager",
-        confirmTitle: "Rendre cette demande visible dans l'espace usager ?",
+        statusLabel: "Non visible par l'usager sur son portail",
+        actionLabel: "Rendre visible à l'usager via son portail",
+        confirmTitle: "Rendre cette demande visible à l'usager via son portail ?",
         confirmBody: "L'usager verra de nouveau cette demande, et ses messages, dans son espace en ligne.",
         confirmLabel: "Rendre visible",
         pendingLabel: "Enregistrement…",
@@ -77,5 +77,5 @@ export function canChangeCitizenVisibility(
 
 /** Pastille de liste : seulement pour les demandes soustraites (l'ordinaire n'est pas écrit). */
 export function citizenHiddenBadge(citizenVisible: boolean | null | undefined): string | null {
-  return citizenVisible === false ? "Soustraite à l'espace usager" : null;
+  return citizenVisible === false ? "Non visible par l'usager sur son portail" : null;
 }

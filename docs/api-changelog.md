@@ -23,8 +23,13 @@ Projet Sceaux (espace usager, lot L3b). **Ajout additif.**
   (`request:<id>` pour un invité, `contact:<id>` + adresse pour un compte). Dès que le secret est
   posé côté Iris, il est **obligatoire** ; la clé plateforme seule ne lit plus rien. Les lectures
   d'une fiche l'exigent toujours.
-- **`requests.citizen_visible`** : un agent ayant le droit d'instruction peut soustraire une
-  demande à l'espace usager (confidentialité, rattachement à corriger).
+- **`requests.citizen_visible`** : une demande issue de **Clara** (courrier) naît **masquée** dans
+  l'espace usager — historique compris — tant qu'un agent ne la « rend visible à l'usager via son
+  portail » ; toute autre demande est visible, et un agent ayant le droit d'instruction peut l'y
+  soustraire (confidentialité, rattachement à corriger). Décision PO du 2026-10-20.
+- **Rapprochement** : une fiche tenue par un compte du portail ne se rejoint que par l'adresse de
+  courriel et le nom (jamais le téléphone) ; un code postal déclaré différent de celui de la fiche
+  rend toute correspondance non sûre.
 - **Rapprochement à l'ingestion corrigé et durci** : le contrat `contacts-api` est enfin respecté
   (critères à plat, réponse en tableau, raisons `email`/`phone`/`siret`) — jusqu'ici aucun
   rapprochement n'aboutissait et chaque dépôt créait une fiche. Règle : UNE fiche sûre — personne :

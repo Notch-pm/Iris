@@ -22,8 +22,8 @@ describe("citizenVisibilityView", () => {
   it("soustraite : dit l'état et propose de rendre visible", () => {
     const v = citizenVisibilityView("c1", false)!;
     expect(v.visible).toBe(false);
-    expect(v.statusLabel).toBe("Soustraite à l'espace usager");
-    expect(v.actionLabel).toBe("Rendre visible dans l'espace usager");
+    expect(v.statusLabel).toBe("Non visible par l'usager sur son portail");
+    expect(v.actionLabel).toBe("Rendre visible à l'usager via son portail");
   });
 
   it("valeur absente = défaut de la base (visible)", () => {
@@ -46,7 +46,7 @@ describe("canChangeCitizenVisibility", () => {
 
 describe("citizenHiddenBadge", () => {
   it("n'écrit que l'exception", () => {
-    expect(citizenHiddenBadge(false)).toBe("Soustraite à l'espace usager");
+    expect(citizenHiddenBadge(false)).toBe("Non visible par l'usager sur son portail");
     expect(citizenHiddenBadge(true)).toBeNull();
     expect(citizenHiddenBadge(undefined)).toBeNull();
   });

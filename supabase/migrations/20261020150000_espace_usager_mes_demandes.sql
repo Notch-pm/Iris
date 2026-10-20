@@ -11,13 +11,45 @@
 --     `citizen_visible`, réservé au droit d'instruction ;
 --   · lectures par la clé du portail, et par un JETON COURT signé exigé à
 --     chaque lecture (requests-api, `_shared/citizenToken.ts`).
+--
+-- Décision PO du 2026-10-20 (relecture de sécurité, I4) : tout est visible,
+-- SAUF les demandes nées d'un courrier traité dans Clara (source `clara`) —
+-- masquées tant qu'un agent ne les « rend visibles à l'usager via son
+-- portail ». Un courrier peut avoir été rattaché à la fiche d'un autre par
+-- une saisie ou une extraction ; le dépôt de l'usager, lui, est le sien.
 -- ============================================================================
 
 alter table public.requests
   add column citizen_visible boolean not null default true;
 
 comment on column public.requests.citizen_visible is
-  'Visible dans l''espace usager du titulaire de la fiche (portail Nora). false = soustraite par un agent ayant le droit d''instruction (confidentialité, rattachement à corriger).';
+  'Visible dans l''espace usager du titulaire de la fiche (portail Nora). false par défaut pour une demande issue de Clara (courrier) ; un agent ayant le droit d''instruction la rend visible, ou soustrait toute autre demande (confidentialité, rattachement à corriger).';
+
+-- L'historique : les demandes issues de Clara, masquées. Rattrapage ponctuel,
+-- triggers utilisateur suspendus le temps de l'écriture (gel des demandes
+-- archivées, journal) — rien d'autre ne change sur ces lignes.
+alter table public.requests disable trigger user;
+update public.requests set citizen_visible = false where source = 'clara';
+alter table public.requests enable trigger user;
+
+-- Les nouvelles : une demande issue de Clara naît masquée.
+create or replace function public.requests_citizen_visibility_default()
+returns trigger
+language plpgsql security invoker set search_path = '' as $fn$
+begin
+  if new.source = 'clara' then
+    new.citizen_visible := false;
+  end if;
+  return new;
+end;
+$fn$;
+
+comment on function public.requests_citizen_visibility_default() is
+  'Une demande issue de Clara (courrier) naît invisible dans l''espace usager ; un agent la rend visible (décision PO du 2026-10-20).';
+
+create trigger t13_requests_citizen_visibility_default
+  before insert on public.requests
+  for each row execute function public.requests_citizen_visibility_default();
 
 -- « Mes demandes » : les demandes visibles d'une fiche, les plus récentes d'abord.
 create index if not exists requests_org_contact_citizen_idx
