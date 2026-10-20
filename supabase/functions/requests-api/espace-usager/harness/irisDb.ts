@@ -2,7 +2,8 @@
  * Base Iris de test : un schéma RÉDUIT (les tables que lit la vue usager) sur
  * PGlite, auquel on applique les VRAIES migrations de l'espace usager :
  *   · `20261019150000_acces_usager_invite.sql`     — accès invité (code, verrou) ;
- *   · `20261020150000_espace_usager_mes_demandes.sql` — `citizen_visible`, t13, t14.
+ *   · `20261020150000_espace_usager_mes_demandes.sql` — `citizen_visible`, t13, t14 ;
+ *   · `20261021090000_acces_invite_renvoi_coupure.sql` — renvoi, coupure, nouveau code (L4a).
  *
  * Ce que le schéma réduit ne dit pas : le reste du modèle d'Iris (workflow,
  * instruction, droits réels). `is_service_context()` et `user_has_request_right()`
@@ -52,6 +53,7 @@ const STUB_SCHEMA = `
     assigned_to text,
     socle_contact_id uuid,
     socle_organization_id uuid,
+    socle_scope_org_id uuid,
     socle_procedure_id text,
     unique (organization_id, reference));
   create table public.request_emails (
@@ -84,6 +86,18 @@ const STUB_SCHEMA = `
     as $$ select coalesce(current_setting('app.right', true), '') = '1' $$;
   create function public.enqueue_request_receipt(p_request_id uuid) returns void language sql
     as $$ insert into public.request_receipts(request_id) values (p_request_id) on conflict do nothing $$;
+
+  -- Lot L4a (20261021090000) : agents, échanges et file des nouveaux codes.
+  create table public.users (id uuid primary key default gen_random_uuid(), email text);
+  create function public.notification_email_max_attempts() returns int language sql immutable as $$ select 5 $$;
+  create function public.start_request_email(p_request_id uuid, p_sent_by uuid, p_to_email text, p_subject text, p_body text)
+    returns uuid language sql as $$
+      insert into public.request_emails (request_id, sent_by, to_email, subject, body, status)
+      values (p_request_id, p_sent_by::text, btrim(p_to_email), p_subject, p_body, 'en_cours') returning id $$;
+  create function public.settle_request_email(p_id uuid, p_ok boolean, p_error text default null)
+    returns void language sql as $$
+      update public.request_emails set status = case when p_ok then 'envoye' else 'echec' end,
+        sent_at = case when p_ok then now() end where id = p_id $$;
 `;
 
 let shared: PGlite | null = null;
@@ -91,7 +105,11 @@ let shared: PGlite | null = null;
 export async function createIrisDb(): Promise<PGlite> {
   const db = new PGlite();
   await db.exec(STUB_SCHEMA);
-  for (const file of ["20261019150000_acces_usager_invite.sql", "20261020150000_espace_usager_mes_demandes.sql"]) {
+  for (const file of [
+    "20261019150000_acces_usager_invite.sql",
+    "20261020150000_espace_usager_mes_demandes.sql",
+    "20261021090000_acces_invite_renvoi_coupure.sql",
+  ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }
   return db;
@@ -105,9 +123,9 @@ export async function freshIrisDb(): Promise<PGlite> {
   }
   await shared.exec(`
     select set_config('app.service', '1', false);
-    truncate table public.request_access_codes, public.request_receipts, public.request_messages,
+    truncate table public.request_access_mails, public.request_access_codes, public.request_receipts, public.request_messages,
       public.request_attachments, public.request_emails, public.requests, public.integration_api_logs,
-      public.integration_credentials, public.integration_sources, public.organizations restart identity cascade;
+      public.integration_credentials, public.integration_sources, public.organizations, public.users restart identity cascade;
     select set_config('app.service', '', false);
   `);
   return shared;

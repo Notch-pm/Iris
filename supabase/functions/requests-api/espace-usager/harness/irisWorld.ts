@@ -168,7 +168,7 @@ export class IrisWorld {
   /** Un jeton court, signé comme le portail le fait. */
   token(
     subject: { kind: "contact"; id: string; email?: string | null } | { kind: "request"; id: string },
-    overrides: { tenant?: string; ttl?: number; now?: number; secret?: string; v?: number } = {},
+    overrides: { tenant?: string; ttl?: number; now?: number; secret?: string; v?: number; g?: unknown } = {},
   ): Promise<string> {
     const now = overrides.now ?? Math.floor(Date.now() / 1000);
     const payload: Record<string, unknown> = {
@@ -178,6 +178,8 @@ export class IrisWorld {
       exp: now + (overrides.ttl ?? 120),
     };
     if (subject.kind === "contact" && subject.email) payload.e = subject.email;
+    // `g` : version de l'accès invité (contrat 2.8.0).
+    if (overrides.g !== undefined) payload.g = overrides.g;
     return signCitizenToken(overrides.secret ?? TOKEN_SECRET, payload);
   }
 

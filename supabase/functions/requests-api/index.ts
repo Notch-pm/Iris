@@ -842,6 +842,8 @@ async function handleIngest(auth: AuthContext, req: Request): Promise<Response> 
 
 const CITIZEN_SCOPE = "requests:citizen";
 const CITIZEN_ACCESS_PATH = "/v1/citizen/access";
+/** « Code perdu » (contrat 2.8.0, lot L4a) : un code NEUF part à l'adresse déclarée. */
+const CITIZEN_RESEND_PATH = "/v1/citizen/access/resend";
 const ACCESS_DENIED = "Ces informations ne permettent pas d'accéder à une demande.";
 /** Durée d'une URL de pièce : le temps de cliquer, pas de la partager. */
 const CITIZEN_DOWNLOAD_SECONDS = 60;
@@ -915,23 +917,69 @@ async function checkCitizenAccess(auth: AuthContext, req: Request): Promise<Resp
     return fail("internal_error", "Erreur serveur.");
   }
   if (typeof data !== "string") return fail("not_found", ACCESS_DENIED);
-  return json(200, { request_id: data });
+  // La version de l'accès (2.8.0) : le portail la porte dans son jeton court ;
+  // un nouveau code ou une coupure la dépasse, et la session invitée se ferme.
+  const { data: access } = await supabase.from("request_access_codes").select("access_version")
+    .eq("request_id", data).maybeSingle();
+  return json(200, { request_id: data, access_version: access?.access_version ?? 1 });
+}
+
+/**
+ * « Code perdu » : adresse + référence. Toujours 202, toujours après la même
+ * durée plancher — ni l'existence de la demande, ni l'adresse, ni la limite de
+ * renvois ne se lisent dans la réponse (`request_access_resend`).
+ */
+async function handleCitizenResend(auth: AuthContext, req: Request): Promise<Response> {
+  const started = Date.now();
+  const body = await req.json().catch(() => null);
+  let response: Response = json(202, { accepted: true });
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    response = fail("bad_request", "Corps JSON attendu : { reference, email }.");
+  } else {
+    const { reference, email } = body as Record<string, unknown>;
+    const pepper = accessPepper();
+    const normalizedEmail = normalizeAccessEmail(email);
+    if (pepper === null) {
+      response = fail("internal_error", "Accès invité non configuré.");
+    } else if (typeof reference === "string" && reference.length <= 40 && normalizedEmail !== null) {
+      const code = newAccessCode();
+      const { error } = await supabase.rpc("request_access_resend", {
+        p_organization_id: auth.organizationId,
+        p_source: auth.sourceCode,
+        p_reference: reference,
+        p_email_hash: await accessEmailHash(pepper, normalizedEmail),
+        p_email: normalizedEmail,
+        p_code_hash: await accessCodeHash(pepper, normalizeAccessCode(code)!),
+        p_code: code,
+      });
+      if (error) {
+        console.error("requests-api: renvoi du code d'accès", error);
+        response = fail("internal_error", "Erreur serveur.");
+      }
+    }
+  }
+  const wait = ACCESS_CHECK_FLOOR_MS - (Date.now() - started);
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  return response;
 }
 
 /**
  * L'empreinte de l'adresse déclarée, si l'usager peut encore accéder à la
  * demande : du tenant, de la source, accès ouvert, non expiré. `null` sinon.
  */
-async function citizenAccessible(auth: AuthContext, id: string): Promise<string | null> {
+async function citizenAccessible(auth: AuthContext, id: string, version: number | null): Promise<string | null> {
   const [request, access] = await Promise.all([
     supabase.from("requests").select("id, closed_at")
       .eq("id", id).eq("organization_id", auth.organizationId).eq("source", auth.sourceCode)
       .maybeSingle(),
-    supabase.from("request_access_codes").select("request_id, email_hash")
+    supabase.from("request_access_codes").select("request_id, email_hash, access_version, revoked_at")
       .eq("request_id", id).eq("organization_id", auth.organizationId)
       .maybeSingle(),
   ]);
   if (!request.data || !access.data) return null;
+  // Coupé par un agent, ou code remplacé depuis l'ouverture de la session (2.8.0).
+  if (access.data.revoked_at !== null) return null;
+  if (version !== null && version !== access.data.access_version) return null;
   const closed = request.data.closed_at ? Date.parse(request.data.closed_at) : null;
   return closed === null || Date.now() - closed <= ACCESS_AFTER_CLOSURE_MS ? access.data.email_hash : null;
 }
@@ -992,7 +1040,7 @@ async function citizenReader(
   }
   if (subject?.kind === "request" && subject.id !== id) return null;
 
-  const emailHash = await citizenAccessible(auth, id);
+  const emailHash = await citizenAccessible(auth, id, subject?.kind === "request" ? subject.version : null);
   const pepper = accessPepper();
   if (emailHash === null || pepper === null) return null;
   return {
@@ -1269,6 +1317,8 @@ Deno.serve(async (req) => {
   } else if (attachMatch && method === "POST" && UUID_RE.test(attachMatch[1])) {
     requestId = attachMatch[1];
     response = requireScope("requests:write") ?? await handleAddAttachments(auth, requestId, req);
+  } else if (path === CITIZEN_RESEND_PATH && method === "POST") {
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenResend(auth, req);
   } else if (path === CITIZEN_ACCESS_PATH && method === "POST") {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAccess(auth, req);
   } else if (citizenMatch && method === "GET" && UUID_RE.test(citizenMatch[1])) {
@@ -1283,7 +1333,7 @@ Deno.serve(async (req) => {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenContactRequests(auth, req, citizenContactMatch[1], url);
   } else if (
     path === "/v1/requests" || idMatch || attachMatch || timelineMatch ||
-    path === CITIZEN_ACCESS_PATH || citizenMatch || citizenFileMatch || citizenContactMatch
+    path === CITIZEN_ACCESS_PATH || path === CITIZEN_RESEND_PATH || citizenMatch || citizenFileMatch || citizenContactMatch
   ) {
     response = fail("method_not_allowed", "Méthode non prévue sur cette route.");
   } else {

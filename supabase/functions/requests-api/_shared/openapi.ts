@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.7.1";
+export const CONTRACT_VERSION = "2.8.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -799,7 +799,7 @@ export function buildOpenApi(baseUrl: string) {
           summary: "Vérifier un accès invité (courriel + référence + code)",
           description:
             "Rend l'identifiant de la demande si les trois éléments concordent. **Une seule réponse " +
-            "d'échec (404)**, que la référence soit inconnue, le code faux, l'accès verrouillé " +
+            "d'échec (404)**, que la référence soit inconnue, le code faux, l'accès coupé par un agent, verrouillé " +
             "(5 échecs = 1 heure) ou expiré (90 jours après la clôture) : un portail ne doit jamais " +
             "pouvoir dire si une demande existe. Limitez aussi les essais de votre côté.",
           parameters: [{ $ref: "#/components/parameters/TenantHeader" }],
@@ -815,9 +815,40 @@ export function buildOpenApi(baseUrl: string) {
           } } } },
           responses: {
             "200": { description: "Accès accordé.", content: { "application/json": { schema: {
-              type: "object", properties: { request_id: { type: "string", format: "uuid" } },
+              type: "object", properties: {
+                request_id: { type: "string", format: "uuid" },
+                access_version: {
+                  type: "integer", minimum: 1,
+                  description: "Version de l'accès (2.8.0). Portez-la dans le jeton court (`g`) : après un nouveau code ou une coupure, les lectures de la session invitée sont refusées.",
+                },
+              },
             } } } },
             "404": err("Accès refusé — sans dire pourquoi."),
+          },
+        },
+      },
+      "/v1/citizen/access/resend": {
+        post: {
+          tags: ["Usager"],
+          summary: "« Code perdu » : envoyer un nouveau code d'accès (2.8.0)",
+          description:
+            "Si la référence et l'adresse déclarée au dépôt concordent, que l'accès n'est ni coupé par un agent " +
+            "ni expiré, et que la demande n'a pas déjà reçu 3 renvois en 24 heures, Iris tire un code NEUF " +
+            "(l'ancien cesse de valoir) et l'envoie à cette adresse. **Toujours 202**, après une durée plancher : " +
+            "la réponse ne dit jamais si une demande existe. Limitez aussi les demandes de votre côté.",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }],
+          requestBody: { required: true, content: { "application/json": { schema: {
+            type: "object",
+            additionalProperties: false,
+            required: ["reference", "email"],
+            properties: {
+              reference: { type: "string", example: "DEM-2026-000042" },
+              email: { type: "string", format: "email" },
+            },
+          } } } },
+          responses: {
+            "202": { description: "Demande prise en compte (qu'un code parte ou non)." },
+            "400": err("Corps illisible."),
           },
         },
       },

@@ -409,11 +409,11 @@ describe("POST /v1/citizen/access — courriel + référence + code", () => {
   const attempt = (r: { reference: string }, email: string, code: string, extra: Partial<Parameters<IrisWorld["call"]>[2]> = {}) =>
     call("POST", "/v1/citizen/access", { json: { reference: r.reference, email, code }, ...extra });
 
-  it("les bons éléments ouvrent la demande (rend son identifiant, rien d'autre)", async () => {
+  it("les bons éléments ouvrent la demande (rend son identifiant et la version de l'accès, rien d'autre)", async () => {
     const r = await guest();
     const reply = await attempt(r, "usager@example.org", CODE);
     expect(reply.status).toBe(200);
-    expect(reply.body).toEqual({ request_id: r.id });
+    expect(reply.body).toEqual({ request_id: r.id, access_version: 1 });
   });
 
   it("le code se recopie comme on peut : minuscules, espaces, tirets, O pour 0 (Crockford)", async () => {
@@ -554,5 +554,153 @@ describe("méthodes, routes et journal", () => {
     const dump = JSON.stringify(logs);
     for (const secret of [token, "alice@example.org", "ABCD-EFGH-JK", ALICE]) expect(dump).not.toContain(secret);
     expect(logs.find((l) => l.path === `/v1/citizen/requests/${r.id}`)).toMatchObject({ method: "GET", status: 200, request_id: r.id });
+  });
+});
+
+// ── Lot L4a (contrat 2.8.0) : code perdu, coupure, nouveau code ─────────────
+
+describe("POST /v1/citizen/access/resend — « code perdu »", () => {
+  const CODE = "ABCD-EFGH-JK";
+  async function guest(email = "usager@example.org", partial: Record<string, unknown> = {}) {
+    const r = await world.addRequest(world.sceaux, partial);
+    await world.openGuestAccess(r.id, world.sceaux, email, CODE);
+    return r;
+  }
+  const resend = (json: unknown) => call("POST", "/v1/citizen/access/resend", { json });
+  const mails = (id: string) =>
+    world.sql<{ to_email: string | null; access_code: string | null; reason: string; status: string }>(
+      "select to_email, access_code, reason, status from request_access_mails where request_id = $1 order by created_at",
+      [id],
+    );
+
+  it("bons éléments : 202, un code NEUF part à l'adresse saisie, l'ancien cesse de valoir", async () => {
+    const r = await guest("usager@example.org");
+    const reply = await resend({ reference: r.reference, email: " Usager@Example.org " });
+    expect(reply.status).toBe(202);
+    expect(reply.body).toEqual({ accepted: true });
+    const [mail] = await mails(r.id);
+    expect(mail).toMatchObject({ to_email: "usager@example.org", reason: "renvoi_usager", status: "pending" });
+    expect(mail.access_code).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}$/);
+    expect(mail.access_code).not.toBe(CODE);
+    // Le nouveau code ouvre, l'ancien non ; la version a avancé.
+    expect((await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "usager@example.org", code: CODE } })).status).toBe(404);
+    const opened = await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "usager@example.org", code: mail.access_code } });
+    expect(opened.body).toEqual({ request_id: r.id, access_version: 2 });
+    // Le code ne sort jamais dans la réponse au portail.
+    expect(reply.text).not.toContain(mail.access_code!);
+  });
+
+  it("TOUJOURS la même réponse, et rien ne part : inconnue, mauvaise adresse, coupé, expiré, autre ville, mal formé", async () => {
+    const r = await guest();
+    const cut = await guest();
+    await world.sql("update request_access_codes set revoked_at = now() where request_id = $1", [cut.id]);
+    const old = await guest("usager@example.org", { closed_at: new Date(Date.now() - 91 * 86_400_000).toISOString() });
+    const antony = await world.addRequest(world.antony);
+    await world.openGuestAccess(antony.id, world.antony, "usager@example.org", CODE);
+    const all = [
+      await resend({ reference: "DEM-2026-999999", email: "usager@example.org" }),
+      await resend({ reference: r.reference, email: "autre@example.org" }),
+      await resend({ reference: cut.reference, email: "usager@example.org" }),
+      await resend({ reference: old.reference, email: "usager@example.org" }),
+      await resend({ reference: antony.reference, email: "usager@example.org" }),
+      await resend({ reference: r.reference, email: "pas-une-adresse" }),
+      await resend({ reference: "x".repeat(41), email: "usager@example.org" }),
+      await resend({ reference: 42, email: null }),
+    ];
+    for (const reply of all) {
+      expect(reply.status).toBe(202);
+      expect(reply.text).toBe(all[0].text);
+    }
+    expect(await world.sql("select 1 from request_access_mails")).toEqual([]);
+  });
+
+  it("chaque réponse attend la durée plancher (la durée ne trahit pas l'existence)", async () => {
+    const r = await guest();
+    world.floorWaits.length = 0;
+    await resend({ reference: "DEM-2026-999999", email: "usager@example.org" });
+    await resend({ reference: r.reference, email: "usager@example.org" });
+    expect(world.floorWaits.length).toBe(2);
+    for (const ms of world.floorWaits) expect(ms).toBeGreaterThan(0);
+  });
+
+  it("3 renvois par 24 h : le 4e est accepté (202) mais rien ne part", async () => {
+    const r = await guest();
+    for (let i = 0; i < 4; i++) expect((await resend({ reference: r.reference, email: "usager@example.org" })).status).toBe(202);
+    const rows = await mails(r.id);
+    expect(rows.length).toBe(3);
+    // Seul le plus récent reste à envoyer ; les précédents sont abandonnés, leur clair effacé.
+    expect(rows.map((m) => m.status)).toEqual(["skipped", "skipped", "pending"]);
+    expect(rows.slice(0, 2).every((m) => m.to_email === null && m.access_code === null)).toBe(true);
+  });
+
+  it("corps illisible : 400 (erreur d'appelant)", async () => {
+    for (const body of [undefined, "{", "[]", "null"]) {
+      expect((await call("POST", "/v1/citizen/access/resend", { body })).status, String(body)).toBe(400);
+    }
+  });
+
+  it("GET sur la route : 405 ; sans le scope citizen : 403", async () => {
+    expect((await call("GET", "/v1/citizen/access/resend")).status).toBe(405);
+    await world.addKey("irs_lecture_seule", ["requests:read"]);
+    const reply = await call("POST", "/v1/citizen/access/resend", {
+      key: "irs_lecture_seule",
+      json: { reference: "DEM-2026-000001", email: "a@b.fr" },
+    });
+    expect(reply.status).toBe(403);
+  });
+});
+
+describe("version d'accès (g) — coupure et nouveau code ferment les sessions invitées ouvertes", () => {
+  const CODE = "ABCD-EFGH-JK";
+  async function guest() {
+    const r = await world.addRequest(world.sceaux);
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    return r;
+  }
+  const read = async (id: string, g?: unknown) =>
+    (await call("GET", `/v1/citizen/requests/${id}`, {
+      token: await world.token({ kind: "request", id }, g === undefined ? {} : { g }),
+    })).status;
+
+  it("la bonne version lit ; une autre version ne lit pas", async () => {
+    const r = await guest();
+    expect(await read(r.id, 1)).toBe(200);
+    expect(await read(r.id, 2)).toBe(404);
+  });
+
+  it("un jeton sans g (portail d'avant) lit tant que l'accès n'est pas coupé", async () => {
+    const r = await guest();
+    expect(await read(r.id)).toBe(200);
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    expect(await read(r.id)).toBe(404);
+  });
+
+  it("après une coupure, la session ouverte (g = 1) ne lit plus, et le bon code ne rouvre rien", async () => {
+    const r = await guest();
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    expect(await read(r.id, 1)).toBe(404);
+    expect(await read(r.id, 2)).toBe(404);
+    const reopen = await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "usager@example.org", code: CODE } });
+    expect(reopen.status).toBe(404);
+  });
+
+  it("après un nouveau code, l'ancienne session (g = 1) ne lit plus ; la nouvelle (g = 2) lit", async () => {
+    const r = await guest();
+    await call("POST", "/v1/citizen/access/resend", { json: { reference: r.reference, email: "usager@example.org" } });
+    expect(await read(r.id, 1)).toBe(404);
+    expect(await read(r.id, 2)).toBe(200);
+  });
+
+  it("g mal formé (0, négatif, décimal, texte) : traité comme absent — seule la coupure s'applique", async () => {
+    const r = await guest();
+    for (const g of [0, -1, 1.5, "1"]) expect(await read(r.id, g), String(g)).toBe(200);
+  });
+
+  it("la coupure de l'accès invité ne touche pas « Mes demandes » (jeton de compte)", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    const token = await world.token({ kind: "contact", id: ALICE, email: "usager@example.org" }, { g: 99 });
+    expect((await call("GET", `/v1/citizen/requests/${r.id}`, { token })).status).toBe(200);
   });
 });

@@ -9,6 +9,24 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.8.0 — 2026-10-21 — accès invité : code perdu, coupure, nouveau code
+
+Projet Sceaux (espace usager, lot L4a). **Ajout additif.**
+
+- **`POST /v1/citizen/access/resend`** `{ reference, email }` (scope `requests:citizen`) :
+  « code perdu ». Si la référence et l'adresse déclarée au dépôt concordent, Iris tire un code
+  NEUF et l'envoie à cette adresse ; l'ancien cesse de valoir. 3 renvois par 24 h et par demande ;
+  rien pour un accès coupé par un agent ou expiré. **Toujours 202**, durée plancher.
+- **`POST /v1/citizen/access`** rend aussi `access_version`. Le portail la porte dans son jeton
+  court (`g`, sujet `request:`) : un nouveau code ou une coupure l'incrémente, et les lectures
+  d'une session invitée ouverte avant sont refusées (404). Sans `g` (portail d'avant), seule la
+  coupure s'applique.
+- Côté agent (application Iris, droit d'instruction) : **couper l'accès** d'une demande, ou
+  **envoyer un nouveau code** à l'adresse déclarée (ce qui rouvre l'accès). Le message est tracé
+  dans l'onglet Échanges, code masqué.
+
+---
+
 ## 2.7.1 — 2026-10-20 — phrase du consentement « partage »
 
 **Correctif de texte, sans changement de forme.** La phrase composée par le serveur pour le

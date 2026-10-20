@@ -63,6 +63,7 @@ import { NotesPane } from "./instruction/NotesPane";
 import { ResumePane } from "./instruction/ResumePane";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
 import { TransfertDialog } from "./instruction/TransfertDialog";
+import { GuestAccessCard } from "./instruction/GuestAccessCard";
 import { CitizenVisibilityDialog } from "./instruction/CitizenVisibilityDialog";
 import { canChangeCitizenVisibility, citizenVisibilityView } from "./instruction/citizenVisibility";
 import { transferOptions } from "./instruction/transfert";
@@ -1019,6 +1020,7 @@ export function RequestDetailPage() {
                 canChangeVisibility ? () => { setVisibilityError(null); setVisibilityOpen(true); } : null
               }
             />
+            <GuestAccessCard requestId={r.id} canInstruct={canInstruct} onFlash={flash} />
             </div>
           </div>
         </div>

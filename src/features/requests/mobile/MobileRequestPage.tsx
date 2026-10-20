@@ -53,6 +53,7 @@ import {
   headerSubtitle, memberName, requesterView,
 } from "../instruction/instruction";
 import { directionsTarget, interventionLocation } from "../instruction/lieu";
+import { GuestAccessCard } from "../instruction/GuestAccessCard";
 import { citizenVisibilityView } from "../instruction/citizenVisibility";
 import { plainBody } from "../instruction/mentions";
 import { inlineViewable, interventionDocuments, usagerPieces } from "../instruction/documents";
@@ -502,6 +503,9 @@ export function MobileRequestPage() {
             </p>
           ) : null}
         </div>
+
+        {/* Suivi en ligne sans compte (lot L4a) — rien sans droit d'instruction ni accès invité */}
+        <GuestAccessCard requestId={r.id} canInstruct={canInstruct} onFlash={flash} variant="mobile" />
 
         {/* Lieu d'intervention */}
         {lieu && !lieu.empty ? (

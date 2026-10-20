@@ -12,13 +12,16 @@
 // Le portail ne le délivre qu'après SES propres contrôles (session).
 //
 // Format : `<charge base64url>.<HMAC-SHA256 base64url>`, charge
-// `{ v: 1, t: <racine Socle>, sub, e?, exp }` (exp en secondes).
+// `{ v: 1, t: <racine Socle>, sub, e?, g?, exp }` (exp en secondes ; `g` : version
+// de l'accès invité, contrat 2.8.0).
 
 export const CITIZEN_TOKEN_HEADER = "x-citizen-token";
 /** Au-delà, un jeton est refusé même bien signé : il doit rester court. */
 export const CITIZEN_TOKEN_MAX_SECONDS = 3 * 60;
 
-export type CitizenSubject = { kind: "request"; id: string } | { kind: "contact"; id: string; email: string | null };
+export type CitizenSubject =
+  | { kind: "request"; id: string; version: number | null }
+  | { kind: "contact"; id: string; email: string | null };
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -69,7 +72,12 @@ export async function verifyCitizenToken(
   const sub = typeof payload.sub === "string" ? payload.sub : "";
   const [kind, id] = sub.split(":");
   if (!UUID_RE.test(id ?? "")) return null;
-  if (kind === "request") return { kind, id };
+  if (kind === "request") {
+    // `g` (2.8.0) : la version de l'accès à l'ouverture de la session invitée.
+    // Absente (portail d'avant), seule la coupure s'applique.
+    const version = Number.isInteger(payload.g) && (payload.g as number) >= 1 ? payload.g as number : null;
+    return { kind, id, version };
+  }
   if (kind === "contact") {
     const email = typeof payload.e === "string" && payload.e.includes("@") ? payload.e.trim().toLowerCase() : null;
     return { kind, id, email };

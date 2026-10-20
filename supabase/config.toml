@@ -69,6 +69,11 @@ verify_jwt = false
 [functions.send-request-email]
 verify_jwt = false
 
+# Idem — accès invité d'une demande vu et géré par l'agent (lot L4a : état,
+# coupure, nouveau code ; droit d'instruction revérifié en SQL).
+[functions.request-guest-access]
+verify_jwt = false
+
 # Idem — génération d'un document du dossier depuis un modèle Word (droit
 # d'instruction revérifié en SQL, contexte de fusion composé côté serveur).
 [functions.generate-request-document]

@@ -26,7 +26,7 @@ describe("jeton signé par Nora, vérifié par Iris", () => {
   });
 
   it("invité : sujet reconnu, sans adresse", async () => {
-    expect(await verifyCitizenToken(SECRET, NORA_REQUEST_TOKEN, TENANT, NOW)).toEqual({ kind: "request", id: REQUEST });
+    expect(await verifyCitizenToken(SECRET, NORA_REQUEST_TOKEN, TENANT, NOW)).toEqual({ kind: "request", id: REQUEST, version: null });
   });
 
   it("refusé : autre collectivité, autre secret, expiré, ou signé trop long (au-delà de 3 minutes)", async () => {
