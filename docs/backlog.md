@@ -173,14 +173,13 @@ geste explicite, jamais automatique : RPC `file_citizen_piece` (copie de ligne, 
 `20261024100000_reponse_usager_suites_po.sql`, détail dans
 [`data-model.md`](data-model.md) § `request_citizen_messages`.
 
-**Reste ouvert** : dans l'espace usager, la pièce versée apparaît deux fois — dans son message
-et parmi les pièces de la demande (`isCitizenVisibleAttachment` ne connaît pas
-`source_attachment_id`). Laissé ainsi en attendant l'avis du PO.
+**Vérifié par le PO le 2026-10-24** sur DEM-2026-000061 (SNA27) : deux pièces versées (une sur
+exigence, une hors formulaire), et l'affichage dans l'espace usager validé tel quel.
 
 ## B11 — Double notification de l'agent assigné
 
 **Tranché par le PO le 2026-10-24 : supprimer la notification de statut — livré le même
-jour.** La reprise d'instruction par une réponse de l'usager ne produit plus de
+jour, vérifié par le PO sur DEM-2026-000061.** La reprise d'instruction par une réponse de l'usager ne produit plus de
 `status_changed` ; `citizen_replied` porte `reprise` et la dit (cloche, e-mail, push). Le
 journal de la demande, lui, garde le retour en instruction.
 
