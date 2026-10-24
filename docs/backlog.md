@@ -208,6 +208,11 @@ courriel à l'usager (par exemple pas la mise en instruction, mais la mise en at
 résolution). La première version peut envoyer à chaque changement ; le modèle (file, contenu,
 préférence) ne doit pas fermer cette porte.
 
+**Cadrage** (2026-10-24) : [`notifications-usager.md`](notifications-usager.md) — douze
+questions au PO (§ 5), dont la plus lourde : faire passer le message de l'agent au « lien
+seul » pour les usagers qui ont un accès en ligne. Ne pas démarrer l'architecture avant ses
+réponses.
+
 ---
 
 ## Entrées sorties de ce document
