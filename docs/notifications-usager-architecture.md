@@ -8,8 +8,9 @@ confirmer.
 
 **À retenir avant de lire :**
 
-- **Rien n'est demandé au Socle.** Les seules dépendances externes sont du côté de Nora (lot
-  L4c-4).
+- **Presque rien n'est demandé au Socle** : une seule évolution additive de contacts-api,
+  pour que l'usager aligne l'adresse de sa fiche sur celle de son compte (ADR-14, décision PO du
+  2026-10-24, lot L4c-4). Le reste dépend de Nora.
 - **Un compte n'est prévenu que si l'adresse de sa fiche Socle est celle de son compte Nora.**
   Le canal compte de la vue usager (2.9.0) ne montre que les messages envoyés à l'adresse du
   compte, transmise dans le jeton (`e`).
@@ -345,6 +346,45 @@ plus rien (tracé). Risque accepté, voir § 6.
 
 ---
 
+### ADR-14 — L'usager confirme ou modifie son adresse de courriel, et le Socle est mis à jour (décision PO 2026-10-24)
+
+- **Contexte** : ADR-4 ne prévient un compte que si l'adresse de sa fiche Socle est celle de
+  son compte Nora. Le PO veut que l'usager puisse **résorber lui-même l'écart** : confirmer ou
+  modifier son adresse, la fiche du Socle suivant.
+- **[Lu] Le Socle le refuse aujourd'hui** :
+  `Socle/supabase/functions/contacts-api/_shared/citizen.ts` — `EDITABLE_KEYS` ne contient pas
+  `email`, et l'en-tête le dit : « son adresse de courriel suit celle de son compte. Une
+  correction passe par la collectivité. » Nora (`_shared/socle/citizenContacts.ts`,
+  `PATCH /v1/citizen/contacts/{compte}`, scope `citizen`) ne peut donc pas l'écrire.
+- **Décision** :
+  - **Une seule adresse fait foi pour l'usager : celle de son COMPTE**, vérifiée par Nora. Il ne
+    tape jamais une adresse libre destinée à la seule fiche — sans quoi une adresse non vérifiée
+    entrerait au référentiel, et le canal compte (qui compare à l'adresse du jeton) resterait
+    faux.
+  - **Confirmer** : quand Nora constate l'écart (fiche relue ≠ compte), l'espace propose
+    « Utiliser <adresse du compte> pour vos échanges avec <collectivité> ». Nora appelle une
+    route du Socle qui **aligne** la fiche sur l'adresse du compte.
+  - **Modifier** : l'usager change l'adresse de son compte dans Nora (avec vérification de la
+    nouvelle adresse, flux de compte existant ou à créer chez Nora), puis la même route aligne
+    la fiche. Nora repousse ensuite la préférence (route 2.10.0), donc la nouvelle empreinte.
+  - **Socle** : contacts-api accepte `email` sur la route citoyenne **uniquement égal à
+    l'adresse du compte**, que le Socle connaît déjà par le rattachement (contacts-api 1.4.0,
+    rattachement « sur l'adresse du COMPTE »). Forme exacte (route dédiée « aligner sur le
+    compte » ou clé `email` contrôlée) laissée à la session Socle. Journal / historique de la
+    fiche côté Socle.
+- **Conséquences** :
+  - ADR-1 ne tient plus en entier : **une évolution du Socle est nécessaire**, petite et
+    additive (contrat contacts-api), à **coordonner avec la session Socle en cours**. Iris n'en
+    dépend pas pour L4c-0 à L4c-3 ; elle entre dans L4c-4 (Nora).
+  - Côté agent rien ne change : la fiche reste modifiable par l'agent (`socle-proxy
+    /v1/contacts/update`). Un agent qui change l'adresse de la fiche recrée l'écart ; Nora le
+    signalera à la session suivante de l'usager.
+  - Raison de non-envoi `adresse_compte_differente` inchangée, mais elle devient résorbable par
+    l'usager — Nora l'invite à confirmer.
+- **Écarté** : laisser l'usager saisir une adresse libre pour la fiche (non vérifiée, et
+  divergente du compte) ; faire écrire la fiche par Iris (Iris n'est pas le guichet de l'usager
+  vers le Socle, et sa clé n'a pas le scope `citizen`).
+
 ## 2. Schéma de données (en prose)
 
 | Table | Clé | Colonnes clés | Écriture | Lecture cliente |
@@ -455,11 +495,11 @@ avant le premier avis**.
 | **L4c-1** — file des statuts | Migration : `citizen_notification_settings` (éteint partout), `request_citizen_status`, `citizen_notices`, trigger t41 avec les drapeaux, RPC enqueue / claim / start / settle / skip, RPC de statut connu ; `record_citizen_message` pose le statut connu. Modules purs `events.ts`, `decision.ts`, `channel.ts`, `unsubscribe.ts`, `_shared/email/avisUsager.ts`. `notifications-mailer/citizenNotices.ts`. Mode `cloture` de `send-request-email` qui avance le statut connu. Bloc Paramètres pour l'interrupteur. Recette de seed (`iris.silence_usager`) | L4c-0 |
 | **L4c-2** — contrat 2.10.0 | Routes §3, colonnes `integration_sources` et `request_access_codes`, `citizen_space_links` ; OpenAPI, changelog, `api-ingestion.md` | L4c-1 (migration) |
 | **L4c-3** — M2 | `send-request-email` : `delivery`, mode `apercu`, enfilement de l'avis de message ; composeur bureau et mobile avec annonce ; onglet Échanges : avis automatiques et raisons des non-envois (lecture de `citizen_notices`) | L4c-0, L4c-1 |
-| **L4c-4** — Nora | Préférence par espace (colonnes sur `citizen_spaces`, une par canal), écran, poussées (rattachement, changement, adresse, session, suppression), `PUT /v1/citizen/space`, page de désinscription + point `List-Unsubscribe-Post`, interrupteur invité dans `/suivi` (facultatif en V1) | L4c-2 |
+| **L4c-4** — Nora (+ Socle, ADR-14) | Confirmer / modifier l'adresse de courriel avec alignement de la fiche Socle (évolution contacts-api à coordonner avec la session Socle) ; préférence par espace (colonnes sur `citizen_spaces`, une par canal), écran, poussées (rattachement, changement, adresse, session, suppression), `PUT /v1/citizen/space`, page de désinscription + point `List-Unsubscribe-Post`, interrupteur invité dans `/suivi` (facultatif en V1) | L4c-2 |
 | **L4c-5** — mise en service | Allumer l'interrupteur de Sceaux après vérification réelle des critères d'acceptation 1 à 17 du cadrage | L4c-3, L4c-4 |
 | Second temps | `citizen_notification_event_settings` et écran par collectivité, puis par démarche ; SMS ; avis de clôture par la file | — |
 
-- **Socle** : rien, dans aucun lot.
+- **Socle** : rien de L4c-0 à L4c-3 ; une évolution additive de contacts-api pour L4c-4 (ADR-14), à coordonner avec la session Socle en cours.
 - **Ordre du facteur** : déployer `notifications-mailer` (L4c-1) avant d'allumer quoi que ce
   soit. Le facteur doit embarquer les nouveaux fichiers `_shared` (piège connu : la CLI
   d'abord).
@@ -501,7 +541,7 @@ avant le premier avis**.
   snapshot. [Supposé] À trancher dans `channel.ts` : sans fiche relue, pas de canal compte (on
   ne compare pas une adresse périmée), le canal invité reste possible.
 
-## 7. Questions restantes pour le PO
+## 7. Questions posées au PO — toutes acceptées le 2026-10-24 (recommandations retenues)
 
 1. **Une demande soustraite (`citizen_visible = false`) reste lisible en `/suivi` par son
    invité** (constat 0.1). Faut-il fermer aussi `/suivi` ? *Recommandation : oui, dans un
