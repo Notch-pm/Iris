@@ -216,8 +216,9 @@ réponses.
 **Décisions du PO le 2026-10-24** : les douze recommandations sont retenues, avec trois
 précisions — l'avis « nouveau message » porte les premiers caractères du message ; une session
 travaille côté Socle (coordination) ; guichet sans compte et SMS reportés (B13, B14). Détail :
-[`notifications-usager.md`](notifications-usager.md) § « Décisions du PO ». **Prochaine étape :
-architecture** (dont la préférence copiée dans Iris face à « aucun miroir d'usagers »).
+[`notifications-usager.md`](notifications-usager.md) § « Décisions du PO ». **Architecture**
+(2026-10-24) : [`notifications-usager-architecture.md`](notifications-usager-architecture.md)
+— rien au Socle, six lots (L4c-0 à L4c-5, dont un côté Nora), six questions au PO (§ 7).
 
 ## B13 — Accès invité au guichet (suivi en ligne d'une demande déposée au guichet)
 
