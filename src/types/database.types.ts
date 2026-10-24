@@ -973,6 +973,165 @@ export type Database = {
           },
         ]
       }
+      request_access_codes: {
+        Row: {
+          access_version: number
+          code_hash: string
+          created_at: string
+          email_hash: string
+          failed_attempts: number
+          last_used_at: string | null
+          locked_until: string | null
+          organization_id: string
+          reissued_at: string | null
+          request_id: string
+          resend_count: number
+          resend_window_start: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          tracking_url: string | null
+        }
+        Insert: {
+          access_version?: number
+          code_hash: string
+          created_at?: string
+          email_hash: string
+          failed_attempts?: number
+          last_used_at?: string | null
+          locked_until?: string | null
+          organization_id: string
+          reissued_at?: string | null
+          request_id: string
+          resend_count?: number
+          resend_window_start?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tracking_url?: string | null
+        }
+        Update: {
+          access_version?: number
+          code_hash?: string
+          created_at?: string
+          email_hash?: string
+          failed_attempts?: number
+          last_used_at?: string | null
+          locked_until?: string | null
+          organization_id?: string
+          reissued_at?: string | null
+          request_id?: string
+          resend_count?: number
+          resend_window_start?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tracking_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_access_codes_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_access_codes_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_access_codes_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_access_mails: {
+        Row: {
+          access_code: string | null
+          attempted_at: string | null
+          attempts: number
+          created_at: string
+          email_id: string | null
+          error: string | null
+          id: string
+          next_attempt_at: string | null
+          organization_id: string
+          reason: string
+          request_id: string
+          requested_by: string | null
+          settled_at: string | null
+          status: string
+          to_email: string | null
+        }
+        Insert: {
+          access_code?: string | null
+          attempted_at?: string | null
+          attempts?: number
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          next_attempt_at?: string | null
+          organization_id: string
+          reason: string
+          request_id: string
+          requested_by?: string | null
+          settled_at?: string | null
+          status?: string
+          to_email?: string | null
+        }
+        Update: {
+          access_code?: string | null
+          attempted_at?: string | null
+          attempts?: number
+          created_at?: string
+          email_id?: string | null
+          error?: string | null
+          id?: string
+          next_attempt_at?: string | null
+          organization_id?: string
+          reason?: string
+          request_id?: string
+          requested_by?: string | null
+          settled_at?: string | null
+          status?: string
+          to_email?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_access_mails_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "request_emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_access_mails_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_access_mails_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_access_mails_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       request_assignments: {
         Row: {
           assigned_by: string | null
@@ -1025,6 +1184,7 @@ export type Database = {
       request_attachments: {
         Row: {
           checksum: string | null
+          citizen_message_id: string | null
           compliance: string | null
           compliance_at: string | null
           compliance_by: string | null
@@ -1034,7 +1194,6 @@ export type Database = {
           created_at: string
           document_type_label: string | null
           document_type_socle_id: string | null
-          citizen_message_id: string | null
           email_id: string | null
           file_name: string
           file_size: number | null
@@ -1058,6 +1217,7 @@ export type Database = {
         }
         Insert: {
           checksum?: string | null
+          citizen_message_id?: string | null
           compliance?: string | null
           compliance_at?: string | null
           compliance_by?: string | null
@@ -1067,7 +1227,6 @@ export type Database = {
           created_at?: string
           document_type_label?: string | null
           document_type_socle_id?: string | null
-          citizen_message_id?: string | null
           email_id?: string | null
           file_name: string
           file_size?: number | null
@@ -1091,6 +1250,7 @@ export type Database = {
         }
         Update: {
           checksum?: string | null
+          citizen_message_id?: string | null
           compliance?: string | null
           compliance_at?: string | null
           compliance_by?: string | null
@@ -1100,7 +1260,6 @@ export type Database = {
           created_at?: string
           document_type_label?: string | null
           document_type_socle_id?: string | null
-          citizen_message_id?: string | null
           email_id?: string | null
           file_name?: string
           file_size?: number | null
@@ -1124,17 +1283,17 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "request_attachments_compliance_by_fkey"
-            columns: ["compliance_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
             foreignKeyName: "request_attachments_citizen_message_id_fkey"
             columns: ["citizen_message_id"]
             isOneToOne: false
             referencedRelation: "request_citizen_messages"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_attachments_compliance_by_fkey"
+            columns: ["compliance_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
           {
@@ -1663,6 +1822,7 @@ export type Database = {
       }
       request_receipts: {
         Row: {
+          access_code: string | null
           attempted_at: string | null
           attempts: number
           created_at: string
@@ -1675,6 +1835,7 @@ export type Database = {
           status: string
         }
         Insert: {
+          access_code?: string | null
           attempted_at?: string | null
           attempts?: number
           created_at?: string
@@ -1687,6 +1848,7 @@ export type Database = {
           status?: string
         }
         Update: {
+          access_code?: string | null
           attempted_at?: string | null
           attempts?: number
           created_at?: string
@@ -2319,6 +2481,16 @@ export type Database = {
       can_process_request: { Args: { p_request_id: string }; Returns: boolean }
       can_read_request: { Args: { p_request_id: string }; Returns: boolean }
       can_write_request: { Args: { p_request_id: string }; Returns: boolean }
+      check_request_access: {
+        Args: {
+          p_code_hash: string
+          p_email_hash: string
+          p_organization_id: string
+          p_reference: string
+          p_source: string
+        }
+        Returns: string
+      }
       claim_notification_emails: {
         Args: { p_limit?: number }
         Returns: {
@@ -2346,9 +2518,32 @@ export type Database = {
           subscriptions: Json
         }[]
       }
+      claim_request_access_mails: {
+        Args: { p_limit?: number }
+        Returns: {
+          access_code: string
+          attempts: number
+          email_body: string
+          email_id: string
+          email_subject: string
+          mail_id: string
+          organization_id: string
+          organization_name: string
+          reason: string
+          reference: string
+          request_id: string
+          requested_by: string
+          socle_scope_org_id: string
+          subject: string
+          to_email: string
+          tracking_url: string
+        }[]
+      }
       claim_request_receipts: {
         Args: { p_limit?: number }
         Returns: {
+          access_code: string
+          access_email_hash: string
           attempts: number
           email_body: string
           email_id: string
@@ -2366,6 +2561,7 @@ export type Database = {
           socle_root_org_id: string
           socle_scope_org_id: string
           subject: string
+          tracking_url: string
         }[]
       }
       claim_storage_deletions: {
@@ -2774,6 +2970,18 @@ export type Database = {
         Args: { p_request_id?: string }
         Returns: number
       }
+      record_citizen_message: {
+        Args: {
+          p_author_kind: string
+          p_body: string
+          p_contact_id: string
+          p_items?: Json
+          p_org: string
+          p_request_id: string
+          p_source: string
+        }
+        Returns: string
+      }
       refresh_member_roles: { Args: { p_org_id: string }; Returns: undefined }
       refresh_request_scope_org: {
         Args: { p_org_id?: string }
@@ -2787,6 +2995,28 @@ export type Database = {
           p_user_agent?: string
         }
         Returns: string
+      }
+      register_request_access: {
+        Args: {
+          p_code: string
+          p_code_hash: string
+          p_email_hash: string
+          p_request_id: string
+          p_tracking_url: string
+        }
+        Returns: boolean
+      }
+      request_access_resend: {
+        Args: {
+          p_code: string
+          p_code_hash: string
+          p_email: string
+          p_email_hash: string
+          p_organization_id: string
+          p_reference: string
+          p_source: string
+        }
+        Returns: undefined
       }
       request_attachment_paths: {
         Args: { p_ids: string[]; p_request_id: string }
@@ -2865,6 +3095,10 @@ export type Database = {
         Args: { p_profile_id: string; p_user_id: string }
         Returns: Json
       }
+      revoke_request_access: {
+        Args: { p_by: string; p_request_id: string }
+        Returns: boolean
+      }
       rights_array: {
         Args: {
           p_close: boolean
@@ -2873,6 +3107,17 @@ export type Database = {
           p_view: boolean
         }
         Returns: Json
+      }
+      rotate_request_access: {
+        Args: {
+          p_by: string
+          p_code: string
+          p_code_hash: string
+          p_reason: string
+          p_request_id: string
+          p_to_email: string
+        }
+        Returns: boolean
       }
       save_permission_profile: { Args: { p: Json }; Returns: Json }
       save_procedure_link_settings: {
@@ -2913,6 +3158,10 @@ export type Database = {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
       }
+      settle_request_access_mail: {
+        Args: { p_error?: string; p_mail_id: string; p_ok: boolean }
+        Returns: undefined
+      }
       settle_request_email: {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
@@ -2934,6 +3183,10 @@ export type Database = {
         Args: { p_id: string; p_reason: string }
         Returns: undefined
       }
+      skip_request_access_mail: {
+        Args: { p_mail_id: string; p_reason: string }
+        Returns: undefined
+      }
       skip_request_receipt: {
         Args: { p_reason: string; p_request_id: string }
         Returns: undefined
@@ -2951,6 +3204,10 @@ export type Database = {
           use_tls: boolean
           username: string
         }[]
+      }
+      start_request_access_mail_email: {
+        Args: { p_body: string; p_mail_id: string; p_subject: string }
+        Returns: string
       }
       start_request_email: {
         Args: {
