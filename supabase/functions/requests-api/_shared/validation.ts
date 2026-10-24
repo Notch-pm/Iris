@@ -64,6 +64,13 @@ export interface IngestEnvelope {
    * `normalizeConsents` dans `index.ts`.
    */
   consents?: unknown;
+  /**
+   * Suivi en ligne accepté par l'usager (accès invité, contrat 2.6.0) : Iris
+   * tire un code d'accès, le rend UNE fois dans la réponse 201 et le cite dans
+   * l'accusé. Exige une adresse de courriel déclarée. Hors empreinte : c'est
+   * une option du dépôt, pas son contenu — un rejeu ne rend jamais de code.
+   */
+  guest_access?: { tracking_url: string | null };
 }
 
 export type Validation<T> = { ok: true; value: T } | { ok: false; message: string };
@@ -81,7 +88,7 @@ const ENVELOPE_KEYS = new Set([
   "socle_root_organization_id", "socle_organization_id",
   "socle_procedure_id", "socle_contact_id",
   "subject", "body", "requester", "form_data",
-  "attachments", "context", "links", "consents",
+  "attachments", "context", "links", "consents", "guest_access",
 ]);
 const ATTACHMENT_KEYS = new Set(["upload_id", "form_field_key"]);
 /** Clés du contrat 1.x : refusées avec un message qui dit quoi faire à la place. */
@@ -206,6 +213,22 @@ export function validateEnvelope(body: unknown): Validation<IngestEnvelope> {
   // l'organisme principal — inconnu de cette logique pure.
   if (body.consents !== undefined && body.consents !== null) {
     env.consents = body.consents;
+  }
+
+  if (body.guest_access !== undefined && body.guest_access !== null) {
+    const ga = body.guest_access;
+    if (!isPlainObject(ga)) return fail("guest_access : objet attendu.");
+    const extra = Object.keys(ga).filter((k) => k !== "tracking_url");
+    if (extra.length > 0) return fail(`guest_access : clés inconnues : ${extra.join(", ")}.`);
+    let trackingUrl: string | null = null;
+    if (ga.tracking_url !== undefined && ga.tracking_url !== null) {
+      const v = ga.tracking_url;
+      if (typeof v !== "string" || v.length > 500 || !/^https:\/\/[^\s@]+$/.test(v)) {
+        return fail("guest_access.tracking_url : adresse https attendue (500 caractères maximum).");
+      }
+      trackingUrl = v;
+    }
+    env.guest_access = { tracking_url: trackingUrl };
   }
   // Identité : un contact Socle, OU une identité déclarée (y compris
   // { anonymous: true } — l'anonymat est un choix assumé, pas un oubli).

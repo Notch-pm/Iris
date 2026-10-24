@@ -157,3 +157,34 @@ describe("enveloppe — consentements RGPD", () => {
     expect(JSON.stringify(fingerprintPayload({ ...valid, consents } as never))).toBe(JSON.stringify(a));
   });
 });
+
+describe("validateEnvelope — guest_access (2.6.0)", () => {
+  const base = {
+    source_system: "portail-citoyen",
+    external_id: "sub-1",
+    socle_root_organization_id: "11111111-1111-4111-8111-111111111111",
+    socle_procedure_id: "22222222-2222-4222-8222-222222222222",
+    subject: "Demande",
+    requester: { email: "a@b.fr" },
+  };
+
+  it("accepte le suivi en ligne, avec ou sans page de suivi", () => {
+    const a = validateEnvelope({ ...base, guest_access: { tracking_url: "https://sceaux.edilumen.fr/suivi" } });
+    expect(a.ok && a.value.guest_access).toEqual({ tracking_url: "https://sceaux.edilumen.fr/suivi" });
+    const b = validateEnvelope({ ...base, guest_access: {} });
+    expect(b.ok && b.value.guest_access).toEqual({ tracking_url: null });
+  });
+
+  it("refuse une forme inattendue", () => {
+    expect(validateEnvelope({ ...base, guest_access: true }).ok).toBe(false);
+    expect(validateEnvelope({ ...base, guest_access: { code: "X" } }).ok).toBe(false);
+    expect(validateEnvelope({ ...base, guest_access: { tracking_url: "http://sceaux.edilumen.fr/suivi" } }).ok).toBe(false);
+  });
+
+  it("reste hors de l'empreinte : c'est une option du dépôt, pas son contenu", async () => {
+    const without = validateEnvelope(base);
+    const withAccess = validateEnvelope({ ...base, guest_access: {} });
+    if (!without.ok || !withAccess.ok) throw new Error("enveloppe refusée");
+    expect(fingerprintPayload(withAccess.value)).toEqual(fingerprintPayload(without.value));
+  });
+});

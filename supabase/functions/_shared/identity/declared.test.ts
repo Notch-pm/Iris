@@ -6,6 +6,9 @@ import {
   declaredContactType,
   hasDeclaredIdentity,
   hasStrongMatch,
+  heldByPortalAccount,
+  isSafeIngestMatch,
+  postalCodesDiffer,
   matchIdentityFromDeclared,
   pickDeclared,
 } from "./declared";
@@ -100,25 +103,55 @@ describe("matchIdentityFromDeclared", () => {
   });
 });
 
-describe("hasStrongMatch — la garde contre le rattachement à un homonyme", () => {
-  it("accepte les identifiants forts", () => {
-    expect(hasStrongMatch(["email_exact"])).toBe(true);
-    expect(hasStrongMatch(["name_similar", "phone_exact"])).toBe(true);
-    expect(hasStrongMatch(["siret_exact"])).toBe(true);
+describe("hasStrongMatch — le vocabulaire du contrat contacts-api", () => {
+  it("accepte les identifiants forts tels que le Socle les nomme", () => {
+    expect(hasStrongMatch(["email"])).toBe(true);
+    expect(hasStrongMatch(["name_similar", "phone"])).toBe(true);
+    expect(hasStrongMatch(["siret"])).toBe(true);
   });
 
-  it("REFUSE tout ce qui repose sur le seul nom", () => {
-    // Sans agent pour arbitrer, rattacher la demande d'un habitant à son
-    // homonyme lui donnerait accès aux échanges d'un autre : pire qu'un doublon.
-    expect(hasStrongMatch(["name_exact"])).toBe(false);
-    expect(hasStrongMatch(["name_exact", "name_similar", "usage_name_match"])).toBe(false);
-    expect(hasStrongMatch(["legal_name_exact"])).toBe(false);
-  });
-
-  it("refuse une entrée absente ou malformée", () => {
+  it("refuse l'ancien vocabulaire, que le Socle n'a jamais renvoyé, et le nom seul", () => {
+    expect(hasStrongMatch(["email_exact"])).toBe(false);
+    expect(hasStrongMatch(["name_exact", "name_similar"])).toBe(false);
     expect(hasStrongMatch(undefined)).toBe(false);
-    expect(hasStrongMatch("email_exact")).toBe(false);
     expect(hasStrongMatch([null, 42])).toBe(false);
+  });
+});
+
+describe("isSafeIngestMatch — fiche tenue par un compte du portail, signal contraire", () => {
+  const portal = { portalAccount: true, postalMismatch: false };
+  it("⚠️ une fiche à compte ne se rejoint plus par téléphone", () => {
+    expect(isSafeIngestMatch("personne", ["phone", "name_exact"], portal)).toBe(false);
+    expect(isSafeIngestMatch("personne", ["email", "name_exact"], portal)).toBe(true);
+  });
+  it("⚠️ un code postal différent rend la correspondance non sûre", () => {
+    expect(isSafeIngestMatch("personne", ["email", "name_exact"], { portalAccount: false, postalMismatch: true })).toBe(false);
+    expect(postalCodesDiffer("92330", "92 330")).toBe(false);
+    expect(postalCodesDiffer("92330", "92160")).toBe(true);
+    expect(postalCodesDiffer(null, "92160")).toBe(false);
+  });
+  it("reconnaît une fiche tenue par un compte", () => {
+    expect(heldByPortalAccount({ external_references: [{ source: "clara" }, { source: "portail_citoyen" }] })).toBe(true);
+    expect(heldByPortalAccount({ external_references: [] })).toBe(false);
+  });
+});
+
+describe("isSafeIngestMatch — rattacher sans agent, et sans fuite vers un proche", () => {
+  it("une personne : courriel ou téléphone ET nom identiques", () => {
+    expect(isSafeIngestMatch("personne", ["email", "name_exact"])).toBe(true);
+    expect(isSafeIngestMatch("personne", ["phone", "name_exact", "birth_date"])).toBe(true);
+  });
+
+  it("⚠️ un téléphone de foyer ou une adresse familiale ne suffisent pas", () => {
+    expect(isSafeIngestMatch("personne", ["phone"])).toBe(false);
+    expect(isSafeIngestMatch("personne", ["email", "name_similar"])).toBe(false);
+    expect(isSafeIngestMatch("personne", ["name_exact"])).toBe(false);
+  });
+
+  it("une structure : le SIRET, ou courriel et nom", () => {
+    expect(isSafeIngestMatch("entreprise", ["siret"])).toBe(true);
+    expect(isSafeIngestMatch("association", ["email", "name_exact"])).toBe(true);
+    expect(isSafeIngestMatch("entreprise", ["email"])).toBe(false);
   });
 });
 

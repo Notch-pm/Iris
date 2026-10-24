@@ -17,6 +17,7 @@
 // recopier.
 
 import { salutation, quotedSubject, type Recipient } from "./adresse.ts";
+import { MASKED_ACCESS_CODE } from "../access/accessCode.ts";
 
 /** Objet FIGÉ : l'agent doit pouvoir reconnaître le message dans l'onglet Échanges. */
 export const RECEIPT_SUBJECT = "Nous avons bien reçu votre demande";
@@ -36,6 +37,13 @@ export interface ReceiptInput {
   recipient: Recipient;
   /** La marque d'un message à l'usager, c'est la collectivité — pas Iris. */
   tenantName: string | null;
+  /**
+   * Suivi en ligne accepté au dépôt (accès invité) : le message cite le code
+   * d'accès — MASQUÉ dans le texte composé ici, qui est celui qu'enregistre
+   * l'onglet Échanges ; `revealAccessCode` y substitue le clair au moment
+   * d'envoyer. Absent ⇒ rien n'est dit du suivi en ligne.
+   */
+  access?: { trackingUrl: string | null } | null;
 }
 
 export interface ReceiptEmail {
@@ -70,6 +78,16 @@ export function receiptEmail(input: ReceiptInput): ReceiptEmail {
   }
   lines.push("");
   lines.push("Conservez cette référence : elle vous sera demandée pour toute question au sujet de votre demande.");
+  if (input.access) {
+    lines.push("");
+    lines.push(
+      input.access.trackingUrl
+        ? `Pour suivre votre demande en ligne, rendez-vous sur ${input.access.trackingUrl}`
+        : "Pour suivre votre demande en ligne, rendez-vous sur le portail, rubrique « Suivre une demande »",
+    );
+    lines.push(`avec votre adresse de courriel, cette référence et votre code d'accès : ${MASKED_ACCESS_CODE}`);
+    lines.push("Ce code est personnel : ne le communiquez à personne.");
+  }
   lines.push("");
   lines.push("Cordialement,");
   // Sans nom de collectivité lisible, on s'arrête sur « Cordialement, » plutôt
@@ -77,4 +95,12 @@ export function receiptEmail(input: ReceiptInput): ReceiptEmail {
   if (tenant !== "") lines.push(tenant);
 
   return { subject: RECEIPT_SUBJECT, body: lines.join("\n") };
+}
+
+/**
+ * Le texte qui PART : le masque remplacé par le code en clair. Sans code, ou
+ * sans masque (accusé composé avant le suivi en ligne), le texte est inchangé.
+ */
+export function revealAccessCode(body: string, code: string | null): string {
+  return code ? body.replace(MASKED_ACCESS_CODE, code) : body;
 }

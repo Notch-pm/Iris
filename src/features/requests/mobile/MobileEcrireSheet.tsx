@@ -20,7 +20,8 @@ import { renderTemplate } from "@/features/templates/templates";
 import { useActiveEmailTemplates } from "@/features/templates/useEmailTemplates";
 import { acceptAttribute } from "@fn/_shared/files/magic";
 import type { Tables } from "@/types/database.types";
-import type { RequestEmail, TenantMember } from "../useRequests";
+import type { RequestAttachment, RequestEmail, TenantMember } from "../useRequests";
+import { citizenChannelLabel, mergeThread, piecesByExchange, type RequestCitizenMessage } from "../instruction/citizenMessages";
 import type { SendEmailPayload } from "../instruction/EchangesPane";
 import {
   MAX_EMAIL_ATTACHMENT_BYTES, exchangeAuthor, hasDraftErrors, requestTemplateValues, totalBytes,
@@ -37,6 +38,10 @@ interface Props {
   request: Tables<"requests">;
   identity: RequesterIdentity;
   emails: RequestEmail[];
+  /** Réponses de l'usager en ligne (L4b). */
+  citizenMessages?: RequestCitizenMessage[];
+  /** Pour nommer les pièces jointes aux réponses de l'usager. */
+  attachments?: RequestAttachment[];
   members: TenantMember[];
   events: StageEvent[];
   tenantName: string;
@@ -47,7 +52,7 @@ interface Props {
 }
 
 export function MobileEcrireSheet({
-  open, onOpenChange, request, identity, emails, members, events, tenantName,
+  open, onOpenChange, request, identity, emails, citizenMessages = [], attachments = [], members, events, tenantName,
   canInstruct, archived, sending, onSend,
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
@@ -93,10 +98,8 @@ export function MobileEcrireSheet({
   const total = totalBytes(files);
   const tooHeavy = total > MAX_EMAIL_ATTACHMENT_BYTES;
 
-  const ordered = React.useMemo(
-    () => [...emails].sort((a, b) => a.created_at.localeCompare(b.created_at)),
-    [emails],
-  );
+  const ordered = React.useMemo(() => mergeThread(emails, citizenMessages), [emails, citizenMessages]);
+  const piecesOf = React.useMemo(() => piecesByExchange(attachments), [attachments]);
 
   function applyTemplate(id: string) {
     setTemplateId(id);
@@ -164,7 +167,7 @@ export function MobileEcrireSheet({
               onChange={(e) => setSubject(e.target.value)}
             />
             {submitted && errors.subject ? <p role="alert" className="text-xs text-destructive">{errors.subject}</p> : null}
-            <p className="text-xs text-muted-foreground">L'usager ne pourra pas répondre à ce message.</p>
+            <p className="text-xs text-muted-foreground">L'usager ne peut pas répondre par courriel ; s'il suit sa demande en ligne, il peut y répondre.</p>
             <div className="flex items-end gap-2">
               <input
                 ref={fileRef}
@@ -245,16 +248,38 @@ export function MobileEcrireSheet({
         <p className="py-6 text-center text-sm text-muted-foreground">Aucun échange enregistré.</p>
       ) : null}
 
-      {ordered.map((mail) => (
-        <div key={mail.id} className="flex max-w-[85%] flex-col gap-1 self-end rounded-[14px] rounded-br-[4px] bg-primary/10 px-3.5 py-3">
-          <span className="text-sm font-bold">{mail.subject}</span>
-          <p className="whitespace-pre-wrap text-sm leading-relaxed">{mail.body}</p>
-          <span className="flex items-center gap-1.5 self-end text-[11px] font-semibold text-primary">
-            {exchangeAuthor(members, mail.sent_by).name} · {formatTimeline(mail.sent_at ?? mail.created_at)}
-            {mail.status === "echec" ? <Pill tone="error">Non envoyé</Pill> : null}
-          </span>
-        </div>
-      ))}
+      {ordered.map((entry) => {
+        if (entry.kind === "citizen") {
+          const message = entry.message;
+          const pieces = piecesOf.get(message.id) ?? [];
+          return (
+            <div key={message.id} className="flex max-w-[85%] flex-col gap-1 self-start">
+              <span className="text-xs font-semibold text-muted-foreground">
+                Usager, {citizenChannelLabel(message.author_kind)} · {formatTimeline(message.created_at)}
+              </span>
+              <div className="rounded-[14px] rounded-bl-[4px] border border-border bg-card px-3.5 py-3 text-sm leading-relaxed shadow-airbnb-sm">
+                <p className="whitespace-pre-wrap">{message.body}</p>
+                {pieces.length > 0 ? (
+                  <p className="pt-1.5 text-[11.5px] text-muted-foreground">
+                    {pieces.length === 1 ? "Pièce jointe" : `${pieces.length} pièces jointes`} : {pieces.map((p) => p.file_name).join(", ")}
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          );
+        }
+        const mail = entry.mail;
+        return (
+          <div key={mail.id} className="flex max-w-[85%] flex-col gap-1 self-end rounded-[14px] rounded-br-[4px] bg-primary/10 px-3.5 py-3">
+            <span className="text-sm font-bold">{mail.subject}</span>
+            <p className="whitespace-pre-wrap text-sm leading-relaxed">{mail.body}</p>
+            <span className="flex items-center gap-1.5 self-end text-[11px] font-semibold text-primary">
+              {exchangeAuthor(members, mail.sent_by).name} · {formatTimeline(mail.sent_at ?? mail.created_at)}
+              {mail.status === "echec" ? <Pill tone="error">Non envoyé</Pill> : null}
+            </span>
+          </div>
+        );
+      })}
 
       {closed ? (
         <MobileNotice tone="warn">

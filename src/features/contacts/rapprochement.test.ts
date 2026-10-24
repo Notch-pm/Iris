@@ -107,7 +107,7 @@ describe("présentation des candidats", () => {
   it("isNameOnlyMatch : vrai sur le seul nom — jamais suffisant", () => {
     expect(isNameOnlyMatch(["name_similar"])).toBe(true);
     expect(isNameOnlyMatch(["legal_name_similar"])).toBe(true);
-    expect(isNameOnlyMatch(["name_similar", "email_exact"])).toBe(false);
+    expect(isNameOnlyMatch(["name_similar", "email"])).toBe(false);
     expect(isNameOnlyMatch([])).toBe(true);
   });
 });

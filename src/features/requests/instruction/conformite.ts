@@ -111,6 +111,8 @@ export interface QualifiableAttachment {
   form_field_key: string | null;
   /** Non-NULL = pièce jointe à un e-mail SORTANT : ce n'est pas une pièce de l'usager. */
   email_id?: string | null;
+  /** Pièce jointe par l'usager à un message en ligne (L4b) : elle reste dans l'échange. */
+  citizen_message_id?: string | null;
   /**
    * Non-NULL = pièce REMPLACÉE par une plus récente (décision PO 2026-08-28 :
    * « la plus récente fait foi »). Elle reste au dossier — une pièce
@@ -191,7 +193,7 @@ export function pieceRequirements(
   formData: unknown,
   attachments: QualifiableAttachment[],
 ): PieceRequirement[] {
-  const deposited = attachments.filter((a) => !a.email_id);
+  const deposited = attachments.filter((a) => !a.email_id && !a.citizen_message_id);
   const active = deposited.filter((a) => !a.superseded_by);
   const replaced = deposited.filter((a) => a.superseded_by);
   const fields = pieceFields(procedureSnapshot, formData);

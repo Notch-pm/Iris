@@ -53,7 +53,7 @@ describe("contrat OpenAPI 2.x", () => {
   });
 
   it("est présentable en page de documentation (groupes, contact, exemples)", () => {
-    expect(spec.tags.map((t) => t.name)).toEqual(["Demandes", "Pièces jointes", "Contrat"]);
+    expect(spec.tags.map((t) => t.name)).toEqual(["Demandes", "Pièces jointes", "Usager", "Contrat"]);
     expect(spec.paths["/v1/requests"].post.tags).toContain("Demandes");
     expect(spec.paths["/v1/requests/{id}/attachments"].post.tags).toContain("Pièces jointes");
     expect(spec.info.description).toContain("## Authentification et périmètre");
@@ -88,5 +88,40 @@ describe("URL publique du contrat", () => {
     expect(publicBaseUrl(null, null, seen)).toBe(
       "http://tqcoqlneybtbrrcvpkpk.supabase.co/functions/v1/requests-api",
     );
+  });
+});
+
+describe("contrat 2.6.0 — accès invité de l'usager", () => {
+  const spec = buildOpenApi("https://iris.example/functions/v1/requests-api");
+
+  it("publie les routes usager sous le tag Usager", () => {
+    for (const path of ["/v1/citizen/access", "/v1/citizen/requests/{id}", "/v1/citizen/requests/{id}/attachments/{attachment_id}"]) {
+      const route = (spec.paths as Record<string, Record<string, { tags: string[] }>>)[path];
+      expect(route, path).toBeDefined();
+      expect(Object.values(route)[0].tags).toEqual(["Usager"]);
+    }
+  });
+
+  it("la vue usager ne porte ni motif de clôture ni agents", () => {
+    const fields = Object.keys(spec.components.schemas.CitizenRequest.properties);
+    expect(fields).not.toContain("closure_motif");
+    expect(fields).not.toContain("assigned_to");
+    expect(fields).not.toContain("url");
+  });
+
+  it("l'enveloppe accepte guest_access", () => {
+    expect(Object.keys(spec.components.schemas.IngestEnvelope.properties)).toContain("guest_access");
+  });
+});
+
+describe("contrat 2.7.0 — « Mes demandes » et jeton court", () => {
+  const spec = buildOpenApi("https://iris.example/functions/v1/requests-api");
+  it("publie la liste d'une fiche et le jeton sur les lectures usager", () => {
+    const paths = spec.paths as Record<string, Record<string, { parameters?: { $ref?: string }[] }>>;
+    expect(paths["/v1/citizen/contacts/{id}/requests"]).toBeDefined();
+    for (const path of ["/v1/citizen/contacts/{id}/requests", "/v1/citizen/requests/{id}", "/v1/citizen/requests/{id}/attachments/{attachment_id}"]) {
+      expect(paths[path].get.parameters?.some((p) => p.$ref === "#/components/parameters/CitizenToken"), path).toBe(true);
+    }
+    expect(Object.keys(spec.components.schemas.CitizenRequestSummary.properties)).not.toContain("closure_text");
   });
 });

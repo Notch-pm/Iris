@@ -42,7 +42,7 @@ declare
     'statement', 'J''accepte que les informations fournies ici soient utilisées dans le cadre du traitement de ma demande.');
   partage  jsonb := jsonb_build_object(
     'kind', 'partage', 'granted', false,
-    'statement', 'J''accepte de partager ces informations aux services de Mairie Consentement afin d''améliorer le traitement de ma demande et de mes futures demandes.');
+    'statement', 'J''accepte de partager ces informations avec les services de l''organisme « Mairie Consentement » afin d''améliorer le traitement de ma demande et de mes futures demandes.');
 begin
   insert into public.organizations (socle_org_id, name)
     values (s_root, 'Mairie Consentement') returning id into orgA;

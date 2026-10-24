@@ -748,6 +748,15 @@ function describeEvent(
         detail: `${name} · ${who}${motif ? ` · ${motif}` : ""}`,
       };
     }
+    case "message_usager_recu": {
+      // Lot L4b : l'usager a répondu en ligne. Le texte est dans l'onglet Échanges.
+      const n = typeof p.pieces === "number" ? p.pieces : 0;
+      const canal = p.canal === "compte" ? "depuis son compte" : "depuis le suivi en ligne";
+      return {
+        label: "L'usager a répondu en ligne",
+        detail: `${canal}${n > 0 ? ` · ${n} pièce${n > 1 ? "s" : ""}` : ""}${p.reprise === true ? " — la demande repasse en instruction" : ""}`,
+      };
+    }
     case "piece_ajoutee": {
       const name = typeof p.file_name === "string" ? p.file_name : "Pièce";
       const n = typeof p.remplacees === "number" ? p.remplacees : 0;

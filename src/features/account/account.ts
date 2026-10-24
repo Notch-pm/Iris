@@ -66,6 +66,11 @@ export const PREFERENCE_ROWS: { kind: NotificationKind; label: string; hint: str
     label: "Une intervention que j'ai demandée est réalisée",
     hint: "L'intervenant que j'ai sollicité déclare son intervention réalisée.",
   },
+  {
+    kind: "citizen_replied",
+    label: "Réponse de l'usager",
+    hint: "L'usager répond en ligne sur une demande qui m'est affectée (ou que j'instruis, si personne ne l'a).",
+  },
 ];
 
 /** Sans préférence enregistrée, tout est activé — *fail open*, comme en base. */

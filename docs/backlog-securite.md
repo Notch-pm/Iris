@@ -626,4 +626,11 @@ lecture à la base de ce staging.
 
 ## Entrées sorties de ce document
 
-*(aucune pour l'instant)*
+- **M2 de la relecture de sécurité du lot L2 (2026-10-19) — ni renvoi du code perdu, ni coupure
+  d'accès par un agent** · fermé par le lot **L4a** (2026-10-21, contrat 2.8.0, commit
+  `e9618cd`, migration `20261021090000_acces_invite_renvoi_coupure.sql`). Le code se remplace
+  (jamais renvoyé : seule l'empreinte existe), `access_version` ferme les sessions déjà ouvertes
+  à la coupure, le renvoi est limité à 3 par 24 h et ne dit jamais si la référence existe, et
+  l'agent (droit d'instruction) coupe ou renvoie sans jamais lire le code. Détail :
+  [`data-model.md`](data-model.md) `request_access_codes`. Test :
+  `supabase/functions/requests-api/espace-usager/acces-invite-l4a.sql.test.ts`.

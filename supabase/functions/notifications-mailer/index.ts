@@ -17,7 +17,8 @@
 // réessaiera jamais avec succès, autant le dire.
 //
 // Depuis le 2026-10-09, un SECOND facteur sur le même cron : les accusés de
-// réception à l'usager au dépôt (`receipts.ts`, file `request_receipts`).
+// réception à l'usager au dépôt (`receipts.ts`, file `request_receipts`). Depuis le
+// 2026-10-21, un TROISIÈME : les nouveaux codes d'accès invité (`accessMails.ts`).
 //
 // ⚠️ CORS : aucun. Cette fonction n'est jamais appelée depuis un navigateur.
 
@@ -31,6 +32,7 @@ import {
   type NotificationPayload,
 } from "../_shared/email/notifications.ts";
 import { drainReceipts } from "./receipts.ts";
+import { drainAccessMails } from "./accessMails.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -157,5 +159,8 @@ Deno.serve(async (req: Request) => {
   // à l'usager (`receipts.ts`), au dépôt d'une demande.
   const receipts = await drainReceipts(supabase, (orgId) => smtpForOrg(orgId, smtpCache), BATCH);
 
-  return json(200, { claimed: rows.length, sent, skipped, failed, receipts });
+  // Troisième facteur : les nouveaux codes d'accès invité (`accessMails.ts`, lot L4a).
+  const accessCodes = await drainAccessMails(supabase, (orgId) => smtpForOrg(orgId, smtpCache), BATCH);
+
+  return json(200, { claimed: rows.length, sent, skipped, failed, receipts, accessCodes });
 });

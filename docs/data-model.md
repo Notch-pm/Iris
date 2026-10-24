@@ -412,6 +412,16 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   Le pendant de `request_messages` : celles-ci ne sortent jamais, celle-ci ne fait que sortir.
   Depuis le 2026-10-09, **`sent_by` est NULLABLE** : NULL = envoi automatique d'Iris
   (l'accusé de réception au dépôt, ci-dessous), ouvert par `start_request_receipt_email`.
+- **`request_citizen_messages`** *(2026-10-21, lot L4b)* — messages **entrants** : l'usager
+  répond en ligne sur SA demande, depuis son compte (`author_kind = 'compte'`, `socle_contact_id`
+  de sa fiche) ou depuis le suivi sans compte (`'invite'`). `body` (≤ 5 000 caractères),
+  `created_at`. **Écrit par `record_citizen_message` seule** (service_role, appelée par
+  `requests-api` après ses contrôles) : message, pièces consommées de `attachment_uploads`
+  (`request_attachments.citizen_message_id`, exclusive de `email_id`), retour
+  `en_attente` → `en_instruction`, journal `message_usager_recu`, notifications
+  `citizen_replied` — une transaction ; refus `P0409` sur une demande close. Lecture : qui
+  consulte la demande. Immuable (`forbid_change`). Les pièces d'un message restent dans
+  l'échange (ni Documents, ni qualification), comme celles d'un e-mail.
 - **`request_receipts`** *(2026-10-09)* — boîte d'envoi des **accusés de réception** à
   l'usager : une ligne par demande déposée (clé = `request_id`, donc jamais deux accusés),
   `status` `pending|sending|sent|skipped|failed`, `attempts`, `next_attempt_at`, `error`,
@@ -422,6 +432,44 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `skip_request_receipt`, même temporisation que les notifications). **Aucune policy
   cliente.** Pas de trigger sur `requests` : un jeu de démonstration ou un script de test qui
   insère en base n'écrit à personne. Test : `supabase/tests/accuse-reception.test.sql`.
+- **`request_access_codes`** *(2026-10-19, lot L2 ; `20261019150000`)* — l'**accès invité** de
+  l'usager à SA demande (suivi sans compte, scope `requests:citizen`) : une ligne par demande
+  (clé = `request_id`), ouverte au dépôt par `register_request_access` (qui enfile aussi
+  l'accusé, dans la même transaction, pour qu'il parte avec le code). **Empreintes HMAC poivrées
+  seulement** (`code_hash`, `email_hash`, secret `IRIS_ACCESS_CODE_PEPPER`) : Iris ne garde
+  jamais le code. `tracking_url` (page de suivi du portail déposant, citée dans l'accusé),
+  `failed_attempts` / `locked_until` (5 mauvais codes **avec la bonne adresse** = 1 h de
+  verrou ; une adresse fausse ne compte pas), `last_used_at`. Vaut tant que la demande est
+  ouverte, puis 90 jours après sa clôture. **Aucune policy cliente** (`service_role` seul).
+  Le code en clair n'existe que dans la file d'envoi (`request_receipts.access_code`), effacé au
+  règlement de l'accusé. **Lot L4a** *(2026-10-21 ; `20261021090000`)* ajoute l'état de l'accès :
+  `access_version` (+1 à chaque nouveau code et à chaque coupure ; le portail la porte dans son
+  jeton court, donc une coupure ferme AUSSI les sessions déjà ouvertes), `revoked_at` /
+  `revoked_by` (coupure par un agent : aucun code ne vaut, aucun renvoi), `reissued_at` (dernier
+  nouveau code), `resend_window_start` / `resend_count` (3 renvois « code perdu » par 24 h et par
+  demande).
+- **`request_access_mails`** *(2026-10-21, lot L4a)* — file d'envoi des **nouveaux codes**
+  (`reason` : `renvoi_usager` ou `agent`), `status` `pending|sending|sent|failed|skipped`,
+  `attempts`, `next_attempt_at`, `email_id` → l'échange de `request_emails` (texte au code
+  MASQUÉ). `to_email` et `access_code` y sont **en clair le temps de l'envoi et effacés au
+  règlement** (envoyé, abandonné, remplacé ou coupé). Drainée par `notifications-mailer`
+  (`accessMails.ts`). **Aucune policy cliente.** Un code ne se renvoie pas, il se remplace :
+  un code plus ancien encore en file est abandonné (`skipped`) quand un plus récent arrive.
+  RPC, toutes `service_role` seul :
+  - `check_request_access` — vérifie courriel + référence + code, rend la demande ou NULL sans
+    jamais dire pourquoi (inconnue, coupée, verrouillée, expirée, fausse) ;
+  - `rotate_request_access` — cœur interne : nouvelle empreinte, version +1, accès rouvert,
+    verrou levé, abandon des envois en attente, enfilement du nouveau ;
+  - `request_access_resend` — « code perdu » (portail) : n'agit que si référence, source et
+    adresse déclarée concordent, accès ni coupé ni expiré, moins de 3 renvois en 24 h ; ne rend
+    rien dans tous les cas ;
+  - `revoke_request_access` — coupure par un agent (version +1, envois en attente abandonnés) ;
+  - `claim_request_access_mails` / `start_request_access_mail_email` /
+    `settle_request_access_mail` / `skip_request_access_mail` — le facteur, même discipline que
+    les accusés (réclamation `for update skip locked`, reprise des lignes figées depuis 15 min,
+    temporisation 2, 4, 8, 16 min, 5 tentatives).
+  Le « nouveau code par un agent » passe par l'edge function `request-guest-access` (droit
+  d'**instruction**), jamais par le navigateur : le code n'est jamais rendu à l'agent.
 - **`request_attachments`** — pièces : `storage_path`
   (`{organization_id}/{request_id}/{uuid}-{slug}`), `checksum` (sha256 calculé par le serveur à
   la réception — porte unique, 2026-09), `copy_status` `copied|error` (`pending` a disparu avec
@@ -953,7 +1001,8 @@ fabriquer pour autrui.
 
 - Colonnes : `organization_id`, `user_id` (destinataire), `request_id`, `kind`
   (`assigned` | `unassigned` | `status_changed` | `note_added` | `new_request_in_scope` |
-  `mentioned` | `transferred_in`),
+  `mentioned` | `transferred_in` | `intervention_requested` | `intervention_completed` |
+  `citizen_replied` — réponse de l'usager en ligne, L4b, à l'affectataire sinon aux instructeurs),
   `payload jsonb`, `actor_id` (NULL = système/ingestion), `created_at`, `read_at`.
 - Trois FK en `on delete cascade` : la purge RGPD d'une demande emporte ses notifications.
 - Index : `(user_id, organization_id, created_at desc)` pour le volet, index **partiel**
@@ -1502,6 +1551,8 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `request_attachments` | `EXISTS` demande visible | **—** *(depuis le 2026-09-08 : RPC DEFINER `attach_request_piece` / service_role, alimentées par `attachment_uploads` — l'ancienne policy ne vérifiait pas `storage_path`)* | — (RPC `qualify_request_attachment`) | `has_admin_scope` sur l'organisation de la demande |
 | `attachment_uploads` | — | — | — | — *(service_role seul : zone d'attente des pièces)* |
 | `request_emails` | `EXISTS` demande visible (un échange avec l'usager n'est pas une note interne) | **aucune** — service seul | **aucune** — le corps doit rester celui qui est parti | **aucune** — un e-mail parti ne se dé-envoie pas |
+| `request_citizen_messages` | `can_consult_request` | **aucune** — RPC `record_citizen_message` (service_role) | **aucune** — immuable | **aucune** — cascade de la demande |
+| `request_access_codes`, `request_access_mails` | **aucune** — `service_role` seul (RLS actif, droits retirés à `anon`/`authenticated` ; empreintes et clair d'envoi hors de portée du navigateur) | **aucune** — RPC `register_request_access` / `rotate_request_access` | **aucune** — RPC `check_request_access`, `request_access_resend`, `revoke_request_access`, facteur | **aucune** — cascade de la demande |
 | `request_links` | `EXISTS` demande visible (la ligne appartient à la source) | couple **écriture** sur la source ; trigger `request_links_check_scope` exige en plus la **consultation** de la cible (hors contexte de service) | — | `has_admin_scope` sur l'organisation de la demande |
 | `procedure_link_settings` | membre | — (RPC `save_procedure_link_settings`, administration de la racine) | — (idem) | — |
 | `request_groups` / `request_group_members` | `can_consult_request` d'au moins un membre / du membre | — (RPC `link_requests`) | — (idem, fusion) | — (RPC `unlink_request`) |

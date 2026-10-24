@@ -26,7 +26,8 @@ export type NotificationKind =
   | "new_request_in_scope"
   | "transferred_in"
   | "intervention_requested"
-  | "intervention_completed";
+  | "intervention_completed"
+  | "citizen_replied";
 
 /** Libellés de statut — copie assumée de `src/features/requests/statuts.ts`.
  *  Les edge functions ne partagent pas le graphe de modules du front ; un
@@ -79,6 +80,8 @@ export interface NotificationPayload {
   comment?: string | null;
   /** Intervention réalisée : nombre de justificatifs joints à la fiche (jamais les fichiers eux-mêmes). */
   attachments?: number | null;
+  /** Réponse de l'usager (L4b) : nombre de pièces jointes à son message. */
+  pieces?: number | null;
 }
 
 export interface NotificationEmailInput {
@@ -314,6 +317,24 @@ function bodyFor(kind: string, payload: NotificationPayload): Body {
                 : `${payload.attachments} justificatifs ont été joints à la fiche de la demande.`]
             : []),
           `La demande est au statut « ${statusLabel(payload.status)} » : l'instruction peut reprendre.`,
+        ],
+      };
+    }
+
+    case "citizen_replied": {
+      // Lot L4b : l'usager a répondu en ligne. On dit QU'il a écrit, jamais
+      // CE qu'il a écrit — le message reste dans Iris, sous RLS.
+      return {
+        subject: subjectLine("Réponse de l'usager", payload),
+        heading: "L'usager a répondu",
+        paragraphs: [
+          `L'usager a répondu en ligne sur la demande ${what}.`,
+          ...(typeof payload.pieces === "number" && payload.pieces > 0
+            ? [payload.pieces === 1
+                ? "Une pièce jointe accompagne son message."
+                : `${payload.pieces} pièces jointes accompagnent son message.`]
+            : []),
+          "Son message est dans l'onglet Échanges de la demande.",
         ],
       };
     }

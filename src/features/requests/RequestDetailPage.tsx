@@ -32,9 +32,9 @@ import {
 } from "./statuts";
 import {
   createAttachmentUrl, useAddMessage, useAssignRequest, useDeleteMessage, useEligibleAssignees, useMentionableUsers,
-  useRequest, useRequestAttachments, useRequestEmails, useRequestEvents, useRequestLinks,
+  useRequest, useRequestAttachments, useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestLinks,
   useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useTransferRequest,
-  useUpdatePriority,
+  useSetCitizenVisibility, useUpdatePriority,
   type RequestAttachment, type TenantMember, type TransferResult,
 } from "./useRequests";
 import { useSendRequestEmail } from "./instruction/useSendRequestEmail";
@@ -50,6 +50,7 @@ import {
   closureOutcome, visibleTemplates, emptyDocuments,
 } from "@fn/_shared/document/templates";
 import { interventionDocuments, usagerPieces } from "./instruction/documents";
+import { isExchangePiece } from "./instruction/citizenMessages";
 import { EchangesPane, type ComposerDraft, type SendEmailPayload } from "./instruction/EchangesPane";
 import { QualificationDialog, type QualificationSubmit } from "./instruction/QualificationDialog";
 import { AjouterPieceDialog } from "./instruction/AjouterPieceDialog";
@@ -65,6 +66,9 @@ import { ResumePane } from "./instruction/ResumePane";
 import { IncidentGroupCard } from "@/features/linking/IncidentGroupCard";
 import { AvancementCard, PriseEnChargeCard, UsagerCard } from "./instruction/InstructionRail";
 import { TransfertDialog } from "./instruction/TransfertDialog";
+import { GuestAccessCard } from "./instruction/GuestAccessCard";
+import { CitizenVisibilityDialog } from "./instruction/CitizenVisibilityDialog";
+import { canChangeCitizenVisibility, citizenVisibilityView } from "./instruction/citizenVisibility";
 import { transferOptions } from "./instruction/transfert";
 import { ProcedurePane } from "./procedure/ProcedurePane";
 import { RailTabs, type RailTab } from "./procedure/RailTabs";
@@ -112,6 +116,7 @@ export function RequestDetailPage() {
   const attachments = useRequestAttachments(id);
   const messages = useRequestMessages(id);
   const emails = useRequestEmails(id);
+  const citizenMessages = useRequestCitizenMessages(id);
   const links = useRequestLinks(id);
   const members = useTenantMembers(orgId);
   const eligibleAssignees = useEligibleAssignees(id);
@@ -149,6 +154,7 @@ export function RequestDetailPage() {
   const assignRequest = useAssignRequest();
   const updatePriority = useUpdatePriority();
   const transferRequest = useTransferRequest();
+  const setCitizenVisibility = useSetCitizenVisibility();
   // Activations du tenant (quel organisme assure quelle démarche) : une seule
   // lecture pour tout l'écran, comme au guichet. La garde réelle reste
   // `t12_requests_transfer_procedure_active`.
@@ -194,6 +200,9 @@ export function RequestDetailPage() {
   // avant elle, et son texte se calcule sur la cible.
   const [transferTo, setTransferTo] = React.useState<string | null>(null);
   const [transferError, setTransferError] = React.useState<string | null>(null);
+  // Changement de visibilité dans l'espace usager : rien n'est écrit avant la confirmation.
+  const [visibilityOpen, setVisibilityOpen] = React.useState(false);
+  const [visibilityError, setVisibilityError] = React.useState<string | null>(null);
   // Transfert accompli VERS UN PÉRIMÈTRE QU'ON NE VOIT PLUS : la fiche a
   // quitté l'écran de son auteur. On le dit à sa place, au lieu de laisser le
   // « Demande introuvable » générique passer pour une panne.
@@ -297,6 +306,10 @@ export function RequestDetailPage() {
   const canInstruct = canProcessWith(rr);
   const status = r.status as RequestStatus;
   const transitions = writer ? allowedTransitionsFor(status, rr) : [];
+  // Visibilité dans l'espace usager : même droit que l'écriture à l'usager
+  // (instruction) — miroir de `t14`, qui reste l'autorité.
+  const citizenView = citizenVisibilityView(r.socle_contact_id, r.citizen_visible);
+  const canChangeVisibility = canChangeCitizenVisibility(rr, r.socle_contact_id);
 
   const archived = status === "archivee";
   const memberList = members.data ?? [];
@@ -375,7 +388,7 @@ export function RequestDetailPage() {
   // Pièces ACTIVES, déclarées telles quelles au moteur de validation : les
   // conditions se rejouent exactement comme à l'écran.
   const activeDeclarations = usagerAttachments
-    .filter((a) => !a.email_id && !a.superseded_by)
+    .filter((a) => !isExchangePiece(a) && !a.superseded_by)
     .map((a) => ({
       form_field_key: a.form_field_key ?? "",
       file_name: a.file_name,
@@ -419,7 +432,7 @@ export function RequestDetailPage() {
     { key: "resume", label: "Résumé", count: null },
     // Le compteur suit l'onglet : les pièces d'un e-mail sortant vivent sous
     // leur échange, pas dans « Pièces de la demande ».
-    { key: "docs", label: "Documents", count: usagerAttachments.filter((a) => !a.email_id).length },
+    { key: "docs", label: "Documents", count: usagerAttachments.filter((a) => !isExchangePiece(a)).length },
     ...(intervenantOnly ? [] : [
       { key: "echanges" as const, label: "Échanges", count: null },
       { key: "notes" as const, label: "Notes internes", count: noteList.length },
@@ -446,6 +459,20 @@ export function RequestDetailPage() {
    * une seconde plus tard — on le ramène à la liste en disant ce qui s'est
    * passé, plutôt que de le laisser croire à une panne.
    */
+  /** Visibilité confirmée : le dialogue reste ouvert sur un refus de la garde `t14`. */
+  async function submitVisibility() {
+    if (!r || !citizenView) return;
+    setVisibilityError(null);
+    try {
+      await setCitizenVisibility.mutateAsync({ requestId: r.id, visible: !citizenView.visible });
+    } catch (err) {
+      setVisibilityError(err instanceof Error ? err.message : "Changement refusé.");
+      return;
+    }
+    setVisibilityOpen(false);
+    flash(citizenView.successMessage);
+  }
+
   async function submitTransfer(socleOrgId: string) {
     if (!r || !transferTarget) return;
     setTransferError(null);
@@ -872,6 +899,7 @@ export function RequestDetailPage() {
                   request={r}
                   identity={identity}
                   emails={emails.data ?? []}
+                  citizenMessages={citizenMessages.data ?? []}
                   attachments={attachmentList}
                   members={memberList}
                   events={events.data ?? []}
@@ -1014,7 +1042,12 @@ export function RequestDetailPage() {
               // squelette au retour d'une modification.
               canEdit={canBrowseUsagers && Boolean(r.socle_contact_id)}
               onEdit={() => setUsagerEditOpen(true)}
+              citizenVisibility={citizenView}
+              onChangeCitizenVisibility={
+                canChangeVisibility ? () => { setVisibilityError(null); setVisibilityOpen(true); } : null
+              }
             />
+            <GuestAccessCard requestId={r.id} canInstruct={canInstruct} onFlash={flash} />
             </div>
           </div>
         </div>
@@ -1025,6 +1058,14 @@ export function RequestDetailPage() {
         members={eligibleMembers}
         closureNotice={closureNotice}
         extra={groupResolution.section}
+      />
+
+      <CitizenVisibilityDialog
+        view={visibilityOpen ? citizenView : null}
+        pending={setCitizenVisibility.isPending}
+        error={visibilityError}
+        onClose={() => { setVisibilityOpen(false); setVisibilityError(null); }}
+        onConfirm={() => void submitVisibility()}
       />
 
       {/* Transfert vers un autre organisme responsable. La modale est le SEUL

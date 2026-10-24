@@ -9,6 +9,108 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.9.0 — 2026-10-21 — l'usager répond en ligne
+
+Projet Sceaux (espace usager, lot L4b). **Ajout additif.**
+
+- **`POST /v1/citizen/requests/{id}/messages`** `{ body, attachments?: [{ upload_id }] }` (scope
+  `requests:citizen`, jeton court obligatoire) : un message de l'usager sur SA demande, 5 000
+  caractères et 5 pièces au plus (pièces déposées d'abord par `POST /v1/uploads`). Une demande
+  `en_attente` repasse `en_instruction` ; les agents sont prévenus (notification
+  `citizen_replied`). 409 sur une demande close, 429 au-delà de 10 messages par heure.
+- **Vue usager** (`GET /v1/citizen/requests/{id}`) : chaque message porte `direction`
+  (`agent` | `usager`) ; un message de l'usager a `subject: null`. Ses pièces sont rattachées à
+  son message. Un lecteur ne voit que les messages écrits par SON canal (compte ou code d'accès).
+
+---
+
+## 2.8.0 — 2026-10-21 — accès invité : code perdu, coupure, nouveau code
+
+Projet Sceaux (espace usager, lot L4a). **Ajout additif.**
+
+- **`POST /v1/citizen/access/resend`** `{ reference, email }` (scope `requests:citizen`) :
+  « code perdu ». Si la référence et l'adresse déclarée au dépôt concordent, Iris tire un code
+  NEUF et l'envoie à cette adresse ; l'ancien cesse de valoir. 3 renvois par 24 h et par demande ;
+  rien pour un accès coupé par un agent ou expiré. **Toujours 202**, durée plancher.
+- **`POST /v1/citizen/access`** rend aussi `access_version`. Le portail la porte dans son jeton
+  court (`g`, sujet `request:`) : un nouveau code ou une coupure l'incrémente, et les lectures
+  d'une session invitée ouverte avant sont refusées (404). Sans `g` (portail d'avant), seule la
+  coupure s'applique.
+- Côté agent (application Iris, droit d'instruction) : **couper l'accès** d'une demande, ou
+  **envoyer un nouveau code** à l'adresse déclarée (ce qui rouvre l'accès). Le message est tracé
+  dans l'onglet Échanges, code masqué.
+
+---
+
+## 2.7.1 — 2026-10-20 — phrase du consentement « partage »
+
+**Correctif de texte, sans changement de forme.** La phrase composée par le serveur pour le
+consentement `partage` devient « J'accepte de partager ces informations avec les services de
+l'organisme « {nom} » afin d'améliorer le traitement de ma demande et de mes futures
+demandes. » (repli sans nom : « … avec les services de la collectivité … »). L'ancienne
+formulation (« aux services de {nom} ») ne s'accordait pas avec un nom commençant par une
+voyelle ou un article. Les recueils déjà consignés gardent leur phrase d'origine (preuve
+immuable) ; un émetteur ne compose jamais la phrase lui-même.
+
+---
+
+## 2.7.0 — 2026-10-20 — « Mes demandes » d'un compte du portail, jeton court
+
+Projet Sceaux (espace usager, lot L3b). **Ajout additif.**
+
+- **`GET /v1/citizen/contacts/{id}/requests`** (scope `requests:citizen`) : les demandes
+  rattachées à une fiche du Socle, **toutes sources**, les plus récentes d'abord, pagination par
+  `before` / `next_before`. Ligne `CitizenRequestSummary` (référence, objet, démarche, statut,
+  dates). `GET /v1/citizen/requests/{id}` et ses pièces servent aussi un compte connecté : une
+  demande de SA fiche, messages envoyés à l'adresse de son compte.
+- **Jeton court `X-Citizen-Token`** sur toutes les lectures `/v1/citizen/*` : signé par le portail
+  avec un second secret (`IRIS_CITIZEN_TOKEN_SECRET`), 3 minutes au plus, lié à ce qu'il ouvre
+  (`request:<id>` pour un invité, `contact:<id>` + adresse pour un compte). Dès que le secret est
+  posé côté Iris, il est **obligatoire** ; la clé plateforme seule ne lit plus rien. Les lectures
+  d'une fiche l'exigent toujours.
+- **`requests.citizen_visible`** : une demande issue de **Clara** (courrier) naît **masquée** dans
+  l'espace usager — historique compris — tant qu'un agent ne la « rend visible à l'usager via son
+  portail » ; toute autre demande est visible, et un agent ayant le droit d'instruction peut l'y
+  soustraire (confidentialité, rattachement à corriger). Décision PO du 2026-10-20.
+- **Rapprochement** : une fiche tenue par un compte du portail ne se rejoint que par l'adresse de
+  courriel et le nom (jamais le téléphone) ; un code postal déclaré différent de celui de la fiche
+  rend toute correspondance non sûre.
+- **Rapprochement à l'ingestion corrigé et durci** : le contrat `contacts-api` est enfin respecté
+  (critères à plat, réponse en tableau, raisons `email`/`phone`/`siret`) — jusqu'ici aucun
+  rapprochement n'aboutissait et chaque dépôt créait une fiche. Règle : UNE fiche sûre — personne :
+  courriel ou téléphone ET nom identiques ; structure : SIRET, ou courriel et nom — sinon une
+  fiche neuve.
+
+---
+
+## 2.6.0 — 2026-10-19 — Accès invité de l'usager à sa demande
+
+Projet Sceaux (espace usager, lot L2). **Ajout additif** : rien ne change pour qui ne s'en sert pas.
+
+- **`guest_access` à l'ingestion** (`POST /v1/requests`, facultatif) : l'usager a accepté de
+  suivre sa demande en ligne. Iris tire un **code d'accès** (`XXXX-XXXX-XX`, ≈ 50 bits), le rend
+  **une seule fois** dans la réponse `201` (`guest_access.code`) et le cite dans l'accusé de
+  réception, avec `guest_access.tracking_url` (la page de suivi du portail). Exige une adresse
+  déclarée (`requester.email`), sinon `422`. Hors empreinte ; un rejeu (`200`) ne rend jamais de
+  code. `guest_access: null` dans la réponse : l'accès n'a pas pu s'ouvrir, la demande existe.
+- **Scope `requests:citizen`** (donné aux clés plateforme `portail-citoyen`) et trois routes, tag
+  « Usager » :
+  - `POST /v1/citizen/access` — courriel + référence + code → `{ request_id }`. **Un seul `404`**
+    pour tous les échecs (inconnue, faux code, verrouillée après 5 mauvais codes donnés avec la
+    bonne adresse — une adresse fausse ne compte pas —, expirée 90 jours après la clôture), et
+    une durée de réponse plancher ;
+  - `GET /v1/citizen/requests/{id}` — la **vue usager** (`CitizenRequest`) : référence, objet,
+    démarche, statut, dates, texte de clôture une fois close, pièces déposées, messages envoyés à
+    **l'adresse déclarée au dépôt** (pas ceux d'une autre fiche à laquelle la demande serait
+    rattachée). **Jamais** `closure_motif`, notes internes, agents, journal ni pièces d'instruction ;
+  - `GET /v1/citizen/requests/{id}/attachments/{attachment_id}` — URL signée de 60 secondes.
+- **Ce qu'Iris garde** : des empreintes HMAC poivrées du code et de l'adresse
+  (`IRIS_ACCESS_CODE_PEPPER`), jamais le clair. L'accusé enregistré dans l'onglet Échanges
+  porte le code **masqué** (`••••-••••-••`) ; seul le message envoyé porte le clair, et seulement
+  s'il part à l'adresse déclarée.
+
+---
+
 ## Note du 2026-10-09 — Iris accuse réception à l'usager (contrat inchangé)
 
 **Aucun champ, aucune route, aucun code d'erreur ne change.** Ce qui change, c'est ce qu'Iris

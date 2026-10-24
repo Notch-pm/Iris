@@ -59,8 +59,13 @@ const AUDIENCE_LABELS: Record<Audience, string> = {
   citoyen: "Citoyen", entreprise: "Entreprise", association: "Association",
 };
 
-/** Raisons qui reposent sur un identifiant fort (jamais le seul nom). */
-const STRONG_REASONS = new Set(["email_exact", "phone_exact", "siret_exact", "birth_date_match"]);
+/**
+ * Raisons qui reposent sur un identifiant fort (jamais le seul nom) —
+ * vocabulaire du contrat contacts-api (`email`, `phone`, `siret`,
+ * `birth_date`). Jusqu'au 2026-10-20, l'écran attendait `email_exact`…
+ * que le Socle ne renvoie pas : aucun candidat n'était jamais signalé « fort ».
+ */
+const STRONG_REASONS = new Set(["email", "phone", "siret", "birth_date"]);
 
 /** Délai après la dernière frappe avant d'interroger le Socle. */
 const LIVE_SEARCH_DELAY_MS = 450;

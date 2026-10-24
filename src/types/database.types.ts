@@ -1034,6 +1034,7 @@ export type Database = {
           created_at: string
           document_type_label: string | null
           document_type_socle_id: string | null
+          citizen_message_id: string | null
           email_id: string | null
           file_name: string
           file_size: number | null
@@ -1066,6 +1067,7 @@ export type Database = {
           created_at?: string
           document_type_label?: string | null
           document_type_socle_id?: string | null
+          citizen_message_id?: string | null
           email_id?: string | null
           file_name: string
           file_size?: number | null
@@ -1098,6 +1100,7 @@ export type Database = {
           created_at?: string
           document_type_label?: string | null
           document_type_socle_id?: string | null
+          citizen_message_id?: string | null
           email_id?: string | null
           file_name?: string
           file_size?: number | null
@@ -1125,6 +1128,13 @@ export type Database = {
             columns: ["compliance_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_attachments_citizen_message_id_fkey"
+            columns: ["citizen_message_id"]
+            isOneToOne: false
+            referencedRelation: "request_citizen_messages"
             referencedColumns: ["id"]
           },
           {
@@ -1174,6 +1184,51 @@ export type Database = {
             columns: ["uploaded_by"]
             isOneToOne: false
             referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_citizen_messages: {
+        Row: {
+          author_kind: string
+          body: string
+          created_at: string
+          id: string
+          organization_id: string
+          request_id: string
+          socle_contact_id: string | null
+        }
+        Insert: {
+          author_kind: string
+          body: string
+          created_at?: string
+          id?: string
+          organization_id: string
+          request_id: string
+          socle_contact_id?: string | null
+        }
+        Update: {
+          author_kind?: string
+          body?: string
+          created_at?: string
+          id?: string
+          organization_id?: string
+          request_id?: string
+          socle_contact_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_citizen_messages_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_citizen_messages_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
             referencedColumns: ["id"]
           },
         ]
@@ -1768,6 +1823,7 @@ export type Database = {
           assigned_to: string | null
           body: string | null
           channel: string | null
+          citizen_visible: boolean
           closed_at: string | null
           closure_motif: string | null
           closure_text: string | null
@@ -1811,6 +1867,7 @@ export type Database = {
           assigned_to?: string | null
           body?: string | null
           channel?: string | null
+          citizen_visible?: boolean
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null
@@ -1854,6 +1911,7 @@ export type Database = {
           assigned_to?: string | null
           body?: string | null
           channel?: string | null
+          citizen_visible?: boolean
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null

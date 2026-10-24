@@ -16,11 +16,13 @@ export type NotificationKind =
   | "new_request_in_scope"
   | "transferred_in"
   | "intervention_requested"
-  | "intervention_completed";
+  | "intervention_completed"
+  | "citizen_replied";
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   "assigned", "unassigned", "status_changed", "note_added", "mentioned",
   "new_request_in_scope", "transferred_in", "intervention_requested", "intervention_completed",
+  "citizen_replied",
 ];
 
 export function isNotificationKind(value: string): value is NotificationKind {
@@ -53,6 +55,8 @@ export interface NotificationPayload {
   intervenant_name?: string | null;
   /** Intervention : commentaire de la sollicitation ou de la réalisation. */
   comment?: string | null;
+  /** Réponse de l'usager (L4b) : nombre de pièces jointes à son message. */
+  pieces?: number | null;
 }
 
 export interface NotificationItem {
@@ -80,6 +84,7 @@ const KIND_TITLES: Record<NotificationKind, string> = {
   transferred_in: "Demande transférée",
   intervention_requested: "Intervention demandée",
   intervention_completed: "Intervention réalisée",
+  citizen_replied: "Réponse de l'usager",
 };
 
 export function notificationTitle(kind: string): string {
@@ -150,6 +155,13 @@ export function notificationMessage(kind: string, payload: NotificationPayload):
       return day
         ? `${name} a déclaré l'intervention réalisée le ${day}.`
         : `${name} a déclaré l'intervention réalisée.`;
+    }
+    case "citizen_replied": {
+      // Jamais le corps du message : on dit qu'il existe, il se lit sur la fiche.
+      const n = typeof payload.pieces === "number" ? payload.pieces : 0;
+      return n > 0
+        ? `L'usager a répondu en ligne (${n === 1 ? "1 pièce jointe" : `${n} pièces jointes`}).`
+        : "L'usager a répondu en ligne.";
     }
     default:
       return "Cette demande a évolué.";

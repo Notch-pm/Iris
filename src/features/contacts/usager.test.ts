@@ -156,7 +156,7 @@ describe("consentViews — état des consentements RGPD", () => {
     } as SocleContact, "Nouveau nom");
     expect(views[1].statement).toBe("…aux services de l'ancien nom…");
     // Sans historique chargé (liste, rapprochement), le catalogue prend le relais.
-    expect(consentViews(base, "ACCM")[1].statement).toContain("aux services de ACCM");
+    expect(consentViews(base, "ACCM")[1].statement).toContain("avec les services de l'organisme « ACCM »");
   });
 
   it("marque l'obligatoire comme tel", () => {
@@ -174,7 +174,7 @@ describe("parseSocleConsents — historique", () => {
       { kind: "partage", granted: false, statement: "B", source_app: "iris", collected_at: "2026-09-20T00:00:00Z" },
     ] as SocleConsent[]);
     expect(rows.map((r) => r.statement)).toEqual(["B", "A"]);
-    expect(rows[0]).toMatchObject({ label: "Partage aux services", granted: false, source: "iris" });
+    expect(rows[0]).toMatchObject({ label: "Partage avec les services", granted: false, source: "iris" });
   });
 
   it("ne tombe pas sur un historique absent ou vide", () => {
@@ -191,7 +191,7 @@ describe("consentsSummary", () => {
       ...base,
       consent_traitement: true, consent_traitement_at: "2026-09-20T08:00:00Z",
       consent_partage: false, consent_partage_at: "2026-09-20T08:00:00Z",
-    } as SocleContact))).toBe("Traitement de la demande : accordé · Partage aux services : refusé");
+    } as SocleContact))).toBe("Traitement de la demande : accordé · Partage avec les services : refusé");
   });
 });
 

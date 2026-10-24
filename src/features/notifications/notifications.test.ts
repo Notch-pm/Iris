@@ -207,3 +207,11 @@ describe("interventions (2026-09-14)", () => {
       .toBe("Sam a déclaré l'intervention réalisée.");
   });
 });
+
+describe("réponse de l'usager (L4b)", () => {
+  it("un titre et un message qui ne recopient jamais le texte", () => {
+    expect(notificationTitle("citizen_replied")).toBe("Réponse de l'usager");
+    expect(notificationMessage("citizen_replied", {})).toBe("L'usager a répondu en ligne.");
+    expect(notificationMessage("citizen_replied", { pieces: 2 })).toBe("L'usager a répondu en ligne (2 pièces jointes).");
+  });
+});

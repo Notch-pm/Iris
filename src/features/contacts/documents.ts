@@ -39,7 +39,7 @@ export interface UsagerDocumentGroup {
 }
 
 export function usagerDocumentNature(a: RequestAttachment): UsagerDocumentNature {
-  if (a.email_id !== null) return "Jointe à un échange";
+  if (a.email_id !== null || a.citizen_message_id) return "Jointe à un échange";
   if (a.kind === "courrier") return "Courrier";
   if (a.kind === "instruction_externe") return "Pièce d'instruction transmissible";
   return "Pièce déposée";

@@ -58,7 +58,7 @@ export function kindLabel(kind: string): string {
 /** Les justificatifs d'intervention du dossier, les plus récents en tête. */
 export function interventionDocuments(attachments: readonly RequestAttachment[]): RequestAttachment[] {
   return attachments
-    .filter((a) => a.email_id === null && a.kind === INTERVENTION_KIND)
+    .filter((a) => a.email_id === null && !a.citizen_message_id && a.kind === INTERVENTION_KIND)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
@@ -82,14 +82,14 @@ export function documentsOf(
   kind: DocumentKind,
 ): RequestAttachment[] {
   return attachments
-    .filter((a) => a.email_id === null && a.kind === kind)
+    .filter((a) => a.email_id === null && !a.citizen_message_id && a.kind === kind)
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 
 /** Ce qu'on peut proposer en pièce jointe d'un message à l'usager. */
 export function sendableDocuments(attachments: readonly RequestAttachment[]): RequestAttachment[] {
   return attachments
-    .filter((a) => a.email_id === null && isSendable(a.kind))
+    .filter((a) => a.email_id === null && !a.citizen_message_id && isSendable(a.kind))
     .sort((a, b) => b.created_at.localeCompare(a.created_at));
 }
 

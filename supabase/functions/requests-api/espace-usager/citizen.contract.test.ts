@@ -1,0 +1,831 @@
+/**
+ * CONTRAT ANTI-FUITE de la vue usager d'Iris (`/v1/citizen/*`, contrat 2.7.0) :
+ * un usager ne voit jamais `closure_motif`, `request_messages`, les pièces
+ * `instruction_interne`, les noms d'agents, ni les demandes d'un autre compte,
+ * d'une autre collectivité, ou masquées (Clara, soustraites par un agent).
+ *
+ * `requests-api/index.ts` est exécuté pour de bon ; sa base est PGlite avec les
+ * vraies migrations (voir `harness/`). Des PHRASES-SENTINELLES portent les
+ * données internes : si l'une apparaît dans une réponse — quelle que soit la
+ * route —, le test échoue.
+ */
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { ANTONY_ROOT, IrisWorld, KEY, SCEAUX_ROOT, TOKEN_SECRET, type Reply } from "./harness/irisWorld.ts";
+
+const ALICE = "aaaaaaaa-0000-4000-8000-0000000000a1";
+const BOB = "bbbbbbbb-0000-4000-8000-0000000000b1";
+
+const SENTINELLES = [
+  "MOTIF INTERNE",
+  "NOTE INTERNE",
+  "CORPS INTERNE",
+  "Agent Martin Dupont",
+  "closure_motif",
+  "request_messages",
+  "assigned_to",
+  "instruction_interne",
+  "internal_notes",
+  "sent_by",
+  "to_email",
+  "storage_path",
+];
+
+let world: IrisWorld;
+const replies: Reply[] = [];
+
+/** Une requête, dont la réponse est relue en bloc à la fin du test. */
+async function call(...args: Parameters<IrisWorld["call"]>): Promise<Reply> {
+  const reply = await world.call(...args);
+  replies.push(reply);
+  return reply;
+}
+
+beforeEach(async () => {
+  replies.length = 0;
+  world = await IrisWorld.create();
+});
+afterEach(async () => {
+  for (const reply of replies) {
+    for (const s of SENTINELLES) expect(reply.text, `sentinelle « ${s} » dans une réponse (${reply.status})`).not.toContain(s);
+    for (const secret of [KEY, TOKEN_SECRET, "service-role"]) expect(reply.text).not.toContain(secret);
+    // Jamais de CORS sur les routes authentifiées : cette API ne se consomme pas depuis un navigateur.
+    expect(reply.headers.get("access-control-allow-origin")).toBeNull();
+  }
+  await world.close();
+});
+
+const asContact = (id: string, email = "usager@example.org") => world.token({ kind: "contact", id, email });
+const asGuest = (id: string) => world.token({ kind: "request", id });
+
+describe("authentification et portée de la clé", () => {
+  it("sans clé, avec une clé inconnue, révoquée, expirée ou suspendue : jamais de donnée", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const token = await asContact(ALICE);
+    await world.addKey("irs_revoked", ["requests:citizen"], { revoked: true });
+    await world.addKey("irs_expired", ["requests:citizen"], { expired: true });
+    await world.addKey("irs_suspended", ["requests:citizen"], { suspended: true });
+    for (const key of [null, "irs_inconnue", "irs_revoked", "irs_expired", "irs_suspended"]) {
+      const reply = await call("GET", `/v1/citizen/requests/${r.id}`, { key, token });
+      expect([401, 403], String(key)).toContain(reply.status);
+    }
+  });
+
+  it("une clé sans le scope requests:citizen n'ouvre aucune route usager, même avec un bon jeton", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.addKey("irs_lecture", ["requests:read", "requests:write"]);
+    const token = await asContact(ALICE);
+    for (const path of [`/v1/citizen/requests/${r.id}`, `/v1/citizen/contacts/${ALICE}/requests`]) {
+      expect((await call("GET", path, { key: "irs_lecture", token })).status).toBe(403);
+    }
+    expect((await call("POST", "/v1/citizen/access", { key: "irs_lecture", json: { reference: r.reference, email: "a@b.fr", code: "ABCD-EFGH-JK" } })).status).toBe(403);
+  });
+
+  it("réciproquement, la clé du portail (citoyen) ne lit ni la liste des partenaires ni la chronologie interne", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    expect((await call("GET", "/v1/requests")).status).toBe(403);
+    expect((await call("GET", `/v1/requests/${r.id}`)).status).toBe(403);
+    expect((await call("GET", `/v1/requests/${r.id}/timeline`)).status).toBe(403);
+  });
+
+  it("clé plateforme : la collectivité est exigée, connue, et doit avoir sa source", async () => {
+    expect((await call("POST", "/v1/citizen/access", { tenant: null, json: {} })).status).toBe(400);
+    expect((await call("POST", "/v1/citizen/access", { tenant: "pas-un-uuid", json: {} })).status).toBe(400);
+    expect((await call("POST", "/v1/citizen/access", { tenant: "8f1e0d3a-0000-4000-8000-0000000000ff", json: {} })).status).toBe(403);
+    await world.db.exec("update integration_sources set status = 'suspended' where organization_id is not null");
+    expect((await call("POST", "/v1/citizen/access", { json: {} })).status).toBe(403);
+  });
+});
+
+describe("jeton court (X-Citizen-Token)", () => {
+  it("absent, mal formé, mal signé, expiré, trop long, d'une autre collectivité ou d'un autre secret : 404 uniforme", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const good = await asContact(ALICE);
+    const now = Math.floor(Date.now() / 1000);
+    const bad: (string | null)[] = [
+      null,
+      "",
+      "x",
+      "a.b",
+      good.slice(0, -3) + "AAA",
+      good.split(".")[0] + "." + good.split(".")[0],
+      await world.token({ kind: "contact", id: ALICE }, { now: now - 3600 }),
+      await world.token({ kind: "contact", id: ALICE }, { ttl: 181 }),
+      await world.token({ kind: "contact", id: ALICE }, { ttl: 86_400 }),
+      await world.token({ kind: "contact", id: ALICE }, { tenant: ANTONY_ROOT }),
+      await world.token({ kind: "contact", id: ALICE }, { secret: "z".repeat(48) }),
+      await world.token({ kind: "contact", id: ALICE }, { v: 2 }),
+      "e".repeat(3000),
+    ];
+    const paths = [`/v1/citizen/requests/${r.id}`, `/v1/citizen/contacts/${ALICE}/requests`];
+    const seen: unknown[] = [];
+    for (const token of bad) {
+      for (const path of paths) {
+        const reply = await call("GET", path, { token });
+        expect(reply.status, `${path} avec ${String(token).slice(0, 20)}`).toBe(404);
+        seen.push(reply.body);
+      }
+    }
+    for (const body of seen) expect(body).toEqual(seen[0]);
+    expect((await call("GET", paths[0], { token: good })).status).toBe(200);
+  });
+
+  it("le jeton est borné à 3 minutes : 180 s passent, 181 non", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const path = `/v1/citizen/requests/${r.id}`;
+    expect((await call("GET", path, { token: await world.token({ kind: "contact", id: ALICE }, { ttl: 180 }) })).status).toBe(200);
+    expect((await call("GET", path, { token: await world.token({ kind: "contact", id: ALICE }, { ttl: 181 }) })).status).toBe(404);
+    expect((await call("GET", path, { token: await world.token({ kind: "contact", id: ALICE }, { ttl: 0 }) })).status).toBe(404);
+    expect((await call("GET", path, { token: await world.token({ kind: "contact", id: ALICE }, { ttl: -5 }) })).status).toBe(404);
+  });
+
+  it("un jeton signé pour un sujet qui n'est pas un UUID, ou d'un genre inconnu, n'ouvre rien", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    for (const sub of ["contact:pas-un-uuid", "request:", "admin:" + ALICE, ALICE]) {
+      const { signCitizenToken } = await import("../_shared/citizenToken.ts");
+      const token = await signCitizenToken(TOKEN_SECRET, { v: 1, t: SCEAUX_ROOT, sub, exp: Math.floor(Date.now() / 1000) + 60 });
+      expect((await call("GET", `/v1/citizen/requests/${r.id}`, { token })).status, sub).toBe(404);
+    }
+  });
+
+  it("sans le secret côté Iris, les lectures de fiche sont FERMÉES (jamais ouvertes par défaut)", async () => {
+    await world.close();
+    world = await IrisWorld.create({ IRIS_CITIZEN_TOKEN_SECRET: undefined });
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const token = await asContact(ALICE);
+    expect((await call("GET", `/v1/citizen/contacts/${ALICE}/requests`, { token })).status).toBe(404);
+    expect((await call("GET", `/v1/citizen/requests/${r.id}`, { token })).status).toBe(404);
+  });
+
+  // Mode transitoire documenté (contrat 2.7.0) : sans secret, l'ACCÈS INVITÉ reste lisible avec la
+  // clé seule. Test de caractérisation — il épingle le risque, il ne le valide pas : tant que
+  // IRIS_CITIZEN_TOKEN_SECRET n'est pas posé, la clé plateforme + l'identifiant d'une demande
+  // à accès invité suffisent à la lire. En production le secret est posé (03-avancement.md).
+  it("sans le secret, une demande à accès invité est lisible par la clé seule (mode transitoire à ne pas laisser en production)", async () => {
+    await world.close();
+    world = await IrisWorld.create({ IRIS_CITIZEN_TOKEN_SECRET: undefined });
+    const r = await world.addRequest(world.sceaux);
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org");
+    expect((await call("GET", `/v1/citizen/requests/${r.id}`)).status).toBe(200);
+    const other = await world.addRequest(world.sceaux); // sans accès invité
+    expect((await call("GET", `/v1/citizen/requests/${other.id}`)).status).toBe(404);
+  });
+});
+
+describe("propriété d'une demande — compte connecté (jeton contact:)", () => {
+  it("lit SA demande ; la demande d'un autre, une inexistante, une masquée, une d'une autre ville : le même 404", async () => {
+    const mine = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const bobs = await world.addRequest(world.sceaux, { socle_contact_id: BOB });
+    const hidden = await world.addRequest(world.sceaux, { socle_contact_id: ALICE, citizen_visible: false });
+    const clara = await world.addRequest(world.sceaux, { socle_contact_id: ALICE, source: "clara" });
+    const antony = await world.addRequest(world.antony, { socle_contact_id: ALICE });
+    const orphan = await world.addRequest(world.sceaux, { socle_contact_id: null });
+    const token = await asContact(ALICE);
+
+    expect((await call("GET", `/v1/citizen/requests/${mine.id}`, { token })).status).toBe(200);
+    const refused = [];
+    for (const id of [bobs.id, hidden.id, clara.id, antony.id, orphan.id, crypto.randomUUID()]) {
+      const reply = await call("GET", `/v1/citizen/requests/${id}`, { token });
+      expect(reply.status, id).toBe(404);
+      refused.push(reply.body);
+    }
+    for (const body of refused) expect(body).toEqual(refused[0]);
+  });
+
+  it("une demande « issue de Clara » naît masquée, et le reste tant qu'un agent ne la rend pas visible", async () => {
+    const clara = await world.addRequest(world.sceaux, { socle_contact_id: ALICE, source: "clara", citizen_visible: true });
+    const [row] = await world.sql<{ citizen_visible: boolean }>("select citizen_visible from requests where id = $1", [clara.id]);
+    expect(row.citizen_visible).toBe(false); // t13 : même si l'insertion demandait true
+    const token = await asContact(ALICE);
+    expect((await call("GET", `/v1/citizen/requests/${clara.id}`, { token })).status).toBe(404);
+    expect((await call("GET", `/v1/citizen/contacts/${ALICE}/requests`, { token })).body.requests).toEqual([]);
+    await world.db.exec(`select set_config('app.service','1',false)`);
+    await world.db.exec(`update requests set citizen_visible = true where id = '${clara.id}'`);
+    await world.db.exec(`select set_config('app.service','',false)`);
+    expect((await call("GET", `/v1/citizen/requests/${clara.id}`, { token })).status).toBe(200);
+  });
+
+  it("la liste ne contient que les demandes visibles de la fiche du jeton, la plus récente d'abord", async () => {
+    const a1 = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const a2 = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.addRequest(world.sceaux, { socle_contact_id: BOB });
+    await world.addRequest(world.sceaux, { socle_contact_id: ALICE, citizen_visible: false });
+    await world.addRequest(world.antony, { socle_contact_id: ALICE });
+    const reply = await call("GET", `/v1/citizen/contacts/${ALICE}/requests`, { token: await asContact(ALICE) });
+    expect(reply.status).toBe(200);
+    expect(reply.body.requests.map((r: { id: string }) => r.id)).toEqual([a2.id, a1.id]);
+    expect(Object.keys(reply.body.requests[0]).sort()).toEqual(["closed_at", "id", "procedure_name", "received_at", "reference", "status", "subject", "updated_at"]);
+    expect(reply.body.next_before).toBeNull();
+  });
+
+  it("IDOR sur la liste : le jeton d'Alice ne lit pas la liste de Bob, ni via un identifiant forgé", async () => {
+    await world.addRequest(world.sceaux, { socle_contact_id: BOB });
+    const token = await asContact(ALICE);
+    for (const id of [BOB, ALICE.toUpperCase().replace("AAAAAAAA", "aaaaaaaa"), "pas-un-uuid", "00000000-0000-0000-0000-000000000000"]) {
+      const reply = await call("GET", `/v1/citizen/contacts/${id}/requests`, { token });
+      expect(reply.status, id).toBe(404);
+    }
+  });
+
+  it("un jeton d'invité (request:) ne lit aucune liste de fiche ; un jeton de fiche ne lit pas une demande d'invité d'un autre", async () => {
+    const guestReq = await world.addRequest(world.sceaux);
+    await world.openGuestAccess(guestReq.id, world.sceaux, "invite@example.org");
+    expect((await call("GET", `/v1/citizen/contacts/${ALICE}/requests`, { token: await asGuest(guestReq.id) })).status).toBe(404);
+    expect((await call("GET", `/v1/citizen/requests/${guestReq.id}`, { token: await asContact(ALICE) })).status).toBe(404);
+  });
+
+  it("pagination : limite bornée de 1 à 50, curseur sans doublon ni trou, y compris à dates égales", async () => {
+    const same = new Date(Date.UTC(2026, 9, 5, 10, 0, 0)).toISOString();
+    for (let i = 0; i < 5; i++) await world.addRequest(world.sceaux, { socle_contact_id: ALICE, received_at: same });
+    await world.addRequest(world.sceaux, { socle_contact_id: ALICE, received_at: new Date(Date.UTC(2026, 9, 4)).toISOString() });
+    const token = await asContact(ALICE);
+
+    const seen: string[] = [];
+    let before: string | null = null;
+    for (let page = 0; page < 10; page++) {
+      const path: string = `/v1/citizen/contacts/${ALICE}/requests?limit=2` + (before ? `&before=${encodeURIComponent(before)}` : "");
+      const reply: Reply = await call("GET", path, { token });
+      expect(reply.status).toBe(200);
+      expect(reply.body.requests.length).toBeLessThanOrEqual(2);
+      seen.push(...reply.body.requests.map((r: { id: string }) => r.id));
+      before = reply.body.next_before;
+      if (before === null) break;
+    }
+    expect(seen).toHaveLength(6);
+    expect(new Set(seen).size).toBe(6);
+
+    const huge = await call("GET", `/v1/citizen/contacts/${ALICE}/requests?limit=9999`, { token });
+    expect(huge.body.requests.length).toBeLessThanOrEqual(50);
+    expect((await call("GET", `/v1/citizen/contacts/${ALICE}/requests?limit=0`, { token })).body.requests).toHaveLength(1);
+    expect((await call("GET", `/v1/citizen/contacts/${ALICE}/requests?limit=abc`, { token })).body.requests).toHaveLength(6);
+  });
+
+  it("curseur piégé : refusé (400) sans jamais atteindre la base", async () => {
+    await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const token = await asContact(ALICE);
+    for (const before of ["x", "2026-01-01T00:00:00Z_not-a-uuid", `2026-01-01T00:00:00Z_${crypto.randomUUID()}"),(select 1`, "'; drop table requests;--"]) {
+      const reply = await call("GET", `/v1/citizen/contacts/${ALICE}/requests?before=${encodeURIComponent(before)}`, { token });
+      expect(reply.status, before).toBe(400);
+    }
+    expect((await world.sql("select count(*)::int n from requests"))[0]).toEqual({ n: 1 });
+  });
+});
+
+describe("ce que la vue montre — liste blanche", () => {
+  it("la demande : champs prévus, motif de clôture et notes JAMAIS ; texte de clôture seulement une fois close", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE, closure_text: "Réponse rédigée pour l'usager" });
+    await world.addNote(r.id);
+    const token = await asContact(ALICE);
+
+    const open = await call("GET", `/v1/citizen/requests/${r.id}`, { token });
+    expect(open.status).toBe(200);
+    expect(Object.keys(open.body.request).sort()).toEqual([
+      "attachments", "closed_at", "closure_text", "id", "messages", "procedure_name", "received_at", "reference", "status", "subject", "updated_at",
+    ]);
+    expect(open.body.request.closure_text).toBeNull(); // brouillon laissé sur une demande ouverte : pas une réponse
+
+    await world.db.exec("select set_config('app.service','1',false)");
+    await world.db.exec(`update requests set closed_at = now(), status = 'resolue_positive' where id = '${r.id}'`);
+    await world.db.exec("select set_config('app.service','',false)");
+    const closed = await call("GET", `/v1/citizen/requests/${r.id}`, { token });
+    expect(closed.body.request.closure_text).toBe("Réponse rédigée pour l'usager");
+    expect(closed.body.request.status).toBe("resolue_positive");
+  });
+
+  it("pièces : celles de la demande, jamais d'instruction interne, jamais remplacées ; chemin de stockage jamais rendu", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const mine = await world.addAttachment(r.id, { file_name: "mon-justificatif.pdf" });
+    await world.addAttachment(r.id, { file_name: "avis-interne.pdf", kind: "instruction_interne" });
+    const old = await world.addAttachment(r.id, { file_name: "ancienne-version.pdf" });
+    await world.db.query("update request_attachments set superseded_by = $1 where id = $2", [mine, old]);
+    await world.addAttachment(r.id, { file_name: "sans-fichier.pdf", storage_path: "" });
+    const view = await call("GET", `/v1/citizen/requests/${r.id}`, { token: await asContact(ALICE) });
+    expect(view.body.request.attachments.map((a: { file_name: string }) => a.file_name)).toEqual(["mon-justificatif.pdf"]);
+    expect(Object.keys(view.body.request.attachments[0]).sort()).toEqual(["file_name", "id", "mime_type", "size"]);
+  });
+
+  it("messages : seulement ceux ENVOYÉS, à l'adresse du jeton ; jamais un brouillon, un échec, ni l'envoi destiné à un tiers", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.addEmail(r.id, { to_email: "Alice@Example.org", subject: "Pour Alice", sent_at: "2026-10-02T09:00:00Z" });
+    await world.addEmail(r.id, { to_email: "tiers@example.org", subject: "Pour un tiers", body: "Confidentiel tiers" });
+    await world.addEmail(r.id, { to_email: "alice@example.org", subject: "Brouillon", status: "brouillon" });
+    await world.addEmail(r.id, { to_email: "alice@example.org", subject: "Échec", status: "echec" });
+    const token = await asContact(ALICE, "alice@example.org");
+    const view = await call("GET", `/v1/citizen/requests/${r.id}`, { token });
+    expect(view.body.request.messages.map((m: { subject: string }) => m.subject)).toEqual(["Pour Alice"]);
+    expect(view.text).not.toContain("Confidentiel tiers");
+    expect(Object.keys(view.body.request.messages[0]).sort()).toEqual(["attachments", "body", "direction", "id", "sent_at", "subject"]);
+  });
+
+  it("jeton de fiche sans adresse : aucun message (l'adresse filtre, jamais l'inverse)", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.addEmail(r.id, { to_email: "alice@example.org" });
+    const token = await world.token({ kind: "contact", id: ALICE });
+    expect((await call("GET", `/v1/citizen/requests/${r.id}`, { token })).body.request.messages).toEqual([]);
+  });
+
+  it("pièce d'un message : visible si le message est envoyé ET adressé au lecteur, sinon introuvable", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const mine = await world.addEmail(r.id, { to_email: "alice@example.org" });
+    const theirs = await world.addEmail(r.id, { to_email: "tiers@example.org" });
+    const draft = await world.addEmail(r.id, { to_email: "alice@example.org", status: "brouillon" });
+    const a1 = await world.addAttachment(r.id, { email_id: mine, file_name: "reponse.pdf" });
+    const a2 = await world.addAttachment(r.id, { email_id: theirs, file_name: "tiers.pdf" });
+    const a3 = await world.addAttachment(r.id, { email_id: draft, file_name: "brouillon.pdf" });
+    const token = await asContact(ALICE, "alice@example.org");
+    expect((await call("GET", `/v1/citizen/requests/${r.id}/attachments/${a1}`, { token })).status).toBe(200);
+    for (const id of [a2, a3]) expect((await call("GET", `/v1/citizen/requests/${r.id}/attachments/${id}`, { token })).status, id).toBe(404);
+  });
+
+  it("téléchargement : URL signée de 60 s, jamais pour une pièce d'un autre, d'instruction, ou d'une demande masquée", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const other = await world.addRequest(world.sceaux, { socle_contact_id: BOB });
+    const hidden = await world.addRequest(world.sceaux, { socle_contact_id: ALICE, citizen_visible: false });
+    const ok = await world.addAttachment(r.id, { file_name: "mon justificatif.pdf" });
+    const internal = await world.addAttachment(r.id, { kind: "instruction_interne" });
+    const bobs = await world.addAttachment(other.id);
+    const inHidden = await world.addAttachment(hidden.id);
+    const token = await asContact(ALICE);
+
+    const good = await call("GET", `/v1/citizen/requests/${r.id}/attachments/${ok}`, { token });
+    expect(good.status).toBe(200);
+    expect(good.body).toEqual({ url: expect.stringContaining("exp=60"), expires_in: 60 });
+    expect(good.body.url).toContain("dl=mon%20justificatif.pdf");
+
+    const cases: [string, string][] = [[r.id, internal], [other.id, bobs], [r.id, bobs], [hidden.id, inHidden], [r.id, crypto.randomUUID()]];
+    for (const [rid, aid] of cases) {
+      expect((await call("GET", `/v1/citizen/requests/${rid}/attachments/${aid}`, { token })).status, `${rid}/${aid}`).toBe(404);
+    }
+  });
+});
+
+describe("accès invité (jeton request:)", () => {
+  it("un jeton lie UNE demande : celle-ci s'ouvre, une autre non, même à accès invité", async () => {
+    const a = await world.addRequest(world.sceaux);
+    const b = await world.addRequest(world.sceaux);
+    await world.openGuestAccess(a.id, world.sceaux, "a@example.org");
+    await world.openGuestAccess(b.id, world.sceaux, "b@example.org");
+    const token = await asGuest(a.id);
+    expect((await call("GET", `/v1/citizen/requests/${a.id}`, { token })).status).toBe(200);
+    expect((await call("GET", `/v1/citizen/requests/${b.id}`, { token })).status).toBe(404);
+  });
+
+  it("sans accès invité (demande sans code), d'une autre source, d'une autre collectivité : introuvable même avec un jeton valable", async () => {
+    const noCode = await world.addRequest(world.sceaux);
+    const clara = await world.addRequest(world.sceaux, { source: "clara" });
+    await world.openGuestAccess(clara.id, world.sceaux, "a@example.org");
+    const antony = await world.addRequest(world.antony);
+    await world.openGuestAccess(antony.id, world.antony, "a@example.org");
+    for (const id of [noCode.id, clara.id, antony.id]) {
+      expect((await call("GET", `/v1/citizen/requests/${id}`, { token: await asGuest(id) })).status, id).toBe(404);
+    }
+  });
+
+  it("les messages de l'invité sont ceux envoyés à l'adresse DÉCLARÉE, casse et espaces ignorés", async () => {
+    const r = await world.addRequest(world.sceaux);
+    await world.openGuestAccess(r.id, world.sceaux, "Invite@Example.org ");
+    await world.addEmail(r.id, { to_email: " invite@example.org", subject: "À l'invité" });
+    await world.addEmail(r.id, { to_email: "proche@example.org", subject: "Au proche" });
+    const view = await call("GET", `/v1/citizen/requests/${r.id}`, { token: await asGuest(r.id) });
+    expect(view.body.request.messages.map((m: { subject: string }) => m.subject)).toEqual(["À l'invité"]);
+  });
+
+  it("l'accès cesse 90 jours après la clôture", async () => {
+    const r = await world.addRequest(world.sceaux, { closed_at: new Date(Date.now() - 91 * 86_400_000).toISOString() });
+    await world.openGuestAccess(r.id, world.sceaux, "a@example.org");
+    expect((await call("GET", `/v1/citizen/requests/${r.id}`, { token: await asGuest(r.id) })).status).toBe(404);
+    const fresh = await world.addRequest(world.sceaux, { closed_at: new Date(Date.now() - 89 * 86_400_000).toISOString() });
+    await world.openGuestAccess(fresh.id, world.sceaux, "a@example.org");
+    expect((await call("GET", `/v1/citizen/requests/${fresh.id}`, { token: await asGuest(fresh.id) })).status).toBe(200);
+  });
+});
+
+describe("POST /v1/citizen/access — courriel + référence + code", () => {
+  const CODE = "ABCD-EFGH-JK";
+  async function guest(email = "usager@example.org", tenant = world.sceaux) {
+    const r = await world.addRequest(tenant);
+    await world.openGuestAccess(r.id, tenant, email, CODE);
+    return r;
+  }
+  const attempt = (r: { reference: string }, email: string, code: string, extra: Partial<Parameters<IrisWorld["call"]>[2]> = {}) =>
+    call("POST", "/v1/citizen/access", { json: { reference: r.reference, email, code }, ...extra });
+
+  it("les bons éléments ouvrent la demande (rend son identifiant et la version de l'accès, rien d'autre)", async () => {
+    const r = await guest();
+    const reply = await attempt(r, "usager@example.org", CODE);
+    expect(reply.status).toBe(200);
+    expect(reply.body).toEqual({ request_id: r.id, access_version: 1 });
+  });
+
+  it("le code se recopie comme on peut : minuscules, espaces, tirets, O pour 0 (Crockford)", async () => {
+    const r = await guest("usager@example.org");
+    for (const code of ["abcd-efgh-jk", "ABCDEFGHJK", " abcd efgh jk ", "ABCD–EFGH–JK".replace(/–/g, "-")]) {
+      expect((await attempt(r, "usager@example.org", code)).status, code).toBe(200);
+    }
+    const r2 = await world.addRequest(world.sceaux);
+    await world.openGuestAccess(r2.id, world.sceaux, "usager@example.org", "O1IL-0000-00"); // saisi avec O→0, I/L→1
+    expect((await attempt(r2, "usager@example.org", "0111-0000-00")).status).toBe(200);
+  });
+
+  it("la référence se saisit en minuscules ; l'adresse sans tenir compte de la casse", async () => {
+    const r = await guest("Usager@Example.org");
+    const reply = await call("POST", "/v1/citizen/access", { json: { reference: ` ${r.reference.toLowerCase()} `, email: " USAGER@example.ORG ", code: CODE } });
+    expect(reply.status).toBe(200);
+  });
+
+  it("TOUS les refus ont le même corps et le même statut : inconnue, mauvaise adresse, mauvais code, mal formé, autre ville, autre source", async () => {
+    const r = await guest();
+    const clara = await world.addRequest(world.sceaux, { source: "clara" });
+    await world.openGuestAccess(clara.id, world.sceaux, "usager@example.org", CODE);
+    const antony = await guest("usager@example.org", world.antony);
+    const refusals = [
+      await attempt({ reference: "DEM-2026-999999" }, "usager@example.org", CODE),
+      await attempt(r, "autre@example.org", CODE),
+      await attempt(r, "usager@example.org", "ZZZZ-ZZZZ-ZZ"),
+      await attempt(r, "usager@example.org", "trop-court"),
+      await attempt(r, "pas-une-adresse", CODE),
+      await attempt({ reference: "x".repeat(41) }, "usager@example.org", CODE),
+      await attempt(clara, "usager@example.org", CODE),
+      await attempt(antony, "usager@example.org", CODE), // référence d'Antony présentée à Sceaux
+      await call("POST", "/v1/citizen/access", { json: { reference: 42, email: 1, code: null } }),
+    ];
+    for (const reply of refusals) {
+      expect(reply.status).toBe(404);
+      expect(reply.body).toEqual(refusals[0].body);
+    }
+  });
+
+  it("corps absent, illisible, tableau ou scalaire : 400 (une erreur d'appelant, pas d'une saisie d'usager)", async () => {
+    for (const body of [undefined, "{", "[]", "42", "null"]) {
+      const reply = await call("POST", "/v1/citizen/access", { body });
+      expect(reply.status, String(body)).toBe(400);
+    }
+  });
+
+  it("5 mauvais codes avec la BONNE adresse verrouillent la demande une heure — même le bon code est ensuite refusé", async () => {
+    const r = await guest();
+    for (let i = 0; i < 5; i++) expect((await attempt(r, "usager@example.org", `ZZZZ-ZZZZ-Z${i}`)).status).toBe(404);
+    const after = await attempt(r, "usager@example.org", CODE);
+    expect(after.status).toBe(404);
+    expect(after.body).toEqual((await attempt(r, "usager@example.org", "ZZZZ-ZZZZ-ZZ")).body);
+    const [lock] = await world.sql<{ ok: boolean }>("select locked_until > now() + interval '59 minutes' ok from request_access_codes where request_id = $1", [r.id]);
+    expect(lock.ok).toBe(true);
+    await world.db.query("update request_access_codes set locked_until = now() - interval '1 second' where request_id = $1", [r.id]);
+    expect((await attempt(r, "usager@example.org", CODE)).status).toBe(200);
+  });
+
+  it("une adresse FAUSSE ne compte pas : on ne verrouille pas une ville en énumérant les références", async () => {
+    const r = await guest();
+    for (let i = 0; i < 20; i++) await attempt(r, "intrus@example.org", `ZZZZ-ZZZZ-Z${i % 10}`);
+    expect((await world.sql("select failed_attempts from request_access_codes where request_id = $1", [r.id]))[0]).toEqual({ failed_attempts: 0 });
+    expect((await attempt(r, "usager@example.org", CODE)).status).toBe(200);
+  });
+
+  it("un succès remet le compteur d'échecs à zéro", async () => {
+    const r = await guest();
+    for (let i = 0; i < 4; i++) await attempt(r, "usager@example.org", `ZZZZ-ZZZZ-Z${i}`);
+    expect((await attempt(r, "usager@example.org", CODE)).status).toBe(200);
+    for (let i = 0; i < 4; i++) await attempt(r, "usager@example.org", `ZZZZ-ZZZZ-Z${i}`);
+    expect((await attempt(r, "usager@example.org", CODE)).status).toBe(200);
+  });
+
+  it("le verrou d'une demande ne touche pas les autres", async () => {
+    const r1 = await guest("a@example.org");
+    const r2 = await guest("b@example.org");
+    for (let i = 0; i < 6; i++) await attempt(r1, "a@example.org", `ZZZZ-ZZZZ-Z${i}`);
+    expect((await attempt(r2, "b@example.org", CODE)).status).toBe(200);
+  });
+
+  it("durée plancher de 400 ms sur chaque vérification (connue ou non, juste ou fausse) — attente demandée au minuteur", async () => {
+    const r = await guest();
+    world.floorWaits.length = 0;
+    await attempt(r, "usager@example.org", CODE);
+    await attempt({ reference: "DEM-2026-999999" }, "usager@example.org", CODE);
+    await attempt(r, "usager@example.org", "ZZZZ-ZZZZ-ZZ");
+    await call("POST", "/v1/citizen/access", { body: "{" });
+    expect(world.floorWaits).toHaveLength(4);
+    for (const wait of world.floorWaits) {
+      expect(wait).toBeGreaterThan(250);
+      expect(wait).toBeLessThanOrEqual(400);
+    }
+  });
+
+  it("durée plancher en temps réel : une référence inconnue ne revient pas plus vite qu'une référence connue", async () => {
+    await world.close();
+    world = await IrisWorld.create({}, { realTime: true });
+    const r = await guest();
+    for (const reference of [r.reference, "DEM-2026-999999"]) {
+      const started = performance.now();
+      const reply = await call("POST", "/v1/citizen/access", { json: { reference, email: "usager@example.org", code: "ZZZZ-ZZZZ-ZZ" } });
+      const elapsed = performance.now() - started;
+      expect(reply.status).toBe(404);
+      expect(elapsed).toBeGreaterThanOrEqual(380);
+    }
+  });
+
+  it("sans poivre, aucun accès ne s'ouvre ni ne se vérifie", async () => {
+    await world.close();
+    world = await IrisWorld.create({ IRIS_ACCESS_CODE_PEPPER: undefined });
+    const r = await world.addRequest(world.sceaux);
+    const reply = await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "a@b.fr", code: CODE } });
+    expect(reply.status).toBe(500);
+  });
+});
+
+describe("méthodes, routes et journal", () => {
+  it("méthodes non prévues : 405 ; routes inconnues : 404 ; documentation publique lisible sans clé", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    expect((await call("POST", `/v1/citizen/requests/${r.id}`)).status).toBe(405);
+    expect((await call("DELETE", `/v1/citizen/contacts/${ALICE}/requests`)).status).toBe(405);
+    expect((await call("GET", "/v1/citizen/access")).status).toBe(405);
+    expect((await call("GET", "/v1/citizen/inconnu")).status).toBe(404);
+    expect((await call("GET", "/v1/citizen/requests/pas-un-uuid", { token: await asContact(ALICE) })).status).toBe(404);
+    const doc = await world.call("GET", "/v1/openapi.json", { key: null, tenant: null });
+    expect(doc.status).toBe(200);
+    expect(Object.keys(doc.body.paths)).toEqual(expect.arrayContaining(["/v1/citizen/access", "/v1/citizen/requests/{id}", "/v1/citizen/contacts/{id}/requests"]));
+  });
+
+  it("le journal d'audit consigne l'appel (route, statut, demande) mais jamais le jeton, l'adresse ni le code", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const token = await asContact(ALICE, "alice@example.org");
+    await call("GET", `/v1/citizen/requests/${r.id}`, { token });
+    await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "alice@example.org", code: "ABCD-EFGH-JK" } });
+    const logs = await world.sql<Record<string, unknown>>("select * from integration_api_logs order by id");
+    expect(logs.length).toBeGreaterThanOrEqual(2);
+    const dump = JSON.stringify(logs);
+    for (const secret of [token, "alice@example.org", "ABCD-EFGH-JK", ALICE]) expect(dump).not.toContain(secret);
+    expect(logs.find((l) => l.path === `/v1/citizen/requests/${r.id}`)).toMatchObject({ method: "GET", status: 200, request_id: r.id });
+  });
+});
+
+// ── Lot L4a (contrat 2.8.0) : code perdu, coupure, nouveau code ─────────────
+
+describe("POST /v1/citizen/access/resend — « code perdu »", () => {
+  const CODE = "ABCD-EFGH-JK";
+  async function guest(email = "usager@example.org", partial: Record<string, unknown> = {}) {
+    const r = await world.addRequest(world.sceaux, partial);
+    await world.openGuestAccess(r.id, world.sceaux, email, CODE);
+    return r;
+  }
+  const resend = (json: unknown) => call("POST", "/v1/citizen/access/resend", { json });
+  const mails = (id: string) =>
+    world.sql<{ to_email: string | null; access_code: string | null; reason: string; status: string }>(
+      "select to_email, access_code, reason, status from request_access_mails where request_id = $1 order by created_at",
+      [id],
+    );
+
+  it("bons éléments : 202, un code NEUF part à l'adresse saisie, l'ancien cesse de valoir", async () => {
+    const r = await guest("usager@example.org");
+    const reply = await resend({ reference: r.reference, email: " Usager@Example.org " });
+    expect(reply.status).toBe(202);
+    expect(reply.body).toEqual({ accepted: true });
+    const [mail] = await mails(r.id);
+    expect(mail).toMatchObject({ to_email: "usager@example.org", reason: "renvoi_usager", status: "pending" });
+    expect(mail.access_code).toMatch(/^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{2}$/);
+    expect(mail.access_code).not.toBe(CODE);
+    // Le nouveau code ouvre, l'ancien non ; la version a avancé.
+    expect((await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "usager@example.org", code: CODE } })).status).toBe(404);
+    const opened = await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "usager@example.org", code: mail.access_code } });
+    expect(opened.body).toEqual({ request_id: r.id, access_version: 2 });
+    // Le code ne sort jamais dans la réponse au portail.
+    expect(reply.text).not.toContain(mail.access_code!);
+  });
+
+  it("TOUJOURS la même réponse, et rien ne part : inconnue, mauvaise adresse, coupé, expiré, autre ville, mal formé", async () => {
+    const r = await guest();
+    const cut = await guest();
+    await world.sql("update request_access_codes set revoked_at = now() where request_id = $1", [cut.id]);
+    const old = await guest("usager@example.org", { closed_at: new Date(Date.now() - 91 * 86_400_000).toISOString() });
+    const antony = await world.addRequest(world.antony);
+    await world.openGuestAccess(antony.id, world.antony, "usager@example.org", CODE);
+    const all = [
+      await resend({ reference: "DEM-2026-999999", email: "usager@example.org" }),
+      await resend({ reference: r.reference, email: "autre@example.org" }),
+      await resend({ reference: cut.reference, email: "usager@example.org" }),
+      await resend({ reference: old.reference, email: "usager@example.org" }),
+      await resend({ reference: antony.reference, email: "usager@example.org" }),
+      await resend({ reference: r.reference, email: "pas-une-adresse" }),
+      await resend({ reference: "x".repeat(41), email: "usager@example.org" }),
+      await resend({ reference: 42, email: null }),
+    ];
+    for (const reply of all) {
+      expect(reply.status).toBe(202);
+      expect(reply.text).toBe(all[0].text);
+    }
+    expect(await world.sql("select 1 from request_access_mails")).toEqual([]);
+  });
+
+  it("chaque réponse attend la durée plancher (la durée ne trahit pas l'existence)", async () => {
+    const r = await guest();
+    world.floorWaits.length = 0;
+    await resend({ reference: "DEM-2026-999999", email: "usager@example.org" });
+    await resend({ reference: r.reference, email: "usager@example.org" });
+    expect(world.floorWaits.length).toBe(2);
+    for (const ms of world.floorWaits) expect(ms).toBeGreaterThan(0);
+  });
+
+  it("3 renvois par 24 h : le 4e est accepté (202) mais rien ne part", async () => {
+    const r = await guest();
+    for (let i = 0; i < 4; i++) expect((await resend({ reference: r.reference, email: "usager@example.org" })).status).toBe(202);
+    const rows = await mails(r.id);
+    expect(rows.length).toBe(3);
+    // Seul le plus récent reste à envoyer ; les précédents sont abandonnés, leur clair effacé.
+    expect(rows.map((m) => m.status)).toEqual(["skipped", "skipped", "pending"]);
+    expect(rows.slice(0, 2).every((m) => m.to_email === null && m.access_code === null)).toBe(true);
+  });
+
+  it("corps illisible : 400 (erreur d'appelant)", async () => {
+    for (const body of [undefined, "{", "[]", "null"]) {
+      expect((await call("POST", "/v1/citizen/access/resend", { body })).status, String(body)).toBe(400);
+    }
+  });
+
+  it("GET sur la route : 405 ; sans le scope citizen : 403", async () => {
+    expect((await call("GET", "/v1/citizen/access/resend")).status).toBe(405);
+    await world.addKey("irs_lecture_seule", ["requests:read"]);
+    const reply = await call("POST", "/v1/citizen/access/resend", {
+      key: "irs_lecture_seule",
+      json: { reference: "DEM-2026-000001", email: "a@b.fr" },
+    });
+    expect(reply.status).toBe(403);
+  });
+});
+
+describe("version d'accès (g) — coupure et nouveau code ferment les sessions invitées ouvertes", () => {
+  const CODE = "ABCD-EFGH-JK";
+  async function guest() {
+    const r = await world.addRequest(world.sceaux);
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    return r;
+  }
+  const read = async (id: string, g?: unknown) =>
+    (await call("GET", `/v1/citizen/requests/${id}`, {
+      token: await world.token({ kind: "request", id }, g === undefined ? {} : { g }),
+    })).status;
+
+  it("la bonne version lit ; une autre version ne lit pas", async () => {
+    const r = await guest();
+    expect(await read(r.id, 1)).toBe(200);
+    expect(await read(r.id, 2)).toBe(404);
+  });
+
+  it("un jeton sans g (portail d'avant) lit tant que l'accès n'est pas coupé", async () => {
+    const r = await guest();
+    expect(await read(r.id)).toBe(200);
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    expect(await read(r.id)).toBe(404);
+  });
+
+  it("après une coupure, la session ouverte (g = 1) ne lit plus, et le bon code ne rouvre rien", async () => {
+    const r = await guest();
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    expect(await read(r.id, 1)).toBe(404);
+    expect(await read(r.id, 2)).toBe(404);
+    const reopen = await call("POST", "/v1/citizen/access", { json: { reference: r.reference, email: "usager@example.org", code: CODE } });
+    expect(reopen.status).toBe(404);
+  });
+
+  it("après un nouveau code, l'ancienne session (g = 1) ne lit plus ; la nouvelle (g = 2) lit", async () => {
+    const r = await guest();
+    await call("POST", "/v1/citizen/access/resend", { json: { reference: r.reference, email: "usager@example.org" } });
+    expect(await read(r.id, 1)).toBe(404);
+    expect(await read(r.id, 2)).toBe(200);
+  });
+
+  it("g mal formé (0, négatif, décimal, texte) : traité comme absent — seule la coupure s'applique", async () => {
+    const r = await guest();
+    for (const g of [0, -1, 1.5, "1"]) expect(await read(r.id, g), String(g)).toBe(200);
+  });
+
+  it("la coupure de l'accès invité ne touche pas « Mes demandes » (jeton de compte)", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    const token = await world.token({ kind: "contact", id: ALICE, email: "usager@example.org" }, { g: 99 });
+    expect((await call("GET", `/v1/citizen/requests/${r.id}`, { token })).status).toBe(200);
+  });
+});
+
+describe("POST /v1/citizen/requests/{id}/messages — l'usager répond (2.9.0, L4b)", () => {
+  const CODE = "ABCD-EFGH-JK";
+  const TEXT = "Voici le justificatif demandé.";
+  async function guestRequest(partial: Record<string, unknown> = {}) {
+    const r = await world.addRequest(world.sceaux, partial);
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    return r;
+  }
+  const post = async (id: string, json: unknown, token: string | null) =>
+    await call("POST", `/v1/citizen/requests/${id}/messages`, { json, token });
+  const guestToken = (id: string) => world.token({ kind: "request", id }, { g: 1 });
+  const view = async (id: string, token: string) => (await call("GET", `/v1/citizen/requests/${id}`, { token })).body.request;
+
+  it("invité (jeton request: + g) : 201, le message et ses pièces sont enregistrés, la demande attendue repasse en instruction", async () => {
+    const r = await guestRequest({ status: "en_attente" });
+    const u = await world.addUpload(world.sceaux);
+    const reply = await post(r.id, { body: TEXT, attachments: [{ upload_id: u }] }, await guestToken(r.id));
+    expect(reply.status, reply.text).toBe(201);
+    expect(reply.body.message.attachments).toBe(1);
+    const [m] = await world.sql("select author_kind, socle_contact_id, body from request_citizen_messages where request_id = $1", [r.id]);
+    expect(m).toEqual({ author_kind: "invite", socle_contact_id: null, body: TEXT });
+    expect((await world.sql<{ status: string }>("select status from requests where id = $1", [r.id]))[0].status).toBe("en_instruction");
+    const [piece] = await world.sql<{ storage_path: string }>(
+      "select storage_path from request_attachments where citizen_message_id = $1",
+      [reply.body.message.id],
+    );
+    expect(piece.storage_path.startsWith(`${world.sceaux.orgId}/${r.id}/`)).toBe(true);
+  });
+
+  it("compte (jeton contact:) : 201, enregistré au nom de SA fiche", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    const reply = await post(r.id, { body: TEXT }, await asContact(ALICE));
+    expect(reply.status, reply.text).toBe(201);
+    const [m] = await world.sql("select author_kind, socle_contact_id from request_citizen_messages where request_id = $1", [r.id]);
+    expect(m).toEqual({ author_kind: "compte", socle_contact_id: ALICE });
+  });
+
+  it("404 uniforme : sans jeton, jeton d'une autre demande, de l'autre fiche, accès coupé, autre collectivité", async () => {
+    const r = await guestRequest();
+    const other = await guestRequest();
+    const mine = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    expect((await post(r.id, { body: TEXT }, null)).status).toBe(404);
+    expect((await post(r.id, { body: TEXT }, await guestToken(other.id))).status).toBe(404);
+    expect((await post(mine.id, { body: TEXT }, await asContact(BOB))).status).toBe(404);
+    const elsewhere = await call("POST", `/v1/citizen/requests/${r.id}/messages`, {
+      json: { body: TEXT },
+      token: await world.token({ kind: "request", id: r.id }, { g: 1, tenant: ANTONY_ROOT }),
+      tenant: ANTONY_ROOT,
+    });
+    expect(elsewhere.status).toBe(404);
+    await world.sql("select revoke_request_access($1, null)", [r.id]);
+    expect((await post(r.id, { body: TEXT }, await world.token({ kind: "request", id: r.id }, { g: 2 }))).status).toBe(404);
+    expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+  });
+
+  it("400 : corps vide, trop long, champ inconnu, plus de 5 pièces, pièce en double, mal formée ou d'une autre clé", async () => {
+    const r = await guestRequest();
+    const token = await guestToken(r.id);
+    const u = await world.addUpload(world.sceaux);
+    const [other] = await world.sql<{ id: string }>("insert into integration_sources (code, organization_id) values ('partenaire', $1) returning id", [world.sceaux.orgId]);
+    const foreign = await world.addUpload(world.sceaux, {}, other.id);
+    const many = await Promise.all(Array.from({ length: 6 }, () => world.addUpload(world.sceaux)));
+    const bodies: unknown[] = [
+      { body: "   " },
+      { body: "x".repeat(5001) },
+      { body: TEXT, subject: "objet" },
+      { body: TEXT, attachments: many.map((upload_id) => ({ upload_id })) },
+      { body: TEXT, attachments: [{ upload_id: u }, { upload_id: u }] },
+      { body: TEXT, attachments: [{ upload_id: "pas-un-uuid" }] },
+      { body: TEXT, attachments: [{ upload_id: u, form_field_key: "x" }] },
+      { body: TEXT, attachments: [{ upload_id: foreign }] },
+      [TEXT],
+    ];
+    for (const json of bodies) {
+      expect((await post(r.id, json, token)).status, JSON.stringify(json).slice(0, 60)).toBe(400);
+    }
+    expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+  });
+
+  it("409 sur une demande close ; rien n'est écrit", async () => {
+    const r = await guestRequest({ status: "resolue_positive", closed_at: new Date().toISOString() });
+    const reply = await post(r.id, { body: TEXT }, await guestToken(r.id));
+    expect(reply.status).toBe(409);
+    expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+  });
+
+  it("429 au 11e message en une heure sur la même demande", async () => {
+    const r = await guestRequest();
+    const token = await guestToken(r.id);
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) statuses.push((await post(r.id, { body: `${TEXT} ${i}` }, token)).status);
+    expect(statuses.slice(0, 10)).toEqual(Array(10).fill(201));
+    expect(statuses[10]).toBe(429);
+  });
+
+  it("vue : direction « usager », sans objet ; chaque canal ne voit que ses propres messages", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    await post(r.id, { body: "écrit depuis le suivi" }, await guestToken(r.id));
+    await post(r.id, { body: "écrit depuis le compte" }, await asContact(ALICE));
+    const mine = (v: { messages: { direction: string; body: string; subject: unknown }[] }) =>
+      v.messages.filter((m) => m.direction === "usager").map((m) => [m.body, m.subject]);
+    expect(mine(await view(r.id, await guestToken(r.id)))).toEqual([["écrit depuis le suivi", null]]);
+    expect(mine(await view(r.id, await asContact(ALICE)))).toEqual([["écrit depuis le compte", null]]);
+  });
+
+  it("pièces d'un message : dans SON message, téléchargeables par son auteur seulement, jamais dans les pièces de la demande", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
+    const u = await world.addUpload(world.sceaux, { file_name: "justificatif-invite.pdf" });
+    await post(r.id, { body: TEXT, attachments: [{ upload_id: u }] }, await guestToken(r.id));
+    const guestView = await view(r.id, await guestToken(r.id));
+    const message = guestView.messages.find((m: { direction: string }) => m.direction === "usager");
+    expect(message.attachments.map((a: { file_name: string }) => a.file_name)).toEqual(["justificatif-invite.pdf"]);
+    expect(guestView.attachments).toEqual([]);
+    const pieceId = message.attachments[0].id;
+    const download = await call("GET", `/v1/citizen/requests/${r.id}/attachments/${pieceId}`, { token: await guestToken(r.id) });
+    expect(download.status).toBe(200);
+    // Le compte (autre canal) ne voit ni le message ni sa pièce.
+    expect(JSON.stringify(await view(r.id, await asContact(ALICE)))).not.toContain("justificatif-invite.pdf");
+    const blocked = await call("GET", `/v1/citizen/requests/${r.id}/attachments/${pieceId}`, { token: await asContact(ALICE) });
+    expect(blocked.status).toBe(404);
+  });
+});

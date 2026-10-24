@@ -156,23 +156,67 @@ export function matchIdentityFromDeclared(declared: unknown): MatchIdentityPaylo
 }
 
 /**
- * Raisons de rapprochement qui reposent sur un IDENTIFIANT FORT. Jumeau de
- * `STRONG_REASONS` côté écran (RequesterIdentification).
- *
- * ⚠️ Un nom identique ne suffit JAMAIS à réutiliser une fiche. À l'écran, un
- * agent tranche ; à l'ingestion, personne ne tranche — rattacher une demande à
- * l'homonyme d'un habitant serait pire qu'un doublon : c'est une fuite de
- * données d'un usager vers un autre.
+ * Raisons de rapprochement qui reposent sur un IDENTIFIANT FORT — vocabulaire
+ * du contrat `contacts-api` (`email`, `phone`, `siret`, `name_exact`,
+ * `name_similar`, `birth_date`). Jusqu'au 2026-10-20, Iris attendait
+ * `email_exact`/`phone_exact`/`siret_exact`, que le Socle n'a jamais
+ * renvoyés : aucun rapprochement n'aboutissait, chaque dépôt créait une fiche.
  */
-const STRONG_MATCH_REASONS = new Set([
-  "email_exact",
-  "phone_exact",
-  "siret_exact",
-]);
+const STRONG_MATCH_REASONS = new Set(["email", "phone", "siret"]);
 
 export function hasStrongMatch(reasons: unknown): boolean {
   if (!Array.isArray(reasons)) return false;
   return reasons.some((r) => typeof r === "string" && STRONG_MATCH_REASONS.has(r));
+}
+
+/**
+ * La règle de l'INGESTION, où personne ne tranche (espace usager, décision PO
+ * du 2026-10-19) : une demande rattachée à une fiche est visible dans l'espace
+ * de son titulaire. Il faut donc plus qu'un identifiant partagé — un téléphone
+ * de foyer, une adresse familiale :
+ *   · une personne : courriel ou téléphone identique ET nom identique ;
+ *   · une structure : SIRET identique, ou courriel identique ET nom identique.
+ * ⚠️ Un nom seul ne suffit jamais : rattacher la demande d'un habitant à son
+ * homonyme serait pire qu'un doublon — une fuite d'un usager vers un autre.
+ */
+export interface IngestMatchGuards {
+  /**
+   * La fiche est tenue par un compte du portail (référence `portail_citoyen`) :
+   * ses demandes s'affichent dans un espace en ligne. Elle ne se rejoint plus
+   * que par l'ADRESSE DE COURRIEL — celle du compte, vérifiée — et le nom ;
+   * jamais par un téléphone, que le titulaire du compte a pu déclarer à la
+   * place d'un autre (relecture de sécurité du 2026-10-20, C1).
+   */
+  portalAccount: boolean;
+  /** Le code postal déclaré diffère de celui de la fiche : un signal contraire, la correspondance n'est plus sûre. */
+  postalMismatch: boolean;
+}
+
+export function isSafeIngestMatch(
+  contactType: ContactType,
+  reasons: unknown,
+  guards: IngestMatchGuards = { portalAccount: false, postalMismatch: false },
+): boolean {
+  if (!Array.isArray(reasons)) return false;
+  if (guards.postalMismatch) return false;
+  const has = (r: string) => reasons.includes(r);
+  if (guards.portalAccount) return has("email") && has("name_exact");
+  if (contactType !== "personne" && has("siret")) return true;
+  if (contactType !== "personne") return has("email") && has("name_exact");
+  return (has("email") || has("phone")) && has("name_exact");
+}
+
+/** Deux codes postaux renseignés et différents (espaces ignorés). */
+export function postalCodesDiffer(declared: string | null, contact: unknown): boolean {
+  const a = (declared ?? "").replace(/\s/g, "");
+  const b = (typeof contact === "string" ? contact : "").replace(/\s/g, "");
+  return a !== "" && b !== "" && a !== b;
+}
+
+/** La fiche (DTO contacts-api) porte-t-elle une référence `portail_citoyen` ? */
+export function heldByPortalAccount(contact: unknown): boolean {
+  const refs = (contact as { external_references?: unknown } | null)?.external_references;
+  return Array.isArray(refs) && refs.some((r) => (r as { source?: unknown } | null)?.source === "portail_citoyen");
 }
 
 /**
