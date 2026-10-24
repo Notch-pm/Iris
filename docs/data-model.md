@@ -421,7 +421,17 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `en_attente` → `en_instruction`, journal `message_usager_recu`, notifications
   `citizen_replied` — une transaction ; refus `P0409` sur une demande close. Lecture : qui
   consulte la demande. Immuable (`forbid_change`). Les pièces d'un message restent dans
-  l'échange (ni Documents, ni qualification), comme celles d'un e-mail.
+  l'échange (ni Documents, ni qualification), comme celles d'un e-mail — **sauf versement**
+  (2026-10-24, B10) : `file_citizen_piece(attachment_id, form_field_key, replaces_id)`
+  (`authenticated`, droit d'**instruction** vérifié dans la fonction, demande non close, une
+  seule fois par pièce — `P0409`) crée une ligne de PLUS — même `storage_path`,
+  `source_attachment_id` vers l'original, `citizen_message_id` NULL, `uploaded_by` NULL —,
+  qui remplace les pièces actives de l'exigence (« la plus récente fait foi ») et journalise
+  `piece_ajoutee` avec `origine: 'reponse_usager'`. L'original reste dans son message ; la
+  fiche usager ne montre que lui (`source_attachment_id is null`). Le retour en instruction
+  ne produit **aucune notification `status_changed`** (B11, même date) : la RPC pose le
+  drapeau transactionnel `iris.reprise_usager` autour de son UPDATE, que
+  `requests_notify_update` lit ; `citizen_replied` porte `reprise` à la place.
 - **`request_receipts`** *(2026-10-09)* — boîte d'envoi des **accusés de réception** à
   l'usager : une ligne par demande déposée (clé = `request_id`, donc jamais deux accusés),
   `status` `pending|sending|sent|skipped|failed`, `attempts`, `next_attempt_at`, `error`,

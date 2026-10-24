@@ -99,5 +99,6 @@ describe("citizen_replied (L4b)", () => {
     expect(pushSentence("citizen_replied", {})).toBe("L'usager a répondu en ligne.");
     expect(pushSentence("citizen_replied", { pieces: 1 })).toBe("L'usager a répondu en ligne (1 pièce jointe).");
     expect(pushSentence("citizen_replied", { pieces: 3 })).toBe("L'usager a répondu en ligne (3 pièces jointes).");
+    expect(pushSentence("citizen_replied", { reprise: true })).toBe("L'usager a répondu en ligne : la demande revient en instruction.");
   });
 });

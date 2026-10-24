@@ -887,6 +887,14 @@ note interne → résolution avec texte de clôture → journal.
   - **Les pièces d'un échange sortant portent `request_attachments.email_id`** et sont donc
     retirées de « Pièces de la demande » (onglet Documents) : les mêler ferait passer un envoi
     du service pour un dépôt de l'usager.
+  - **« Verser au dossier »** (2026-10-24, backlog B10, `versement.ts` pur/testé,
+    `VerserPieceDialog.tsx`, `useFileCitizenPiece`) : une pièce jointe par l'usager à une
+    réponse en ligne (`citizen_message_id`) reste dans l'échange ; l'agent qui instruit peut
+    en faire une pièce de la demande, rattachée à une exigence qu'il CHOISIT (rien de
+    présélectionné quand il y a le choix), remplacement annoncé avant d'agir. RPC
+    `file_citizen_piece` : une ligne de plus, même fichier, `source_attachment_id` vers
+    l'original — le motif inverse de « joindre un document à un e-mail ». Une fois versée,
+    la pièce est marquée « Versée au dossier » dans son message.
   - ⚠️ `demande.date_instruction` = **premier** passage en instruction (`firstInstructionAt`).
     `buildStages()` fait un calcul voisin qu'on ne peut PAS réutiliser : son `visited.set`
     écrase, donc il retient le *dernier* passage après une réouverture. Deux besoins, deux

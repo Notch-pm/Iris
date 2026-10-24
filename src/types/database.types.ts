@@ -2706,6 +2706,14 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      file_citizen_piece: {
+        Args: {
+          p_attachment_id: string
+          p_form_field_key?: string
+          p_replaces_id?: string
+        }
+        Returns: Json
+      }
       find_similar_requests: {
         Args: {
           p_address?: string

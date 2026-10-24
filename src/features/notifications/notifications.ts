@@ -57,6 +57,8 @@ export interface NotificationPayload {
   comment?: string | null;
   /** Réponse de l'usager (L4b) : nombre de pièces jointes à son message. */
   pieces?: number | null;
+  /** `citizen_replied` : la réponse a remis la demande en instruction (B11). */
+  reprise?: boolean | null;
 }
 
 export interface NotificationItem {
@@ -158,10 +160,13 @@ export function notificationMessage(kind: string, payload: NotificationPayload):
     }
     case "citizen_replied": {
       // Jamais le corps du message : on dit qu'il existe, il se lit sur la fiche.
+      // La reprise d'instruction n'a pas de notification à elle (B11, PO
+      // 2026-10-24) : c'est cette phrase qui la dit.
       const n = typeof payload.pieces === "number" ? payload.pieces : 0;
-      return n > 0
-        ? `L'usager a répondu en ligne (${n === 1 ? "1 pièce jointe" : `${n} pièces jointes`}).`
-        : "L'usager a répondu en ligne.";
+      const pieces = n > 0 ? ` (${n === 1 ? "1 pièce jointe" : `${n} pièces jointes`})` : "";
+      return payload.reprise === true
+        ? `L'usager a répondu en ligne${pieces} : la demande revient en instruction.`
+        : `L'usager a répondu en ligne${pieces}.`;
     }
     default:
       return "Cette demande a évolué.";

@@ -213,5 +213,9 @@ describe("réponse de l'usager (L4b)", () => {
     expect(notificationTitle("citizen_replied")).toBe("Réponse de l'usager");
     expect(notificationMessage("citizen_replied", {})).toBe("L'usager a répondu en ligne.");
     expect(notificationMessage("citizen_replied", { pieces: 2 })).toBe("L'usager a répondu en ligne (2 pièces jointes).");
+    // B11 : la reprise d'instruction se dit ici, il n'y a plus de status_changed à côté.
+    expect(notificationMessage("citizen_replied", { pieces: 1, reprise: true }))
+      .toBe("L'usager a répondu en ligne (1 pièce jointe) : la demande revient en instruction.");
+    expect(notificationMessage("citizen_replied", { reprise: false })).toBe("L'usager a répondu en ligne.");
   });
 });

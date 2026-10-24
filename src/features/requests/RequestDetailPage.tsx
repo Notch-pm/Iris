@@ -56,9 +56,11 @@ import { QualificationDialog, type QualificationSubmit } from "./instruction/Qua
 import { AjouterPieceDialog } from "./instruction/AjouterPieceDialog";
 import { FormulaireEditDialog } from "./instruction/FormulaireEditDialog";
 import { useQualifyAttachment } from "./instruction/useQualifyAttachment";
-import { useAttachRequestPiece, useUpdateRequestFormData } from "./instruction/useEditRequestForm";
+import { useAttachRequestPiece, useFileCitizenPiece, useUpdateRequestFormData } from "./instruction/useEditRequestForm";
+import { VerserPieceDialog } from "./instruction/VerserPieceDialog";
+import { filedCitizenPieceIds, filingTargets } from "./instruction/versement";
 import {
-  blockingMessage, buildNonConformityEmail, motifLabel, pieceRequirements, readyToResume,
+  blockingMessage, buildNonConformityEmail, motifLabel, pieceFields, pieceRequirements, readyToResume,
   type PieceRequirement, type QualifiableAttachment,
 } from "./instruction/conformite";
 import { NotesPane } from "./instruction/NotesPane";
@@ -127,6 +129,7 @@ export function RequestDetailPage() {
   const generateDocument = useGenerateDocument();
   const qualify = useQualifyAttachment();
   const attachPiece = useAttachRequestPiece();
+  const fileCitizenPiece = useFileCitizenPiece();
   const updateFormData = useUpdateRequestFormData();
   const r = request.data ?? null;
   const closureNotice = closureNoticeApplies(r?.source);
@@ -193,6 +196,9 @@ export function RequestDetailPage() {
   // Dépôt d'une pièce sur une exigence, et édition des réponses du formulaire.
   const [addingPiece, setAddingPiece] = React.useState<PieceRequirement | null>(null);
   const [addPieceError, setAddPieceError] = React.useState<string | null>(null);
+  // Pièce reçue en réponse de l'usager, en cours de versement au dossier (B10).
+  const [filingPiece, setFilingPiece] = React.useState<RequestAttachment | null>(null);
+  const [filePieceError, setFilePieceError] = React.useState<string | null>(null);
   const [answersOpen, setAnswersOpen] = React.useState(false);
   const [answersError, setAnswersError] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
@@ -641,6 +647,22 @@ export function RequestDetailPage() {
     }
   }
 
+  async function submitFilePiece(key: string | null) {
+    if (!filingPiece) return;
+    setFilePieceError(null);
+    try {
+      const result = await fileCitizenPiece.mutateAsync({
+        requestId: r!.id, attachmentId: filingPiece.id, formFieldKey: key,
+      });
+      setFilingPiece(null);
+      flash(result.remplacees > 0
+        ? `Pièce versée au dossier — ${result.remplacees} pièce${result.remplacees > 1 ? "s" : ""} remplacée${result.remplacees > 1 ? "s" : ""}. À qualifier.`
+        : "Pièce versée au dossier. À qualifier.");
+    } catch (err) {
+      setFilePieceError(err instanceof Error ? err.message : "Versement refusé.");
+    }
+  }
+
   async function submitAnswers(formData: Record<string, unknown>, changed: string[]) {
     setAnswersError(null);
     try {
@@ -920,6 +942,8 @@ export function RequestDetailPage() {
                     templateName: payload.templateName,
                   }).then(() => { flash("Message envoyé à l'usager."); })}
                   onDownload={(a) => void openAttachment(a, true)}
+                  onFilePiece={editable ? (a) => { setFilePieceError(null); setFilingPiece(a); } : undefined}
+                  filedPieceIds={filedCitizenPieceIds(attachmentList)}
                 />
               ) : null}
               {tab === "notes" ? (
@@ -1120,6 +1144,17 @@ export function RequestDetailPage() {
         error={addPieceError}
         onClose={() => { setAddingPiece(null); setAddPieceError(null); }}
         onSubmit={(file) => void submitAddPiece(file)}
+      />
+
+      {/* Versement au dossier d'une pièce reçue en réponse de l'usager (B10) :
+          même règle de remplacement, annoncée avant d'agir. */}
+      <VerserPieceDialog
+        piece={filingPiece}
+        targets={filingTargets(pieceFields(r.procedure_snapshot, r.form_data), requirements)}
+        pending={fileCitizenPiece.isPending}
+        error={filePieceError}
+        onClose={() => { setFilingPiece(null); setFilePieceError(null); }}
+        onSubmit={(key) => void submitFilePiece(key)}
       />
 
       {/* Génération d'un document depuis un modèle Word. Le contexte de fusion

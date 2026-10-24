@@ -760,8 +760,10 @@ function describeEvent(
     case "piece_ajoutee": {
       const name = typeof p.file_name === "string" ? p.file_name : "Pièce";
       const n = typeof p.remplacees === "number" ? p.remplacees : 0;
+      // B10 : une pièce reçue en réponse de l'usager, versée par un agent.
+      const filed = p.origine === "reponse_usager";
       return {
-        label: n > 0 ? "Pièce remplacée" : "Pièce ajoutée",
+        label: filed ? "Pièce versée au dossier" : n > 0 ? "Pièce remplacée" : "Pièce ajoutée",
         detail: `${name} · ${who}${n > 0 ? ` · ${n} pièce${n > 1 ? "s" : ""} remplacée${n > 1 ? "s" : ""}` : ""}`,
       };
     }

@@ -19,7 +19,7 @@
 // rappelée ici à l'agent avant qu'il envoie.
 
 import * as React from "react";
-import { Loader2, Mail, Paperclip, Send, Undo2, WandSparkles, X } from "lucide-react";
+import { Check, FolderInput, Loader2, Mail, Paperclip, Send, Undo2, WandSparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Avatar, Pill } from "@/components/ui/surface";
@@ -100,11 +100,20 @@ interface Props {
   onDraftApplied?: () => void;
   onSend: (payload: SendEmailPayload) => Promise<void>;
   onDownload: (attachment: RequestAttachment) => void;
+  /**
+   * « Verser au dossier » une pièce reçue en réponse (B10). Absent quand le
+   * geste n'est pas ouvert (sans droit d'instruction, demande close) : la RPC
+   * `file_citizen_piece` reste juge.
+   */
+  onFilePiece?: (attachment: RequestAttachment) => void;
+  /** Originaux déjà versés au dossier (`filedCitizenPieceIds`). */
+  filedPieceIds?: ReadonlySet<string>;
 }
 
 export function EchangesPane({
   request, identity, emails, citizenMessages = [], attachments, members, events, tenantName,
   canInstruct, archived, sending, draft, onDraftApplied, onSend, onDownload,
+  onFilePiece, filedPieceIds,
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
   const { session } = useAuth();
@@ -330,7 +339,13 @@ export function EchangesPane({
                   </>
                 }
               >
-                <CitizenMessageBody message={message} pieces={piecesOf.get(message.id) ?? []} onDownload={onDownload} />
+                <CitizenMessageBody
+                  message={message}
+                  pieces={piecesOf.get(message.id) ?? []}
+                  onDownload={onDownload}
+                  onFile={onFilePiece}
+                  filedIds={filedPieceIds}
+                />
               </ThreadItem>
             );
           }
@@ -606,15 +621,17 @@ function ThreadItem({ initials: letters, meta, children, last = false, ring = fa
   );
 }
 
-function PieceList({ pieces, onDownload }: {
+function PieceList({ pieces, onDownload, action }: {
   pieces: RequestAttachment[];
   onDownload: (attachment: RequestAttachment) => void;
+  /** Un geste à côté de chaque pièce (verser au dossier). */
+  action?: (piece: RequestAttachment) => React.ReactNode;
 }) {
   if (pieces.length === 0) return null;
   return (
     <ul className="flex flex-wrap gap-1.5 pt-1">
       {pieces.map((piece) => (
-        <li key={piece.id}>
+        <li key={piece.id} className="inline-flex items-center gap-1">
           <button
             type="button"
             onClick={() => onDownload(piece)}
@@ -627,22 +644,50 @@ function PieceList({ pieces, onDownload }: {
               {formatBytes(piece.file_size) ? ` · ${formatBytes(piece.file_size)}` : ""}
             </span>
           </button>
+          {action?.(piece)}
         </li>
       ))}
     </ul>
   );
 }
 
-/** Une réponse de l'usager : son texte tel qu'il l'a écrit, et ses pièces. */
-function CitizenMessageBody({ message, pieces, onDownload }: {
+/**
+ * Une réponse de l'usager : son texte tel qu'il l'a écrit, et ses pièces —
+ * chacune versable au dossier une fois (B10), puis marquée « Versée ».
+ */
+function CitizenMessageBody({ message, pieces, onDownload, onFile, filedIds }: {
   message: RequestCitizenMessage;
   pieces: RequestAttachment[];
   onDownload: (attachment: RequestAttachment) => void;
+  onFile?: (attachment: RequestAttachment) => void;
+  filedIds?: ReadonlySet<string>;
 }) {
+  const action = (piece: RequestAttachment) => {
+    if (filedIds?.has(piece.id)) {
+      return (
+        <span className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary">
+          <Check className="size-3.5" aria-hidden="true" />
+          Versée au dossier
+        </span>
+      );
+    }
+    if (!onFile) return null;
+    return (
+      <button
+        type="button"
+        onClick={() => onFile(piece)}
+        title="En faire une pièce de la demande, à qualifier"
+        className="inline-flex h-7 items-center gap-1 rounded-full px-2 text-[11.5px] font-semibold text-primary transition-colors hover:bg-secondary"
+      >
+        <FolderInput className="size-3.5" aria-hidden="true" />
+        Verser au dossier
+      </button>
+    );
+  };
   return (
     <div className="flex flex-col gap-2 rounded-xl border border-primary/30 bg-primary/[0.04] px-4 py-3.5">
       <p className="whitespace-pre-wrap break-words text-sm leading-[1.6]">{message.body}</p>
-      <PieceList pieces={pieces} onDownload={onDownload} />
+      <PieceList pieces={pieces} onDownload={onDownload} action={action} />
     </div>
   );
 }

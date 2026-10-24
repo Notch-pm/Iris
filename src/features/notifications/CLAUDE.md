@@ -26,7 +26,7 @@ même pas la question à se poser.
 | `transferred_in` | tout membre détenant **instruction** sur le couple d'**ARRIVÉE** | un autre service transfère la demande à cet organisme (2026-09-01) |
 | `intervention_requested` | l'**intervenant** sollicité | un agent le sollicite pendant l'instruction (2026-09-14) — produite par la RPC `request_intervention`, pas par un trigger |
 | `intervention_completed` | l'agent qui a **sollicité**, et l'**affectataire** s'il est quelqu'un d'autre | l'intervenant déclare l'intervention réalisée (RPC `complete_request_intervention`) |
-| `citizen_replied` | l'**affectataire** ; à défaut, tout membre détenant **instruction** sur le couple de la demande | l'usager répond en ligne depuis le portail (RPC `record_citizen_message`, lot L4b, 2026-10-21) — **jamais le corps** du message, seulement le nombre de pièces (`pieces`) |
+| `citizen_replied` | l'**affectataire** ; à défaut, tout membre détenant **instruction** sur le couple de la demande | l'usager répond en ligne depuis le portail (RPC `record_citizen_message`, lot L4b, 2026-10-21) — **jamais le corps** du message, seulement le nombre de pièces (`pieces`) et `reprise` (la réponse a remis la demande en instruction : depuis le 2026-10-24, ce retour ne produit **pas** de `status_changed` — décision PO B11, drapeau `iris.reprise_usager`) |
 
 **Le commentaire d'intervention SORT dans l'e-mail** (décision du 2026-09-14) : la
 sollicitation dit ce qui est attendu, la réalisation ce qui a été fait — c'est un texte écrit

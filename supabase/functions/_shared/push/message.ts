@@ -110,10 +110,14 @@ export function pushSentence(kind: string, payload: NotificationPayload): string
         ? `${name} a déclaré l'intervention réalisée le ${day}.`
         : `${name} a déclaré l'intervention réalisée.`;
     }
-    case "citizen_replied":
-      return typeof payload.pieces === "number" && payload.pieces > 0
-        ? `L'usager a répondu en ligne (${payload.pieces === 1 ? "1 pièce jointe" : `${payload.pieces} pièces jointes`}).`
-        : "L'usager a répondu en ligne.";
+    case "citizen_replied": {
+      // B11 : la reprise d'instruction se dit ici, plus dans un status_changed.
+      const n = typeof payload.pieces === "number" ? payload.pieces : 0;
+      const pieces = n > 0 ? ` (${n === 1 ? "1 pièce jointe" : `${n} pièces jointes`})` : "";
+      return payload.reprise === true
+        ? `L'usager a répondu en ligne${pieces} : la demande revient en instruction.`
+        : `L'usager a répondu en ligne${pieces}.`;
+    }
     default:
       return "Cette demande a évolué.";
   }

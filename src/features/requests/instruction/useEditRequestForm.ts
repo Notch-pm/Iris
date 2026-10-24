@@ -72,6 +72,35 @@ export function useAttachRequestPiece() {
   });
 }
 
+export interface FileCitizenPieceInput {
+  requestId: string;
+  /** La pièce jointe par l'usager à sa réponse en ligne (l'original, qui reste dans l'échange). */
+  attachmentId: string;
+  /** Exigence à laquelle la pièce répond ; `null` pour une pièce hors formulaire. */
+  formFieldKey: string | null;
+}
+
+/**
+ * Verser au dossier une pièce reçue en réponse (B10) : aucun fichier ne
+ * transite, la RPC `file_citizen_piece` recopie la LIGNE (même objet stocké),
+ * remplace les pièces actives de l'exigence et journalise — droit
+ * d'instruction vérifié en base.
+ */
+export function useFileCitizenPiece() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: async (input: FileCitizenPieceInput): Promise<AttachPieceResult> => {
+      const { data, error } = await supabase.rpc("file_citizen_piece", {
+        p_attachment_id: input.attachmentId,
+        p_form_field_key: input.formFieldKey ?? undefined,
+      });
+      if (error) throw error;
+      return data as unknown as AttachPieceResult;
+    },
+    onSuccess: (_data, vars) => invalidate(vars.requestId),
+  });
+}
+
 export interface UpdateFormDataInput {
   requestId: string;
   formData: Record<string, unknown>;

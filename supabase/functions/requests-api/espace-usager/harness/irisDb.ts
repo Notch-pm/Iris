@@ -146,6 +146,16 @@ const STUB_SCHEMA = `
     begin raise exception '% immuable : % interdit.', tg_table_name, tg_op; end $$;
   create function public.can_consult_request(uuid) returns boolean language sql stable
     as $$ select coalesce(current_setting('app.right', true), '') = '1' $$;
+
+  -- Suites PO du 2026-10-24 (20261024100000) : versement au dossier (B10) et
+  -- trigger de notification des changements de statut (B11).
+  alter table public.request_attachments
+    add column form_field_key text, add column superseded_at timestamptz,
+    add column source_attachment_id uuid references public.request_attachments(id);
+  alter table public.requests
+    add column socle_procedure_label text, add column socle_organization_label text;
+  create function public.is_platform_admin() returns boolean language sql stable as $$ select false $$;
+  create function public.user_display_name(uuid) returns text language sql stable as $$ select null::text $$;
   -- Mêmes gardes que la vraie RPC (20260910100000) : un déposant (la source),
   -- même tenant, ni retirée, ni consommée, ni expirée, objet DÉJÀ sous la demande.
   create function public.consume_attachment_upload(p_id uuid, p_org uuid, p_request_id uuid, p_actor uuid, p_source uuid)
@@ -174,9 +184,14 @@ export async function createIrisDb(): Promise<PGlite> {
     "20261020150000_espace_usager_mes_demandes.sql",
     "20261021090000_acces_invite_renvoi_coupure.sql",
     "20261021120000_reponse_usager.sql",
+    "20261024100000_reponse_usager_suites_po.sql",
   ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }
+  // Le trigger existe en production depuis 20260824100000 ; la migration ne
+  // fait que remplacer sa fonction.
+  await db.exec(`create trigger t40_requests_notify_update after update on public.requests
+    for each row execute function public.requests_notify_update()`);
   return db;
 }
 

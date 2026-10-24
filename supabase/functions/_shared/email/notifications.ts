@@ -82,6 +82,8 @@ export interface NotificationPayload {
   attachments?: number | null;
   /** Réponse de l'usager (L4b) : nombre de pièces jointes à son message. */
   pieces?: number | null;
+  /** `citizen_replied` : la réponse a remis la demande en instruction (B11). */
+  reprise?: boolean | null;
 }
 
 export interface NotificationEmailInput {
@@ -333,6 +335,11 @@ function bodyFor(kind: string, payload: NotificationPayload): Body {
             ? [payload.pieces === 1
                 ? "Une pièce jointe accompagne son message."
                 : `${payload.pieces} pièces jointes accompagnent son message.`]
+            : []),
+          // B11 (PO 2026-10-24) : plus de « changement de statut » à côté —
+          // c'est ce message qui annonce la reprise.
+          ...(payload.reprise === true
+            ? ["La demande attendait sa réponse : elle revient en instruction."]
             : []),
           "Son message est dans l'onglet Échanges de la demande.",
         ],

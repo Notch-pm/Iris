@@ -351,6 +351,10 @@ describe("notificationEmail — réponse de l'usager (L4b, 2026-10-21)", () => {
       .toContain("Une pièce jointe accompagne son message.");
     expect(notificationEmail(input({ kind: "citizen_replied", payload: { ...base, pieces: 0 } })).paragraphs.join(" "))
       .not.toContain("pièce");
+    // B11 : la reprise d'instruction est annoncée ici, et seulement quand elle a eu lieu.
+    expect(notificationEmail(input({ kind: "citizen_replied", payload: { ...base, reprise: true } })).paragraphs)
+      .toContain("La demande attendait sa réponse : elle revient en instruction.");
+    expect(mail.paragraphs.join(" ")).not.toContain("revient en instruction");
     // Un corps glissé dans le payload ne sort jamais.
     const leaked = notificationEmail(input({ kind: "citizen_replied", payload: { ...base, body: "TEXTE PRIVÉ" } as never }));
     expect(JSON.stringify(leaked)).not.toContain("TEXTE PRIVÉ");

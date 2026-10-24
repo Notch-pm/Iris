@@ -382,6 +382,17 @@ describe("formAnswers", () => {
     expect(items[1]).toMatchObject({ label: "Pièce ajoutée", detail: "rib.pdf · Camille Martin" });
   });
 
+  it("nomme le versement au dossier d'une pièce reçue en réponse (B10)", () => {
+    const [item] = activityItems({
+      events: [{ id: "e1", event_type: "piece_ajoutee", created_by: "u1", created_at: "2026-10-24T10:00:00Z",
+        payload: { file_name: "domicile.pdf", remplacees: 1, origine: "reponse_usager" } }],
+      notes: [], nameOf: () => "Camille Martin",
+    });
+    expect(item).toMatchObject({
+      label: "Pièce versée au dossier", detail: "domicile.pdf · Camille Martin · 1 pièce remplacée",
+    });
+  });
+
   it("nomme la liaison à une demande du même incident, la fusion et la dissolution", () => {
     const items = activityItems({
       events: [

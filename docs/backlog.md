@@ -166,29 +166,23 @@ délibérée : lire `CLAUDE.md` § Conventions avant d'y toucher.
 
 ## B10 — Pièces envoyées par l'usager en réponse : hors dossier, hors conformité
 
-**Ce qui existe** (lot L4b, 2026-10-21). L'usager qui répond en ligne peut joindre jusqu'à 5
-pièces. Elles restent **dans l'échange** (`request_attachments.citizen_message_id`) : visibles
-dans l'onglet Échanges, mais ni dans « Pièces de la demande » ni dans la qualification de
-conformité — comme les pièces d'un e-mail.
+**Tranché par le PO le 2026-10-24 : oui — et livré le même jour.** « Verser au dossier » sur
+chaque pièce d'une réponse en ligne (onglet Échanges, droit d'instruction, demande non close),
+geste explicite, jamais automatique : RPC `file_citizen_piece` (copie de ligne, même fichier,
+« la plus récente fait foi », journal « Pièce versée au dossier »). Migration
+`20261024100000_reponse_usager_suites_po.sql`, détail dans
+[`data-model.md`](data-model.md) § `request_citizen_messages`.
 
-**À trancher par le PO.** Un agent doit-il pouvoir **« verser au dossier »** une pièce reçue en
-réponse (elle deviendrait une pièce de la demande, qualifiable, éventuellement en remplacement
-d'une pièce non conforme) ? Sans ce geste, le cas le plus courant — « voici la pièce qui
-manquait » — oblige à la redéposer à la main. Piste : un geste explicite de l'agent
-(instruction), jamais automatique, via `attach_request_piece`.
-
-**Touche** : `EchangesPane`, `record_citizen_message`, `attach_request_piece`.
+**Reste ouvert** : dans l'espace usager, la pièce versée apparaît deux fois — dans son message
+et parmi les pièces de la demande (`isCitizenVisibleAttachment` ne connaît pas
+`source_attachment_id`). Laissé ainsi en attendant l'avis du PO.
 
 ## B11 — Double notification de l'agent assigné
 
-**Ce qui existe.** Quand l'usager répond sur une demande `en_attente`, `record_citizen_message`
-la remet `en_instruction` : l'affectataire reçoit **deux** notifications pour un seul geste —
-`status_changed` (le retour en instruction) et `citizen_replied` (la réponse).
-
-**À trancher par le PO.** Garder les deux (chacune dit vrai), ou supprimer `status_changed` pour
-ce retour-là (la réponse l'explique déjà) ?
-
-**Touche** : triggers `t40_*` des notifications, `record_citizen_message`.
+**Tranché par le PO le 2026-10-24 : supprimer la notification de statut — livré le même
+jour.** La reprise d'instruction par une réponse de l'usager ne produit plus de
+`status_changed` ; `citizen_replied` porte `reprise` et la dit (cloche, e-mail, push). Le
+journal de la demande, lui, garde le retour en instruction.
 
 ## B12 — L4c : courriels à l'usager à chaque changement de statut et nouveau message
 
@@ -207,7 +201,13 @@ Cadre posé par le PO (à confirmer avant de démarrer) :
   et lien de suivi à citer (`request_access_codes.tracking_url`).
 
 **Touche** : migration (file), `notifications-mailer`, `_shared/email/`, contrat `requests-api`
-(préférence), Nora. Ne pas démarrer sans l'accord du PO.
+(préférence), Nora.
+
+**Accord du PO le 2026-10-24**, avec une exigence pour un second temps : **les envois devront
+pouvoir être configurés en fonction des états** — quels changements de statut déclenchent un
+courriel à l'usager (par exemple pas la mise en instruction, mais la mise en attente et la
+résolution). La première version peut envoyer à chaque changement ; le modèle (file, contenu,
+préférence) ne doit pas fermer cette porte.
 
 ---
 
@@ -220,7 +220,7 @@ que qui l'a en tête retrouve où elle a atterri.
   **2026-10-21** : lot L4a (contrat 2.8.0 — renvoi du code perdu, coupure et nouveau code par un
   agent ; [`data-model.md`](data-model.md) `request_access_codes` / `request_access_mails`,
   [`emails.md`](emails.md) « Nouveau code d'accès ») et lot L4b (contrat 2.9.0 — l'usager répond
-  en ligne ; `request_citizen_messages`). Restent B10 à B12 ci-dessus.
+  en ligne ; `request_citizen_messages`). B10 et B11 livrés le 2026-10-24 ; reste B12 ci-dessus.
 
 - **B9 — Tableau de bord (page d'accueil)** · arbitrée par le PO le **2026-09-19**, livrée le
   jour même sur le motif de l'accueil de Clara : six cartes (reçues, mises en instruction,
