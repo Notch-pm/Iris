@@ -213,6 +213,43 @@ questions au PO (§ 5), dont la plus lourde : faire passer le message de l'agent
 seul » pour les usagers qui ont un accès en ligne. Ne pas démarrer l'architecture avant ses
 réponses.
 
+**Décisions du PO le 2026-10-24** : les douze recommandations sont retenues, avec trois
+précisions — l'avis « nouveau message » porte les premiers caractères du message ; une session
+travaille côté Socle (coordination) ; guichet sans compte et SMS reportés (B13, B14). Détail :
+[`notifications-usager.md`](notifications-usager.md) § « Décisions du PO ». **Prochaine étape :
+architecture** (dont la préférence copiée dans Iris face à « aucun miroir d'usagers »).
+
+## B13 — Accès invité au guichet (suivi en ligne d'une demande déposée au guichet)
+
+**Ce qui existe.** L'accès invité (`/suivi`, code d'accès) n'est ouvert qu'à l'ingestion API,
+quand l'usager accepte le suivi au dépôt sur le portail. Une demande déposée **au guichet** par
+un usager sans compte n'a aucun accès en ligne : elle ne reçoit donc, en V1 de B12, ni avis de
+statut ni avis « nouveau message » à lien — seulement l'accusé et l'avis de clôture.
+
+**Décidé par le PO le 2026-10-24** : reporté, à conserver ici. Le CCTP 5.4 vise « l'usager »
+sans distinguer compte et invité : c'est l'écart que ce lot comblerait.
+
+**À instruire** : proposer le suivi à l'usager au guichet (consentement, adresse déclarée),
+émettre le code, le remettre (récépissé imprimé ? courriel ?), et ce que devient la demande
+quand l'usager ouvre ensuite un compte.
+
+**Touche** : parcours de création (récapitulatif, récépissé), `create-request-from-procedure`,
+`request_access_codes`, B12.
+
+## B14 — Notifications à l'usager par SMS
+
+**Ce qui existe.** B12 n'envoie que des courriels ; le modèle porte le canal pour accueillir le
+SMS sans refonte. Le composeur affiche déjà « SMS » grisé.
+
+**Décidé par le PO le 2026-10-24** : hors V1 de B12, noté ici. **À signaler dans la réponse
+au CCTP** : le § 5.1 autorise un compte « mobile seul », sans courriel — cet usager ne serait
+jamais prévenu.
+
+**À instruire** : fournisseur, coût et qui le paie, texte encore plus court que le push (écran
+verrouillé), préférence par canal (déjà prévue), réemploi éventuel des envois SMS d'Ariane.
+
+**Touche** : file de B12, `_shared/`, préférence Nora, Paramètres.
+
 ---
 
 ## Entrées sorties de ce document

@@ -458,6 +458,22 @@ la question PO n° 1.
 
 ---
 
+## Décisions du PO (2026-10-24)
+
+Toutes les recommandations du § 5 sont **retenues**, avec ces précisions :
+
+| N° | Décision |
+|---|---|
+| 1 | **Oui (M2)**, mais l'avis « nouveau message » porte **les premiers caractères** du message de l'agent — un extrait, jamais le message entier, ni ses pièces. Longueur à fixer à l'implémentation (proposition : ~140 caractères, coupés sur un mot, suivis de « … »). Avis non désactivable. |
+| 2 | Interrupteur par collectivité, allumé seulement là où l'espace Nora est ouvert. ⚠️ **Une session travaille en ce moment côté Socle** : ne rien y toucher sans coordination. |
+| 3 | Pas d'avis de statut au guichet sans compte en V1 ; l'accès invité au guichet est **conservé au backlog** (B13). |
+| 4 à 11 | Recommandations retenues telles quelles. |
+| 12 | SMS **hors V1**, noté au backlog (B14) ; le canal reste porté par le modèle. |
+
+⚠️ La décision n° 1 assouplit « le contenu n'est jamais dans le courriel » du cadre B12 : un
+extrait du message de l'agent sort. Le reste de la règle tient (ni objet saisi, ni motif, ni
+commentaire de statut, ni pièce).
+
 ## 5. Questions à trancher par le PO
 
 1. **Message de l'agent** : passer au **lien seul** pour les usagers qui ont un accès en ligne
