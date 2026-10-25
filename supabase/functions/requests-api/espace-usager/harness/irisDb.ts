@@ -181,6 +181,12 @@ const STUB_SCHEMA = `
   create function public.has_admin_scope(uuid, uuid) returns boolean language sql stable
     as $$ select coalesce(current_setting('app.admin', true), '') = '1' $$;
   create function public.is_org_member(uuid) returns boolean language sql stable as $$ select true $$;
+
+  -- Messagerie fermée par défaut (20261025160000) : la qualification des pièces
+  -- (20260828100000) l'ouvre — colonnes de verdict.
+  alter table public.request_attachments
+    add column compliance text, add column compliance_motif text, add column compliance_note text,
+    add column compliance_by uuid, add column compliance_at timestamptz;
 `;
 
 let shared: PGlite | null = null;
@@ -198,6 +204,7 @@ export async function createIrisDb(): Promise<PGlite> {
     "20261025110000_notifications_usager_file.sql",
     "20261025120000_notifications_usager_routes.sql",
     "20261025130000_notifications_usager_m2.sql",
+    "20261025160000_messagerie_usager_ouverture.sql",
   ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }
@@ -206,6 +213,20 @@ export async function createIrisDb(): Promise<PGlite> {
   await db.exec(`create trigger t40_requests_notify_update after update on public.requests
     for each row execute function public.requests_notify_update()`);
   return db;
+}
+
+/**
+ * Ouvre la messagerie de l'usager SANS journal (fermée par défaut depuis
+ * 20261025160000) : les tests antérieurs à la règle écrivent sur une demande
+ * dont on attend la réponse.
+ */
+export async function openReplies(db: PGlite, requestId: string): Promise<void> {
+  await db.query(
+    `insert into public.request_citizen_reply_state (request_id, organization_id, is_open, opened_at, opened_reason)
+     select r.id, r.organization_id, true, now(), 'agent' from public.requests r where r.id = $1
+     on conflict (request_id) do update set is_open = true`,
+    [requestId],
+  );
 }
 
 /** Une base par fichier de test, vidée entre deux tests. */
@@ -217,7 +238,7 @@ export async function freshIrisDb(): Promise<PGlite> {
   await shared.exec(`
     select set_config('app.service', '1', false);
     truncate table public.notifications, public.request_events, public.attachment_uploads,
-      public.organization_members, public.stub_instructors, public.request_citizen_messages, public.request_access_mails, public.request_access_codes, public.request_receipts, public.request_messages,
+      public.organization_members, public.stub_instructors, public.request_citizen_reply_state, public.request_citizen_messages, public.request_access_mails, public.request_access_codes, public.request_receipts, public.request_messages,
       public.request_attachments, public.request_emails, public.requests, public.integration_api_logs,
       public.integration_credentials, public.integration_sources, public.organizations, public.users restart identity cascade;
     select set_config('app.service', '', false);

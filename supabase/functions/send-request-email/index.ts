@@ -54,6 +54,12 @@
 // rien ne change. Un troisième mode, `kind: "apercu"` (même droit, rien
 // d'écrit), dit d'avance au composeur laquelle des deux formes partira.
 //
+// Depuis le 2026-10-25, la messagerie de l'usager est FERMÉE par défaut : le
+// mode libre accepte `replies_open: true` (« Attendre une réponse de
+// l'usager »), qui l'ouvre une fois le message parti ou publié — jamais
+// avant, une ouverture sans message n'expliquerait rien à l'usager. Un échec
+// de l'ouverture ne défait pas l'envoi : la réponse le dit (`replies_open`).
+//
 // CORS : allowlist stricte (IRIS_APP_URL + localhost de dev).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -221,6 +227,11 @@ Deno.serve(async (req) => {
     return fail(req, 400, "invalid_kind", "Type d'envoi inconnu.");
   }
   const closureMode = kind === "cloture";
+  if (body?.replies_open !== undefined && typeof body.replies_open !== "boolean") {
+    return fail(req, 400, "invalid_replies_open", "replies_open : booléen attendu.");
+  }
+  // Seul le message libre attend une réponse : un avis de clôture n'en appelle aucune.
+  const openReplies = kind === "libre" && body?.replies_open === true;
   // L'aperçu (M2) ne lit ni objet ni corps : il dit seulement la forme qui partira.
   const previewMode = kind === "apercu";
 
@@ -487,7 +498,10 @@ Deno.serve(async (req) => {
       return fail(req, 500, "not_published", "Le message n'a pas pu être publié dans l'espace de l'usager.");
     }
     console.log(`send-request-email: échange ${emailId} publié dans l'espace (demande=${request.reference}, canal=${delivery.target})`);
-    return json(req, 200, { email_id: emailId, to, email_sent: false, delivery: "espace", target: delivery.target });
+    return json(req, 200, {
+      email_id: emailId, to, email_sent: false, delivery: "espace", target: delivery.target,
+      ...(openReplies ? { replies_open: await openCitizenReplies(request.id, request.status, actorId) } : {}),
+    });
   }
 
   // ---- Relais, pièces, envoi -------------------------------------------------
@@ -545,5 +559,22 @@ Deno.serve(async (req) => {
     `send-request-email: échange ${emailId} envoyé (demande=${request.reference}, ` +
       `pièces=${attachments.length}, relais=${smtp.source})`,
   );
-  return json(req, 200, { email_id: emailId, to, email_sent: true, delivery: "courriel" });
+  return json(req, 200, {
+    email_id: emailId, to, email_sent: true, delivery: "courriel",
+    ...(openReplies ? { replies_open: await openCitizenReplies(request.id, request.status, actorId) } : {}),
+  });
 });
+
+/** Ouvre la messagerie de l'usager après l'envoi ; `false` si l'ouverture a échoué. */
+async function openCitizenReplies(requestId: string, status: string, actorId: string): Promise<boolean> {
+  // Même règle que `set_citizen_replies_open` : une demande close ne reçoit plus de message.
+  if (["resolue_positive", "resolue_negative", "annulee", "archivee"].includes(status)) return false;
+  const { error } = await supabase.rpc("set_citizen_replies", {
+    p_request_id: requestId,
+    p_open: true,
+    p_actor: actorId,
+    p_reason: "message",
+  });
+  if (error) console.error("send-request-email: set_citizen_replies en échec", error);
+  return !error;
+}

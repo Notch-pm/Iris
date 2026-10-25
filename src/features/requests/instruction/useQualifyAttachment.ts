@@ -31,6 +31,8 @@ export interface QualifyAttachmentResult {
   status: string;
   /** La demande vient-elle de passer en attente d'information ? */
   status_changed: boolean;
+  /** Une pièce non conforme ouvre la messagerie de l'usager (2026-10-25). */
+  replies_opened?: boolean;
 }
 
 export function useQualifyAttachment() {
@@ -51,6 +53,7 @@ export function useQualifyAttachment() {
       // faire basculer. La liste et ses facettes suivent le statut.
       void queryClient.invalidateQueries({ queryKey: ["request_attachments", vars.requestId] });
       void queryClient.invalidateQueries({ queryKey: ["request_events", vars.requestId] });
+      void queryClient.invalidateQueries({ queryKey: ["request_citizen_reply_state", vars.requestId] });
       void queryClient.invalidateQueries({ queryKey: ["request", vars.requestId] });
       void queryClient.invalidateQueries({ queryKey: ["requests"] });
       void queryClient.invalidateQueries({ queryKey: ["request-facets"] });

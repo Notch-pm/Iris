@@ -33,6 +33,7 @@ import {
 import { defaultEmailSubject } from "./mobileRequests";
 import { useEmailDeliveryPreview } from "../instruction/useSendRequestEmail";
 import { DELIVERY_PENDING_NOTICE } from "../instruction/remise";
+import { repliesView, type CitizenReplyState } from "../instruction/messagerie";
 
 interface Props {
   open: boolean;
@@ -51,11 +52,13 @@ interface Props {
   archived: boolean;
   sending: boolean;
   onSend: (payload: SendEmailPayload) => Promise<void>;
+  /** Messagerie de l'usager (2026-10-25) : fermée par défaut, `null` = aucune ligne. */
+  replyState?: CitizenReplyState | null;
 }
 
 export function MobileEcrireSheet({
   open, onOpenChange, request, identity, emails, citizenMessages = [], attachments = [], members, events, tenantName,
-  canInstruct, archived, sending, onSend,
+  canInstruct, archived, sending, onSend, replyState = null,
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
   const fileRef = React.useRef<HTMLInputElement>(null);
@@ -67,12 +70,16 @@ export function MobileEcrireSheet({
   const [files, setFiles] = React.useState<File[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  /** « Attendre une réponse de l'usager » — décochée par défaut, comme au bureau. */
+  const [awaitReply, setAwaitReply] = React.useState(false);
 
   const recipient = identity.anonymous ? null : identity.email;
   const closed = archived || !canInstruct || !recipient;
   const completable = Boolean(request.socle_contact_id);
   // M2 (B12) : le serveur dit d'avance si le message sera publié dans l'espace.
   const deliveryPreview = useEmailDeliveryPreview(request.id, open && !closed);
+  const replies = repliesView(replyState, request.status);
+  const offerAwaitReply = request.citizen_visible && !replies.open;
 
   React.useEffect(() => {
     if (open) {
@@ -82,6 +89,7 @@ export function MobileEcrireSheet({
       setFiles([]);
       setError(null);
       setSubmitted(false);
+      setAwaitReply(false);
     }
   }, [open, request.reference]);
 
@@ -132,7 +140,9 @@ export function MobileEcrireSheet({
       await onSend({
         subject: subject.trim(), body, files, documentIds: [],
         templateId: tpl?.id ?? null, templateName: tpl?.name ?? null,
+        repliesOpen: offerAwaitReply && awaitReply,
       });
+      setAwaitReply(false);
       setBody("");
       setFiles([]);
       setTemplateId("");
@@ -175,9 +185,26 @@ export function MobileEcrireSheet({
               {deliveryPreview.isLoading
                 ? DELIVERY_PENDING_NOTICE
                 : deliveryPreview.data?.delivery === "espace"
-                ? "Le message sera publié dans l'espace de l'usager : il recevra un courriel avec ses premiers mots et un lien, et pourra répondre en ligne."
-                : "L'usager ne peut pas répondre par courriel ; s'il suit sa demande en ligne, il peut y répondre."}
+                ? "Le message sera publié dans l'espace de l'usager : il recevra un courriel avec ses premiers mots et un lien."
+                : "L'usager ne peut pas répondre par courriel."}
+              {request.citizen_visible
+                ? replies.open
+                  ? " Sa messagerie est ouverte : il peut répondre une fois en ligne."
+                  : " Sa messagerie est fermée : il ne peut pas écrire en ligne."
+                : null}
             </p>
+            {offerAwaitReply ? (
+              <label className="flex items-center gap-2.5 text-[13px] font-semibold">
+                <input
+                  type="checkbox"
+                  className="size-5 rounded border-input text-primary"
+                  checked={awaitReply}
+                  disabled={sending}
+                  onChange={(e) => setAwaitReply(e.target.checked)}
+                />
+                Attendre une réponse de l'usager
+              </label>
+            ) : null}
             <div className="flex items-end gap-2">
               <input
                 ref={fileRef}

@@ -208,6 +208,44 @@ export const useCitizenNotices = (id: string | undefined) =>
 export const useRequestCitizenMessages = (id: string | undefined) =>
   useSatellite<RequestCitizenMessage>("request_citizen_messages", id);
 
+/**
+ * La messagerie de l'usager (2026-10-25) : fermée par défaut, `null` = aucune
+ * ligne = fermée. Relue périodiquement : la réponse de l'usager la referme
+ * sans geste de l'agent.
+ */
+export function useCitizenReplyState(id: string | undefined) {
+  return useQuery({
+    queryKey: ["request_citizen_reply_state", id],
+    enabled: Boolean(id),
+    refetchInterval: 60_000,
+    queryFn: async (): Promise<Tables<"request_citizen_reply_state"> | null> => {
+      const { data, error } = await supabase
+        .from("request_citizen_reply_state")
+        .select("*")
+        .eq("request_id", id!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+  });
+}
+
+/** « Ouvrir / Fermer la messagerie » — RPC `set_citizen_replies_open`, seule porte (droit d'instruction). */
+export function useSetCitizenReplies() {
+  const invalidate = useInvalidateRequest();
+  return useMutation({
+    mutationFn: async (input: { requestId: string; open: boolean }) => {
+      const { data, error } = await supabase.rpc("set_citizen_replies_open", {
+        p_request_id: input.requestId,
+        p_open: input.open,
+      });
+      if (error) throw error;
+      return data as unknown as { open: boolean; changed: boolean };
+    },
+    onSuccess: (_data, vars) => invalidate(vars.requestId),
+  });
+}
+
 export interface TenantMember {
   userId: string;
   role: string;
@@ -306,6 +344,7 @@ function useInvalidateRequest() {
         "request_attachments",
         "request_emails",
         "request_citizen_messages",
+        "request_citizen_reply_state",
         "request_links",
         "request_interventions",
         "eligible-assignees",

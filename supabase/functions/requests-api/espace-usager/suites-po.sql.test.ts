@@ -8,7 +8,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { freshIrisDb } from "./harness/irisDb.ts";
+import { freshIrisDb, openReplies } from "./harness/irisDb.ts";
 
 let db: PGlite;
 // deno-lint-ignore no-explicit-any
@@ -39,10 +39,11 @@ async function upload(requestId: string) {
   return id;
 }
 
-const record = (requestId: string, items: string[] = []) =>
-  q("select public.record_citizen_message($1, $2, $3, 'invite', null, 'Voici la pièce.', $4::jsonb)", [
+// Messagerie fermée par défaut (20261025160000) : chaque appel l'ouvre d'abord.
+const record = async (requestId: string, items: string[] = []) =>
+  await openReplies(db, requestId).then(() => q("select public.record_citizen_message($1, $2, $3, 'invite', null, 'Voici la pièce.', $4::jsonb)", [
     requestId, ORG, source, JSON.stringify(items.map((upload_id) => ({ upload_id }))),
-  ]);
+  ]));
 
 /** Une réponse de l'usager avec une pièce : rend l'id de la pièce de l'échange. */
 async function citizenPiece(requestId: string) {

@@ -29,6 +29,11 @@ describe("sentNotice", () => {
     expect(sentNotice({ delivery: "courriel" })).toBe("Message envoyé à l'usager.");
     expect(sentNotice(undefined)).toBe("Message envoyé à l'usager.");
   });
+
+  it("dit si la messagerie a été ouverte quand l'agent attendait une réponse", () => {
+    expect(sentNotice({ delivery: "courriel", replies_open: true })).toContain("messagerie est ouverte");
+    expect(sentNotice({ delivery: "espace", replies_open: false })).toContain("n'a pas pu être ouverte");
+  });
 });
 
 describe("raisons d'un avis non parti", () => {

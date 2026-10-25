@@ -1110,7 +1110,10 @@ async function handleCitizenRequest(auth: AuthContext, req: Request, id: string)
   const request = await supabase.from("requests").select(CITIZEN_REQUEST_SELECT)
     .eq("id", id).eq("organization_id", auth.organizationId).maybeSingle();
   const related = await citizenEmailsAndAttachments(id, reader);
-  if (!request.data || related === null) return fail("internal_error", "Erreur serveur.");
+  // 2.11.0 : l'usager ne peut écrire que messagerie ouverte (absente = fermée).
+  const replies = await supabase.from("request_citizen_reply_state").select("is_open")
+    .eq("request_id", id).maybeSingle();
+  if (!request.data || related === null || replies.error) return fail("internal_error", "Erreur serveur.");
   // 2.10.0 : la préférence d'avis de l'INVITÉ pour cette demande (un compte
   // règle la sienne dans son espace, chez le portail).
   let notifications: { email: boolean } | undefined;
@@ -1120,7 +1123,9 @@ async function handleCitizenRequest(auth: AuthContext, req: Request, id: string)
     notifications = { email: access?.notify_email !== false };
   }
   return json(200, {
-    request: serializeCitizenRequest(request.data, related.emails, related.attachments, related.ownMessages),
+    request: serializeCitizenRequest(
+      request.data, related.emails, related.attachments, related.ownMessages, replies.data?.is_open === true,
+    ),
     ...(notifications ? { notifications } : {}),
   });
 }
@@ -1226,6 +1231,10 @@ async function handleCitizenMessage(auth: AuthContext, req: Request, id: string)
   });
   if (error) {
     if (error.code === "P0409") return fail("conflict", "Cette demande est close : elle ne reçoit plus de message.");
+    // 2.11.0 : messagerie fermée par défaut, ouverte quand le service attend une réponse.
+    if (error.code === "P0423") {
+      return fail("conflict", "La messagerie de cette demande est fermée : le service vous écrira s'il a besoin d'une information.");
+    }
     console.error("requests-api: message de l'usager non enregistré", error);
     return fail("internal_error", "Erreur serveur.");
   }

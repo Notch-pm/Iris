@@ -14,7 +14,11 @@
 //   · les messages qu'Iris lui a ENVOYÉS (`request_emails.status = 'envoye'`),
 //     avec leurs pièces — l'accusé y figure, son code d'accès masqué. Jamais
 //     un AVIS automatique (`nature = 'avis'`, B12) : un avis n'est pas un
-//     message de l'espace, il ne fait qu'y renvoyer.
+//     message de l'espace, il ne fait qu'y renvoyer ;
+//   · `replies_open` (2.11.0) : l'usager peut-il écrire ? La messagerie est
+//     fermée par défaut, ouverte quand le service attend une réponse (pièce
+//     non conforme, message de l'agent, geste explicite), refermée par la
+//     réponse. Jamais vraie sur une demande close.
 
 export const CITIZEN_REQUEST_SELECT =
   "id, reference, status, subject, procedure_snapshot, received_at, updated_at, closed_at, closure_text";
@@ -68,6 +72,8 @@ export interface CitizenRequest {
   closure_text: string | null;
   attachments: CitizenAttachment[];
   messages: CitizenMessage[];
+  /** 2.11.0 : `POST …/messages` est accepté (une réponse, puis fermeture). */
+  replies_open: boolean;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -128,6 +134,7 @@ export function serializeCitizenRequest(
   emails: Row[],
   attachments: Row[],
   ownMessages: Row[] = [],
+  repliesOpen = false,
 ): CitizenRequest {
   const sent = emails
     .filter((e) => isCitizenMessageEmail(e) && e?.status === "envoye" && typeof e.sent_at === "string")
@@ -169,6 +176,9 @@ export function serializeCitizenRequest(
     closure_text: request.closed_at ? (request.closure_text ?? null) : null,
     attachments: visible.filter((a) => !a.email_id && !a.citizen_message_id).map(attachment),
     messages,
+    // Le serveur refuse déjà un message sur une demande close : la vue ne dit
+    // pas « ouverte » à un portail qui afficherait un formulaire voué au refus.
+    replies_open: repliesOpen && !request.closed_at,
   };
 }
 

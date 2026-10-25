@@ -454,6 +454,30 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   ne produit **aucune notification `status_changed`** (B11, même date) : la RPC pose le
   drapeau transactionnel `iris.reprise_usager` autour de son UPDATE, que
   `requests_notify_update` lit ; `citizen_replied` porte `reprise` à la place.
+  **Depuis le 2026-10-25, la RPC refuse aussi une messagerie fermée (`P0423`)** et la
+  referme après chaque message — voir `request_citizen_reply_state`.
+- **`request_citizen_reply_state`** *(2026-10-25, `20261025160000`, décision PO)* — la
+  **messagerie de l'usager** sur SA demande, **fermée par défaut** : une ligne par demande
+  (clé = `request_id`), **absente = fermée**. `is_open`, `opened_at` / `opened_by` (NULL sans
+  agent) / `opened_reason` (`non_conformite`, `message`, `agent`, `reprise`), `closed_at` /
+  `closed_by` / `closed_reason` (`reponse_usager`, `agent`, `demande_close`). **Une ouverture =
+  une réponse** : l'usager écrit une fois (jusqu'à cinq pièces), sa réponse la referme, l'agent
+  rouvre s'il lui faut autre chose. Portes, toutes serveur, toutes par la fonction interne
+  `set_citizen_replies` (service_role ; journalise `messagerie_usager_ouverte` à chaque
+  ouverture et `messagerie_usager_fermee` à la fermeture par un agent) :
+  - **ouverture** par `qualify_request_attachment` (pièce non conforme, quel que soit le
+    statut — `replies_opened` dans son retour), par `send-request-email` (mode libre avec
+    `replies_open: true`, après l'envoi ou la publication, jamais sur une demande close) et par
+    `set_citizen_replies_open(request_id, open)` (`authenticated`, droit d'**instruction**
+    vérifié dans la fonction ; une demande close ne s'ouvre pas — `P0409` —, la fermer reste
+    permis) ;
+  - **fermeture** par `record_citizen_message`, par le même bouton, et par le trigger
+    `t42_requests_close_citizen_replies` à l'entrée dans un statut final. Une **réouverture**
+    de la demande ne rouvre pas la messagerie.
+  Pas de colonne sur `requests` : ni sa garde d'écriture, ni `updated_at`, ni les triggers de
+  statistiques et de notification ne sont touchés. Reprise : les demandes `en_attente` au
+  déploiement ont été ouvertes (`reprise`). Vue usager : `replies_open` (contrat 2.11.0),
+  jamais vrai sur une demande close. Tests : `requests-api/espace-usager/messagerie-fermee.sql.test.ts`.
 - **`request_receipts`** *(2026-10-09)* — boîte d'envoi des **accusés de réception** à
   l'usager : une ligne par demande déposée (clé = `request_id`, donc jamais deux accusés),
   `status` `pending|sending|sent|skipped|failed`, `attempts`, `next_attempt_at`, `error`,
@@ -1584,6 +1608,7 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `attachment_uploads` | — | — | — | — *(service_role seul : zone d'attente des pièces)* |
 | `request_emails` | `EXISTS` demande visible (un échange avec l'usager n'est pas une note interne) | **aucune** — service seul | **aucune** — le corps doit rester celui qui est parti | **aucune** — un e-mail parti ne se dé-envoie pas |
 | `request_citizen_messages` | `can_consult_request` | **aucune** — RPC `record_citizen_message` (service_role) | **aucune** — immuable | **aucune** — cascade de la demande |
+| `request_citizen_reply_state` | `can_consult_request` | **aucune** — `set_citizen_replies` (service_role), appelée par les RPC et triggers | **aucune** — idem ; geste d'agent par `set_citizen_replies_open` (instruction) | **aucune** — cascade de la demande |
 | `request_access_codes`, `request_access_mails` | **aucune** — `service_role` seul (RLS actif, droits retirés à `anon`/`authenticated` ; empreintes et clair d'envoi hors de portée du navigateur) | **aucune** — RPC `register_request_access` / `rotate_request_access` | **aucune** — RPC `check_request_access`, `request_access_resend`, `revoke_request_access`, facteur | **aucune** — cascade de la demande |
 | `request_links` | `EXISTS` demande visible (la ligne appartient à la source) | couple **écriture** sur la source ; trigger `request_links_check_scope` exige en plus la **consultation** de la cible (hors contexte de service) | — | `has_admin_scope` sur l'organisation de la demande |
 | `procedure_link_settings` | membre | — (RPC `save_procedure_link_settings`, administration de la racine) | — (idem) | — |

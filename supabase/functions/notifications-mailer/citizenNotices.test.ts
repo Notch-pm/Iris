@@ -45,9 +45,23 @@ async function guestRow(over: Row = {}): Promise<Row> {
 
 let calls: { name: string; params: Record<string, unknown> }[] = [];
 let messages: Record<string, unknown>[] = [];
+/** Messagerie de l'usager lue par le facteur (2026-10-25) : demande → ouverte ? */
+let replyState: Record<string, boolean> = {};
+let replyReads: string[] = [];
 function fakeSupabase(rows: Row[]): SupabaseClient {
   return {
-    from: () => ({ select: () => ({ in: async () => ({ data: messages, error: null }) }) }),
+    from: (table: string) => table === "request_citizen_reply_state"
+      ? {
+        select: () => ({
+          eq: (_column: string, requestId: string) => ({
+            maybeSingle: async () => {
+              replyReads.push(requestId);
+              return { data: requestId in replyState ? { is_open: replyState[requestId] } : null, error: null };
+            },
+          }),
+        }),
+      }
+      : { select: () => ({ in: async () => ({ data: messages, error: null }) }) },
     rpc: async (name: string, params: Record<string, unknown>) => {
       calls.push({ name, params });
       if (name === "claim_citizen_notices") return { data: rows, error: null };
@@ -64,6 +78,8 @@ beforeEach(() => {
   sent.length = 0;
   calls = [];
   messages = [];
+  replyState = {};
+  replyReads = [];
   sendFails = false;
   live = { email: "alice@example.org" };
 });
@@ -217,6 +233,16 @@ describe("M2 : avis d'un message publié dans l'espace", () => {
     expect(sent).toHaveLength(1);
     expect(sent[0].content.cta?.label).toBe("Lire le message");
     expect(sent[0].content.paragraphs.join("\n")).not.toContain("répondre");
+  });
+
+  it("messagerie de l'usager : relue pour l'avis d'un message, jamais pour un avis de statut seul", async () => {
+    messages = [MESSAGE];
+    replyState = { [REQUEST]: true };
+    await drain([await guestRow({ status: "en_instruction", known_status: "en_instruction", message_email_ids: ["m1"] })]);
+    expect(replyReads).toEqual([REQUEST]);
+    replyReads = [];
+    await drain([await guestRow()]);
+    expect(replyReads).toEqual([]);
   });
 
   it("accès coupé dans la fenêtre : le dernier lien connu sert (risque accepté)", async () => {

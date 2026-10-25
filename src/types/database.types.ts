@@ -1570,6 +1570,57 @@ export type Database = {
           },
         ]
       }
+      request_citizen_reply_state: {
+        Row: {
+          closed_at: string | null
+          closed_by: string | null
+          closed_reason: string | null
+          is_open: boolean
+          opened_at: string | null
+          opened_by: string | null
+          opened_reason: string | null
+          organization_id: string
+          request_id: string
+        }
+        Insert: {
+          closed_at?: string | null
+          closed_by?: string | null
+          closed_reason?: string | null
+          is_open: boolean
+          opened_at?: string | null
+          opened_by?: string | null
+          opened_reason?: string | null
+          organization_id: string
+          request_id: string
+        }
+        Update: {
+          closed_at?: string | null
+          closed_by?: string | null
+          closed_reason?: string | null
+          is_open?: boolean
+          opened_at?: string | null
+          opened_by?: string | null
+          opened_reason?: string | null
+          organization_id?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_citizen_reply_state_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "request_citizen_reply_state_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       request_citizen_status: {
         Row: {
           known_at: string
@@ -3445,6 +3496,19 @@ export type Database = {
           request_status: string
           request_subject: string
         }[]
+      }
+      set_citizen_replies: {
+        Args: {
+          p_actor: string
+          p_open: boolean
+          p_reason: string
+          p_request_id: string
+        }
+        Returns: boolean
+      }
+      set_citizen_replies_open: {
+        Args: { p_open: boolean; p_request_id: string }
+        Returns: Json
       }
       set_citizen_space: {
         Args: {

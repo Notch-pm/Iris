@@ -117,6 +117,11 @@ export interface MessageNoticeInput {
   tenantName: string | null;
   /** Demande close : le portail n'y accepte plus de réponse, l'avis ne la propose pas. */
   closed?: boolean;
+  /**
+   * Messagerie de l'usager OUVERTE (2026-10-25 : fermée par défaut) : sans elle,
+   * le portail refuse la réponse, l'avis ne la propose pas. Absente = fermée.
+   */
+  repliesOpen?: boolean;
 }
 
 /**
@@ -148,9 +153,10 @@ export function messageNoticeEmail(input: MessageNoticeInput): StatusNotice {
   const footnote = input.unsubscribeUrl
     ? `Vous ne souhaitez plus recevoir les avis de changement de statut pour cette demande ? ${input.unsubscribeUrl}`
     : undefined;
+  const canReply = !input.closed && input.repliesOpen === true;
   const readLine = several
-    ? (input.closed ? "Pour les lire en entier" : "Pour les lire en entier et y répondre")
-    : (input.closed ? "Pour le lire en entier" : "Pour le lire en entier et y répondre");
+    ? (canReply ? "Pour les lire en entier et y répondre" : "Pour les lire en entier")
+    : (canReply ? "Pour le lire en entier et y répondre" : "Pour le lire en entier");
   const body = [
     ...paragraphs,
     `${readLine} : ${input.url}`,

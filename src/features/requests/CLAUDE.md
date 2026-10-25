@@ -836,6 +836,18 @@ note interne → résolution avec texte de clôture → journal.
     l'espace usager », et montre — au bureau seulement — les avis **non partis** avec leur
     raison (`citizen_notices`, `unsentNotices`, `NOTICE_REASON_LABELS`, jumeau de
     `SKIP_REASONS`).
+  - **Messagerie de l'usager fermée par défaut** (décision PO 2026-10-25, `instruction/
+    messagerie.ts` pur/testé, `useCitizenReplyState` / `useSetCitizenReplies`, migration
+    `20261025160000`) : un bandeau en tête de l'onglet dit si l'usager peut écrire en ligne et
+    pourquoi, avec **« Ouvrir / Fermer la messagerie »** (RPC `set_citizen_replies_open`,
+    droit d'instruction) ; le composeur — bureau et feuille mobile — porte la case
+    **« Attendre une réponse de l'usager »**, décochée par défaut et proposée seulement
+    messagerie fermée (`replies_open` vers `send-request-email`, qui ouvre APRÈS l'envoi et
+    le dit dans sa réponse). Une pièce déclarée non conforme l'ouvre aussi, quel que soit le
+    statut (`replies_opened`, annoncé par le toast). **Une ouverture = une réponse** : la
+    réponse de l'usager la referme, la clôture aussi, la réouverture d'une demande ne la
+    rouvre pas. Bandeau et case n'existent que sur une demande `citizen_visible`. L'avis
+    courriel d'un message ne dit « … et y répondre » que messagerie ouverte.
   - **Accusé de réception automatique** (2026-10-09) : le fil peut porter un échange **sans
     agent** (`sent_by` NULL) — l'accusé envoyé par Iris au dépôt (hors demandes issues de
     Clara). `exchangeAuthor` (`courriel.ts`) l'affiche « Iris · envoi automatique », jamais

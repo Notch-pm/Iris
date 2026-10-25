@@ -40,7 +40,7 @@ describe("serializeCitizenRequest", () => {
   it("ne laisse sortir que la liste blanche", () => {
     expect(Object.keys(view).sort()).toEqual([
       "attachments", "closed_at", "closure_text", "id", "messages", "procedure_name",
-      "received_at", "reference", "status", "subject", "updated_at",
+      "received_at", "reference", "replies_open", "status", "subject", "updated_at",
     ]);
     const text = JSON.stringify(view);
     for (const secret of ["reorientation", "AB-123-CD", "agent-1", "a@b.fr", "o/r/", "secret", "instruction"]) {
@@ -51,6 +51,13 @@ describe("serializeCitizenRequest", () => {
   it("donne le nom de la démarche et le texte de clôture d'une demande close", () => {
     expect(view.procedure_name).toBe("Signaler un problème");
     expect(view.closure_text).toBe("Votre demande ne relève pas de nos services.");
+  });
+
+  it("replies_open (2.11.0) : fermée par défaut, jamais ouverte sur une demande close", () => {
+    const open = { ...REQUEST, status: "en_attente", closed_at: null };
+    expect(serializeCitizenRequest(open, [], []).replies_open).toBe(false);
+    expect(serializeCitizenRequest(open, [], [], [], true).replies_open).toBe(true);
+    expect(serializeCitizenRequest(REQUEST, [], [], [], true).replies_open).toBe(false);
   });
 
   it("tait le texte de clôture d'une demande rouverte", () => {

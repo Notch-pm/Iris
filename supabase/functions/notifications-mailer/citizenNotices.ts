@@ -217,6 +217,15 @@ export async function drainCitizenNotices(
     }
     const last = messages[messages.length - 1] ?? null;
 
+    // Messagerie de l'usager (2026-10-25, fermée par défaut) : l'avis ne propose
+    // de répondre que si le portail l'acceptera. Illisible = fermée.
+    let repliesOpen = false;
+    if (last !== null) {
+      const { data: replies } = await supabase.from("request_citizen_reply_state")
+        .select("is_open").eq("request_id", row.request_id).maybeSingle();
+      repliesOpen = replies?.is_open === true;
+    }
+
     if (!withStatus && last === null) {
       const reason: SkipReason = !decision.send
         ? decision.reason
@@ -292,6 +301,7 @@ export async function drainCitizenNotices(
         unsubscribeUrl: unsubscribe,
         tenantName: row.organization_name,
         closed: row.closed_at !== null,
+        repliesOpen,
       })
       : statusNoticeEmail({
         event: event as NoticeEvent,

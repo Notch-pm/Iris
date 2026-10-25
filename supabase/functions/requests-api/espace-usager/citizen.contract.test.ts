@@ -11,6 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { ANTONY_ROOT, IrisWorld, KEY, SCEAUX_ROOT, TOKEN_SECRET, type Reply } from "./harness/irisWorld.ts";
+import { openReplies } from "./harness/irisDb.ts";
 
 const ALICE = "aaaaaaaa-0000-4000-8000-0000000000a1";
 const BOB = "bbbbbbbb-0000-4000-8000-0000000000b1";
@@ -280,7 +281,7 @@ describe("ce que la vue montre — liste blanche", () => {
     const open = await call("GET", `/v1/citizen/requests/${r.id}`, { token });
     expect(open.status).toBe(200);
     expect(Object.keys(open.body.request).sort()).toEqual([
-      "attachments", "closed_at", "closure_text", "id", "messages", "procedure_name", "received_at", "reference", "status", "subject", "updated_at",
+      "attachments", "closed_at", "closure_text", "id", "messages", "procedure_name", "received_at", "reference", "replies_open", "status", "subject", "updated_at",
     ]);
     expect(open.body.request.closure_text).toBeNull(); // brouillon laissé sur une demande ouverte : pas une réponse
 
@@ -723,8 +724,11 @@ describe("POST /v1/citizen/requests/{id}/messages — l'usager répond (2.9.0, L
     await world.openGuestAccess(r.id, world.sceaux, "usager@example.org", CODE);
     return r;
   }
-  const post = async (id: string, json: unknown, token: string | null) =>
-    await call("POST", `/v1/citizen/requests/${id}/messages`, { json, token });
+  // Messagerie fermée par défaut (2.11.0) : un envoi l'ouvre d'abord, sauf `{ open: false }`.
+  const post = async (id: string, json: unknown, token: string | null, { open = true } = {}) => {
+    if (open) await openReplies(world.db, id);
+    return await call("POST", `/v1/citizen/requests/${id}/messages`, { json, token });
+  };
   const guestToken = (id: string) => world.token({ kind: "request", id }, { g: 1 });
   const view = async (id: string, token: string) => (await call("GET", `/v1/citizen/requests/${id}`, { token })).body.request;
 
@@ -799,6 +803,33 @@ describe("POST /v1/citizen/requests/{id}/messages — l'usager répond (2.9.0, L
     const reply = await post(r.id, { body: TEXT }, await guestToken(r.id));
     expect(reply.status).toBe(409);
     expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+  });
+
+  it("2.11.0 — messagerie fermée par défaut : 409, rien n'est écrit ; la vue dit replies_open: false", async () => {
+    const r = await guestRequest({ status: "en_attente" });
+    const token = await guestToken(r.id);
+    expect((await view(r.id, token)).replies_open).toBe(false);
+    const reply = await post(r.id, { body: TEXT }, token, { open: false });
+    expect(reply.status).toBe(409);
+    expect(reply.body.error.message).toMatch(/messagerie/i);
+    expect(await world.sql("select id from request_citizen_messages")).toEqual([]);
+    expect((await world.sql<{ status: string }>("select status from requests where id = $1", [r.id]))[0].status).toBe("en_attente");
+  });
+
+  it("2.11.0 — ouverte : replies_open: true ; la réponse la referme, un second message est refusé", async () => {
+    const r = await guestRequest();
+    const token = await guestToken(r.id);
+    await openReplies(world.db, r.id);
+    expect((await view(r.id, token)).replies_open).toBe(true);
+    expect((await post(r.id, { body: TEXT }, token, { open: false })).status).toBe(201);
+    expect((await view(r.id, token)).replies_open).toBe(false);
+    expect((await post(r.id, { body: "Et encore une chose" }, token, { open: false })).status).toBe(409);
+  });
+
+  it("2.11.0 — jamais replies_open sur une demande close, même ouverte en base", async () => {
+    const r = await guestRequest({ status: "resolue_positive", closed_at: new Date().toISOString() });
+    await openReplies(world.db, r.id);
+    expect((await view(r.id, await guestToken(r.id))).replies_open).toBe(false);
   });
 
   it("429 au 11e message en une heure sur la même demande", async () => {

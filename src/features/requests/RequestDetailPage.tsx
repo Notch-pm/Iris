@@ -34,7 +34,7 @@ import {
   createAttachmentUrl, useAddMessage, useAssignRequest, useDeleteMessage, useEligibleAssignees, useMentionableUsers,
   useCitizenNotices, useRequest, useRequestAttachments, useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestLinks,
   useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useTransferRequest,
-  useSetCitizenVisibility, useUpdatePriority,
+  useSetCitizenVisibility, useUpdatePriority, useCitizenReplyState, useSetCitizenReplies,
   type RequestAttachment, type TenantMember, type TransferResult,
 } from "./useRequests";
 import { useSendRequestEmail } from "./instruction/useSendRequestEmail";
@@ -121,6 +121,8 @@ export function RequestDetailPage() {
   const emails = useRequestEmails(id);
   const citizenMessages = useRequestCitizenMessages(id);
   const citizenNotices = useCitizenNotices(id);
+  const replyState = useCitizenReplyState(id);
+  const setReplies = useSetCitizenReplies();
   const links = useRequestLinks(id);
   const members = useTenantMembers(orgId);
   const eligibleAssignees = useEligibleAssignees(id);
@@ -591,9 +593,11 @@ export function RequestDetailPage() {
       // La bascule en attente est décidée par le SERVEUR (elle est refusée par
       // la matrice depuis « À traiter ») : on annonce ce qui s'est passé, pas
       // ce qu'on espérait.
+      // La messagerie de l'usager s'ouvre avec une non-conformité (2026-10-25).
+      const opened = result.replies_opened ? " L'usager peut désormais répondre en ligne." : "";
       flash(result.status_changed
-        ? "Pièce non conforme — demande en attente d'information."
-        : input.compliance === "conforme" ? "Pièce déclarée conforme." : "Pièce déclarée non conforme.");
+        ? `Pièce non conforme — demande en attente d'information.${opened}`
+        : input.compliance === "conforme" ? "Pièce déclarée conforme." : `Pièce déclarée non conforme.${opened}`);
     } catch (err) {
       setQualifyError(err instanceof Error ? err.message : "Qualification refusée.");
     }
@@ -943,7 +947,18 @@ export function RequestDetailPage() {
                     documentIds: payload.documentIds,
                     templateId: payload.templateId,
                     templateName: payload.templateName,
+                    repliesOpen: payload.repliesOpen,
                   }).then((result) => { flash(sentNotice(result)); })}
+                  replyState={replyState.data ?? null}
+                  onToggleReplies={canInstruct
+                    ? async (open) => {
+                        await setReplies.mutateAsync({ requestId: r.id, open });
+                        flash(open
+                          ? "Messagerie ouverte : l'usager peut répondre une fois en ligne."
+                          : "Messagerie fermée : l'usager ne peut plus écrire en ligne.");
+                      }
+                    : undefined}
+                  togglingReplies={setReplies.isPending}
                   onDownload={(a) => void openAttachment(a, true)}
                   onFilePiece={editable ? (a) => { setFilePieceError(null); setFilingPiece(a); } : undefined}
                   filedPieceIds={filedCitizenPieceIds(attachmentList)}

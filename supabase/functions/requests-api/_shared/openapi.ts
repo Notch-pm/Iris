@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.10.0";
+export const CONTRACT_VERSION = "2.11.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -334,6 +334,14 @@ const citizenRequestSchema = {
         },
       },
     },
+    replies_open: {
+      type: "boolean",
+      description:
+        "2.11.0 — l'usager peut-il écrire (`POST /v1/citizen/requests/{id}/messages`) ? La messagerie est " +
+        "FERMÉE par défaut : le service l'ouvre quand il attend une réponse (pièce déclarée non conforme, " +
+        "message de l'agent, geste explicite), et la réponse de l'usager la referme. Toujours `false` sur une " +
+        "demande close. Un portail n'affiche son formulaire de réponse que lorsqu'elle vaut `true`.",
+    },
   },
 } as const;
 
@@ -438,7 +446,10 @@ export function buildOpenApi(baseUrl: string) {
         "jeton court `X-Citizen-Token` sur les lectures usager, demande soustraite à l'espace usager",
         "par un agent (`citizen_visible`) — ajout additif. **2.10.0 (2026-10)** : avis automatiques à",
         "l'usager — adresse de l'espace (`PUT /v1/citizen/space`), préférences d'un compte et d'un invité,",
-        "désinscription, champ `notifications` de la vue invitée — ajout additif.",
+        "désinscription, champ `notifications` de la vue invitée — ajout additif. **2.11.0 (2026-10)** :",
+        "messagerie de l'usager fermée par défaut — champ `replies_open` de la vue usager, 409 sur un",
+        "message envoyé messagerie fermée — ajout additif côté lecture ; un portail qui ignorait la règle",
+        "reçoit désormais 409 là où il recevait 201.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -837,7 +848,9 @@ export function buildOpenApi(baseUrl: string) {
             "Un message de l'usager, avec jusqu'à 5 pièces déjà déposées en zone d'attente (`POST /v1/uploads`). " +
             "**Jeton court obligatoire**, comme pour lire la demande : sujet `request:{id}` (invité, avec `g`) ou " +
             "`contact:{fiche}` (compte). Une demande « en attente de votre réponse » repasse en instruction ; les " +
-            "agents sont prévenus. Demande close (résolue, annulée, archivée) : 409. 10 messages par heure et par demande.",
+            "agents sont prévenus. Demande close (résolue, annulée, archivée) : 409. 10 messages par heure et par demande. " +
+            "**2.11.0** : accepté seulement si la vue dit `replies_open: true` — sinon 409 (messagerie fermée). " +
+            "Une réponse referme la messagerie : l'usager écrit une fois, le service rouvre s'il lui faut autre chose.",
           parameters: [
             { $ref: "#/components/parameters/TenantHeader" },
             { $ref: "#/components/parameters/CitizenToken" },
@@ -863,7 +876,7 @@ export function buildOpenApi(baseUrl: string) {
             } } } },
             "400": err("Corps invalide, ou pièce inconnue, expirée ou déposée par une autre clé."),
             "404": err("Jeton absent ou invalide, ou demande qui n'est pas la sienne."),
-            "409": err("Demande close : elle ne reçoit plus de message."),
+            "409": err("Demande close, ou messagerie fermée (2.11.0) : le service n'attend pas de réponse."),
             "429": err("Trop de messages sur cette demande en peu de temps."),
           },
         },

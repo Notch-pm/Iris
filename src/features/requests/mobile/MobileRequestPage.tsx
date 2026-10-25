@@ -42,7 +42,7 @@ import {
 } from "../statuts";
 import {
   createAttachmentUrl, useAddMessage, useEligibleAssignees, useRequest, useRequestAttachments,
-  useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestMessages, useTenantMembers,
+  useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestMessages, useTenantMembers, useCitizenReplyState,
   type RequestAttachment, type TenantMember,
 } from "../useRequests";
 import { useSendRequestEmail } from "../instruction/useSendRequestEmail";
@@ -90,6 +90,7 @@ export function MobileRequestPage() {
   const messages = useRequestMessages(id);
   const emails = useRequestEmails(id);
   const citizenMessages = useRequestCitizenMessages(id);
+  const replyState = useCitizenReplyState(id);
   const members = useTenantMembers(orgId);
   const eligibleAssignees = useEligibleAssignees(id);
   const canBrowseUsagers = useCanBrowseUsagers();
@@ -714,8 +715,9 @@ export function MobileRequestPage() {
         onSend={(payload) => sendEmail.mutateAsync({
           requestId: r.id, organizationId: r.organization_id, subject: payload.subject, body: payload.body,
           files: payload.files, documentIds: payload.documentIds, templateId: payload.templateId,
-          templateName: payload.templateName,
+          templateName: payload.templateName, repliesOpen: payload.repliesOpen,
         }).then((result) => { flash(sentNotice(result)); })}
+        replyState={replyState.data ?? null}
       />
 
       <SolliciterDialog

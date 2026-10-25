@@ -28,16 +28,20 @@ export function deliveryNotice(preview: EmailDeliveryPreview | undefined, usager
   if (pending) return DELIVERY_PENDING_NOTICE;
   if (preview?.delivery === "espace") {
     const where = preview.target === "compte" ? "son espace sur le portail" : "son suivi en ligne";
-    return `Le message sera publié dans ${where} : ${usagerName} recevra un courriel avec ses premiers mots et un lien, et pourra répondre en ligne.`;
+    return `Le message sera publié dans ${where} : ${usagerName} recevra un courriel avec ses premiers mots et un lien.`;
   }
   return `Variables fusionnées avec la fiche de ${usagerName} — l'usager reçoit le texte affiché, et ne pourra pas y répondre.`;
 }
 
 /** La confirmation après l'envoi, d'après ce que le serveur a fait. */
-export function sentNotice(result: { delivery?: string } | undefined): string {
-  return result?.delivery === "espace"
+export function sentNotice(result: { delivery?: string; replies_open?: boolean } | undefined): string {
+  const sent = result?.delivery === "espace"
     ? "Message publié dans l'espace de l'usager. Il en sera averti par courriel."
     : "Message envoyé à l'usager.";
+  // `replies_open` n'est rendu que si l'agent attendait une réponse.
+  if (result?.replies_open === true) return `${sent} Sa messagerie est ouverte : il peut répondre une fois en ligne.`;
+  if (result?.replies_open === false) return `${sent} ⚠️ La messagerie n'a pas pu être ouverte : ouvrez-la depuis l'onglet Échanges.`;
+  return sent;
 }
 
 /**

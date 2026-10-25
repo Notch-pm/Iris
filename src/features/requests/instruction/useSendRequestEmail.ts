@@ -27,6 +27,8 @@ export interface SendRequestEmailInput {
   documentIds?: string[];
   templateId?: string | null;
   templateName?: string | null;
+  /** « Attendre une réponse de l'usager » : ouvre sa messagerie une fois le message parti. */
+  repliesOpen?: boolean;
 }
 
 export interface SendRequestEmailResult {
@@ -35,6 +37,8 @@ export interface SendRequestEmailResult {
   email_sent: boolean;
   /** B12, M2 : `espace` = publié dans l'espace de l'usager, un avis l'annonce. */
   delivery?: "courriel" | "espace";
+  /** Présent quand l'ouverture était demandée : `false` = message parti, messagerie restée fermée. */
+  replies_open?: boolean;
 }
 
 /**
@@ -71,6 +75,7 @@ export function useSendRequestEmail() {
           body: input.body,
           template_id: input.templateId ?? null,
           template_name: input.templateName ?? null,
+          ...(input.repliesOpen ? { replies_open: true } : {}),
           attachments,
         });
       } catch (err) {
@@ -86,6 +91,10 @@ export function useSendRequestEmail() {
       void queryClient.invalidateQueries({ queryKey: ["request_attachments", vars.requestId] });
       // Un message publié a enfilé son avis (onglet Échanges, L4c-3).
       void queryClient.invalidateQueries({ queryKey: ["citizen_notices", vars.requestId] });
+      if (vars.repliesOpen) {
+        void queryClient.invalidateQueries({ queryKey: ["request_citizen_reply_state", vars.requestId] });
+        void queryClient.invalidateQueries({ queryKey: ["request_events", vars.requestId] });
+      }
     },
   });
 }

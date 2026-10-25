@@ -83,9 +83,14 @@ describe("messageNoticeEmail", () => {
     expect(n.body).toContain("a aussi changé de statut : En attente de votre réponse.");
   });
 
+  it("messagerie fermée (défaut) : on renvoie à la lecture, sans proposer de réponse", () => {
+    expect(messageNoticeEmail(base).body).toContain("Pour le lire en entier : https://x.fr/suivi");
+    expect(messageNoticeEmail(base).body).not.toContain("répondre");
+    expect(messageNoticeEmail({ ...base, repliesOpen: true }).body).toContain("Pour le lire en entier et y répondre : https://x.fr/suivi");
+  });
+
   it("demande close : on renvoie à la lecture, jamais à une réponse que le portail refuserait", () => {
-    expect(messageNoticeEmail(base).body).toContain("Pour le lire en entier et y répondre : https://x.fr/suivi");
-    const closed = messageNoticeEmail({ ...base, closed: true });
+    const closed = messageNoticeEmail({ ...base, closed: true, repliesOpen: true });
     expect(closed.body).toContain("Pour le lire en entier : https://x.fr/suivi");
     expect(closed.body).not.toContain("répondre");
     expect(messageNoticeEmail({ ...base, closed: true, messageCount: 2 }).body).toContain("Pour les lire en entier : ");

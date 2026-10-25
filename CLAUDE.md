@@ -141,6 +141,13 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   (`sanitizeContact`), à la différence d'`internal_notes` : Iris pose lui-même la question, un
   agent doit pouvoir lire ce que l'usager a accepté. `consent_email`/`consent_sms` restent
   hors d'Iris — obsolètes, conservés pour Clara seule.
+- **La messagerie de l'usager est FERMÉE par défaut** (décision PO 2026-10-25) : l'usager
+  n'écrit sur sa demande (portail, suivi par code) que quand le service attend sa réponse —
+  ouverte par une pièce **non conforme**, par « Attendre une réponse de l'usager » à l'envoi
+  d'un message, ou par le bouton de l'onglet Échanges (droit d'instruction) ; **une ouverture =
+  une réponse**, la réponse la referme, la clôture aussi. Gardé en base
+  (`request_citizen_reply_state`, `record_citizen_message` refuse en `P0423`), reflété par
+  `replies_open` dans la vue usager (contrat 2.11.0) — jamais une règle d'écran seule.
 - Les **notes internes ne quittent jamais Iris** (miroir de la règle `internal_notes` du
   Socle) ; le texte de clôture destiné à l'usager est un objet distinct — **facultatif** depuis
   le 2026-08-28, et repris dans l'avis de clôture envoyé à l'usager.

@@ -9,6 +9,25 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.11.0 — 2026-10-25 — messagerie de l'usager fermée par défaut
+
+Décision PO du 2026-10-25 : les agents ne veulent pas de relances continues. L'usager ne peut
+plus écrire sur sa demande que lorsque le service **attend sa réponse**.
+
+- **Vue usager** (`GET /v1/citizen/requests/{id}`) : nouveau champ **`replies_open`**
+  (booléen). Fermée par défaut ; ouverte par le service (pièce déclarée non conforme, message
+  de l'agent « en attente de réponse », geste explicite) ; **refermée par la réponse** de
+  l'usager — une ouverture, une réponse. Toujours `false` sur une demande close. Un portail
+  n'affiche son formulaire de réponse que lorsqu'elle vaut `true`.
+- **`POST /v1/citizen/requests/{id}/messages`** : messagerie fermée → **409** `conflict`
+  (« La messagerie de cette demande est fermée … »), rien n'est écrit.
+- ⚠️ **Écart à la politique additive, assumé par le PO** : un portail qui ignorait la règle
+  reçoit désormais 409 là où il recevait 201. Seul consommateur de ces routes : le portail
+  Nora, mis à jour dans le même lot (formulaire masqué, phrase « le service vous écrira s'il a
+  besoin d'une information »).
+
+---
+
 ## 2.10.0 — 2026-10-25 — avis automatiques à l'usager
 
 Projet Sceaux (B12, lot L4c-2). **Ajout additif** — un portail qui ne pousse rien reste en

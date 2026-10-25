@@ -6,7 +6,7 @@
  */
 import type { PGlite } from "@electric-sql/pglite";
 import { beforeEach, describe, expect, it } from "vitest";
-import { freshIrisDb } from "./harness/irisDb.ts";
+import { freshIrisDb, openReplies } from "./harness/irisDb.ts";
 
 let db: PGlite;
 // deno-lint-ignore no-explicit-any
@@ -41,8 +41,9 @@ async function upload(requestId: string, extra: { source?: string | null; org?: 
   return id;
 }
 
-const record = (requestId: string, items: string[] = [], extra: { kind?: string; contact?: string | null; org?: string; src?: string | null } = {}) =>
-  q<{ r: string }>(
+// Messagerie fermée par défaut (20261025160000) : chaque appel l'ouvre d'abord.
+const record = async (requestId: string, items: string[] = [], extra: { kind?: string; contact?: string | null; org?: string; src?: string | null } = {}) =>
+  await openReplies(db, requestId).then(() => q<{ r: string }>(
     "select public.record_citizen_message($1, $2, $3, $4, $5, $6, $7::jsonb) as r",
     [
       requestId,
@@ -53,7 +54,7 @@ const record = (requestId: string, items: string[] = [], extra: { kind?: string;
       BODY,
       JSON.stringify(items.map((upload_id) => ({ upload_id }))),
     ],
-  ).then((rows) => rows[0].r);
+  )).then((rows) => rows[0].r);
 
 const count = async (table: string) => (await q<{ n: number }>(`select count(*)::int n from ${table}`))[0].n;
 

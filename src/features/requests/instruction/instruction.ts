@@ -22,6 +22,7 @@ import {
 import { civilityLabel } from "@/features/contacts/usager";
 import { displayFieldValue, formatIsoDate } from "../creation/model";
 import { plainBody } from "./mentions";
+import { repliesEventLabel } from "./messagerie";
 import {
   MOTIF_LABELS,
   STATUS_LABELS,
@@ -756,6 +757,12 @@ function describeEvent(
         label: "L'usager a répondu en ligne",
         detail: `${canal}${n > 0 ? ` · ${n} pièce${n > 1 ? "s" : ""}` : ""}${p.reprise === true ? " — la demande repasse en instruction" : ""}`,
       };
+    }
+    case "messagerie_usager_ouverte":
+    case "messagerie_usager_fermee": {
+      // 2026-10-25 : messagerie de l'usager fermée par défaut (`messagerie.ts`).
+      const what = repliesEventLabel(event.event_type, p.motif)!;
+      return { label: what.label, detail: what.reason ? `${what.reason} · ${who}` : who };
     }
     case "piece_ajoutee": {
       const name = typeof p.file_name === "string" ? p.file_name : "Pièce";

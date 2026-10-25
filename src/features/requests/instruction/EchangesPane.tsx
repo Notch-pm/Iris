@@ -14,12 +14,15 @@
 // message » en corrige la langue sans en changer le sens, et se défait d'un
 // clic tant que l'agent n'a pas retouché le texte. Rien ne part sans « Envoyer ».
 //
-// L'usager ne peut pas répondre : la mention est portée par le pied du gabarit
-// d'e-mail (« … — message automatique, merci de ne pas y répondre. »), et
-// rappelée ici à l'agent avant qu'il envoie.
+// L'usager ne répond pas au courriel : la mention est portée par le pied du
+// gabarit d'e-mail (« … — message automatique, merci de ne pas y répondre. »).
+// Il répond EN LIGNE (compte du portail ou suivi par code), et seulement quand
+// sa MESSAGERIE est ouverte (décision PO 2026-10-25, `messagerie.ts`) : fermée
+// par défaut, ouverte par une pièce non conforme, par « Attendre une réponse
+// de l'usager » à l'envoi, ou par le bouton du bandeau ; sa réponse la referme.
 
 import * as React from "react";
-import { Check, FolderInput, Loader2, Mail, Paperclip, Send, Undo2, WandSparkles, X } from "lucide-react";
+import { Check, FolderInput, Loader2, Lock, Mail, MessageSquareReply, Paperclip, Send, Undo2, WandSparkles, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select } from "@/components/ui/select";
 import { Avatar, Pill } from "@/components/ui/surface";
@@ -55,6 +58,7 @@ import {
   citizenChannelLabel, mergeThread, piecesByExchange, type CitizenNoticeRow, type RequestCitizenMessage,
 } from "./citizenMessages";
 import { deliveryNotice, noticeReasonLabel } from "./remise";
+import { repliesToggleBlocked, repliesView, type CitizenReplyState } from "./messagerie";
 import { useEmailDeliveryPreview } from "./useSendRequestEmail";
 
 /**
@@ -79,6 +83,8 @@ export interface SendEmailPayload {
   documentIds: string[];
   templateId: string | null;
   templateName: string | null;
+  /** « Attendre une réponse de l'usager » : le serveur ouvre sa messagerie après l'envoi. */
+  repliesOpen: boolean;
 }
 
 interface Props {
@@ -114,12 +120,17 @@ interface Props {
   filedPieceIds?: ReadonlySet<string>;
   /** Avis automatiques à l'usager (B12) : ceux qui ne sont pas partis s'affichent avec leur raison. */
   notices?: CitizenNoticeRow[];
+  /** Messagerie de l'usager (2026-10-25) : `null` = aucune ligne = fermée. */
+  replyState?: CitizenReplyState | null;
+  /** « Ouvrir / Fermer la messagerie » — RPC `set_citizen_replies_open`, qui reste juge. */
+  onToggleReplies?: (open: boolean) => Promise<void>;
+  togglingReplies?: boolean;
 }
 
 export function EchangesPane({
   request, identity, emails, citizenMessages = [], attachments, members, events, tenantName,
   canInstruct, archived, sending, draft, onDraftApplied, onSend, onDownload,
-  onFilePiece, filedPieceIds, notices = [],
+  onFilePiece, filedPieceIds, notices = [], replyState = null, onToggleReplies, togglingReplies = false,
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
   const { session } = useAuth();
@@ -136,6 +147,9 @@ export function EchangesPane({
   const [docIds, setDocIds] = React.useState<string[]>([]);
   const [error, setError] = React.useState<string | null>(null);
   const [submitted, setSubmitted] = React.useState(false);
+  /** « Attendre une réponse de l'usager » — décochée par défaut (décision PO). */
+  const [awaitReply, setAwaitReply] = React.useState(false);
+  const [repliesError, setRepliesError] = React.useState<string | null>(null);
   /** Le texte d'avant « Améliorer » — tant que l'agent n'a rien retouché depuis. */
   const [beforeImprove, setBeforeImprove] = React.useState<{ original: string; improved: string } | null>(null);
   const draftEmail = useDraftEmail(request.id);
@@ -269,7 +283,9 @@ export function EchangesPane({
         documentIds: docIds,
         templateId: tpl?.id ?? null,
         templateName: tpl?.name ?? null,
+        repliesOpen: offerAwaitReply && awaitReply,
       });
+      setAwaitReply(false);
       setSubject("");
       setBody("");
       setFiles([]);
@@ -298,6 +314,25 @@ export function EchangesPane({
     : null;
   const usagerName = identity.anonymous ? "l'usager" : identity.name;
 
+  // La messagerie n'a de sens que pour une demande que l'usager voit en ligne
+  // (`citizen_visible` : jamais une demande issue de Clara, ni une demande
+  // soustraite à l'espace usager par un agent).
+  const showReplies = request.citizen_visible;
+  const replies = repliesView(replyState, request.status);
+  const toggleBlocked = repliesToggleBlocked({ open: replies.open, status: request.status, canInstruct });
+  // La case n'a d'objet que messagerie fermée : ouverte, l'usager peut déjà répondre.
+  const offerAwaitReply = showReplies && !replies.open;
+
+  async function toggleReplies() {
+    if (!onToggleReplies) return;
+    setRepliesError(null);
+    try {
+      await onToggleReplies(!replies.open);
+    } catch (err) {
+      setRepliesError(err instanceof Error ? err.message : "La messagerie n'a pas pu être modifiée.");
+    }
+  }
+
   const closedReason = !recipient
     ? identity.anonymous
       ? "Ce dépôt est anonyme : aucune adresse ne permet d'écrire à l'usager."
@@ -325,6 +360,43 @@ export function EchangesPane({
             : ordered.length > 0 ? "Aucun envoi — l'usager a écrit en ligne" : "Aucun échange enregistré"}
         </span>
       </div>
+
+      {/* ── Messagerie de l'usager : fermée par défaut, ouverte quand on attend sa réponse ── */}
+      {showReplies ? (
+        <div
+          className={cn(
+            "mb-4 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3",
+            replies.open ? "border-primary/30 bg-primary/[0.04]" : "border-border bg-muted/30",
+          )}
+        >
+          {replies.open ? (
+            <MessageSquareReply className="size-4 shrink-0 text-primary" aria-hidden="true" />
+          ) : (
+            <Lock className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          )}
+          <div className="flex min-w-[220px] flex-1 flex-col gap-0.5">
+            <span className="text-[13px] font-semibold">{replies.title}</span>
+            <span className="text-xs leading-relaxed text-muted-foreground">{replies.detail}</span>
+            {repliesError ? (
+              <span role="alert" className="text-xs text-destructive">{repliesError}</span>
+            ) : null}
+          </div>
+          {onToggleReplies ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-8 shrink-0 text-xs"
+              disabled={togglingReplies || toggleBlocked !== null}
+              title={toggleBlocked ?? undefined}
+              onClick={() => void toggleReplies()}
+            >
+              {togglingReplies ? <Loader2 className="animate-spin" /> : null}
+              {replies.open ? "Fermer la messagerie" : "Ouvrir la messagerie"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* ── Le fil : chaque envoi, puis le composeur comme DERNIER message ──
           `pl-1` : la place du cercle de 3 px autour de l'avatar du composeur ;
@@ -566,6 +638,24 @@ export function EchangesPane({
                 <p role="alert" className="mx-4 mb-3 rounded-xl bg-destructive/10 p-2.5 text-[13px] text-destructive">
                   {error}
                 </p>
+              ) : null}
+
+              {offerAwaitReply ? (
+                <label className="flex items-start gap-2.5 border-t border-border px-4 py-2.5">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 size-4 rounded border-input text-primary"
+                    checked={awaitReply}
+                    disabled={sending}
+                    onChange={(e) => setAwaitReply(e.target.checked)}
+                  />
+                  <span className="flex flex-col gap-0.5">
+                    <span className="text-[13px] font-semibold">Attendre une réponse de l'usager</span>
+                    <span className="text-xs text-muted-foreground">
+                      Ouvre sa messagerie une fois le message parti : il pourra répondre une fois en ligne.
+                    </span>
+                  </span>
+                </label>
               ) : null}
 
               {/* Pied : ce que l'usager recevra, et l'envoi. */}
