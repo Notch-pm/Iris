@@ -180,9 +180,30 @@ export const useRequestLinks = (id: string | undefined) => useSatellite<RequestL
  *  l'écriture n'a qu'une porte, l'edge function `send-request-email`. */
 export const useRequestEmails = (id: string | undefined) =>
   useSatellite<RequestEmail>("request_emails", id);
-/** Avis automatiques à l'usager (B12) : l'onglet Échanges en montre les non-envois et leur raison. */
+/**
+ * Avis automatiques à l'usager (B12) : l'onglet Échanges en montre les non-envois
+ * et leur raison. Un avis se règle ~10 min APRÈS le geste de l'agent, par le
+ * facteur : sans relecture, un agent resté sur la fiche ne voyait jamais le
+ * résultat (recette du 2026-10-25). Relu toutes les 20 s tant qu'un avis est en
+ * file, toutes les minutes sinon — une transition en enfile un sans que l'écran
+ * le sache. TanStack suspend la relecture d'un onglet en arrière-plan.
+ */
 export const useCitizenNotices = (id: string | undefined) =>
-  useSatellite<Tables<"citizen_notices">>("citizen_notices", id);
+  useQuery({
+    queryKey: ["citizen_notices", id],
+    enabled: Boolean(id),
+    queryFn: async (): Promise<Tables<"citizen_notices">[]> => {
+      const { data, error } = await supabase
+        .from("citizen_notices")
+        .select("*")
+        .eq("request_id", id!)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data ?? [];
+    },
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((n) => n.status === "pending" || n.status === "sending") ? 20_000 : 60_000,
+  });
 /** Réponses de l'USAGER en ligne (lot L4b) — écrites par le serveur seul. */
 export const useRequestCitizenMessages = (id: string | undefined) =>
   useSatellite<RequestCitizenMessage>("request_citizen_messages", id);

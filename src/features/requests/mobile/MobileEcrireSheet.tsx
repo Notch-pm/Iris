@@ -32,6 +32,7 @@ import {
 } from "../instruction/instruction";
 import { defaultEmailSubject } from "./mobileRequests";
 import { useEmailDeliveryPreview } from "../instruction/useSendRequestEmail";
+import { DELIVERY_PENDING_NOTICE } from "../instruction/remise";
 
 interface Props {
   open: boolean;
@@ -171,7 +172,9 @@ export function MobileEcrireSheet({
             />
             {submitted && errors.subject ? <p role="alert" className="text-xs text-destructive">{errors.subject}</p> : null}
             <p className="text-xs text-muted-foreground">
-              {deliveryPreview.data?.delivery === "espace"
+              {deliveryPreview.isLoading
+                ? DELIVERY_PENDING_NOTICE
+                : deliveryPreview.data?.delivery === "espace"
                 ? "Le message sera publié dans l'espace de l'usager : il recevra un courriel avec ses premiers mots et un lien, et pourra répondre en ligne."
                 : "L'usager ne peut pas répondre par courriel ; s'il suit sa demande en ligne, il peut y répondre."}
             </p>

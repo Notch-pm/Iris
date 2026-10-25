@@ -15,8 +15,17 @@ export interface EmailDeliveryPreview {
   target: "compte" | "invite" | null;
 }
 
-/** La phrase du pied du composeur. `undefined` = aperçu pas encore arrivé (ou en panne). */
-export function deliveryNotice(preview: EmailDeliveryPreview | undefined, usagerName: string): string {
+/** Tant que l'aperçu n'est pas revenu : ne rien annoncer de faux (recette du 2026-10-25). */
+export const DELIVERY_PENDING_NOTICE = "Vérification de la façon dont l'usager recevra ce message…";
+
+/**
+ * La phrase du pied du composeur. `pending` = aperçu en cours : on l'attend
+ * plutôt que d'annoncer un courriel complet qui sera peut-être une publication.
+ * `undefined` sans `pending` = aperçu en panne : le texte d'avant (le serveur
+ * tranchera à l'envoi, et la confirmation dira ce qu'il a fait).
+ */
+export function deliveryNotice(preview: EmailDeliveryPreview | undefined, usagerName: string, pending = false): string {
+  if (pending) return DELIVERY_PENDING_NOTICE;
   if (preview?.delivery === "espace") {
     const where = preview.target === "compte" ? "son espace sur le portail" : "son suivi en ligne";
     return `Le message sera publié dans ${where} : ${usagerName} recevra un courriel avec ses premiers mots et un lien, et pourra répondre en ligne.`;

@@ -196,6 +196,29 @@ describe("M2 : avis d'un message publié dans l'espace", () => {
     expect(sent[0].content.paragraphs.join("\n")).not.toContain("changé de statut");
   });
 
+  it("message seul : aucun lien de désinscription — ni en pied, ni List-Unsubscribe (il ne couperait rien)", async () => {
+    messages = [MESSAGE];
+    await drain([await guestRow({ status: "en_instruction", known_status: "en_instruction", message_email_ids: ["m1"] })]);
+    expect(sent[0].content.footnote).toBeUndefined();
+    expect(sent[0].headers["List-Unsubscribe"]).toBeUndefined();
+    expect(sent[0].headers["List-Unsubscribe-Post"]).toBeUndefined();
+  });
+
+  it("message et statut : le lien reste, il coupe les avis de statut", async () => {
+    messages = [MESSAGE];
+    await drain([await guestRow({ message_email_ids: ["m1"] })]);
+    expect(sent[0].content.footnote).toContain("/notifications/desinscription?jeton=");
+    expect(sent[0].headers["List-Unsubscribe"]).toMatch(/^<https:/);
+  });
+
+  it("demande close : l'avis du message ne propose pas d'y répondre", async () => {
+    messages = [MESSAGE];
+    await drain([await guestRow({ status: "resolue_positive", known_status: "resolue_positive", closed_at: "2026-10-25T10:00:00Z", message_email_ids: ["m1"] })]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].content.cta?.label).toBe("Lire le message");
+    expect(sent[0].content.paragraphs.join("\n")).not.toContain("répondre");
+  });
+
   it("accès coupé dans la fenêtre : le dernier lien connu sert (risque accepté)", async () => {
     messages = [MESSAGE];
     await drain([await guestRow({ guest_revoked_at: "2026-10-25T09:58:00Z", status: "en_instruction", known_status: "en_instruction", message_email_ids: ["m1"] })]);

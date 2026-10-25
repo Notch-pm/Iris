@@ -572,7 +572,7 @@ export function EchangesPane({
               <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border bg-muted/40 py-2.5 pl-4 pr-3">
                 <span className="flex min-w-[200px] flex-1 items-center gap-[7px] text-xs leading-relaxed text-muted-foreground">
                   <Mail className="size-3.5 shrink-0" aria-hidden="true" />
-                  <span>{deliveryNotice(deliveryPreview.data, usagerName)}</span>
+                  <span>{deliveryNotice(deliveryPreview.data, usagerName, deliveryPreview.isLoading)}</span>
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {canUndoImprove ? (

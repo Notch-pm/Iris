@@ -108,8 +108,15 @@ export interface MessageNoticeInput {
   /** Un changement de statut de la même fenêtre, annoncé dans le même courriel ; `null` sinon. */
   statusPart: { event: NoticeEvent; status: string } | null;
   url: string;
+  /**
+   * Le lien de désinscription — à ne passer QUE si l'avis porte un statut :
+   * l'avis de message n'est pas désactivable (décision PO n° 1), un lien qui
+   * ne couperait rien serait trompeur (recette du 2026-10-25).
+   */
   unsubscribeUrl: string | null;
   tenantName: string | null;
+  /** Demande close : le portail n'y accepte plus de réponse, l'avis ne la propose pas. */
+  closed?: boolean;
 }
 
 /**
@@ -141,9 +148,12 @@ export function messageNoticeEmail(input: MessageNoticeInput): StatusNotice {
   const footnote = input.unsubscribeUrl
     ? `Vous ne souhaitez plus recevoir les avis de changement de statut pour cette demande ? ${input.unsubscribeUrl}`
     : undefined;
+  const readLine = several
+    ? (input.closed ? "Pour les lire en entier" : "Pour les lire en entier et y répondre")
+    : (input.closed ? "Pour le lire en entier" : "Pour le lire en entier et y répondre");
   const body = [
     ...paragraphs,
-    `Pour le lire en entier et y répondre : ${input.url}`,
+    `${readLine} : ${input.url}`,
     closing,
     ...(footnote ? [footnote] : []),
   ].join("\n\n");

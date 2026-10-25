@@ -276,7 +276,9 @@ export async function drainCitizenNotices(
       channel: "email",
       target: target === "invite" ? { kind: "invite" } : { kind: "compte", contactId: row.socle_contact_id! },
     });
-    const unsubscribe = unsubscribeUrl(url, token);
+    // Seul un avis qui annonce un STATUT se désinscrit : l'avis de message ne
+    // se coupe pas (décision PO n° 1) — ni lien en pied, ni List-Unsubscribe.
+    const unsubscribe = withStatus ? unsubscribeUrl(url, token) : null;
 
     const statusPart = withStatus ? { event: event as NoticeEvent, status: row.status } : null;
     const notice = last !== null
@@ -289,6 +291,7 @@ export async function drainCitizenNotices(
         url,
         unsubscribeUrl: unsubscribe,
         tenantName: row.organization_name,
+        closed: row.closed_at !== null,
       })
       : statusNoticeEmail({
         event: event as NoticeEvent,

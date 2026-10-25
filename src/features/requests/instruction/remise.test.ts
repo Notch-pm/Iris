@@ -16,6 +16,13 @@ describe("deliveryNotice", () => {
   });
 });
 
+describe("deliveryNotice — aperçu en cours", () => {
+  it("n'annonce ni courriel ni publication tant que le serveur n'a pas répondu", () => {
+    expect(deliveryNotice(undefined, "Mme Martin", true)).toBe("Vérification de la façon dont l'usager recevra ce message…");
+    expect(deliveryNotice(undefined, "Mme Martin", true)).not.toContain("texte affiché");
+  });
+});
+
 describe("sentNotice", () => {
   it("dit ce que le serveur a fait, pas ce que l'aperçu annonçait", () => {
     expect(sentNotice({ delivery: "espace" })).toContain("publié dans l'espace");
