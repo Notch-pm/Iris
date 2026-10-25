@@ -316,6 +316,15 @@ describe("ce que la vue montre — liste blanche", () => {
     expect(Object.keys(view.body.request.messages[0]).sort()).toEqual(["attachments", "body", "direction", "id", "sent_at", "subject"]);
   });
 
+  it("un avis automatique (B12) n'est pas un message de l'espace, même envoyé à l'usager", async () => {
+    const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
+    await world.addEmail(r.id, { to_email: "alice@example.org", subject: "Réponse de l'agent" });
+    await world.addEmail(r.id, { to_email: "alice@example.org", subject: "Votre demande a avancé", sent_by: null, nature: "avis" });
+    const token = await asContact(ALICE, "alice@example.org");
+    const view = await call("GET", `/v1/citizen/requests/${r.id}`, { token });
+    expect(view.body.request.messages.map((m: { subject: string }) => m.subject)).toEqual(["Réponse de l'agent"]);
+  });
+
   it("jeton de fiche sans adresse : aucun message (l'adresse filtre, jamais l'inverse)", async () => {
     const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
     await world.addEmail(r.id, { to_email: "alice@example.org" });

@@ -12,13 +12,25 @@
 //     clôture — rédigé POUR l'usager — une fois la demande close ;
 //   · ses pièces à elle (`kind = 'demande'`, non remplacées, hors échange) ;
 //   · les messages qu'Iris lui a ENVOYÉS (`request_emails.status = 'envoye'`),
-//     avec leurs pièces — l'accusé y figure, son code d'accès masqué.
+//     avec leurs pièces — l'accusé y figure, son code d'accès masqué. Jamais
+//     un AVIS automatique (`nature = 'avis'`, B12) : un avis n'est pas un
+//     message de l'espace, il ne fait qu'y renvoyer.
 
 export const CITIZEN_REQUEST_SELECT =
   "id, reference, status, subject, procedure_snapshot, received_at, updated_at, closed_at, closure_text";
 
 // `to_email` sert au filtre « envoyé à l'adresse déclarée » (index.ts) ; il ne sort pas.
-export const CITIZEN_EMAIL_SELECT = "id, subject, body, sent_at, status, to_email";
+export const CITIZEN_EMAIL_SELECT = "id, subject, body, sent_at, status, to_email, nature";
+
+/**
+ * Un envoi qui est un MESSAGE de l'espace usager. Un avis automatique (B12,
+ * ADR-11) n'en est pas un : l'afficher doublerait chaque message de son avis.
+ * Liste blanche : `nature` absente vaut `message` (lignes d'avant la colonne),
+ * toute autre valeur est écartée.
+ */
+export function isCitizenMessageEmail(row: Row): boolean {
+  return (row?.nature ?? "message") === "message";
+}
 
 export const CITIZEN_ATTACHMENT_SELECT =
   "id, file_name, mime_type, file_size, kind, email_id, citizen_message_id, superseded_by, storage_path, created_at";
@@ -118,7 +130,7 @@ export function serializeCitizenRequest(
   ownMessages: Row[] = [],
 ): CitizenRequest {
   const sent = emails
-    .filter((e) => e?.status === "envoye" && typeof e.sent_at === "string")
+    .filter((e) => isCitizenMessageEmail(e) && e?.status === "envoye" && typeof e.sent_at === "string")
     .sort((a, b) => a.sent_at.localeCompare(b.sent_at));
   const sentIds = new Set<string>(sent.map((e) => e.id));
   const own = ownMessages.filter((m) => typeof m?.id === "string" && typeof m.created_at === "string");

@@ -412,6 +412,13 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   Le pendant de `request_messages` : celles-ci ne sortent jamais, celle-ci ne fait que sortir.
   Depuis le 2026-10-09, **`sent_by` est NULLABLE** : NULL = envoi automatique d'Iris
   (l'accusé de réception au dépôt, ci-dessous), ouvert par `start_request_receipt_email`.
+  Depuis le 2026-10-25 (B12, lot L4c-0, `20261025100000`), deux colonnes à liste fermée :
+  **`nature`** `message|avis` (défaut `message`) — un **avis** automatique (statut, nouveau
+  message) n'est **jamais** montré dans l'espace usager (`isCitizenMessageEmail`, appliqué dès
+  la lecture dans `requests-api`) ni compté comme une réponse — et **`delivery`**
+  `courriel|espace` (défaut `courriel`) — `espace` : le message est publié dans l'espace
+  usager et un avis avec extrait part à sa place (M2). Détail :
+  [`notifications-usager-architecture.md`](notifications-usager-architecture.md), ADR-11.
 - **`request_citizen_messages`** *(2026-10-21, lot L4b)* — messages **entrants** : l'usager
   répond en ligne sur SA demande, depuis son compte (`author_kind = 'compte'`, `socle_contact_id`
   de sa fiche) ou depuis le suivi sans compte (`'invite'`). `body` (≤ 5 000 caractères),

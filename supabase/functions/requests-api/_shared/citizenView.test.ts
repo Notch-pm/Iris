@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isCitizenVisibleAttachment, ownEmails, serializeCitizenRequest } from "./citizenView";
+import { isCitizenMessageEmail, isCitizenVisibleAttachment, ownEmails, serializeCitizenRequest } from "./citizenView";
 
 const REQUEST = {
   id: "11111111-1111-4111-8111-111111111111",
@@ -133,5 +133,24 @@ describe("messages de l'usager (L4b, 2.9.0)", () => {
     expect(isCitizenVisibleAttachment(PIECES[6], new Set(), new Set(["m1"]))).toBe(true);
     expect(isCitizenVisibleAttachment(PIECES[6], new Set(), new Set())).toBe(false);
     expect(isCitizenVisibleAttachment({ ...PIECES[6], kind: "instruction_interne" }, new Set(), new Set(["m1"]))).toBe(false);
+  });
+});
+
+describe("avis automatiques (B12, ADR-11)", () => {
+  const AVIS = {
+    id: "n1", subject: "Votre demande a avancé", body: "Votre demande est en instruction.",
+    sent_at: "2026-10-03T08:00:00Z", status: "envoye", sent_by: null, nature: "avis",
+  };
+
+  it("un avis n'est pas un message de l'espace, même envoyé", () => {
+    const view = serializeCitizenRequest(REQUEST, [...EMAILS, AVIS], ATTACHMENTS);
+    expect(view.messages.map((m) => m.id)).toEqual(["e1", "e2"]);
+  });
+
+  it("liste blanche : nature absente = message, valeur inconnue écartée", () => {
+    expect(isCitizenMessageEmail({ nature: "message" })).toBe(true);
+    expect(isCitizenMessageEmail({})).toBe(true);
+    expect(isCitizenMessageEmail({ nature: "avis" })).toBe(false);
+    expect(isCitizenMessageEmail({ nature: "autre" })).toBe(false);
   });
 });

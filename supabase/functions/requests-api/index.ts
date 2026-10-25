@@ -67,6 +67,7 @@ import {
   ownEmails,
   serializeCitizenRequest,
   serializeCitizenRequestSummary,
+  isCitizenMessageEmail,
 } from "./_shared/citizenView.ts";
 import { CITIZEN_TOKEN_HEADER, type CitizenSubject, verifyCitizenToken } from "./_shared/citizenToken.ts";
 
@@ -1094,7 +1095,8 @@ async function citizenEmailsAndAttachments(id: string, reader: CitizenReader) {
   ]);
   if (emails.error || attachments.error || messages.error) return null;
   return {
-    emails: await reader.keep(emails.data ?? []),
+    // Les avis (B12) écartés ICI, pour la vue comme pour le contrôle des pièces.
+    emails: await reader.keep((emails.data ?? []).filter(isCitizenMessageEmail)),
     attachments: attachments.data ?? [],
     ownMessages: reader.ownMessages(messages.data ?? []),
   };

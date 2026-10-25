@@ -185,6 +185,7 @@ export async function createIrisDb(): Promise<PGlite> {
     "20261021090000_acces_invite_renvoi_coupure.sql",
     "20261021120000_reponse_usager.sql",
     "20261024100000_reponse_usager_suites_po.sql",
+    "20261025100000_request_emails_nature_delivery.sql",
   ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }
