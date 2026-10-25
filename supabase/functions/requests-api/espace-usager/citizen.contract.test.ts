@@ -97,6 +97,7 @@ describe("authentification et portée de la clé", () => {
 });
 
 describe("jeton court (X-Citizen-Token)", () => {
+  // 26 appels en série : sous la charge de la suite complète, les 5 s par défaut ne suffisent pas.
   it("absent, mal formé, mal signé, expiré, trop long, d'une autre collectivité ou d'un autre secret : 404 uniforme", async () => {
     const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });
     const good = await asContact(ALICE);
@@ -127,7 +128,7 @@ describe("jeton court (X-Citizen-Token)", () => {
     }
     for (const body of seen) expect(body).toEqual(seen[0]);
     expect((await call("GET", paths[0], { token: good })).status).toBe(200);
-  });
+  }, 30_000);
 
   it("le jeton est borné à 3 minutes : 180 s passent, 181 non", async () => {
     const r = await world.addRequest(world.sceaux, { socle_contact_id: ALICE });

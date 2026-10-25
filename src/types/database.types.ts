@@ -1396,8 +1396,10 @@ export type Database = {
         Row: {
           body: string
           created_at: string
+          delivery: string
           error: string | null
           id: string
+          nature: string
           organization_id: string
           request_id: string
           sent_at: string | null
@@ -1411,8 +1413,10 @@ export type Database = {
         Insert: {
           body: string
           created_at?: string
+          delivery?: string
           error?: string | null
           id?: string
+          nature?: string
           organization_id: string
           request_id: string
           sent_at?: string | null
@@ -1426,8 +1430,10 @@ export type Database = {
         Update: {
           body?: string
           created_at?: string
+          delivery?: string
           error?: string | null
           id?: string
+          nature?: string
           organization_id?: string
           request_id?: string
           sent_at?: string | null
