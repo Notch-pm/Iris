@@ -77,6 +77,7 @@ describe("drainCitizenNotices", () => {
     expect(sent[0].content.cta?.url).toBe("https://demarches.sceaux.fr/suivi");
     const unsubscribe = new URL(sent[0].headers["List-Unsubscribe"].slice(1, -1));
     expect(unsubscribe.origin + unsubscribe.pathname).toBe("https://demarches.sceaux.fr/notifications/desinscription");
+    expect(sent[0].headers["List-Unsubscribe-Post"]).toBe("List-Unsubscribe=One-Click");
     expect(await verifyUnsubscribeToken(SECRET, unsubscribe.searchParams.get("jeton"))).toEqual({
       requestId: REQUEST, channel: "email", target: { kind: "invite" },
     });

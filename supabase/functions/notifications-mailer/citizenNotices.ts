@@ -324,7 +324,11 @@ export async function drainCitizenNotices(
         notice.content,
         usagerBrand(row.organization_name, charte),
         [],
-        unsubscribe ? { "List-Unsubscribe": `<${unsubscribe}>` } : {},
+        // RFC 8058 : le client de messagerie POSTE `List-Unsubscribe=One-Click`
+        // à la même adresse ; le portail (Worker de Nora) relaie ce POST.
+        unsubscribe
+          ? { "List-Unsubscribe": `<${unsubscribe}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" }
+          : {},
       );
     } catch (e) {
       await fail(row, e instanceof Error ? e.message : String(e), eventSent, target);

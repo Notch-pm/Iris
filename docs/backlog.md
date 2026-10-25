@@ -243,6 +243,17 @@ la session Socle en cours.
   l'onglet Échanges montre avis et non-envois.
 - **Socle livré pour l'ADR-14** : contacts-api 1.5.0, `POST
   /v1/citizen/contacts/{account_id}/account-email` (Nora garantit l'adresse ; aucun journal).
+- **L4c-4 codé le 2026-10-25 côté Nora** (commits Nora `2e43547`, `9761943`, `394d0a6`,
+  migrations Nora `20261025140000` et `20261025150000`) : préférence « Avis par courriel » dans
+  « Mon compte », poussée à Iris (rattachement, changement, chaque connexion), adresse de
+  « Mes demandes » poussée ; page `/notifications/desinscription` (rien à l'ouverture) et
+  « un clic » RFC 8058 relayé par le Worker ; écart d'adresse fiche / compte et alignement
+  (`alignEmail`). Côté Iris : en-tête `List-Unsubscribe-Post` sur les avis. **Rien n'est
+  déployé** (migrations Nora, portal-api, Worker, `notifications-mailer`).
+  Écartés de la V1 (décision PO du 2026-10-25) : changement d'adresse du compte Nora,
+  interrupteur invité dans `/suivi`. En attente du lot L7 : la poussée `DELETE` (aucune
+  suppression de compte n'existe). **Socle** : interdire `notifications` comme slug
+  d'organisme (comme `suivi` et `compte`, déjà en attente).
 
 ## B13 — Accès invité au guichet (suivi en ligne d'une demande déposée au guichet)
 
