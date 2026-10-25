@@ -252,6 +252,20 @@ la session Socle en cours.
   2026-10-25** (migrations Nora, portal-api, Worker et interface au push sur `main`,
   `notifications-mailer`) et vérifié en production sur `laurentville.edilumen.fr` : routes,
   « un clic » relayé par le Worker jusqu'à Iris, page de désinscription.
+- **Recette réelle le 2026-10-25 sur l'ACCM** (portail `laurentville`, compte usager du PO,
+  DEM-2026-000061, interrupteur allumé le temps de l'essai puis **rééteint**) : critères **1, 2,
+  5, 9, 13** validés en vrai — avis fusionné statut + message avec extrait (un seul courriel),
+  désinscription d'un compte par le lien de l'avis (Nora coupe et pousse), non-envoi
+  « préférence » tracé, avis de clôture seul à la résolution même préférence coupée, avis de
+  message jamais coupé, réactivation depuis « Mon compte ». Couverts par les tests seulement :
+  3 (invité), 4, 6, 7, 8, 10, 11, 12, 16. **Reste pour L4c-5** : Sceaux n'est pas ouvert dans
+  Iris (provisioning) ; slug `notifications` au Socle.
+  **Retouches relevées** (mineures) : (a) l'onglet Échanges ne relit pas `citizen_notices` —
+  un non-envoi réglé dix minutes après le geste n'apparaît qu'au rechargement ; (b) le
+  composeur affiche le texte « courriel complet » tant que l'aperçu n'est pas revenu ; (c) l'avis
+  de message dit « … et y répondre » même sur une demande close ; (d) l'avis de message, non
+  désactivable, porte le lien « ne plus recevoir les avis de changement de statut », y compris
+  pour un usager déjà désinscrit.
   Écartés de la V1 (décision PO du 2026-10-25) : changement d'adresse du compte Nora,
   interrupteur invité dans `/suivi`. En attente du lot L7 : la poussée `DELETE` (aucune
   suppression de compte n'existe). **Socle** : interdire `notifications` comme slug
