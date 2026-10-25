@@ -248,8 +248,10 @@ la session Socle en cours.
   « Mon compte », poussée à Iris (rattachement, changement, chaque connexion), adresse de
   « Mes demandes » poussée ; page `/notifications/desinscription` (rien à l'ouverture) et
   « un clic » RFC 8058 relayé par le Worker ; écart d'adresse fiche / compte et alignement
-  (`alignEmail`). Côté Iris : en-tête `List-Unsubscribe-Post` sur les avis. **Rien n'est
-  déployé** (migrations Nora, portal-api, Worker, `notifications-mailer`).
+  (`alignEmail`). Côté Iris : en-tête `List-Unsubscribe-Post` sur les avis. **Déployé le
+  2026-10-25** (migrations Nora, portal-api, Worker et interface au push sur `main`,
+  `notifications-mailer`) et vérifié en production sur `laurentville.edilumen.fr` : routes,
+  « un clic » relayé par le Worker jusqu'à Iris, page de désinscription.
   Écartés de la V1 (décision PO du 2026-10-25) : changement d'adresse du compte Nora,
   interrupteur invité dans `/suivi`. En attente du lot L7 : la poussée `DELETE` (aucune
   suppression de compte n'existe). **Socle** : interdire `notifications` comme slug
