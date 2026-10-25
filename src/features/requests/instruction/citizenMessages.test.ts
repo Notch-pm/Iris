@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { citizenChannelLabel, isExchangePiece, mergeThread, piecesByExchange } from "./citizenMessages";
+import { citizenChannelLabel, isExchangePiece, mergeThread, piecesByExchange, unsentNotices } from "./citizenMessages";
 
 // deno-lint-ignore no-explicit-any
 const email = (id: string, created_at: string) => ({ id, created_at }) as any;
@@ -14,8 +14,22 @@ describe("mergeThread", () => {
       [email("e2", "2026-10-05T08:00:00Z"), email("e1", "2026-10-01T08:00:00Z")],
       [message("m1", "2026-10-03T08:00:00Z")],
     );
-    expect(thread.map((t) => (t.kind === "email" ? t.mail.id : t.message.id))).toEqual(["e1", "m1", "e2"]);
+    expect(thread.map((t) => (t.kind === "email" ? t.mail.id : t.kind === "citizen" ? t.message.id : t.notice.id))).toEqual(["e1", "m1", "e2"]);
     expect(thread.map((t) => t.kind)).toEqual(["email", "citizen", "email"]);
+  });
+
+  it("les avis non partis s'intercalent à leur date de règlement ; un avis parti ou en attente non", () => {
+    // deno-lint-ignore no-explicit-any
+    const notice = (id: string, status: string, settled_at: string | null, email_id: string | null = null) => ({ id, status, settled_at, created_at: "2026-10-01T00:00:00Z", email_id }) as any;
+    const thread = mergeThread([email("e1", "2026-10-01T08:00:00Z")], [], [
+      notice("n1", "skipped", "2026-10-02T08:00:00Z"),
+      notice("n2", "sent", "2026-10-02T09:00:00Z", "e9"),
+      notice("n3", "pending", null),
+      notice("n4", "failed", "2026-10-03T08:00:00Z"),
+      notice("n5", "failed", "2026-10-03T09:00:00Z", "e8"),
+    ]);
+    expect(thread.map((t) => t.kind === "notice" ? t.notice.id : t.kind)).toEqual(["email", "n1", "n4"]);
+    expect(unsentNotices([])).toEqual([]);
   });
 
   it("sans réponse de l'usager, le fil est celui des envois", () => {

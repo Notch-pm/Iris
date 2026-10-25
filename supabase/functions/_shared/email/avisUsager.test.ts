@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EXCERPT_LENGTH, messageExcerpt, statusNoticeEmail, type StatusNoticeInput } from "./avisUsager";
+import { EXCERPT_LENGTH, messageExcerpt, messageNoticeEmail, statusNoticeEmail, type StatusNoticeInput } from "./avisUsager";
 
 const INPUT: StatusNoticeInput = {
   event: "attente_information",
@@ -60,5 +60,26 @@ describe("messageExcerpt", () => {
 
   it("un message court reste entier, espaces resserrés", () => {
     expect(messageExcerpt("  Merci   pour\nvotre envoi.  ")).toBe("Merci pour votre envoi.");
+  });
+});
+
+describe("messageNoticeEmail", () => {
+  const base = {
+    reference: "DEM-2026-000061", procedureName: "Signaler un problème", excerpt: "Pouvez-vous nous transmettre…",
+    messageCount: 1, statusPart: null, url: "https://x.fr/suivi", unsubscribeUrl: null, tenantName: "Ville de Sceaux",
+  };
+
+  it("cite l'extrait, jamais plus, et renvoie à l'espace", () => {
+    const n = messageNoticeEmail(base);
+    expect(n.subject).toBe("Nouveau message concernant votre demande DEM-2026-000061");
+    expect(n.body).toContain("« Pouvez-vous nous transmettre… »");
+    expect(n.content.cta).toEqual({ label: "Lire le message", url: "https://x.fr/suivi" });
+  });
+
+  it("plusieurs messages, et un statut de la même fenêtre", () => {
+    const n = messageNoticeEmail({ ...base, messageCount: 2, statusPart: { event: "attente_information", status: "en_attente" } });
+    expect(n.subject).toBe("Nouveaux messages concernant votre demande DEM-2026-000061");
+    expect(n.body).toContain("2 nouveaux messages");
+    expect(n.body).toContain("a aussi changé de statut : En attente de votre réponse.");
   });
 });

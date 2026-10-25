@@ -32,12 +32,13 @@ import {
 } from "./statuts";
 import {
   createAttachmentUrl, useAddMessage, useAssignRequest, useDeleteMessage, useEligibleAssignees, useMentionableUsers,
-  useRequest, useRequestAttachments, useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestLinks,
+  useCitizenNotices, useRequest, useRequestAttachments, useRequestCitizenMessages, useRequestEmails, useRequestEvents, useRequestLinks,
   useRequestMessages, useRequestSummaries, useRequesterRequests, useTenantMembers, useTransferRequest,
   useSetCitizenVisibility, useUpdatePriority,
   type RequestAttachment, type TenantMember, type TransferResult,
 } from "./useRequests";
 import { useSendRequestEmail } from "./instruction/useSendRequestEmail";
+import { sentNotice } from "./instruction/remise";
 import { useClosureNotice } from "./useClosureNotice";
 import { ActivityPane } from "./instruction/ActivityPane";
 import { DocumentsPane } from "./instruction/DocumentsPane";
@@ -119,6 +120,7 @@ export function RequestDetailPage() {
   const messages = useRequestMessages(id);
   const emails = useRequestEmails(id);
   const citizenMessages = useRequestCitizenMessages(id);
+  const citizenNotices = useCitizenNotices(id);
   const links = useRequestLinks(id);
   const members = useTenantMembers(orgId);
   const eligibleAssignees = useEligibleAssignees(id);
@@ -922,6 +924,7 @@ export function RequestDetailPage() {
                   identity={identity}
                   emails={emails.data ?? []}
                   citizenMessages={citizenMessages.data ?? []}
+                  notices={citizenNotices.data ?? []}
                   attachments={attachmentList}
                   members={memberList}
                   events={events.data ?? []}
@@ -940,7 +943,7 @@ export function RequestDetailPage() {
                     documentIds: payload.documentIds,
                     templateId: payload.templateId,
                     templateName: payload.templateName,
-                  }).then(() => { flash("Message envoyé à l'usager."); })}
+                  }).then((result) => { flash(sentNotice(result)); })}
                   onDownload={(a) => void openAttachment(a, true)}
                   onFilePiece={editable ? (a) => { setFilePieceError(null); setFilingPiece(a); } : undefined}
                   filedPieceIds={filedCitizenPieceIds(attachmentList)}

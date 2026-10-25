@@ -218,8 +218,50 @@ describe("le facteur", () => {
   });
 });
 
+describe("M2 — publier un message dans l'espace (20261025130000)", () => {
+  async function openMessage(requestId: string) {
+    const [{ id }] = await q<{ id: string }>("select public.start_request_email($1, null, 'a@b.fr', 'Objet', 'Corps') as id", [requestId]);
+    return id;
+  }
+
+  it("le message est réglé envoyé, remis dans l'espace, et son avis enfilé", async () => {
+    const id = await insertRequest({ status: "en_instruction" });
+    const email = await openMessage(id);
+    await q("select public.publish_citizen_message($1)", [email]);
+    expect((await q("select status, delivery, nature from request_emails where id = $1", [email]))[0])
+      .toEqual({ status: "envoye", delivery: "espace", nature: "message" });
+    const [n] = await q<{ status: string; message_email_ids: string[]; events: unknown[] }>(
+      "select status, message_email_ids, events from citizen_notices where request_id = $1", [id]);
+    expect(n).toEqual({ status: "pending", message_email_ids: [email], events: [] });
+  });
+
+  it("fusionne avec un changement de statut de la même fenêtre ; ne publie jamais deux fois", async () => {
+    await switchOn();
+    const id = await insertRequest();
+    await move(id, "en_instruction");
+    const email = await openMessage(id);
+    await q("select public.publish_citizen_message($1)", [email]);
+    const all = await notices(id);
+    expect(all).toHaveLength(1);
+    expect((await q("select message_email_ids from citizen_notices where request_id = $1", [id]))[0].message_email_ids).toEqual([email]);
+    await expect(q("select public.publish_citizen_message($1)", [email])).rejects.toThrow(/deux fois/);
+  });
+
+  it("citizen_channel_inputs rend l'interrupteur, la visibilité et l'accès invité", async () => {
+    const id = await insertRequest();
+    const [row] = await q("select enabled, source, citizen_visible, guest_email_hash from public.citizen_channel_inputs($1)", [id]);
+    expect(row).toEqual({ enabled: false, source: "portail-citoyen", citizen_visible: true, guest_email_hash: null });
+  });
+});
+
 describe("surface", () => {
   const SERVICE_ONLY = [
+    "citizen_channel_inputs(uuid)",
+    "publish_citizen_message(uuid)",
+    "set_citizen_space(uuid, text, text)",
+    "push_citizen_space_link(uuid, uuid, uuid, jsonb, text)",
+    "close_citizen_space_link(uuid, uuid)",
+    "set_guest_notify_email(uuid, uuid, boolean)",
     "citizen_notices_enabled(uuid)",
     "note_citizen_known_status(uuid, text)",
     "requests_citizen_notice()",

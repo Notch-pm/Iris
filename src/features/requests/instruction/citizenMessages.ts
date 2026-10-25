@@ -15,15 +15,35 @@ export type RequestCitizenMessage = Tables<"request_citizen_messages">;
 type Email = Tables<"request_emails">;
 type Attachment = Tables<"request_attachments">;
 
+/** Un avis automatique à l'usager (B12) qui n'est PAS parti — ce que l'onglet en montre. */
+export type CitizenNoticeRow = Pick<
+  Tables<"citizen_notices">,
+  "id" | "status" | "reason" | "error" | "event_sent" | "email_id" | "created_at" | "settled_at"
+>;
+
 export type ThreadEntry =
   | { kind: "email"; at: string; mail: Email }
-  | { kind: "citizen"; at: string; message: RequestCitizenMessage };
+  | { kind: "citizen"; at: string; message: RequestCitizenMessage }
+  | { kind: "notice"; at: string; notice: CitizenNoticeRow };
 
-/** Le fil chronologique : envois du service et réponses de l'usager, intercalés. */
-export function mergeThread(emails: Email[], citizenMessages: RequestCitizenMessage[]): ThreadEntry[] {
+/**
+ * Les avis qui n'ont rien envoyé, et seulement eux : un avis parti est déjà un
+ * échange du fil (`nature = 'avis'`), et un avis en attente n'a encore rien décidé.
+ */
+export function unsentNotices(notices: CitizenNoticeRow[]): CitizenNoticeRow[] {
+  return notices.filter((n) => n.status === "skipped" || (n.status === "failed" && !n.email_id));
+}
+
+/** Le fil chronologique : envois du service, réponses de l'usager, avis non partis. */
+export function mergeThread(
+  emails: Email[],
+  citizenMessages: RequestCitizenMessage[],
+  notices: CitizenNoticeRow[] = [],
+): ThreadEntry[] {
   const entries: ThreadEntry[] = [
     ...emails.map((mail) => ({ kind: "email" as const, at: mail.created_at, mail })),
     ...citizenMessages.map((message) => ({ kind: "citizen" as const, at: message.created_at, message })),
+    ...unsentNotices(notices).map((notice) => ({ kind: "notice" as const, at: notice.settled_at ?? notice.created_at, notice })),
   ];
   return entries.sort((a, b) => a.at.localeCompare(b.at));
 }

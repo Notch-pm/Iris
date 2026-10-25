@@ -237,6 +237,10 @@ la session Socle en cours.
   préférences d'un compte (empreinte prise du jeton) et d'un invité, désinscription,
   `notifications` dans la vue invitée. Reste côté Nora (L4c-4) : pousser, et servir la page
   `/notifications/desinscription`.
+- **L4c-3 codé le 2026-10-25** (`20261025130000`) : M2 — `send-request-email` publie dans
+  l'espace quand un canal voit la demande (aperçu `kind: "apercu"` annoncé par le composeur),
+  le facteur envoie l'avis avec extrait (fusionné avec un statut de la même fenêtre),
+  l'onglet Échanges montre avis et non-envois.
 - **Socle livré pour l'ADR-14** : contacts-api 1.5.0, `POST
   /v1/citizen/contacts/{account_id}/account-email` (Nora garantit l'adresse ; aucun journal).
 

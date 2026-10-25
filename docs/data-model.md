@@ -430,7 +430,9 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   du compte — aucune identité ; service seul), colonnes `integration_sources.citizen_space_url`
   / `citizen_request_url_template` et `request_access_codes.notify_email`. Producteur unique :
   le trigger `t41_requests_citizen_notice` (AFTER UPDATE OF status), muet pour Clara, sous
-  `iris.silence_usager`, sous `iris.reprise_usager` et interrupteur éteint. Détail :
+  `iris.silence_usager`, sous `iris.reprise_usager` et interrupteur éteint. Second producteur
+  (L4c-3, `20261025130000`) : `publish_citizen_message`, qui publie un message dans l'espace
+  (`delivery = 'espace'`) et ajoute son id à `message_email_ids` de la ligne `pending`. Détail :
   [`notifications-usager-architecture.md`](notifications-usager-architecture.md).
 - **`request_citizen_messages`** *(2026-10-21, lot L4b)* — messages **entrants** : l'usager
   répond en ligne sur SA demande, depuis son compte (`author_kind = 'compte'`, `socle_contact_id`

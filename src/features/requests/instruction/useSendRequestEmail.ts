@@ -11,9 +11,10 @@
 // re-rend rien. Ce qu'il valide, lui, c'est le droit, le destinataire et les
 // pièces — les seules choses qu'un navigateur ne peut pas se voir confier.
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invokeEdge } from "@/lib/edge";
 import { discardUploads, stageFiles } from "../uploads";
+import type { EmailDeliveryPreview } from "./remise";
 
 export interface SendRequestEmailInput {
   requestId: string;
@@ -32,6 +33,24 @@ export interface SendRequestEmailResult {
   email_id: string;
   to: string;
   email_sent: boolean;
+  /** B12, M2 : `espace` = publié dans l'espace de l'usager, un avis l'annonce. */
+  delivery?: "courriel" | "espace";
+}
+
+/**
+ * L'aperçu de M2 : publié dans l'espace, ou envoyé en entier ? Le serveur seul
+ * en décide (`kind: "apercu"`, même droit d'instruction, rien n'est écrit) ;
+ * l'écran l'annonce. Une panne n'empêche rien : le pied garde son texte d'avant.
+ */
+export function useEmailDeliveryPreview(requestId: string, enabled: boolean) {
+  return useQuery({
+    queryKey: ["email-delivery-preview", requestId],
+    enabled: Boolean(requestId) && enabled,
+    staleTime: 60_000,
+    retry: false,
+    queryFn: async () =>
+      await invokeEdge<EmailDeliveryPreview>("send-request-email", { request_id: requestId, kind: "apercu" }),
+  });
 }
 
 export function useSendRequestEmail() {
@@ -65,6 +84,8 @@ export function useSendRequestEmail() {
       // L'échange ET la pièce qui vient d'être déclarée.
       void queryClient.invalidateQueries({ queryKey: ["request_emails", vars.requestId] });
       void queryClient.invalidateQueries({ queryKey: ["request_attachments", vars.requestId] });
+      // Un message publié a enfilé son avis (onglet Échanges, L4c-3).
+      void queryClient.invalidateQueries({ queryKey: ["citizen_notices", vars.requestId] });
     },
   });
 }

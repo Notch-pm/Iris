@@ -180,6 +180,9 @@ export const useRequestLinks = (id: string | undefined) => useSatellite<RequestL
  *  l'écriture n'a qu'une porte, l'edge function `send-request-email`. */
 export const useRequestEmails = (id: string | undefined) =>
   useSatellite<RequestEmail>("request_emails", id);
+/** Avis automatiques à l'usager (B12) : l'onglet Échanges en montre les non-envois et leur raison. */
+export const useCitizenNotices = (id: string | undefined) =>
+  useSatellite<Tables<"citizen_notices">>("citizen_notices", id);
 /** Réponses de l'USAGER en ligne (lot L4b) — écrites par le serveur seul. */
 export const useRequestCitizenMessages = (id: string | undefined) =>
   useSatellite<RequestCitizenMessage>("request_citizen_messages", id);

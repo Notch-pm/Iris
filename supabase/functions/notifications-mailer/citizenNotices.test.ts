@@ -44,8 +44,10 @@ async function guestRow(over: Row = {}): Promise<Row> {
 }
 
 let calls: { name: string; params: Record<string, unknown> }[] = [];
+let messages: Record<string, unknown>[] = [];
 function fakeSupabase(rows: Row[]): SupabaseClient {
   return {
+    from: () => ({ select: () => ({ in: async () => ({ data: messages, error: null }) }) }),
     rpc: async (name: string, params: Record<string, unknown>) => {
       calls.push({ name, params });
       if (name === "claim_citizen_notices") return { data: rows, error: null };
@@ -61,6 +63,7 @@ const call = (name: string) => calls.find((c) => c.name === name)?.params;
 beforeEach(() => {
   sent.length = 0;
   calls = [];
+  messages = [];
   sendFails = false;
   live = { email: "alice@example.org" };
 });
@@ -155,5 +158,46 @@ describe("drainCitizenNotices", () => {
     await drain([await guestRow({ email_id: "e1", email_to: "invite@example.org" })]);
     expect(call("start_citizen_notice_email")).toBeUndefined();
     expect(sent[0].to).toBe("invite@example.org");
+  });
+});
+
+describe("M2 : avis d'un message publié dans l'espace", () => {
+  const MESSAGE = {
+    id: "m1", to_email: "invite@example.org", sent_at: "2026-10-25T09:55:00Z",
+    body: "Bonjour Madame,\n\nPouvez-vous nous transmettre un justificatif de domicile de moins de trois mois afin que nous puissions poursuivre l'instruction de votre demande ?",
+  };
+
+  it("message seul : extrait, lien, à l'adresse figée ; le statut connu ne bouge pas", async () => {
+    messages = [MESSAGE];
+    await drain([await guestRow({ status: "en_instruction", known_status: "en_instruction", message_email_ids: ["m1"] })]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].to).toBe("invite@example.org");
+    expect(sent[0].content.subject).toBe("Nouveau message concernant votre demande DEM-2026-000061");
+    const text = sent[0].content.paragraphs.join("\n");
+    expect(text).toContain("« Pouvez-vous nous transmettre");
+    expect(text).not.toContain("Bonjour Madame");
+    expect(text).not.toContain("poursuivre l'instruction de votre demande ?");
+    expect(call("settle_citizen_notice")).toMatchObject({ p_ok: true, p_event: "nouveau_message", p_known_status: null });
+  });
+
+  it("message et statut dans la même fenêtre : UN courriel qui annonce les deux", async () => {
+    messages = [MESSAGE];
+    await drain([await guestRow({ message_email_ids: ["m1"] })]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].content.paragraphs.join("\n")).toContain("a aussi changé de statut : En attente de votre réponse");
+    expect(call("settle_citizen_notice")).toMatchObject({ p_event: "attente_information", p_known_status: "en_attente" });
+  });
+
+  it("non désactivable : préférence coupée ou interrupteur éteint depuis, l'avis du message part quand même", async () => {
+    messages = [MESSAGE];
+    await drain([await guestRow({ guest_notify_email: false, enabled: false, message_email_ids: ["m1"] })]);
+    expect(sent).toHaveLength(1);
+    expect(sent[0].content.paragraphs.join("\n")).not.toContain("changé de statut");
+  });
+
+  it("accès coupé dans la fenêtre : le dernier lien connu sert (risque accepté)", async () => {
+    messages = [MESSAGE];
+    await drain([await guestRow({ guest_revoked_at: "2026-10-25T09:58:00Z", status: "en_instruction", known_status: "en_instruction", message_email_ids: ["m1"] })]);
+    expect(sent[0].content.cta?.url).toBe("https://demarches.sceaux.fr/suivi");
   });
 });

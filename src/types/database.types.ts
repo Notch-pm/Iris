@@ -2701,6 +2701,24 @@ export type Database = {
         }
         Returns: string
       }
+      citizen_channel_inputs: {
+        Args: { p_request_id: string }
+        Returns: {
+          citizen_visible: boolean
+          closed_at: string
+          enabled: boolean
+          guest_email_hash: string
+          guest_notify_email: boolean
+          guest_revoked_at: string
+          guest_tracking_url: string
+          link_account_email_hash: string
+          link_channel_prefs: Json
+          link_request_url_template: string
+          link_space_active: boolean
+          link_space_url: string
+          source: string
+        }[]
+      }
       citizen_notices_enabled: { Args: { p_org_id: string }; Returns: boolean }
       claim_citizen_notices: {
         Args: { p_limit?: number }
@@ -3204,6 +3222,10 @@ export type Database = {
       procedure_linkable: {
         Args: { p_org_id: string; p_procedure_id: string }
         Returns: boolean
+      }
+      publish_citizen_message: {
+        Args: { p_email_id: string }
+        Returns: undefined
       }
       purge_attachment_upload: { Args: { p_id: string }; Returns: undefined }
       purge_consumed_uploads: { Args: { p_days?: number }; Returns: number }

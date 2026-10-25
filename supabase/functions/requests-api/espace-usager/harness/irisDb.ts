@@ -60,7 +60,7 @@ const STUB_SCHEMA = `
     id uuid primary key default gen_random_uuid(),
     request_id uuid not null references public.requests(id) on delete cascade,
     to_email text, subject text, body text, sent_at timestamptz, status text not null default 'envoye',
-    sent_by text);
+    sent_by text, organization_id uuid);
   create table public.request_attachments (
     id uuid primary key default gen_random_uuid(),
     request_id uuid not null references public.requests(id) on delete cascade,
@@ -92,8 +92,9 @@ const STUB_SCHEMA = `
   create function public.notification_email_max_attempts() returns int language sql immutable as $$ select 5 $$;
   create function public.start_request_email(p_request_id uuid, p_sent_by uuid, p_to_email text, p_subject text, p_body text)
     returns uuid language sql as $$
-      insert into public.request_emails (request_id, sent_by, to_email, subject, body, status)
-      values (p_request_id, p_sent_by::text, btrim(p_to_email), p_subject, p_body, 'en_cours') returning id $$;
+      insert into public.request_emails (organization_id, request_id, sent_by, to_email, subject, body, status)
+      select r.organization_id, p_request_id, p_sent_by::text, btrim(p_to_email), p_subject, p_body, 'en_cours'
+        from public.requests r where r.id = p_request_id returning id $$;
   create function public.settle_request_email(p_id uuid, p_ok boolean, p_error text default null)
     returns void language sql as $$
       update public.request_emails set status = case when p_ok then 'envoye' else 'echec' end,
@@ -196,6 +197,7 @@ export async function createIrisDb(): Promise<PGlite> {
     "20261025100000_request_emails_nature_delivery.sql",
     "20261025110000_notifications_usager_file.sql",
     "20261025120000_notifications_usager_routes.sql",
+    "20261025130000_notifications_usager_m2.sql",
   ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }

@@ -16,6 +16,11 @@
 //   6. composition (`statusNoticeEmail`), trace dans `request_emails`
 //      (`nature = 'avis'`, sans agent), envoi, statut connu avancé.
 //
+// Depuis le lot L4c-3 (M2), une ligne peut aussi porter des MESSAGES publiés
+// dans l'espace (`message_email_ids`). Leur avis n'est pas désactivable et part
+// à l'adresse FIGÉE du message, qu'un canal voit ; un statut de la même
+// fenêtre est annoncé dans le MÊME courriel (`messageNoticeEmail`).
+//
 // ⚠️ Jamais l'adresse ni le contenu dans les journaux : la référence suffit.
 
 import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
@@ -26,10 +31,10 @@ import { recipientIdentity } from "../_shared/email/destinataire.ts";
 import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
 import { accessEmailHash, pepperFrom } from "../_shared/access/accessCode.ts";
 import { citizenEventFor } from "../_shared/citizenNotices/events.ts";
-import { shouldSend, type SkipReason } from "../_shared/citizenNotices/decision.ts";
-import { citizenChannel } from "../_shared/citizenNotices/channel.ts";
+import { shouldSend, type Decision, type SkipReason } from "../_shared/citizenNotices/decision.ts";
+import { citizenChannel, spaceRequestUrl } from "../_shared/citizenNotices/channel.ts";
 import { unsubscribeToken, unsubscribeUrl } from "../_shared/citizenNotices/unsubscribe.ts";
-import { statusNoticeEmail, type NoticeEvent } from "../_shared/email/avisUsager.ts";
+import { messageExcerpt, messageNoticeEmail, statusNoticeEmail, type NoticeEvent } from "../_shared/email/avisUsager.ts";
 
 const LOG = "[mailer:avis-usager]";
 
@@ -51,6 +56,8 @@ export interface ClaimedNotice {
   requester_snapshot: unknown;
   identity_status: string;
   known_status: string | null;
+  /** Messages publiés dans l'espace (M2) que cet avis annonce. */
+  message_email_ids: string[] | null;
   receipt_status: string | null;
   enabled: boolean;
   guest_email_hash: string | null;
@@ -65,6 +72,13 @@ export interface ClaimedNotice {
   email_id: string | null;
   email_to: string | null;
   attempts: number;
+}
+
+interface PublishedMessage {
+  id: string;
+  to_email: string;
+  body: string | null;
+  sent_at: string | null;
 }
 
 export interface NoticeSecrets {
@@ -116,7 +130,12 @@ export async function drainCitizenNotices(
   const hashEmail = pepper === null ? null : (email: string) => accessEmailHash(pepper, email);
 
   for (const row of rows) {
-    if (!row.enabled) {
+    const messageIds = row.message_email_ids ?? [];
+    const hasMessages = messageIds.length > 0;
+
+    // Un message déjà publié doit être annoncé : l'interrupteur, relu, ne fait
+    // taire que les statuts (ADR-10).
+    if (!row.enabled && !hasMessages) {
       await skip(row, "interrupteur", null);
       continue;
     }
@@ -127,8 +146,10 @@ export async function drainCitizenNotices(
     }
 
     const event = citizenEventFor(row.known_status, row.status);
-    const decision = shouldSend({ event, organizationId: row.notice_org_id, socleProcedureId: row.socle_procedure_id });
-    if (!decision.send) {
+    const decision: Decision = row.enabled
+      ? shouldSend({ event, organizationId: row.notice_org_id, socleProcedureId: row.socle_procedure_id })
+      : { send: false, reason: "interrupteur" };
+    if (!decision.send && !hasMessages) {
       await skip(row, decision.reason, event);
       continue;
     }
@@ -145,8 +166,7 @@ export async function drainCitizenNotices(
       const live = await socleContactIdentity(row.socle_contact_id, row.socle_root_org_id, LOG);
       liveEmail = live === undefined ? undefined : live.email;
     }
-
-    const channel = await citizenChannel({
+    const channelOf = (respectPreference: boolean) => citizenChannel({
       requestId: row.request_id,
       source: row.source,
       citizenVisible: row.citizen_visible,
@@ -168,40 +188,121 @@ export async function drainCitizenNotices(
         declaredEmail: recipientIdentity(row.requester_snapshot, row.identity_status).email,
       },
       hashEmail,
-      respectPreference: true,
+      respectPreference,
     });
-    if (!channel.ok) {
-      if ("retry" in channel) await fail(row, channel.retry, event);
-      else await skip(row, channel.reason, event);
+
+    // ---- La partie statut : préférence du canal respectée -------------------
+    let statusChannel: Awaited<ReturnType<typeof citizenChannel>> | null = null;
+    if (decision.send) {
+      statusChannel = await channelOf(true);
+      if (!statusChannel.ok && "retry" in statusChannel) {
+        await fail(row, statusChannel.retry, event);
+        continue;
+      }
+    }
+    const withStatus = statusChannel?.ok === true;
+
+    // ---- La partie message : non désactivable, à l'adresse FIGÉE du message --
+    let messages: PublishedMessage[] = [];
+    if (hasMessages) {
+      const { data: found, error: messagesError } = await supabase.from("request_emails")
+        .select("id, to_email, body, sent_at").in("id", messageIds);
+      if (messagesError) {
+        await fail(row, "messages illisibles", event);
+        continue;
+      }
+      messages = ((found ?? []) as PublishedMessage[])
+        .filter((m) => typeof m.to_email === "string" && m.to_email.trim() !== "")
+        .sort((a, b) => (a.sent_at ?? "").localeCompare(b.sent_at ?? ""));
+    }
+    const last = messages[messages.length - 1] ?? null;
+
+    if (!withStatus && last === null) {
+      const reason: SkipReason = !decision.send
+        ? decision.reason
+        : statusChannel && !statusChannel.ok && "reason" in statusChannel ? statusChannel.reason : "aucun_acces_en_ligne";
+      await skip(row, reason, event);
       continue;
+    }
+
+    // Le lien : celui du canal ; pour un message dont l'accès a été coupé dans
+    // la fenêtre, le dernier lien connu (risque accepté, § 6 de l'architecture).
+    let target: "compte" | "invite";
+    let url: string;
+    let to: string;
+    if (last !== null) {
+      const channel = statusChannel?.ok ? statusChannel : await channelOf(false);
+      if (channel.ok) {
+        target = channel.target;
+        url = channel.url;
+      } else if ("retry" in channel) {
+        await fail(row, channel.retry, event);
+        continue;
+      } else {
+        const fallback = row.guest_tracking_url ?? (row.link_space_url
+          ? spaceRequestUrl({
+            spaceActive: true, channelPrefs: null, accountEmailHash: null,
+            spaceUrl: row.link_space_url, requestUrlTemplate: row.link_request_url_template,
+          }, row.request_id)
+          : null);
+        if (fallback === null) {
+          await skip(row, channel.reason, event);
+          continue;
+        }
+        target = row.guest_tracking_url ? "invite" : "compte";
+        url = fallback;
+      }
+      to = last.to_email;
+    } else {
+      const channel = statusChannel as Extract<typeof statusChannel, { ok: true }>;
+      target = channel.target;
+      url = channel.url;
+      to = channel.to;
     }
 
     // Sans désinscription possible, l'avis ne part pas (CCTP 5.4) : c'est une
     // erreur de configuration, lisible comme un échec.
     const secret = (secrets.tokenSecret ?? "").trim();
     if (secret.length < 32) {
-      await fail(row, "secret des jetons usager absent : désinscription impossible", event, channel.target);
+      await fail(row, "secret des jetons usager absent : désinscription impossible", event, target);
+      continue;
+    }
+    if (target === "compte" && !row.socle_contact_id) {
+      await skip(row, "aucun_acces_en_ligne", event);
       continue;
     }
     const token = await unsubscribeToken(secret, {
       requestId: row.request_id,
       channel: "email",
-      target: channel.target === "invite" ? { kind: "invite" } : { kind: "compte", contactId: row.socle_contact_id! },
+      target: target === "invite" ? { kind: "invite" } : { kind: "compte", contactId: row.socle_contact_id! },
     });
-    const unsubscribe = unsubscribeUrl(channel.url, token);
+    const unsubscribe = unsubscribeUrl(url, token);
 
-    const notice = statusNoticeEmail({
-      event: event as NoticeEvent,
-      status: row.status,
-      reference: row.reference,
-      procedureName: row.procedure_name,
-      url: channel.url,
-      unsubscribeUrl: unsubscribe,
-      tenantName: row.organization_name,
-    });
+    const statusPart = withStatus ? { event: event as NoticeEvent, status: row.status } : null;
+    const notice = last !== null
+      ? messageNoticeEmail({
+        reference: row.reference,
+        procedureName: row.procedure_name,
+        excerpt: messageExcerpt(last.body ?? ""),
+        messageCount: messages.length,
+        statusPart,
+        url,
+        unsubscribeUrl: unsubscribe,
+        tenantName: row.organization_name,
+      })
+      : statusNoticeEmail({
+        event: event as NoticeEvent,
+        status: row.status,
+        reference: row.reference,
+        procedureName: row.procedure_name,
+        url,
+        unsubscribeUrl: unsubscribe,
+        tenantName: row.organization_name,
+      });
+    const eventSent = withStatus ? event : "nouveau_message";
 
     // Une reprise renvoie à l'adresse déjà tracée : l'échange dit où c'est parti.
-    const to = row.email_id && row.email_to ? row.email_to : channel.to;
+    if (row.email_id && row.email_to) to = row.email_to;
     if (!row.email_id) {
       const { data: emailId, error: startError } = await supabase.rpc("start_citizen_notice_email", {
         p_id: row.notice_id,
@@ -210,7 +311,7 @@ export async function drainCitizenNotices(
         p_body: notice.body,
       });
       if (startError || typeof emailId !== "string") {
-        await fail(row, "échange non enregistré", event, channel.target);
+        await fail(row, "échange non enregistré", eventSent, target);
         continue;
       }
     }
@@ -226,16 +327,17 @@ export async function drainCitizenNotices(
         unsubscribe ? { "List-Unsubscribe": `<${unsubscribe}>` } : {},
       );
     } catch (e) {
-      await fail(row, e instanceof Error ? e.message : String(e), event, channel.target);
+      await fail(row, e instanceof Error ? e.message : String(e), eventSent, target);
       continue;
     }
     await rpc("settle_citizen_notice", {
       p_id: row.notice_id,
       p_ok: true,
       p_error: null,
-      p_event: event,
-      p_target: channel.target,
-      p_known_status: row.status,
+      p_event: eventSent,
+      p_target: target,
+      // Le statut n'est CONNU que s'il a été annoncé.
+      p_known_status: withStatus ? row.status : null,
     });
     counters.sent++;
   }

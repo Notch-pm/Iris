@@ -105,3 +105,20 @@ export async function citizenChannel(input: ChannelInput): Promise<ChannelResult
 
   return { ok: false, reason: accountReason ?? "aucun_acces_en_ligne" };
 }
+
+export type MessageDelivery =
+  | { delivery: "espace"; target: "compte" | "invite"; to: string }
+  | { delivery: "courriel" };
+
+/**
+ * M2 (ADR-10) : le message de l'agent est PUBLIÉ dans l'espace — un avis avec
+ * extrait l'annonce — quand l'interrupteur est allumé, qu'un relais existe et
+ * qu'un canal valide voit la demande ; sinon il part en entier par courriel,
+ * comme avant. La préférence ne compte pas (l'avis de message n'est pas
+ * désactivable) : l'appelant passe `respectPreference: false`. Un canal
+ * indécidable (référentiel muet) retombe sur le courriel : l'agent attend.
+ */
+export function messageDelivery(enabled: boolean, hasRelay: boolean, channel: ChannelResult): MessageDelivery {
+  if (!enabled || !hasRelay || !channel.ok) return { delivery: "courriel" };
+  return { delivery: "espace", target: channel.target, to: channel.to };
+}

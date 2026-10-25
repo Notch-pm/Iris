@@ -99,6 +99,68 @@ export function statusNoticeEmail(input: StatusNoticeInput): StatusNotice {
   };
 }
 
+export interface MessageNoticeInput {
+  reference: string;
+  procedureName: string | null;
+  /** Extrait du DERNIER message publié (`messageExcerpt`) ; le nombre de messages s'il y en a plusieurs. */
+  excerpt: string;
+  messageCount: number;
+  /** Un changement de statut de la même fenêtre, annoncé dans le même courriel ; `null` sinon. */
+  statusPart: { event: NoticeEvent; status: string } | null;
+  url: string;
+  unsubscribeUrl: string | null;
+  tenantName: string | null;
+}
+
+/**
+ * L'avis « nouveau message » (M2) : le message est dans l'espace, le courriel
+ * en cite les premiers caractères et y renvoie. Un statut de la même fenêtre y
+ * est annoncé aussi — UN courriel, jamais deux (cadrage Q5).
+ */
+export function messageNoticeEmail(input: MessageNoticeInput): StatusNotice {
+  const procedure = (input.procedureName ?? "").trim();
+  const demande = `votre demande ${procedure !== "" ? `« ${procedure} » ` : ""}(référence ${input.reference})`;
+  const tenant = (input.tenantName ?? "").trim();
+  const several = input.messageCount > 1;
+
+  const subject = several
+    ? `Nouveaux messages concernant votre demande ${input.reference}`
+    : `Nouveau message concernant votre demande ${input.reference}`;
+  const paragraphs = [
+    "Bonjour,",
+    several
+      ? `Vous avez reçu ${input.messageCount} nouveaux messages concernant ${demande}. Le dernier commence ainsi :`
+      : `Vous avez reçu un nouveau message concernant ${demande} :`,
+    `« ${input.excerpt} »`,
+  ];
+  if (input.statusPart) {
+    const label = CITIZEN_STATUS_LABELS[input.statusPart.status];
+    if (label) paragraphs.push(`Votre demande a aussi changé de statut : ${label}.`);
+  }
+  const closing = tenant !== "" ? `Cordialement,\n${tenant}` : "Cordialement,";
+  const footnote = input.unsubscribeUrl
+    ? `Vous ne souhaitez plus recevoir les avis de changement de statut pour cette demande ? ${input.unsubscribeUrl}`
+    : undefined;
+  const body = [
+    ...paragraphs,
+    `Pour le lire en entier et y répondre : ${input.url}`,
+    closing,
+    ...(footnote ? [footnote] : []),
+  ].join("\n\n");
+
+  return {
+    subject,
+    body,
+    content: {
+      subject,
+      heading: subject,
+      paragraphs: [...paragraphs, closing],
+      cta: { label: several ? "Lire les messages" : "Lire le message", url: input.url },
+      footnote,
+    },
+  };
+}
+
 /** Longueur de l'extrait d'un message dans l'avis « nouveau message » (décision PO n° 1). */
 export const EXCERPT_LENGTH = 140;
 

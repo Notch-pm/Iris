@@ -46,6 +46,7 @@ import {
   type RequestAttachment, type TenantMember,
 } from "../useRequests";
 import { useSendRequestEmail } from "../instruction/useSendRequestEmail";
+import { sentNotice } from "../instruction/remise";
 import { useClosureNotice } from "../useClosureNotice";
 import { useAttachRequestPiece } from "../instruction/useEditRequestForm";
 import {
@@ -714,7 +715,7 @@ export function MobileRequestPage() {
           requestId: r.id, organizationId: r.organization_id, subject: payload.subject, body: payload.body,
           files: payload.files, documentIds: payload.documentIds, templateId: payload.templateId,
           templateName: payload.templateName,
-        }).then(() => { flash("Message envoyé à l'usager."); })}
+        }).then((result) => { flash(sentNotice(result)); })}
       />
 
       <SolliciterDialog

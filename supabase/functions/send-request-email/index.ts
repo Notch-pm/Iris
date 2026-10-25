@@ -46,6 +46,14 @@
 // geste métier (« on n'annule pas une affectation parce qu'un serveur de mail
 // tousse »). Ici l'envoi EST le geste, et l'agent attend sa réponse.
 //
+// Depuis le 2026-10-25 (B12, lot L4c-3, « M2 ») : quand la collectivité a allumé
+// ses avis et qu'un canal en ligne VOIT la demande (compte du portail ou suivi
+// invité), le message libre n'est plus envoyé en entier : il est PUBLIÉ dans
+// l'espace de l'usager (`publish_citizen_message`, delivery `espace`) et un avis
+// avec extrait l'annonce dix minutes plus tard (`notifications-mailer`). Sinon,
+// rien ne change. Un troisième mode, `kind: "apercu"` (même droit, rien
+// d'écrit), dit d'avance au composeur laquelle des deux formes partira.
+//
 // CORS : allowlist stricte (IRIS_APP_URL + localhost de dev).
 
 import { createClient } from "npm:@supabase/supabase-js@2";
@@ -57,6 +65,8 @@ import { closureEmail, closureNoticeApplies, isClosureOutcome } from "../_shared
 import { recipientIdentity } from "../_shared/email/destinataire.ts";
 import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
 import { checkUploadRow, type UploadRow } from "../_shared/files/uploads.ts";
+import { accessEmailHash, pepperFrom } from "../_shared/access/accessCode.ts";
+import { citizenChannel, messageDelivery, type MessageDelivery } from "../_shared/citizenNotices/channel.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -113,6 +123,52 @@ interface DeclaredAttachment {
   file_size: number;
 }
 
+/**
+ * M2 (ADR-10) : publier dans l'espace, ou envoyer en entier ? Les faits sont
+ * relus en base (`citizen_channel_inputs`), la règle est celle du facteur
+ * (`_shared/citizenNotices/channel.ts`), préférence ignorée : l'avis d'un
+ * message n'est pas désactivable. Toute incertitude retombe sur le courriel.
+ */
+async function messageDeliveryFor(
+  request: { id: string; socle_contact_id: string | null; requester_snapshot: unknown; identity_status: string },
+  liveEmail: string | null | undefined,
+  hasRelay: boolean,
+): Promise<MessageDelivery> {
+  const { data, error } = await supabase.rpc("citizen_channel_inputs", { p_request_id: request.id });
+  const row = (Array.isArray(data) ? data[0] : data) as Record<string, unknown> | null;
+  if (error || !row) {
+    if (error) console.error("send-request-email: citizen_channel_inputs en échec", error);
+    return { delivery: "courriel" };
+  }
+  if (row.enabled !== true) return { delivery: "courriel" };
+  const pepper = pepperFrom(Deno.env.get("IRIS_ACCESS_CODE_PEPPER"));
+  const channel = await citizenChannel({
+    requestId: request.id,
+    source: String(row.source ?? ""),
+    citizenVisible: row.citizen_visible === true,
+    closedAt: (row.closed_at as string | null) ?? null,
+    now: new Date(),
+    liveEmail: row.link_space_active ? liveEmail : null,
+    link: row.link_space_active === null || row.link_space_active === undefined ? null : {
+      spaceActive: row.link_space_active === true,
+      channelPrefs: (row.link_channel_prefs as Record<string, unknown> | null) ?? null,
+      accountEmailHash: (row.link_account_email_hash as string | null) ?? null,
+      spaceUrl: (row.link_space_url as string | null) ?? null,
+      requestUrlTemplate: (row.link_request_url_template as string | null) ?? null,
+    },
+    guest: typeof row.guest_email_hash !== "string" ? null : {
+      emailHash: row.guest_email_hash,
+      trackingUrl: (row.guest_tracking_url as string | null) ?? null,
+      revokedAt: (row.guest_revoked_at as string | null) ?? null,
+      notifyEmail: (row.guest_notify_email as boolean | null) ?? null,
+      declaredEmail: recipientIdentity(request.requester_snapshot, request.identity_status).email,
+    },
+    hashEmail: pepper === null ? null : (email: string) => accessEmailHash(pepper, email),
+    respectPreference: false,
+  });
+  return messageDelivery(true, hasRelay, channel);
+}
+
 /** Serveur d'envoi du tenant, relais de plateforme en repli. */
 async function smtpForOrg(orgId: string): Promise<{ smtp: SmtpConfig | null; tenantName: string | null }> {
   const { data, error } = await supabase.rpc("smtp_config_for_org", { p_org_id: orgId });
@@ -161,16 +217,18 @@ Deno.serve(async (req) => {
   const requestId = str(body?.request_id);
   const kind = str(body?.kind) || "libre";
   if (requestId === "") return fail(req, 400, "invalid_request", "Demande manquante.");
-  if (kind !== "libre" && kind !== "cloture") {
+  if (kind !== "libre" && kind !== "cloture" && kind !== "apercu") {
     return fail(req, 400, "invalid_kind", "Type d'envoi inconnu.");
   }
   const closureMode = kind === "cloture";
+  // L'aperçu (M2) ne lit ni objet ni corps : il dit seulement la forme qui partira.
+  const previewMode = kind === "apercu";
 
   // En mode clôture, RIEN du corps du payload n'est lu : l'objet et le message
   // sont composés plus bas à partir de l'état enregistré de la demande.
-  let subject = closureMode ? "" : str(body?.subject);
-  let message = closureMode ? "" : (typeof body?.body === "string" ? body.body : "");
-  if (!closureMode) {
+  let subject = closureMode || previewMode ? "" : str(body?.subject);
+  let message = closureMode || previewMode ? "" : (typeof body?.body === "string" ? body.body : "");
+  if (!closureMode && !previewMode) {
     if (subject === "") return fail(req, 400, "invalid_subject", "L'objet est obligatoire.");
     if (message.trim() === "") return fail(req, 400, "invalid_body", "Le message est obligatoire.");
   }
@@ -179,8 +237,8 @@ Deno.serve(async (req) => {
   const { data: request } = await supabase
     .from("requests")
     .select(
-      "id, organization_id, socle_scope_org_id, socle_procedure_id, socle_contact_id, " +
-        "requester_snapshot, identity_status, reference, status, subject, closure_text, source",
+      // Une seule chaîne LITTÉRALE : concaténée, supabase-js ne sait plus la typer.
+      "id, organization_id, socle_scope_org_id, socle_procedure_id, socle_contact_id, requester_snapshot, identity_status, reference, status, subject, closure_text, source",
     )
     .eq("id", requestId)
     .maybeSingle();
@@ -226,6 +284,8 @@ Deno.serve(async (req) => {
   // Fiche Socle d'abord (source de vérité, corrections postérieures au dépôt
   // comprises), snapshot du dépôt en repli. Le navigateur ne propose rien.
   let who = recipientIdentity(request.requester_snapshot, request.identity_status);
+  // La fiche du jour, pour M2 : `undefined` = référentiel muet, `null` = pas d'adresse.
+  let liveEmail: string | null | undefined = null;
   if (request.socle_contact_id && request.identity_status !== "anonyme") {
     const { data: org } = await supabase
       .from("organizations")
@@ -237,11 +297,9 @@ Deno.serve(async (req) => {
     // Une fiche LUE SANS adresse, elle, vaut réponse : on ne ressuscite pas une
     // adresse que l'usager a fait retirer du référentiel.
     if (live !== undefined) who = live;
+    liveEmail = live === undefined ? undefined : live.email;
   }
-  const to = who.email;
-  if (!to) {
-    return fail(req, 400, "no_recipient", "Cette demande ne porte aucune adresse de courriel.");
-  }
+  let to = who.email;
 
   // ---- Le relais, lu ICI : sa marque signe l'avis de clôture -----------------
   // Lecture seule, remontée avant la composition parce que le nom de la
@@ -259,6 +317,24 @@ Deno.serve(async (req) => {
     smtpForOrg(request.organization_id),
     charteFor(request.socle_scope_org_id, LOG),
   ]);
+
+  // ---- M2 : publier dans l'espace, ou envoyer en entier ? --------------------
+  // Publié, le message va à l'adresse que le canal VOIT (compte : la fiche du
+  // jour ; invité : l'adresse déclarée) — sans quoi il n'apparaîtrait pas dans
+  // l'espace. L'avis de clôture, lui, reste un courriel complet.
+  const delivery: MessageDelivery = closureMode
+    ? { delivery: "courriel" }
+    : await messageDeliveryFor(request, liveEmail, smtp !== null);
+  if (delivery.delivery === "espace") to = delivery.to;
+  if (previewMode) {
+    return json(req, 200, {
+      delivery: to ? delivery.delivery : "aucune",
+      target: delivery.delivery === "espace" ? delivery.target : null,
+    });
+  }
+  if (!to) {
+    return fail(req, 400, "no_recipient", "Cette demande ne porte aucune adresse de courriel.");
+  }
 
   // ---- L'avis de clôture, composé ICI ---------------------------------------
   if (closureMode && outcome) {
@@ -306,8 +382,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: rowsError } = await supabase
       .from("attachment_uploads")
       .select(
-        "id, organization_id, scope_request_id, integration_source_id, uploaded_by, storage_path, " +
-        "file_name, mime_type, file_size, checksum, expires_at, consumed_at, discarded_at",
+        "id, organization_id, scope_request_id, integration_source_id, uploaded_by, storage_path, file_name, mime_type, file_size, checksum, expires_at, consumed_at, discarded_at",
       )
       .in("id", uploadIds)
       .eq("organization_id", request.organization_id);
@@ -401,6 +476,20 @@ Deno.serve(async (req) => {
     return fail(req, 500, "not_recorded", "L'échange n'a pas pu être enregistré : rien n'a été envoyé.");
   }
 
+  // ---- M2 : publié, rien ne part par SMTP ici ---------------------------------
+  // Les pièces sont rattachées à l'échange (`start_request_email`) : l'usager
+  // les lit avec le message dans son espace. L'avis, lui, n'en porte aucune.
+  if (delivery.delivery === "espace") {
+    const { error: publishError } = await supabase.rpc("publish_citizen_message", { p_email_id: emailId });
+    if (publishError) {
+      console.error("send-request-email: publish_citizen_message en échec", publishError);
+      await settle(emailId, false, "Publication dans l'espace usager impossible.");
+      return fail(req, 500, "not_published", "Le message n'a pas pu être publié dans l'espace de l'usager.");
+    }
+    console.log(`send-request-email: échange ${emailId} publié dans l'espace (demande=${request.reference}, canal=${delivery.target})`);
+    return json(req, 200, { email_id: emailId, to, email_sent: false, delivery: "espace", target: delivery.target });
+  }
+
   // ---- Relais, pièces, envoi -------------------------------------------------
   if (!smtp) {
     await settle(emailId, false, "Aucun serveur d'envoi configuré pour cette collectivité.");
@@ -456,5 +545,5 @@ Deno.serve(async (req) => {
     `send-request-email: échange ${emailId} envoyé (demande=${request.reference}, ` +
       `pièces=${attachments.length}, relais=${smtp.source})`,
   );
-  return json(req, 200, { email_id: emailId, to, email_sent: true });
+  return json(req, 200, { email_id: emailId, to, email_sent: true, delivery: "courriel" });
 });

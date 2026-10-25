@@ -51,7 +51,11 @@ import {
 } from "./instruction";
 import { EmailAssistantPanel } from "./EmailAssistantPanel";
 import { useDraftEmail, useImproveEmail, type DraftKind } from "./useEmailAssistant";
-import { citizenChannelLabel, mergeThread, piecesByExchange, type RequestCitizenMessage } from "./citizenMessages";
+import {
+  citizenChannelLabel, mergeThread, piecesByExchange, type CitizenNoticeRow, type RequestCitizenMessage,
+} from "./citizenMessages";
+import { deliveryNotice, noticeReasonLabel } from "./remise";
+import { useEmailDeliveryPreview } from "./useSendRequestEmail";
 
 /**
  * Brouillon déposé dans le composeur par un autre bloc de la fiche. Chaque
@@ -108,12 +112,14 @@ interface Props {
   onFilePiece?: (attachment: RequestAttachment) => void;
   /** Originaux déjà versés au dossier (`filedCitizenPieceIds`). */
   filedPieceIds?: ReadonlySet<string>;
+  /** Avis automatiques à l'usager (B12) : ceux qui ne sont pas partis s'affichent avec leur raison. */
+  notices?: CitizenNoticeRow[];
 }
 
 export function EchangesPane({
   request, identity, emails, citizenMessages = [], attachments, members, events, tenantName,
   canInstruct, archived, sending, draft, onDraftApplied, onSend, onDownload,
-  onFilePiece, filedPieceIds,
+  onFilePiece, filedPieceIds, notices = [],
 }: Props) {
   const templates = useActiveEmailTemplates(request.organization_id, request.socle_scope_org_id);
   const { session } = useAuth();
@@ -177,7 +183,7 @@ export function EchangesPane({
   const ordered = React.useMemo(
     // Chronologique : le fil se lit du premier envoi au composeur, en bas ; les
     // réponses de l'usager s'y intercalent à leur date.
-    () => mergeThread(emails, citizenMessages),
+    () => mergeThread(emails, citizenMessages, notices),
     [emails, citizenMessages],
   );
 
@@ -278,6 +284,8 @@ export function EchangesPane({
 
   const recipient = identity.anonymous ? null : identity.email;
   const closed = archived || !canInstruct || !recipient;
+  // M2 (B12) : le serveur dit d'avance si le message sera publié dans l'espace.
+  const deliveryPreview = useEmailDeliveryPreview(request.id, !closed);
   // `identity` est l'identité RELUE dans le Socle quand elle a pu l'être : une
   // adresse ajoutée à la fiche après le dépôt ouvre donc l'envoi. Ce qui reste
   // sans issue, c'est l'identité déclarée SANS rapprochement — il n'y a alors
@@ -349,6 +357,26 @@ export function EchangesPane({
               </ThreadItem>
             );
           }
+          if (entry.kind === "notice") {
+            const notice = entry.notice;
+            return (
+              <ThreadItem
+                key={notice.id}
+                initials="I"
+                meta={
+                  <>
+                    <strong className="text-sm text-foreground">Iris</strong>
+                    <span>avis automatique · {formatTimeline(entry.at)}</span>
+                    <Pill tone={notice.status === "failed" ? "error" : "pending"}>Non envoyé</Pill>
+                  </>
+                }
+              >
+                <p className="text-[13px] text-muted-foreground">
+                  Aucun avis n'est parti à l'usager : {noticeReasonLabel(notice)}.
+                </p>
+              </ThreadItem>
+            );
+          }
           const mail = entry.mail;
           const who = exchangeAuthor(members, mail.sent_by);
           return (
@@ -360,6 +388,8 @@ export function EchangesPane({
                   <strong className="text-sm text-foreground">{who.name}</strong>
                   <span>{who.role} · envoyé le {formatTimeline(mail.sent_at ?? mail.created_at)}</span>
                   <span className="truncate">à {mail.to_email}</span>
+                  {mail.nature === "avis" ? <Pill>Avis automatique</Pill> : null}
+                  {mail.delivery === "espace" ? <Pill>Publié dans l'espace usager</Pill> : null}
                   {mail.status === "echec" ? (
                     <Pill tone="error">Non envoyé</Pill>
                   ) : mail.status === "en_cours" ? (
@@ -542,10 +572,7 @@ export function EchangesPane({
               <div className="flex flex-wrap items-center justify-between gap-4 border-t border-border bg-muted/40 py-2.5 pl-4 pr-3">
                 <span className="flex min-w-[200px] flex-1 items-center gap-[7px] text-xs leading-relaxed text-muted-foreground">
                   <Mail className="size-3.5 shrink-0" aria-hidden="true" />
-                  <span>
-                    Variables fusionnées avec la fiche de {usagerName} — l'usager reçoit le texte
-                    affiché, et ne pourra pas y répondre.
-                  </span>
+                  <span>{deliveryNotice(deliveryPreview.data, usagerName)}</span>
                 </span>
                 <div className="flex shrink-0 items-center gap-1.5">
                   {canUndoImprove ? (

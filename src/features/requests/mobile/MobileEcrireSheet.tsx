@@ -31,6 +31,7 @@ import {
   formatBytes, formatTimeline, type RequesterIdentity, type StageEvent,
 } from "../instruction/instruction";
 import { defaultEmailSubject } from "./mobileRequests";
+import { useEmailDeliveryPreview } from "../instruction/useSendRequestEmail";
 
 interface Props {
   open: boolean;
@@ -69,6 +70,8 @@ export function MobileEcrireSheet({
   const recipient = identity.anonymous ? null : identity.email;
   const closed = archived || !canInstruct || !recipient;
   const completable = Boolean(request.socle_contact_id);
+  // M2 (B12) : le serveur dit d'avance si le message sera publié dans l'espace.
+  const deliveryPreview = useEmailDeliveryPreview(request.id, open && !closed);
 
   React.useEffect(() => {
     if (open) {
@@ -167,7 +170,11 @@ export function MobileEcrireSheet({
               onChange={(e) => setSubject(e.target.value)}
             />
             {submitted && errors.subject ? <p role="alert" className="text-xs text-destructive">{errors.subject}</p> : null}
-            <p className="text-xs text-muted-foreground">L'usager ne peut pas répondre par courriel ; s'il suit sa demande en ligne, il peut y répondre.</p>
+            <p className="text-xs text-muted-foreground">
+              {deliveryPreview.data?.delivery === "espace"
+                ? "Le message sera publié dans l'espace de l'usager : il recevra un courriel avec ses premiers mots et un lien, et pourra répondre en ligne."
+                : "L'usager ne peut pas répondre par courriel ; s'il suit sa demande en ligne, il peut y répondre."}
+            </p>
             <div className="flex items-end gap-2">
               <input
                 ref={fileRef}
@@ -268,6 +275,8 @@ export function MobileEcrireSheet({
             </div>
           );
         }
+        // Les avis non partis (B12) sont une information de bureau : le fil mobile reste celui des échanges.
+        if (entry.kind === "notice") return null;
         const mail = entry.mail;
         return (
           <div key={mail.id} className="flex max-w-[85%] flex-col gap-1 self-end rounded-[14px] rounded-br-[4px] bg-primary/10 px-3.5 py-3">

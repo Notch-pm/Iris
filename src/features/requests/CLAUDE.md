@@ -825,6 +825,17 @@ note interne → résolution avec texte de clôture → journal.
   **Échanges**, l'agent écrit un e-mail à l'usager, avec un modèle ou à la main, pièces
   jointes comprises. L'échange est enregistré dans `request_emails` (expéditeur, date et heure
   d'envoi, objet, corps réellement parti, pièces, modèle utilisé).
+  - **M2 — publié dans l'espace usager** (B12, lot L4c-3, 2026-10-25, `instruction/remise.ts`
+    pur/testé) : quand la collectivité a allumé ses avis à l'usager et qu'un canal en ligne
+    VOIT la demande (compte du portail, suivi par code), le message n'est plus envoyé en
+    entier : `send-request-email` le **publie** (`publish_citizen_message`, `delivery =
+    'espace'`, pièces comprises) et un avis avec extrait l'annonce 10 min plus tard. C'est le
+    SERVEUR qui décide ; le composeur (bureau et mobile) l'**annonce** d'avance par
+    `kind: "apercu"` (`useEmailDeliveryPreview`), et la confirmation dit ce que le serveur a
+    réellement fait (`sentNotice`). Le fil marque « Avis automatique » / « Publié dans
+    l'espace usager », et montre — au bureau seulement — les avis **non partis** avec leur
+    raison (`citizen_notices`, `unsentNotices`, `NOTICE_REASON_LABELS`, jumeau de
+    `SKIP_REASONS`).
   - **Accusé de réception automatique** (2026-10-09) : le fil peut porter un échange **sans
     agent** (`sent_by` NULL) — l'accusé envoyé par Iris au dépôt (hors demandes issues de
     Clara). `exchangeAuthor` (`courriel.ts`) l'affiche « Iris · envoi automatique », jamais
