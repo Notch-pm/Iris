@@ -257,15 +257,24 @@ la session Socle en cours.
   5, 9, 13** validés en vrai — avis fusionné statut + message avec extrait (un seul courriel),
   désinscription d'un compte par le lien de l'avis (Nora coupe et pousse), non-envoi
   « préférence » tracé, avis de clôture seul à la résolution même préférence coupée, avis de
-  message jamais coupé, réactivation depuis « Mon compte ». Couverts par les tests seulement :
-  3 (invité), 4, 6, 7, 8, 10, 11, 12, 16. **Reste pour L4c-5** : Sceaux n'est pas ouvert dans
-  Iris (provisioning) ; slug `notifications` au Socle.
+  message jamais coupé, réactivation depuis « Mon compte ». Second tour le même jour
+  (DEM-2026-000062 sans compte, 000063 avec compte, démo 000031 Clara et 000033 guichet remises
+  en instruction) : critères **3** (avis à l'adresse déclarée avec lien `/suivi`, désinscription
+  de l'invité coupant cette demande seule), **4** (guichet : `aucun_acces_en_ligne`), **7**
+  (réponse de l'usager : rien d'enfilé), **8** (renvoi à qualifier : `evenement_non_retenu`),
+  **10** (Clara : aucune ligne) validés. Ne restent couverts que par les tests : 6, 11, 12, 16.
+  **Décision PO du 2026-10-25** : pas de tenant Sceaux pour l'instant, l'ACCM sert de référence.
+  **Reste pour L4c-5** : Sceaux n'est pas ouvert dans Iris (provisioning) ; slug
+  `notifications` au Socle.
   **Retouches relevées** (mineures) : (a) l'onglet Échanges ne relit pas `citizen_notices` —
   un non-envoi réglé dix minutes après le geste n'apparaît qu'au rechargement ; (b) le
   composeur affiche le texte « courriel complet » tant que l'aperçu n'est pas revenu ; (c) l'avis
   de message dit « … et y répondre » même sur une demande close ; (d) l'avis de message, non
   désactivable, porte le lien « ne plus recevoir les avis de changement de statut », y compris
-  pour un usager déjà désinscrit.
+  pour un usager déjà désinscrit. **Corrigées le jour même** (`05d6bea`) : relecture
+  périodique de `citizen_notices`, texte d'attente de l'aperçu, « Pour le lire en entier » sur
+  une demande close, lien de désinscription seulement sur un avis qui annonce un statut ;
+  `notifications-mailer` redéployée.
   Écartés de la V1 (décision PO du 2026-10-25) : changement d'adresse du compte Nora,
   interrupteur invité dans `/suivi`. En attente du lot L7 : la poussée `DELETE` (aucune
   suppression de compte n'existe). **Socle** : interdire `notifications` comme slug
