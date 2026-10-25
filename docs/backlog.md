@@ -233,6 +233,10 @@ la session Socle en cours.
   `_shared/citizenNotices/`, avis composé par `_shared/email/avisUsager.ts`. Posés dès ce lot
   pour le choix du canal : `citizen_space_links`, `integration_sources.citizen_space_url`,
   `request_access_codes.notify_email` — remplis par les routes du lot L4c-2.
+- **L4c-2 codé le 2026-10-25** (`20261025120000`, contrat **2.10.0**) : adresse de l'espace,
+  préférences d'un compte (empreinte prise du jeton) et d'un invité, désinscription,
+  `notifications` dans la vue invitée. Reste côté Nora (L4c-4) : pousser, et servir la page
+  `/notifications/desinscription`.
 - **Socle livré pour l'ADR-14** : contacts-api 1.5.0, `POST
   /v1/citizen/contacts/{account_id}/account-email` (Nora garantit l'adresse ; aucun journal).
 

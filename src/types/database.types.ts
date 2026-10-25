@@ -2840,6 +2840,10 @@ export type Database = {
         Args: { p_org_id: string }
         Returns: boolean
       }
+      close_citizen_space_link: {
+        Args: { p_contact_id: string; p_org_id: string }
+        Returns: undefined
+      }
       complete_request_intervention: {
         Args: {
           p_comment: string
@@ -3204,6 +3208,16 @@ export type Database = {
       purge_attachment_upload: { Args: { p_id: string }; Returns: undefined }
       purge_consumed_uploads: { Args: { p_days?: number }; Returns: number }
       purge_retention_journaux: { Args: never; Returns: Json }
+      push_citizen_space_link: {
+        Args: {
+          p_account_email_hash: string
+          p_channel_prefs: Json
+          p_contact_id: string
+          p_org_id: string
+          p_source_id: string
+        }
+        Returns: undefined
+      }
       push_notification: {
         Args: {
           p_actor_id: string
@@ -3409,6 +3423,18 @@ export type Database = {
           request_status: string
           request_subject: string
         }[]
+      }
+      set_citizen_space: {
+        Args: {
+          p_request_url_template: string
+          p_source_id: string
+          p_space_url: string
+        }
+        Returns: undefined
+      }
+      set_guest_notify_email: {
+        Args: { p_enabled: boolean; p_org_id: string; p_request_id: string }
+        Returns: boolean
       }
       set_permission_profile_status: {
         Args: {

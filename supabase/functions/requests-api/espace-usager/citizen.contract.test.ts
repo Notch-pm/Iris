@@ -110,7 +110,7 @@ describe("jeton court (X-Citizen-Token)", () => {
       good.slice(0, -3) + "AAA",
       good.split(".")[0] + "." + good.split(".")[0],
       await world.token({ kind: "contact", id: ALICE }, { now: now - 3600 }),
-      await world.token({ kind: "contact", id: ALICE }, { ttl: 181 }),
+      await world.token({ kind: "contact", id: ALICE }, { ttl: 240 }), // au-delà des 180 s, même si une seconde passe
       await world.token({ kind: "contact", id: ALICE }, { ttl: 86_400 }),
       await world.token({ kind: "contact", id: ALICE }, { tenant: ANTONY_ROOT }),
       await world.token({ kind: "contact", id: ALICE }, { secret: "z".repeat(48) }),

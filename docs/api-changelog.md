@@ -9,6 +9,33 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.10.0 — 2026-10-25 — avis automatiques à l'usager
+
+Projet Sceaux (B12, lot L4c-2). **Ajout additif** — un portail qui ne pousse rien reste en
+*fail open* : un invité est prévenu par défaut, un compte ne l'est pas tant que le portail n'a
+pas déclaré son espace.
+
+- **`PUT /v1/citizen/space`** `{ space_url, request_url_template? }` (clé seule) : l'adresse de
+  « Mes demandes » pour la collectivité, citée en lien dans les avis envoyés à un compte.
+  https, 500 caractères ; le gabarit contient `{request_id}` et partage l'origine.
+- **`PUT /v1/citizen/contacts/{id}/notification-preferences`** `{ channels: { email } }` (jeton
+  `contact:{id}` **avec `e`**) : copie de la préférence d'un compte. Iris garde une empreinte
+  de l'adresse du **jeton** — jamais du corps — et ne prévient le compte que si la fiche Socle
+  du jour porte la même adresse. À pousser au rattachement, à chaque changement, au changement
+  d'adresse et à chaque ouverture de session (idempotent). **`DELETE`** sur la même route :
+  espace fermé ou compte supprimé.
+- **`PUT /v1/citizen/requests/{id}/notification-preferences`** `{ channels: { email } }` (jeton
+  `request:{id}`) : préférence d'un invité, pour cette demande seule.
+- **`POST /v1/citizen/notifications/unsubscribe`** `{ token }` (clé seule) : le portail relaie
+  le jeton du lien de désinscription (page `/notifications/desinscription?jeton=…` **du
+  portail**). Invité → Iris coupe, `{ kind: "invite", request_id, reference }` ; compte →
+  `{ kind: "compte", contact_id, reference }`, au portail de couper et de pousser. Jeton
+  invalide → un seul 404.
+- **Vue usager** : `notifications: { email }` pour un invité.
+- Champ inconnu ou canal inconnu → 400.
+
+---
+
 ## 2.9.0 — 2026-10-21 — l'usager répond en ligne
 
 Projet Sceaux (espace usager, lot L4b). **Ajout additif.**

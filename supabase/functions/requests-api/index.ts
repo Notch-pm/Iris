@@ -70,6 +70,8 @@ import {
   isCitizenMessageEmail,
 } from "./_shared/citizenView.ts";
 import { CITIZEN_TOKEN_HEADER, type CitizenSubject, verifyCitizenToken } from "./_shared/citizenToken.ts";
+import { parseChannelsBody, parseSpaceBody, parseUnsubscribeBody } from "./_shared/citizenPreferences.ts";
+import { verifyUnsubscribeToken } from "../_shared/citizenNotices/unsubscribe.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -1109,8 +1111,17 @@ async function handleCitizenRequest(auth: AuthContext, req: Request, id: string)
     .eq("id", id).eq("organization_id", auth.organizationId).maybeSingle();
   const related = await citizenEmailsAndAttachments(id, reader);
   if (!request.data || related === null) return fail("internal_error", "Erreur serveur.");
+  // 2.10.0 : la préférence d'avis de l'INVITÉ pour cette demande (un compte
+  // règle la sienne dans son espace, chez le portail).
+  let notifications: { email: boolean } | undefined;
+  if (reader.author.kind === "invite") {
+    const { data: access } = await supabase.from("request_access_codes").select("notify_email")
+      .eq("request_id", id).eq("organization_id", auth.organizationId).maybeSingle();
+    notifications = { email: access?.notify_email !== false };
+  }
   return json(200, {
     request: serializeCitizenRequest(request.data, related.emails, related.attachments, related.ownMessages),
+    ...(notifications ? { notifications } : {}),
   });
 }
 
@@ -1219,6 +1230,118 @@ async function handleCitizenMessage(auth: AuthContext, req: Request, id: string)
     return fail("internal_error", "Erreur serveur.");
   }
   return json(201, { message: { id: data, attachments: resolved.length } });
+}
+
+// ---- Avis à l'usager : ce que le portail pousse (contrat 2.10.0, lot L4c-2) ---
+//
+// Nora est propriétaire de la préférence d'un COMPTE ; Iris en garde une copie
+// (`citizen_space_links`) que seul le choix du canal lit. L'empreinte de
+// l'adresse du compte est calculée ICI depuis le jeton (`e`), jamais depuis
+// le corps : un portail ne peut pas faire écrire Iris à une autre adresse que
+// celle qu'il a lui-même signée. Architecture : docs/notifications-usager-architecture.md §3.
+
+const CITIZEN_SPACE_PATH = "/v1/citizen/space";
+const CITIZEN_UNSUBSCRIBE_PATH = "/v1/citizen/notifications/unsubscribe";
+
+async function handleCitizenSpace(auth: AuthContext, req: Request): Promise<Response> {
+  const parsed = parseSpaceBody(await req.json().catch(() => null));
+  if (!parsed.ok) return fail("bad_request", parsed.message);
+  const { error } = await supabase.rpc("set_citizen_space", {
+    p_source_id: auth.sourceId,
+    p_space_url: parsed.value.spaceUrl,
+    p_request_url_template: parsed.value.requestUrlTemplate,
+  });
+  if (error) {
+    console.error("requests-api: adresse de l'espace usager non enregistrée", error);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  return json(200, { space_url: parsed.value.spaceUrl, request_url_template: parsed.value.requestUrlTemplate });
+}
+
+/** Le jeton `contact:<id>` de CETTE fiche, ou `null` (404). */
+async function contactSubject(auth: AuthContext, req: Request, contactId: string) {
+  const subject = await citizenSubject(auth, req);
+  return subject !== null && subject.kind === "contact" && subject.id === contactId ? subject : null;
+}
+
+async function handleContactPreferences(auth: AuthContext, req: Request, contactId: string): Promise<Response> {
+  const subject = await contactSubject(auth, req, contactId);
+  if (subject === null) return fail("not_found", "Ressource introuvable.");
+  const parsed = parseChannelsBody(await req.json().catch(() => null));
+  if (!parsed.ok) return fail("bad_request", parsed.message);
+  const pepper = accessPepper();
+  if (pepper === null) return fail("internal_error", "Avis à l'usager non configurés.");
+  const email = normalizeAccessEmail(subject.email);
+  if (email === null) {
+    return fail("bad_request", "Le jeton doit porter l'adresse du compte (e) : c'est elle que l'avis compare à la fiche.");
+  }
+  const { error } = await supabase.rpc("push_citizen_space_link", {
+    p_org_id: auth.organizationId,
+    p_contact_id: contactId,
+    p_source_id: auth.sourceId,
+    p_channel_prefs: parsed.value,
+    p_account_email_hash: await accessEmailHash(pepper, email),
+  });
+  if (error) {
+    console.error("requests-api: préférences de l'espace non enregistrées", error);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  return json(200, { channels: parsed.value, space_active: true });
+}
+
+async function handleCloseContactSpace(auth: AuthContext, req: Request, contactId: string): Promise<Response> {
+  if ((await contactSubject(auth, req, contactId)) === null) return fail("not_found", "Ressource introuvable.");
+  const { error } = await supabase.rpc("close_citizen_space_link", {
+    p_org_id: auth.organizationId,
+    p_contact_id: contactId,
+  });
+  if (error) return fail("internal_error", "Erreur serveur.");
+  return json(200, { space_active: false });
+}
+
+/** La préférence d'un INVITÉ, pour cette demande seule : jeton `request:<id>` exigé. */
+async function handleGuestPreferences(auth: AuthContext, req: Request, id: string): Promise<Response> {
+  const subject = await citizenSubject(auth, req);
+  if (subject === null || subject.kind !== "request" || subject.id !== id) return fail("not_found", "Ressource introuvable.");
+  if ((await citizenAccessible(auth, id, subject.version)) === null) return fail("not_found", "Ressource introuvable.");
+  const parsed = parseChannelsBody(await req.json().catch(() => null));
+  if (!parsed.ok) return fail("bad_request", parsed.message);
+  const { error } = await supabase.rpc("set_guest_notify_email", {
+    p_request_id: id,
+    p_org_id: auth.organizationId,
+    p_enabled: parsed.value.email,
+  });
+  if (error) return fail("internal_error", "Erreur serveur.");
+  return json(200, { channels: parsed.value });
+}
+
+/**
+ * Le lien de désinscription d'un avis, relayé par la page du portail. Le jeton
+ * est la seule preuve ; tout jeton invalide, d'une autre collectivité ou d'une
+ * demande sans accès reçoit le même 404. Invité : Iris coupe (il est seul à
+ * tenir cette préférence). Compte : Iris DIT quelle fiche, le portail coupe la
+ * préférence de l'espace puis la pousse — Iris n'écrit jamais celle d'un compte.
+ */
+async function handleUnsubscribe(auth: AuthContext, req: Request): Promise<Response> {
+  const parsed = parseUnsubscribeBody(await req.json().catch(() => null));
+  if (!parsed.ok) return fail("bad_request", parsed.message);
+  const secret = citizenTokenSecret();
+  const claims = secret === null ? null : await verifyUnsubscribeToken(secret, parsed.value);
+  if (claims === null) return fail("not_found", "Ressource introuvable.");
+  const { data: request } = await supabase.from("requests").select("id, reference")
+    .eq("id", claims.requestId).eq("organization_id", auth.organizationId).maybeSingle();
+  if (!request) return fail("not_found", "Ressource introuvable.");
+  if (claims.target.kind === "compte") {
+    return json(200, { kind: "compte", contact_id: claims.target.contactId, reference: request.reference });
+  }
+  const { data: done, error } = await supabase.rpc("set_guest_notify_email", {
+    p_request_id: request.id,
+    p_org_id: auth.organizationId,
+    p_enabled: false,
+  });
+  if (error) return fail("internal_error", "Erreur serveur.");
+  if (done !== true) return fail("not_found", "Ressource introuvable.");
+  return json(200, { kind: "invite", request_id: request.id, reference: request.reference });
 }
 
 async function handleCitizenAttachment(auth: AuthContext, req: Request, id: string, attachmentId: string): Promise<Response> {
@@ -1407,6 +1530,8 @@ Deno.serve(async (req) => {
   const citizenMessageMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/messages$/i);
   const citizenContactMatch = path.match(/^\/v1\/citizen\/contacts\/([0-9a-f-]{36})\/requests$/i);
   const citizenFileMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/attachments\/([0-9a-f-]{36})$/i);
+  const contactPrefsMatch = path.match(/^\/v1\/citizen\/contacts\/([0-9a-f-]{36})\/notification-preferences$/i);
+  const guestPrefsMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/notification-preferences$/i);
 
   if (path === UPLOAD_PATH && method === "POST") {
     response = requireScope("requests:write") ?? await handleUpload(auth, req);
@@ -1440,11 +1565,23 @@ Deno.serve(async (req) => {
   ) {
     requestId = citizenFileMatch[1];
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenAttachment(auth, req, requestId, citizenFileMatch[2]);
+  } else if (path === CITIZEN_SPACE_PATH && method === "PUT") {
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenSpace(auth, req);
+  } else if (path === CITIZEN_UNSUBSCRIBE_PATH && method === "POST") {
+    response = requireScope(CITIZEN_SCOPE) ?? await handleUnsubscribe(auth, req);
+  } else if (contactPrefsMatch && method === "PUT" && UUID_RE.test(contactPrefsMatch[1])) {
+    response = requireScope(CITIZEN_SCOPE) ?? await handleContactPreferences(auth, req, contactPrefsMatch[1]);
+  } else if (contactPrefsMatch && method === "DELETE" && UUID_RE.test(contactPrefsMatch[1])) {
+    response = requireScope(CITIZEN_SCOPE) ?? await handleCloseContactSpace(auth, req, contactPrefsMatch[1]);
+  } else if (guestPrefsMatch && method === "PUT" && UUID_RE.test(guestPrefsMatch[1])) {
+    requestId = guestPrefsMatch[1];
+    response = requireScope(CITIZEN_SCOPE) ?? await handleGuestPreferences(auth, req, requestId);
   } else if (citizenContactMatch && method === "GET" && UUID_RE.test(citizenContactMatch[1])) {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenContactRequests(auth, req, citizenContactMatch[1], url);
   } else if (
     path === "/v1/requests" || idMatch || attachMatch || timelineMatch ||
-    path === CITIZEN_ACCESS_PATH || path === CITIZEN_RESEND_PATH || citizenMatch || citizenMessageMatch || citizenFileMatch || citizenContactMatch
+    path === CITIZEN_ACCESS_PATH || path === CITIZEN_RESEND_PATH || citizenMatch || citizenMessageMatch || citizenFileMatch || citizenContactMatch ||
+    path === CITIZEN_SPACE_PATH || path === CITIZEN_UNSUBSCRIBE_PATH || contactPrefsMatch || guestPrefsMatch
   ) {
     response = fail("method_not_allowed", "Méthode non prévue sur cette route.");
   } else {

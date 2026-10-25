@@ -327,6 +327,28 @@ source et que l'accès est ouvert et non expiré, pas qui tient la session. Ni `
 moins, aléatoire). Sans lui, le dépôt passe mais `guest_access` vaut `null`, et
 `/v1/citizen/access` répond 500. Changer le poivre invalide tous les codes déjà remis.
 
+### 4 ter. Avis automatiques à l'usager (2.10.0, scope `requests:citizen`)
+
+Quand la collectivité les allume (Paramètres d'Iris), Iris prévient l'usager par courriel
+quand sa demande change de statut. Il les compose et les envoie lui-même ; le portail lui dit
+seulement **où** renvoyer l'usager et **s'il** veut être prévenu :
+
+1. `PUT /v1/citizen/space` `{ space_url, request_url_template? }` — au démarrage du portail,
+   idempotent. Sans elle, aucun avis ne part à un compte (il n'aurait pas de lien).
+2. `PUT /v1/citizen/contacts/{id}/notification-preferences` `{ channels: { email } }` avec le
+   jeton `contact:{id}` portant `e` — au rattachement, à chaque changement de préférence ou
+   d'adresse, et à chaque ouverture de session. **Un compte n'est prévenu que si l'adresse de
+   sa fiche Socle est celle de son compte** : alignez-la (contacts-api 1.5.0,
+   `POST /v1/citizen/contacts/{account_id}/account-email`). `DELETE` à la fermeture de l'espace.
+3. `PUT /v1/citizen/requests/{id}/notification-preferences` — l'interrupteur d'un invité sur
+   `/suivi` ; la valeur courante est `notifications.email` de la vue usager.
+4. **Page `/notifications/desinscription?jeton=…`** à servir par le portail, à la charte de la
+   collectivité : elle relaie le jeton à `POST /v1/citizen/notifications/unsubscribe`, puis,
+   pour un compte (`kind: "compte"`), coupe la préférence de l'espace et la repousse.
+
+**Mise en service** : `IRIS_CITIZEN_TOKEN_SECRET` (le même que pour le jeton court) — sans
+lui, aucun avis ne part : un avis sans lien de désinscription n'est pas envoyé.
+
 ## 5. Traçabilité
 
 Chaque appel est journalisé (`integration_api_logs` : clé, méthode, chemin, statut — jamais le

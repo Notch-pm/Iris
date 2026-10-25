@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.9.0";
+export const CONTRACT_VERSION = "2.10.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -436,7 +436,9 @@ export function buildOpenApi(baseUrl: string) {
         "`/v1/citizen/*` (scope `requests:citizen`) — ajout additif. **2.7.0 (2026-10)** :",
         "« Mes demandes » d'un compte du portail (`GET /v1/citizen/contacts/{id}/requests`),",
         "jeton court `X-Citizen-Token` sur les lectures usager, demande soustraite à l'espace usager",
-        "par un agent (`citizen_visible`) — ajout additif.",
+        "par un agent (`citizen_visible`) — ajout additif. **2.10.0 (2026-10)** : avis automatiques à",
+        "l'usager — adresse de l'espace (`PUT /v1/citizen/space`), préférences d'un compte et d'un invité,",
+        "désinscription, champ `notifications` de la vue invitée — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -926,11 +928,15 @@ export function buildOpenApi(baseUrl: string) {
           description:
             "Ce que l'usager peut lire de SA demande : référence, objet, démarche, statut, dates, " +
             "texte de clôture (une fois close), ses pièces, et les messages qu'Iris lui a envoyés " +
-            "(le code d'accès y est masqué). Demande à accès invité ouvert, non expiré ; 404 sinon.",
+            "(le code d'accès y est masqué). Demande à accès invité ouvert, non expiré ; 404 sinon. " +
+            "Pour un invité seulement (2.10.0) : `notifications: { email }`, sa préférence d'avis pour cette demande.",
           parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { $ref: "#/components/parameters/CitizenToken" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
           responses: {
             "200": { description: "La vue usager.", content: { "application/json": { schema: {
-              type: "object", properties: { request: { $ref: "#/components/schemas/CitizenRequest" } },
+              type: "object", properties: {
+                request: { $ref: "#/components/schemas/CitizenRequest" },
+                notifications: { type: "object", description: "Invité seulement (2.10.0).", properties: { email: { type: "boolean" } } },
+              },
             } } } },
             "404": err("Inconnue, hors périmètre ou accès expiré."),
           },
@@ -953,6 +959,122 @@ export function buildOpenApi(baseUrl: string) {
               properties: { url: { type: "string", format: "uri" }, expires_in: { type: "integer", example: 60 } },
             } } } },
             "404": err("Pièce inconnue ou non visible par l'usager."),
+          },
+        },
+      },
+      "/v1/citizen/space": {
+        put: {
+          tags: ["Usager"],
+          summary: "Adresse de l'espace usager du portail (2.10.0)",
+          description:
+            "L'adresse de « Mes demandes » pour CETTE collectivité, citée en lien par les avis envoyés à un compte. " +
+            "Facultatif : un gabarit de la page d'une demande, contenant `{request_id}`, de même origine. https, " +
+            "500 caractères au plus. Clé seule, sans jeton court. Idempotent : poussez-la au démarrage.",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }],
+          requestBody: { required: true, content: { "application/json": { schema: {
+            type: "object", additionalProperties: false, required: ["space_url"],
+            properties: {
+              space_url: { type: "string", format: "uri", example: "https://demarches.sceaux.fr/mes-demandes" },
+              request_url_template: { type: ["string", "null"], example: "https://demarches.sceaux.fr/mes-demandes/{request_id}" },
+            },
+          } } } },
+          responses: {
+            "200": { description: "Enregistrée." },
+            "400": err("Adresse invalide, gabarit sans `{request_id}` ou d'une autre origine, champ inconnu."),
+          },
+        },
+      },
+      "/v1/citizen/contacts/{id}/notification-preferences": {
+        put: {
+          tags: ["Usager"],
+          summary: "Préférences d'avis d'un compte (2.10.0)",
+          description:
+            "Le portail, propriétaire de la préférence, en pousse une copie : au rattachement de la fiche, à chaque " +
+            "changement, au changement d'adresse du compte et à chaque ouverture de session (idempotent). " +
+            "**Jeton court obligatoire**, sujet `contact:{id}`, **avec `e`** : Iris en garde une empreinte et ne " +
+            "prévient le compte que si l'adresse de la fiche Socle du jour est la même. L'adresse n'est jamais lue " +
+            "dans le corps.",
+          parameters: [
+            { $ref: "#/components/parameters/TenantHeader" },
+            { $ref: "#/components/parameters/CitizenToken" },
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", additionalProperties: false, required: ["channels"], properties: {
+            channels: { type: "object", additionalProperties: false, required: ["email"], properties: {
+              email: { type: "boolean", description: "Faux : plus d'avis par courriel. Absent de toute poussée : vrai (fail open)." },
+            } },
+          } } } } },
+          responses: {
+            "200": { description: "Copie enregistrée ; l'espace est actif." },
+            "400": err("Corps invalide, canal inconnu, ou jeton sans adresse du compte (`e`)."),
+            "404": err("Jeton absent, invalide ou pour une autre fiche."),
+          },
+        },
+        delete: {
+          tags: ["Usager"],
+          summary: "Espace fermé ou compte supprimé (2.10.0)",
+          description: "Plus aucun avis par le canal compte pour cette fiche. Jeton court `contact:{id}` obligatoire.",
+          parameters: [
+            { $ref: "#/components/parameters/TenantHeader" },
+            { $ref: "#/components/parameters/CitizenToken" },
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          responses: {
+            "200": { description: "Espace inactif (idempotent)." },
+            "404": err("Jeton absent, invalide ou pour une autre fiche."),
+          },
+        },
+      },
+      "/v1/citizen/requests/{id}/notification-preferences": {
+        put: {
+          tags: ["Usager"],
+          summary: "Préférence d'avis d'un invité, pour cette demande (2.10.0)",
+          description:
+            "Ne vaut que pour CETTE demande, ouverte par son code d'accès. **Jeton court obligatoire**, sujet " +
+            "`request:{id}` (avec `g`). La valeur courante se lit dans `notifications` de la vue usager.",
+          parameters: [
+            { $ref: "#/components/parameters/TenantHeader" },
+            { $ref: "#/components/parameters/CitizenToken" },
+            { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } },
+          ],
+          requestBody: { required: true, content: { "application/json": { schema: { type: "object", additionalProperties: false, required: ["channels"], properties: {
+            channels: { type: "object", additionalProperties: false, required: ["email"], properties: {
+              email: { type: "boolean", description: "Faux : plus d'avis par courriel. Absent de toute poussée : vrai (fail open)." },
+            } },
+          } } } } },
+          responses: {
+            "200": { description: "Préférence enregistrée." },
+            "400": err("Corps invalide ou canal inconnu."),
+            "404": err("Jeton absent ou invalide, accès coupé ou expiré."),
+          },
+        },
+      },
+      "/v1/citizen/notifications/unsubscribe": {
+        post: {
+          tags: ["Usager"],
+          summary: "Lien de désinscription d'un avis (2.10.0)",
+          description:
+            "Chaque avis porte un lien vers la page `/notifications/desinscription?jeton=…` **du portail**, qui " +
+            "relaie ici le jeton. Clé seule : le jeton est la preuve. **Invité** : Iris coupe les avis de cette " +
+            "demande et rend `{ kind: \"invite\" }`. **Compte** : Iris n'écrit rien et rend `{ kind: \"compte\", " +
+            "contact_id }` — au portail de couper la préférence de l'espace, puis de la pousser. Tout jeton " +
+            "invalide reçoit le même 404.",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }],
+          requestBody: { required: true, content: { "application/json": { schema: {
+            type: "object", additionalProperties: false, required: ["token"], properties: { token: { type: "string" } },
+          } } } },
+          responses: {
+            "200": { description: "Désinscription traitée.", content: { "application/json": { schema: {
+              type: "object",
+              properties: {
+                kind: { type: "string", enum: ["invite", "compte"] },
+                request_id: { type: "string", format: "uuid" },
+                contact_id: { type: "string", format: "uuid" },
+                reference: { type: "string", example: "DEM-2026-000042" },
+              },
+            } } } },
+            "400": err("Corps invalide."),
+            "404": err("Jeton invalide, d'une autre collectivité, ou demande sans accès invité."),
           },
         },
       },

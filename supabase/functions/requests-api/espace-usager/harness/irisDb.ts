@@ -28,7 +28,7 @@ const STUB_SCHEMA = `
     id uuid primary key default gen_random_uuid(), socle_org_id uuid unique, name text);
   create table public.integration_sources (
     id uuid primary key default gen_random_uuid(), code text not null, status text not null default 'active',
-    organization_id uuid references public.organizations(id));
+    organization_id uuid references public.organizations(id), updated_at timestamptz);
   create table public.integration_credentials (
     id uuid primary key default gen_random_uuid(),
     integration_source_id uuid not null references public.integration_sources(id),
@@ -195,6 +195,7 @@ export async function createIrisDb(): Promise<PGlite> {
     "20261024100000_reponse_usager_suites_po.sql",
     "20261025100000_request_emails_nature_delivery.sql",
     "20261025110000_notifications_usager_file.sql",
+    "20261025120000_notifications_usager_routes.sql",
   ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }
