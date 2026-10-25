@@ -419,6 +419,19 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
   `courriel|espace` (défaut `courriel`) — `espace` : le message est publié dans l'espace
   usager et un avis avec extrait part à sa place (M2). Détail :
   [`notifications-usager-architecture.md`](notifications-usager-architecture.md), ADR-11.
+- **Avis automatiques à l'usager** *(2026-10-25, B12, lot L4c-1, `20261025110000`)* —
+  `citizen_notification_settings` (interrupteur par tenant, éteint sans ligne ; écriture par
+  la seule RPC `save_citizen_notification_settings`, administration de la racine ; lecture
+  par tout membre), `citizen_notices` (file : une ligne `pending` par demande où s'ajoutent
+  les événements d'une rafale, `due_at` = premier + 10 min ; `reason` d'un catalogue fermé,
+  jumeau de `_shared/citizenNotices/decision.ts` ; lecture `can_consult_request`, aucune
+  adresse stockée), `request_citizen_status` (statut CONNU de l'usager), `citizen_space_links`
+  (copie poussée par Nora : espace actif, préférences par canal, empreinte HMAC de l'adresse
+  du compte — aucune identité ; service seul), colonnes `integration_sources.citizen_space_url`
+  / `citizen_request_url_template` et `request_access_codes.notify_email`. Producteur unique :
+  le trigger `t41_requests_citizen_notice` (AFTER UPDATE OF status), muet pour Clara, sous
+  `iris.silence_usager`, sous `iris.reprise_usager` et interrupteur éteint. Détail :
+  [`notifications-usager-architecture.md`](notifications-usager-architecture.md).
 - **`request_citizen_messages`** *(2026-10-21, lot L4b)* — messages **entrants** : l'usager
   répond en ligne sur SA demande, depuis son compte (`author_kind = 'compte'`, `socle_contact_id`
   de sa fiche) ou depuis le suivi sans compte (`'invite'`). `body` (≤ 5 000 caractères),

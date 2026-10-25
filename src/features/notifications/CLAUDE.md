@@ -304,3 +304,13 @@ sécurité, seulement une économie de trafic — c'est le serveur qui décide, 
   le corps de la note ne fuite pas · étanchéité RLS · INSERT/UPDATE/DELETE clients refusés ·
   fonctions internes hors de portée d'`authenticated` · les RPC de lecture ne touchent que ses
   propres lignes · table bien publiée en temps réel.
+
+## Avis automatiques à l'USAGER (B12, `usager/`, 2026-10-25)
+
+Rien à voir avec la cloche : ce sont des courriels **à l'usager**, pas aux agents. L'écran ne
+porte que l'**interrupteur** de la collectivité (Paramètres › « Avis à l'usager »,
+`CitizenNoticesPanel`), éteint par défaut, réglé par la seule RPC
+`save_citizen_notification_settings` (administration de la racine — l'UI reflète). Allumer
+demande confirmation : ce sont de vrais habitants. Tout le reste vit au serveur — trigger
+t41, file `citizen_notices`, facteur `notifications-mailer/citizenNotices.ts`, règles pures
+`_shared/citizenNotices/` → [`docs/notifications-usager-architecture.md`](../../../docs/notifications-usager-architecture.md).

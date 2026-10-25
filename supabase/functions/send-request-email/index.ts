@@ -442,6 +442,15 @@ Deno.serve(async (req) => {
   }
 
   await settle(emailId, true);
+  // B12 : l'usager connaît désormais l'issue de sa demande. Un avis de statut
+  // ultérieur (réouverture) se compare à elle. Jamais bloquant : l'avis est parti.
+  if (closureMode) {
+    const { error: knownError } = await supabase.rpc("note_citizen_known_status", {
+      p_request_id: request.id,
+      p_status: request.status,
+    });
+    if (knownError) console.error("send-request-email: note_citizen_known_status en échec", knownError);
+  }
   // Journal : jamais l'adresse ni le contenu — seulement de quoi suivre l'envoi.
   console.log(
     `send-request-email: échange ${emailId} envoyé (demande=${request.reference}, ` +

@@ -224,6 +224,18 @@ courriel, et la fiche Socle est mise à jour** (ADR-14). ⚠️ C'est la seule �
 de B12 (contacts-api refuse aujourd'hui `email` sur la route citoyenne) : à coordonner avec
 la session Socle en cours.
 
+**Avancement** :
+- **L4c-0 livré le 2026-10-25** (`20261025100000`) : `request_emails.nature` / `delivery`, la
+  vue usager exclut les avis ; `requests-api` redéployée.
+- **L4c-1 codé le 2026-10-25** (`20261025110000`) : interrupteur par collectivité (éteint
+  partout, Paramètres › « Avis à l'usager »), file `citizen_notices` + trigger t41, statut
+  connu, facteur `notifications-mailer/citizenNotices.ts`, modules purs
+  `_shared/citizenNotices/`, avis composé par `_shared/email/avisUsager.ts`. Posés dès ce lot
+  pour le choix du canal : `citizen_space_links`, `integration_sources.citizen_space_url`,
+  `request_access_codes.notify_email` — remplis par les routes du lot L4c-2.
+- **Socle livré pour l'ADR-14** : contacts-api 1.5.0, `POST
+  /v1/citizen/contacts/{account_id}/account-email` (Nora garantit l'adresse ; aucun journal).
+
 ## B13 — Accès invité au guichet (suivi en ligne d'une demande déposée au guichet)
 
 **Ce qui existe.** L'accès invité (`/suivi`, code d'accès) n'est ouvert qu'à l'ingestion API,

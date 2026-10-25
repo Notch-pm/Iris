@@ -372,6 +372,21 @@ plus rien (tracé). Risque accepté, voir § 6.
     rattachement « sur l'adresse du COMPTE »). Forme exacte (route dédiée « aligner sur le
     compte » ou clé `email` contrôlée) laissée à la session Socle. Journal / historique de la
     fiche côté Socle.
+- **Livré par le Socle — contacts-api 1.5.0 (2026-10-25, Socle `632b630`)** :
+  - `POST /v1/citizen/contacts/{account_id}/account-email`, scope `citizen`, en-tête
+    `X-Organization-Id` ; corps `{ "email": "<adresse vérifiée du compte>" }` et rien d'autre ;
+    la fiche la prend en minuscules ; `200 { contact }` (DTO du GET), idempotent ; `400` clé
+    inconnue ou adresse malformée ; `404` compte sans fiche rattachée ou fiche archivée.
+  - `PATCH /v1/citizen/contacts/{account_id}` refuse toujours `email`.
+  - ⚠️ **Correction de la prémisse ci-dessus** : le Socle **ne connaît pas** l'adresse du
+    compte (le rattachement la recopie dans `contacts.email` puis l'oublie). Il ne peut donc
+    pas vérifier « égale à l'adresse du compte » : **c'est la garantie de Nora** (clé
+    `citizen`), comme au `/link`. Nora n'appelle cette route qu'avec l'adresse tirée du compte
+    authentifié, jamais avec une saisie.
+  - **Aucun journal** côté Socle (pas d'historique des fiches) : un journal serait un chantier
+    à part.
+  - Côté Nora : `alignEmail(tenantId, accountId, email)` dans
+    `_shared/socle/citizenContacts.ts`.
 - **Conséquences** :
   - ADR-1 ne tient plus en entier : **une évolution du Socle est nécessaire**, petite et
     additive (contrat contacts-api), à **coordonner avec la session Socle en cours**. Iris n'en

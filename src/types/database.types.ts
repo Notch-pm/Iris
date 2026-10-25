@@ -97,6 +97,172 @@ export type Database = {
           },
         ]
       }
+      citizen_notices: {
+        Row: {
+          attempted_at: string | null
+          attempts: number
+          channel: string
+          created_at: string
+          due_at: string
+          email_id: string | null
+          error: string | null
+          event_sent: string | null
+          events: Json
+          id: string
+          message_email_ids: string[]
+          next_attempt_at: string | null
+          organization_id: string
+          reason: string | null
+          request_id: string
+          settled_at: string | null
+          status: string
+          target: string | null
+        }
+        Insert: {
+          attempted_at?: string | null
+          attempts?: number
+          channel?: string
+          created_at?: string
+          due_at: string
+          email_id?: string | null
+          error?: string | null
+          event_sent?: string | null
+          events?: Json
+          id?: string
+          message_email_ids?: string[]
+          next_attempt_at?: string | null
+          organization_id: string
+          reason?: string | null
+          request_id: string
+          settled_at?: string | null
+          status?: string
+          target?: string | null
+        }
+        Update: {
+          attempted_at?: string | null
+          attempts?: number
+          channel?: string
+          created_at?: string
+          due_at?: string
+          email_id?: string | null
+          error?: string | null
+          event_sent?: string | null
+          events?: Json
+          id?: string
+          message_email_ids?: string[]
+          next_attempt_at?: string | null
+          organization_id?: string
+          reason?: string | null
+          request_id?: string
+          settled_at?: string | null
+          status?: string
+          target?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "citizen_notices_email_id_fkey"
+            columns: ["email_id"]
+            isOneToOne: false
+            referencedRelation: "request_emails"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "citizen_notices_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "citizen_notices_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      citizen_notification_settings: {
+        Row: {
+          enabled: boolean
+          organization_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          enabled?: boolean
+          organization_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          enabled?: boolean
+          organization_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "citizen_notification_settings_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "citizen_notification_settings_updated_by_fkey"
+            columns: ["updated_by"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      citizen_space_links: {
+        Row: {
+          account_email_hash: string | null
+          channel_prefs: Json
+          integration_source_id: string | null
+          organization_id: string
+          pushed_at: string
+          socle_contact_id: string
+          space_active: boolean
+        }
+        Insert: {
+          account_email_hash?: string | null
+          channel_prefs?: Json
+          integration_source_id?: string | null
+          organization_id: string
+          pushed_at?: string
+          socle_contact_id: string
+          space_active?: boolean
+        }
+        Update: {
+          account_email_hash?: string | null
+          channel_prefs?: Json
+          integration_source_id?: string | null
+          organization_id?: string
+          pushed_at?: string
+          socle_contact_id?: string
+          space_active?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "citizen_space_links_integration_source_id_fkey"
+            columns: ["integration_source_id"]
+            isOneToOne: false
+            referencedRelation: "integration_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "citizen_space_links_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_template_organizations: {
         Row: {
           created_at: string
@@ -348,6 +514,8 @@ export type Database = {
       }
       integration_sources: {
         Row: {
+          citizen_request_url_template: string | null
+          citizen_space_url: string | null
           code: string
           created_at: string
           id: string
@@ -357,6 +525,8 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          citizen_request_url_template?: string | null
+          citizen_space_url?: string | null
           code: string
           created_at?: string
           id?: string
@@ -366,6 +536,8 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          citizen_request_url_template?: string | null
+          citizen_space_url?: string | null
           code?: string
           created_at?: string
           id?: string
@@ -982,6 +1154,8 @@ export type Database = {
           failed_attempts: number
           last_used_at: string | null
           locked_until: string | null
+          notify_changed_at: string | null
+          notify_email: boolean
           organization_id: string
           reissued_at: string | null
           request_id: string
@@ -999,6 +1173,8 @@ export type Database = {
           failed_attempts?: number
           last_used_at?: string | null
           locked_until?: string | null
+          notify_changed_at?: string | null
+          notify_email?: boolean
           organization_id: string
           reissued_at?: string | null
           request_id: string
@@ -1016,6 +1192,8 @@ export type Database = {
           failed_attempts?: number
           last_used_at?: string | null
           locked_until?: string | null
+          notify_changed_at?: string | null
+          notify_email?: boolean
           organization_id?: string
           reissued_at?: string | null
           request_id?: string
@@ -1387,6 +1565,32 @@ export type Database = {
             foreignKeyName: "request_citizen_messages_request_id_fkey"
             columns: ["request_id"]
             isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      request_citizen_status: {
+        Row: {
+          known_at: string
+          known_status: string
+          request_id: string
+        }
+        Insert: {
+          known_at?: string
+          known_status: string
+          request_id: string
+        }
+        Update: {
+          known_at?: string
+          known_status?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_citizen_status_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: true
             referencedRelation: "requests"
             referencedColumns: ["id"]
           },
@@ -2497,6 +2701,47 @@ export type Database = {
         }
         Returns: string
       }
+      citizen_notices_enabled: { Args: { p_org_id: string }; Returns: boolean }
+      claim_citizen_notices: {
+        Args: { p_limit?: number }
+        Returns: {
+          attempts: number
+          citizen_visible: boolean
+          closed_at: string
+          email_body: string
+          email_id: string
+          email_subject: string
+          email_to: string
+          enabled: boolean
+          events: Json
+          guest_email_hash: string
+          guest_notify_email: boolean
+          guest_revoked_at: string
+          guest_tracking_url: string
+          identity_status: string
+          known_status: string
+          link_account_email_hash: string
+          link_channel_prefs: Json
+          link_request_url_template: string
+          link_space_active: boolean
+          link_space_url: string
+          message_email_ids: string[]
+          notice_id: string
+          notice_org_id: string
+          organization_name: string
+          procedure_name: string
+          receipt_status: string
+          reference: string
+          request_id: string
+          requester_snapshot: Json
+          socle_contact_id: string
+          socle_procedure_id: string
+          socle_root_org_id: string
+          socle_scope_org_id: string
+          source: string
+          status: string
+        }[]
+      }
       claim_notification_emails: {
         Args: { p_limit?: number }
         Returns: {
@@ -2645,6 +2890,7 @@ export type Database = {
         }[]
       }
       create_request_from_procedure: { Args: { p: Json }; Returns: Json }
+      defer_citizen_notice: { Args: { p_id: string }; Returns: undefined }
       delete_permission_profile: {
         Args: { p_expected_version: number; p_profile_id: string }
         Returns: Json
@@ -2913,6 +3159,10 @@ export type Database = {
       my_rights: { Args: { p_org_id: string }; Returns: Json }
       nil_procedure: { Args: never; Returns: string }
       normalize_address: { Args: { p_text: string }; Returns: string }
+      note_citizen_known_status: {
+        Args: { p_request_id: string; p_status: string }
+        Returns: undefined
+      }
       notification_channels_for: {
         Args: { p_kind: string; p_user_id: string }
         Returns: {
@@ -3133,6 +3383,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      save_citizen_notification_settings: {
+        Args: { p_enabled: boolean; p_org_id: string }
+        Returns: Json
+      }
       save_permission_profile: { Args: { p: Json }; Returns: Json }
       save_procedure_link_settings: {
         Args: {
@@ -3164,6 +3418,17 @@ export type Database = {
         }
         Returns: Json
       }
+      settle_citizen_notice: {
+        Args: {
+          p_error?: string
+          p_event?: string
+          p_id: string
+          p_known_status?: string
+          p_ok: boolean
+          p_target?: string
+        }
+        Returns: undefined
+      }
       settle_notification_email: {
         Args: { p_error?: string; p_id: string; p_ok: boolean }
         Returns: undefined
@@ -3189,6 +3454,15 @@ export type Database = {
         Returns: undefined
       }
       shares_org_with: { Args: { p_user_id: string }; Returns: boolean }
+      skip_citizen_notice: {
+        Args: {
+          p_event?: string
+          p_id: string
+          p_reason: string
+          p_target?: string
+        }
+        Returns: undefined
+      }
       skip_notification_email: {
         Args: { p_id: string; p_reason: string }
         Returns: undefined
@@ -3218,6 +3492,15 @@ export type Database = {
           use_tls: boolean
           username: string
         }[]
+      }
+      start_citizen_notice_email: {
+        Args: {
+          p_body: string
+          p_id: string
+          p_subject: string
+          p_to_email: string
+        }
+        Returns: string
       }
       start_request_access_mail_email: {
         Args: { p_body: string; p_mail_id: string; p_subject: string }

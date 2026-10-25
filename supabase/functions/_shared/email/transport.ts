@@ -33,6 +33,8 @@ export async function sendBrandedEmail(
   content: EmailContent,
   brand: EmailBrand,
   attachments: EmailAttachment[] = [],
+  /** En-têtes additionnels (ex. `List-Unsubscribe` des avis à l'usager, B12). */
+  headers: Record<string, string> = {},
 ): Promise<void> {
   const transporter = nodemailer.createTransport({
     host: config.host,
@@ -55,5 +57,6 @@ export async function sendBrandedEmail(
       content: Buffer.from(a.content),
       contentType: a.contentType || undefined,
     })),
+    headers,
   });
 }

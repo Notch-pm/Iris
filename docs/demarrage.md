@@ -147,6 +147,23 @@ Fait le 2026-08-20 : dépôt git initialisé (remote `https://github.com/Notch-p
 hook pre-commit husky (`lint` + `test`) et CI GitHub Actions sous Node 24
 (`.github/workflows/ci.yml`).
 
+## Jeux de démonstration, seeds et scripts : `iris.silence_usager`
+
+Depuis B12 (2026-10-25), un changement de statut peut écrire à l'usager (trigger
+`t41_requests_citizen_notice`, si l'interrupteur « Avis à l'usager » de la collectivité est
+allumé). **Tout script qui change des statuts en base** — seed, jeu de démonstration,
+nettoyage — commence sa transaction par :
+
+```sql
+select set_config('iris.silence_usager', 'on', true);
+```
+
+Le drapeau est transactionnel : il ne vaut que pour la transaction du script. Ceinture
+supplémentaire : l'interrupteur est éteint par défaut sur tous les tenants, et le facteur
+relit l'interrupteur au moment d'envoyer. ⚠️ Un seed passé **par l'API d'ingestion** envoie
+déjà de vrais accusés de réception (hors B12) : le faire sur un tenant éteint, sans adresses
+réelles.
+
 ## Vérifications
 
 ```bash

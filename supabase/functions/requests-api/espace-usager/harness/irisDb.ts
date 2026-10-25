@@ -172,6 +172,14 @@ const STUB_SCHEMA = `
       update public.attachment_uploads set consumed_at = now() where id = p_id returning * into v;
       return v;
     end $$;
+
+  -- B12, lot L4c-1 (20261025110000) : file des avis à l'usager. Administration
+  -- pilotée par \`app.admin\`, appartenance au tenant toujours vraie.
+  alter table public.requests
+    add column requester_snapshot jsonb, add column identity_status text not null default 'rapproche';
+  create function public.has_admin_scope(uuid, uuid) returns boolean language sql stable
+    as $$ select coalesce(current_setting('app.admin', true), '') = '1' $$;
+  create function public.is_org_member(uuid) returns boolean language sql stable as $$ select true $$;
 `;
 
 let shared: PGlite | null = null;
@@ -186,6 +194,7 @@ export async function createIrisDb(): Promise<PGlite> {
     "20261021120000_reponse_usager.sql",
     "20261024100000_reponse_usager_suites_po.sql",
     "20261025100000_request_emails_nature_delivery.sql",
+    "20261025110000_notifications_usager_file.sql",
   ]) {
     await db.exec(readFileSync(join(MIGRATIONS, file), "utf8"));
   }

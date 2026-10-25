@@ -19,6 +19,9 @@
 // Depuis le 2026-10-09, un SECOND facteur sur le même cron : les accusés de
 // réception à l'usager au dépôt (`receipts.ts`, file `request_receipts`). Depuis le
 // 2026-10-21, un TROISIÈME : les nouveaux codes d'accès invité (`accessMails.ts`).
+// Depuis le 2026-10-25 (B12), un QUATRIÈME : les avis de statut à l'usager
+// (`citizenNotices.ts`, file `citizen_notices`), éteints tant que la collectivité
+// n'a pas allumé son interrupteur.
 //
 // ⚠️ CORS : aucun. Cette fonction n'est jamais appelée depuis un navigateur.
 
@@ -33,6 +36,7 @@ import {
 } from "../_shared/email/notifications.ts";
 import { drainReceipts } from "./receipts.ts";
 import { drainAccessMails } from "./accessMails.ts";
+import { drainCitizenNotices } from "./citizenNotices.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -162,5 +166,12 @@ Deno.serve(async (req: Request) => {
   // Troisième facteur : les nouveaux codes d'accès invité (`accessMails.ts`, lot L4a).
   const accessCodes = await drainAccessMails(supabase, (orgId) => smtpForOrg(orgId, smtpCache), BATCH);
 
-  return json(200, { claimed: rows.length, sent, skipped, failed, receipts, accessCodes });
+  // Quatrième facteur : les avis de statut à l'usager (B12). APRÈS les accusés :
+  // un avis attend que l'accusé de sa demande soit réglé.
+  const citizenNotices = await drainCitizenNotices(supabase, (orgId) => smtpForOrg(orgId, smtpCache), BATCH, {
+    pepper: Deno.env.get("IRIS_ACCESS_CODE_PEPPER"),
+    tokenSecret: Deno.env.get("IRIS_CITIZEN_TOKEN_SECRET"),
+  });
+
+  return json(200, { claimed: rows.length, sent, skipped, failed, receipts, accessCodes, citizenNotices });
 });
