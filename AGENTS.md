@@ -1,8 +1,9 @@
 # Instructions pour les agents IA
 
 Les règles de développement, invariants et pièges du projet vivent dans **[CLAUDE.md](CLAUDE.md)**
-— lecture obligatoire avant toute modification ; le détail de chaque feature (parcours agent,
-contacts, superadmin) est dans `src/features/<feature>/CLAUDE.md`, à lire avant d'y toucher.
+— lecture obligatoire avant toute modification. C'est un **index** : le détail de chaque
+feature est dans sa fiche `docs/features/*.md` ou dans `src/features/<feature>/CLAUDE.md`, à
+lire avant d'y toucher.
 L'architecture validée fait foi :
 **[docs/architecture-proposee.md](docs/architecture-proposee.md)**.
 

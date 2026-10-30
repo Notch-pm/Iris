@@ -3,7 +3,7 @@
 //
 // C'est un CONFORT de vérification, pas une saisie : le point n'est pas
 // déplaçable. Iris ne fabrique aucune coordonnée (doctrine cartographique du
-// `CLAUDE.md` racine) : ce qui s'enregistre est l'adresse — et, pour un lieu
+// `docs/features/adresse-et-cartographie.md`) : ce qui s'enregistre est l'adresse — et, pour un lieu
 // d'intervention de type `location`, le point de la proposition BAN retenue,
 // jamais un point posé à la main. Un point qu'on pourrait bouger sans que rien
 // ne le retienne mentirait sur ce que le formulaire garde.

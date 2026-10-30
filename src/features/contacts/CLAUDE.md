@@ -71,7 +71,7 @@ navigateur le 2026-08-20 dans le parcours de création.
     lecteur, et c'est la règle).
   - **Adresse assistée (2026-08-28)** : la section « Adresse » du dialogue est un champ
     UNIQUE qui propose les adresses du référentiel, avec une carte de contrôle sous lui —
-    détail et pièges dans [`src/features/requests/CLAUDE.md`](../requests/CLAUDE.md),
+    détail et pièges dans [`docs/features/adresse-et-cartographie.md`](../../../docs/features/adresse-et-cartographie.md),
     § « Saisie d'adresse assistée ». Contacts-api n'ayant QU'UN complément (`address_line2`),
     « Plus de champs » n'y montre que lui : ni bâtiment ni appartement séparés, qui seraient
     un modèle que le Socle n'a pas. Le **pays reste hors du dépliant** — il est obligatoire,
@@ -127,13 +127,13 @@ navigateur le 2026-08-20 dans le parcours de création.
     (`/demandes/nouvelle?usager=<id Socle>` — l'identifiant seul transite, jamais l'identité) ;
     le bouton n'apparaît qu'avec un droit de création sur au moins une démarche du cache
     (reflet de confort, le serveur revalide). Verrouillage et cas de refus : voir
-    [`src/features/requests/CLAUDE.md`](../requests/CLAUDE.md).
+    [`docs/features/creation-de-demande.md`](../../../docs/features/creation-de-demande.md).
   - Entrées : bouton « Voir la fiche » du bloc Usager de la fiche d'instruction — et, depuis
     le 2026-08-26, le bouton **« Modifier »** du même bloc, qui ouvre `UsagerEditDialog`
     **sans quitter la demande** (la fiche demande relit le Socle avec `useSocleContact`,
     exactement comme cette page). Même droit, même autorité : la correction va au Socle, la
     fiche est relue, et le `requester_snapshot` de la demande — la pièce du dossier — ne
-    bouge pas. Détail : [`src/features/requests/CLAUDE.md`](../requests/CLAUDE.md),
+    bouge pas. Détail : [`docs/features/usagers-et-identite.md`](../../../docs/features/usagers-et-identite.md),
     « Identité vivante de l'usager ».
 - **Liste des usagers** (`/usagers`, `UsagersListPage.tsx` + `usagers.ts` pur/testé +
   `useUsagers.ts`, 2026-08-23 — reprise de l'annuaire des contacts de Clara) : entrée de rail

@@ -159,7 +159,7 @@ tenant**.
 **À préciser** : lisibilité du nom, place du sélecteur, ou distinction entre « la collectivité
 où je travaille » et « l'organisme qui traite la demande que je regarde » ? La dernière lecture
 rejoint le vocabulaire arrêté le 2026-08-30 (« Organisme », cf.
-[`../src/features/requests/CLAUDE.md`](../src/features/requests/CLAUDE.md)).
+[`features/liste-des-demandes.md`](features/liste-des-demandes.md)).
 
 ⚠️ Toute reprise du header touche le **DS Notch/Ariane** et la parité avec Clara, qui est
 délibérée : lire `CLAUDE.md` § Conventions avant d'y toucher.
@@ -342,7 +342,7 @@ que qui l'a en tête retrouve où elle a atterri.
   l'organisation de la démarche est supprimé — c'est lui qui faisait atterrir sur la racine
   ACCM des demandes communales, les 15 démarches du tenant y étant rattachées. Un agent
   d'une commune unique ne voit pas la question. Détail :
-  [`../src/features/requests/CLAUDE.md`](../src/features/requests/CLAUDE.md) § « Organisme
+  [`features/creation-de-demande.md`](features/creation-de-demande.md) § « Organisme
   d'abord ».
 
 - **B1 — Centrage de la carte et zoom** · arbitrée par le PO le **2026-08-31**, livrée le
@@ -353,4 +353,4 @@ que qui l'a en tête retrouve où elle a atterri.
   (`TERRITORY_ZOOM`, 12). La piste « Recadrer en bascule » n'a pas été retenue ; la question
   de fond — une demande hors territoire est-elle une **anomalie à signaler** ? — reste
   ouverte, consignée dans
-  [`../src/features/requests/CLAUDE.md`](../src/features/requests/CLAUDE.md).
+  [`features/carte-des-interventions.md`](features/carte-des-interventions.md).

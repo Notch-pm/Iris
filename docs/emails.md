@@ -273,7 +273,7 @@ drainés par `notifications-mailer` comme les autres — **à redéployer** pour
 
 Depuis l'onglet **Échanges** de la fiche demande, un agent écrit à l'usager — avec un modèle
 d'e-mail ou à la main, pièces jointes comprises. C'est le **premier e-mail d'Iris qui ne va
-pas à un agent**. Détail : [`../src/features/requests/CLAUDE.md`](../src/features/requests/CLAUDE.md).
+pas à un agent**. Détail : [`features/echanges-usager.md`](features/echanges-usager.md).
 
 **⚠️ Portée de la règle « ce qui sort d'Iris ».** Le paragraphe *Contenu* ci-dessus vise les
 e-mails de **notification**, qui vont aux **agents** : il les empêche de transformer la

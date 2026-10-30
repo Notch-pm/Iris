@@ -102,7 +102,7 @@ Zéro ligne affectée = conflit (motif RM-56 de `permission_profiles`).
 ## Branchement dans la fiche demande — livré le 2026-08-26
 
 Les modèles servent désormais **pour de vrai**, depuis l'onglet **Échanges**
-([`../requests/CLAUDE.md`](../requests/CLAUDE.md)). Trois points qui concernent ce dossier :
+([`docs/features/echanges-usager.md`](../../../docs/features/echanges-usager.md)). Trois points qui concernent ce dossier :
 
 - **La résolution sur une vraie demande vit dans `requests/instruction/courriel.ts`**, pas ici :
   le résolveur connaît une demande, donc le spécifique importe le général (`renderTemplate`),

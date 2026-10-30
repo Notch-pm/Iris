@@ -81,7 +81,7 @@ en sommeil).
     pas.
   - **Nouveau code d'accès** : file `request_access_mails`. Destinataire = **adresse déclarée**
     seulement.
-- [Lu] [`emails.md`](emails.md) et `src/features/requests/CLAUDE.md` « Échanges » : **le
+- [Lu] [`emails.md`](emails.md) et `docs/features/echanges-usager.md` : **le
   message de l'agent part aujourd'hui par courriel avec tout son contenu et ses pièces
   jointes**, en synchrone, à l'adresse de la fiche Socle du jour.
 - [Lu] [`data-model.md`](data-model.md) :

@@ -15,6 +15,16 @@ instruites jusqu'à un état final.
 Toute implémentation s'y réfère (modèle de données §1, frontières §2, cycle de vie §3, RLS §4,
 contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan de livraison §9).
 
+## Comment lire cette documentation
+
+Ce fichier est un **index** (2026-10-30, motif du Socle) : chargé en entier à chaque session,
+il ne garde que les règles transverses et, par feature, ce qu'il faut savoir **avant** d'ouvrir
+sa fiche. Le détail — décisions datées, pièges, pointeurs de code — vit dans
+**`docs/features/*.md`** (fiches transverses et écrans du parcours agent) et dans le
+`CLAUDE.md` de chaque dossier de feature (chargé quand on y travaille). **Un nouveau détail
+s'écrit dans la fiche, jamais ici.** `src/claudeMd.test.ts` tient chaque `CLAUDE.md` sous
+40 000 caractères et vérifie que fiches et liens ne se perdent pas de vue.
+
 ## Invariants (à ne jamais enfreindre)
 
 - **Socle est la source de vérité** des organisations, démarches, catégories, usagers. Iris ne
@@ -29,12 +39,13 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
 - **La sécurité vit dans le RLS Postgres** — les droits ne sont jamais appliqués côté client,
   l'UI ne fait que refléter. Visibilité par **couple (organisation porteuse Socle en
   sous-arbre, démarche)**, combinée par profils de droits, y compris pour les administrateurs
-  (détail : bullet « Profils de droits » ci-dessous, [`docs/droits.md`](docs/droits.md)).
+  → [`docs/features/profils-de-droits.md`](docs/features/profils-de-droits.md),
+  [`docs/droits.md`](docs/droits.md).
 - **Workflow fixe à 7 statuts** (décision PO) : `a_traiter`, `en_instruction`, `en_attente`,
   `annulee`, `resolue_positive`, `resolue_negative`, `archivee`. Gardes de transition
   **serveur** (trigger), jamais UI seulement. « Résolue positivement » exige un passage par
-  l'instruction — et, depuis le 2026-08-28, que toute pièce **obligatoire** ait été qualifiée
-  conforme (`t17_requests_require_pieces_conformes`). `en_attente` s'intitule « En attente
+  l'instruction — et que toute pièce **obligatoire** ait été qualifiée conforme
+  (`t17_requests_require_pieces_conformes`). `en_attente` s'intitule « En attente
   d'information » : c'est là que va une demande dont une pièce est déclarée non conforme.
   Aucun 8ᵉ statut n'est à créer pour un nouveau besoin d'attente.
   **Résolution commune des demandes liées** (même incident, décision PO 2026-10-16) : une
@@ -44,140 +55,60 @@ contrats d'ingestion/retour §5–6, snapshots Socle §7, sécurité §8, plan d
   ([`docs/demandes-liees.md`](docs/demandes-liees.md)).
 - **Vocabulaire** : « catégorie » désigne exclusivement les catégories de **démarches** du
   Socle. La position d'une demande dans son cycle de vie est un **statut**. L'organisation
-  Socle qui reçoit et traite une demande s'appelle **organisme** partout où un agent la lit
-  (liste et tableau des demandes) — les clés de code, elles, restent `destinataire` :
-  elles circulent (état d'écran, `?destinataire=`) et la variable d'e-mail
-  `{{demande.destinataire}}` appartient à un catalogue FIGÉ.
-- **Iris ne gère aucune demande libre** (règle impérative PO, 2026-08-20) : toute nouvelle
-  demande est **fondée sur une démarche Socle active du tenant** (`socle_procedure_id` +
-  `procedure_snapshot`), gardé par le trigger `t16_requests_require_procedure` — service_role
-  compris. Le **snapshot de démarche est construit côté serveur** depuis Socle (edge
-  functions) : jamais accepté comme vérité d'un navigateur ou d'un partenaire. Les demandes
-  historiques sans démarche restent lisibles et transitionnables. Ce qui ne relève d'aucune
-  démarche n'entre pas dans Iris : c'est une **« demande complexe »** (2026-10-10), action
-  secondaire de « Nouvelle demande », que l'agent **relaie à Clara** (edge function
-  `relay-courrier-clara` → porte `iris-courrier` de Clara, canal « Relayé agent ») — Iris
-  n'en garde **ni ligne ni octet**. **Une démarche en
-  `brouillon` n'est proposée nulle part dans Iris** (2026-08-30) : le paramétrage n'est pas
-  fini, le Socle dit de ne la servir à personne — garde serveur sur la démarche rechargée dans
-  `create-request-from-procedure`, pas seulement un filtre d'écran. Les démarches **internes**,
-  elles, sont masquées TEMPORAIREMENT (décision PO : elles seront affichées ultérieurement).
-  Une démarche **hors de sa période de publication** disparaît elle aussi du sélecteur (bornes
-  incluses) — mais elle MASQUE seulement : aucune garde serveur, pour qu'un formulaire papier
-  reçu pendant la période reste consignable après sa fin.
-  Depuis le 2026-08-31, une quatrième règle s'ajoute, et elle **masque ET refuse** :
-  **une démarche doit être ACTIVÉE pour l'organisme** qui portera la demande
-  (`Socle.organization_procedures`, miroitée dans `socle_procedure_organizations`, gardée par
-  `t18_requests_require_procedure_active` — service_role et ingestion partenaire compris).
-  **Opt-in strict** : absente du miroir = non activée. Le Socle ne rend cette information que
-  par le filtre `GET /v1/procedures?enabled_for=<org>`, non récursif, d'où un appel par
-  organisation du sous-arbre à la synchro. ⚠️ `procedures.is_active_global` du Socle est mort :
-  ne jamais s'y fier. Le sélecteur signale en revanche ce
-  qui, dans la **publication** d'une démarche, mérite de l'être : la pastille « Non visible
-  portail » **uniquement** sur celles qui n'y sont pas (y être est le défaut du contrat), et la
-  période quand il y en a une. Détail :
-  [`docs/data-model.md`](docs/data-model.md) § « Publication des démarches ».
-- **Aucun miroir local d'usagers** : les contacts vivent dans le Socle (contacts-api), Iris
-  les lit/rapproche/crée/**corrige** via `socle-proxy`. **Une identité sans correspondance est
-  une nouvelle personne : on la CRÉE dans le Socle** (décision PO 2026-08-26) — parcours agent
-  comme ingestion partenaire. À l'ingestion, une fiche existante n'est réutilisée que sur un
-  **identifiant fort** (courriel, téléphone, SIRET) : personne n'y arbitre les homonymes.
-  Un **nom d'usage seul suffit** à créer une personne (règle du Socle, qui n'exige que la
-  civilité — un dépôt Nora sans nom de naissance restait orphelin jusqu'au 2026-09-23).
-  « Sans rapprochement » ne subsiste que comme sortie de secours — panne ou refus du
-  référentiel, identité déclarée impossible à nommer — et **jamais en silence** : anomalie
-  `usager_a_creer_dans_socle`. Iris ne conserve par demande que le
-  `requester_snapshot` (identité retenue au dépôt, immuable). *Immuable* ne veut pas dire
-  *seul affiché* : la fiche d'une demande relit la fiche Socle et montre l'identité du jour,
-  le dépôt et leurs écarts restant lisibles à côté (`requesterView`) — et le destinataire d'un
-  e-mail à l'usager suit la fiche relue, résolu côté serveur. Le snapshot, lui, n'est jamais
-  réécrit — et il n'est pas une commodité d'affichage : pour une identité **non rapprochée** ou
-  un dépôt anonyme, c'est la **seule** identité qui existe. Coût mesuré : ~250 octets par
-  demande, cinq fois moins que `procedure_snapshot` (justification, chiffres et leviers
-  écartés : [`docs/data-model.md`](docs/data-model.md), § « Pourquoi figer l'identité au
-  dépôt »).
+  Socle qui reçoit et traite une demande s'appelle **organisme** partout où un agent la lit —
+  les clés de code, elles, restent `destinataire` (état d'écran, `?destinataire=`, variable
+  d'e-mail `{{demande.destinataire}}` d'un catalogue FIGÉ).
+- **Iris ne gère aucune demande libre** (PO, 2026-08-20) : toute nouvelle demande est
+  **fondée sur une démarche Socle active du tenant** (`socle_procedure_id` +
+  `procedure_snapshot`, trigger `t16_requests_require_procedure`, service_role compris), et le
+  **snapshot est construit côté serveur**, jamais accepté d'un navigateur ou d'un partenaire.
+  Ce qui ne relève d'aucune démarche est une **« demande complexe »**, relayée à Clara sans
+  qu'Iris en garde ni ligne ni octet. Une démarche **en brouillon** n'est proposée nulle part
+  (garde serveur) ; **interne** ou **hors période de publication**, elle est masquée sans
+  refus ; **non activée pour l'organisme** (`t18_requests_require_procedure_active`, opt-in
+  strict), elle est masquée ET refusée. ⚠️ `procedures.is_active_global` du Socle est mort
+  → [`docs/features/demarches.md`](docs/features/demarches.md).
+- **Aucun miroir local d'usagers** : les contacts vivent dans le Socle, lus / rapprochés /
+  créés / corrigés via `socle-proxy`. **Une identité sans correspondance est une nouvelle
+  personne : on la CRÉE dans le Socle** ; à l'ingestion, une fiche n'est réutilisée que sur un
+  **identifiant fort**. « Sans rapprochement » n'est qu'une sortie de secours, **jamais en
+  silence** (anomalie `usager_a_creer_dans_socle`). Iris ne conserve que le
+  `requester_snapshot`, **immuable** — et seule identité qui existe pour un dépôt anonyme ou
+  non rapproché → [`docs/features/usagers-et-identite.md`](docs/features/usagers-et-identite.md).
 - **Aucune suppression de demande** (pièce administrative) : pas de policy DELETE, FK
   `ON DELETE RESTRICT` depuis le tenant, purge RGPD par procédure `service_role` dédiée.
-  **Les statistiques survivent à cette purge** (décision PO 2026-09-18) : elles se lisent dans
-  deux tables de faits, `request_stats` et `intervention_stats` — une ligne par objet, **sans
-  donnée d'usager, sans FK vers la demande** (UUID nu), alimentées par trigger `t31_*`,
-  **jamais purgées** ; l'écran ne lit jamais `requests`. Un script qui supprime des demandes
-  de test (nettoyage e2e, purge du jeu ACCM) doit vider les faits correspondants.
-- **Aucun octet n'entre dans le bucket des pièces depuis un navigateur** (2026-09-08) : tout
-  fichier — d'un agent, d'un partenaire, ou produit par Iris — passe par la **porte unique**
-  `supabase/functions/_shared/files/receive.ts` (taille, **signature binaire contre une liste
-  fermée** : PDF, images raster, HEIC, DOCX/XLSX/ODT/ODS — jamais SVG, HTML, archive ni
-  Office à macros ; extension cohérente ; sha256), puis par la **zone d'attente**
-  `attachment_uploads` que seules les RPC métier consomment (`consume_attachment_upload`).
-  Le client ne désigne un fichier que par `upload_id` ; chemin, nom, type et empreinte sont
-  relus en base. `request_attachments` et `storage.objects` n'ont **aucune policy d'écriture
-  cliente** ; la lecture suit la demande du chemin. Les partenaires **déposent** (push,
-  `POST /v1/uploads`, contrat 2.0.0) : Iris ne va jamais chercher un fichier chez eux. Pas
-  d'antivirus (décision PO 2026-09-08) : la liste fermée est la défense. « Voir » n'est
-  proposé que pour PDF et images (`inlineViewable`), tout le reste se télécharge.
-- **Consentements RGPD au dépôt** (2026-09-20, remplace « accepte les mails / accepte les
-  SMS ») : **deux** questions posées SYSTÉMATIQUEMENT à l'usager, quelle que soit la démarche —
-  `traitement` (utilisation des informations pour instruire la demande, **OBLIGATOIRE** :
-  sans lui le dépôt n'est pas validable) et `partage` (partage aux services de l'organisme
-  principal, facultatif, proposé **coché**). **Ce ne sont PAS des champs de `form_schema`** et
-  ils ne le seront pas : un consentement qu'un service pourrait décocher dans son paramétrage
-  ne vaudrait rien. Catalogue **FERMÉ** dans `supabase/functions/_shared/consents/catalog.ts`
-  (pur, testé, partagé écran ↔ edge functions).
-  **Le navigateur n'envoie que `kind` et `granted`** : la phrase consignée est recomposée côté
-  serveur depuis le nom de l'organisme principal (`organizations.name`, miroir de la racine
-  Socle) — même doctrine que les snapshots, un `statement` venu d'un client est refusé. La
-  garde vit dans `normalizeConsents`, appelée par `create-request-from-procedure`, jamais dans
-  l'écran seul.
-  **Deux écritures, et les deux sont nécessaires** : le **référentiel** est propriétaire du
-  consentement d'une PERSONNE (Socle `contact_consents` + état dérivé sur `contacts`, via
-  `POST /v1/contacts/{id}/consents`, idempotent par dépôt) ; `requests.consents` garde celui de
-  CE DÉPÔT, **immuable** (`t10_requests_protect_immutable`), parce qu'un dépôt anonyme ou une
-  identité non rapprochée n'a aucune fiche où écrire, et qu'un retrait ultérieur ne doit pas
-  réécrire ce qui a été accepté ce jour-là. Un échec d'écriture au Socle ne refuse JAMAIS le
-  dépôt : anomalie `consentement_non_transmis_au_socle`.
-  À l'**ingestion partenaire**, `consents` est **facultatif** (le contrat 2.x n'évolue qu'en
-  additif) : absent ⇒ anomalie `consentement_absent`, jamais une exigence rétroactive.
-  ⚠️ Les consentements **franchissent désormais la frontière** vers le navigateur
-  (`sanitizeContact`), à la différence d'`internal_notes` : Iris pose lui-même la question, un
-  agent doit pouvoir lire ce que l'usager a accepté. `consent_email`/`consent_sms` restent
-  hors d'Iris — obsolètes, conservés pour Clara seule.
-- **La messagerie de l'usager est FERMÉE par défaut** (décision PO 2026-10-25) : l'usager
-  n'écrit sur sa demande (portail, suivi par code) que quand le service attend sa réponse —
-  ouverte par une pièce **non conforme**, par « Attendre une réponse de l'usager » à l'envoi
-  d'un message, ou par le bouton de l'onglet Échanges (droit d'instruction) ; **une ouverture =
-  une réponse**, la réponse la referme, la clôture aussi. Gardé en base
-  (`request_citizen_reply_state`, `record_citizen_message` refuse en `P0423`), reflété par
-  `replies_open` dans la vue usager (contrat 2.11.0) — jamais une règle d'écran seule.
+  **Les statistiques survivent à cette purge** (PO 2026-09-18) : tables de faits
+  `request_stats` / `intervention_stats`, sans donnée d'usager ni FK vers la demande,
+  alimentées par trigger `t31_*`, jamais purgées ; l'écran ne lit jamais `requests`. Un script
+  qui supprime des demandes de test doit vider les faits correspondants.
+- **Aucun octet n'entre dans le bucket des pièces depuis un navigateur** (2026-09-08) : porte
+  unique `supabase/functions/_shared/files/receive.ts` (liste FERMÉE de signatures binaires),
+  zone d'attente `attachment_uploads` consommée par les seules RPC métier ; le client ne
+  désigne un fichier que par `upload_id`. Aucune policy d'écriture cliente sur
+  `request_attachments` ni `storage.objects`. Pas d'antivirus : la liste fermée est la défense
+  → [`docs/features/pieces-justificatives.md`](docs/features/pieces-justificatives.md).
+- **Consentements RGPD au dépôt** (2026-09-20) : deux questions SYSTÉMATIQUES, `traitement`
+  (OBLIGATOIRE) et `partage` (facultatif, proposé coché), **jamais des champs de
+  `form_schema`**, catalogue FERMÉ (`_shared/consents/catalog.ts`). Le navigateur n'envoie que
+  `kind` et `granted` ; la phrase est recomposée côté serveur (`normalizeConsents`). Deux
+  écritures : Socle (la personne) et `requests.consents` (ce dépôt, immuable) ; un échec Socle
+  ne refuse jamais le dépôt → [`docs/features/consentements.md`](docs/features/consentements.md).
+- **La messagerie de l'usager est FERMÉE par défaut** (PO 2026-10-25) : **une ouverture = une
+  réponse**, gardé en base (`request_citizen_reply_state`, `record_citizen_message` refuse en
+  `P0423`) → [`docs/features/echanges-usager.md`](docs/features/echanges-usager.md).
 - Les **notes internes ne quittent jamais Iris** (miroir de la règle `internal_notes` du
-  Socle) ; le texte de clôture destiné à l'usager est un objet distinct — **facultatif** depuis
-  le 2026-08-28, et repris dans l'avis de clôture envoyé à l'usager.
-- **Aucun mot de passe n'est généré ni affiché à un administrateur** : un compte s'ouvre par
-  une **invitation** (lien d'activation à usage unique, mot de passe choisi par son titulaire)
-  et se dépanne par un **lien de réinitialisation** envoyé au titulaire. Le **serveur d'envoi
-  ne se configure pas dans Iris** (décision PO 2026-08-23) : il est défini dans le **Socle**
-  pour l'organisation principale et recopié par la synchro du référentiel — `smtp_settings`
-  est un miroir, sans aucune surface d'écriture ni de lecture cliente. Le mot de passe reçu
-  vit dans le **Vault Postgres**, jamais dans une colonne lisible : Iris ne réplique pas la
-  dette « mots de passe SMTP en clair » de Socle et Clara.
-  Détail : [`docs/emails.md`](docs/emails.md).
-- **Profils de droits** (décision PO, 2026-08-22, remplace le rôle binaire `agent |
-  administrateur`) : les droits effectifs d'un utilisateur se combinent par **couple**
-  (organisation porteuse Socle, démarche) — trois droits indépendants `création`/`instruction`/
-  `clôture` impliquant chacun `consultation`, plus des droits par défaut (démarches non listées,
-  y compris futures ; valeur initiale « aucun », *fail closed*). L'**administration** est un
-  attribut de profil indépendant : elle **n'accorde par elle-même aucun droit** sur les
-  demandes. Depuis le 2026-09-14, un second attribut, **intervenant** (`is_intervenant`) :
-  sollicitable pour une **intervention** sur les demandes du périmètre pendant
-  l'instruction ; il n'ouvre rien par lui-même, c'est la **sollicitation**
-  (`request_interventions`, deux RPC seules portes) qui ouvre la demande à l'intervenant —
-  sans les notes internes ni les échanges (`can_consult_request`). Depuis le 2026-09-18, un
-  troisième, **base de connaissances** (`knowledge_base_access`, marche/arrêt, activé sur
-  les profils existants) : il ouvre l'écran du même nom — un ÉCRAN, pas une frontière de
-  données (tout ce qu'il montre est lisible par tout membre) ; seule la garde de
-  l'assistant en mode démarche en dépend côté serveur. Les 5 tables
-  `permission_*` n'ont aucune policy d'écriture cliente : les RPC
-  (`save_permission_profile`…) sont l'unique porte. `organization_members.role` subsiste en
-  **colonne dérivée transitoire**. Détail complet : [`docs/droits.md`](docs/droits.md).
+  Socle) ; le texte de clôture destiné à l'usager est un objet distinct, facultatif, repris
+  dans l'avis de clôture. Seule sortie : le scope `requests:read_tenant` de l'API (timeline).
+- **Aucun mot de passe n'est généré ni affiché à un administrateur** : invitation et lien de
+  réinitialisation. Le **serveur d'envoi ne se configure pas dans Iris** : `smtp_settings` est
+  un miroir du Socle, mot de passe au **Vault**, aucune surface cliente
+  → [`docs/features/emails.md`](docs/features/emails.md), [`docs/emails.md`](docs/emails.md).
+- **Profils de droits** (PO, 2026-08-22) : droits par **couple** (organisation porteuse,
+  démarche) — `création` / `instruction` / `clôture`, chacun impliquant `consultation`, défauts
+  *fail closed*. L'**administration**, l'attribut **intervenant** et l'attribut **base de
+  connaissances** n'accordent par eux-mêmes aucun droit sur les demandes. Les tables
+  `permission_*` n'ont aucune policy d'écriture cliente : les RPC sont l'unique porte
+  → [`docs/features/profils-de-droits.md`](docs/features/profils-de-droits.md).
 
 ## Commandes
 
@@ -208,149 +139,33 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
 ## Architecture applicative
 
 - **Routes publiques** (hors shell) : `/login`, `/mot-de-passe-oublie`, `/activer-compte`,
-  `/nouveau-mot-de-passe`, **`/api-doc`** (contrat d'ingestion rendu par Redoc, lisible sans
-  compte — motif `/api-doc` du Socle : la page est servie par l'app, jamais par l'edge
-  function, dont la passerelle Supabase force les réponses HTML en `text/plain` + CSP
-  `sandbox`), et une route catch-all 404 (`NotFoundPage`) — dette assumée chez Socle, pas
-  répliquée ici.
-- **Zone authentifiée** : `ProtectedRoute` › `AppShell` (rail latéral forêt + header), page
-  d'accueil `DashboardPage` (**tableau de bord**, 2026-09-19, motif Clara `Dashboard.tsx` :
-  trois grands indicateurs et leur équivalent M−1 — reçues, mises en instruction, instruites,
-  des FLUX datés par leur jalon, lus par `stats_monthly_flows` dans les faits insensibles à la
-  purge —, puis deux colonnes : demandes en attente d'instruction, demandes affectées à
-  l'utilisateur. Périmètre = ce que le RLS laisse lire, aucun filtre d'écran →
+  `/nouveau-mot-de-passe`, **`/api-doc`** (contrat d'ingestion rendu par Redoc, servi par
+  l'app — jamais par l'edge function, dont la passerelle force le HTML en `text/plain`), et une
+  route catch-all 404 (`NotFoundPage`).
+- **Zone authentifiée** : `ProtectedRoute` › `AppShell` (rail + header), page d'accueil
+  `DashboardPage` (tableau de bord, flux lus dans les faits insensibles à la purge, périmètre =
+  ce que le RLS laisse lire →
   [`src/features/dashboard/CLAUDE.md`](src/features/dashboard/CLAUDE.md)).
-- **Le schéma des fondations est appliqué** (miroirs dans `supabase/migrations/`) : tenants,
-  membres/rôles, `requests` + satellites, storage privé, **modèle multi-source d'ingestion**
-  (`integration_sources`/`integration_credentials`/`integration_api_logs`, registre de sources
-  dynamique — aucune logique spécifique à un émetteur).
-- **L'API d'ingestion `requests-api` est déployée et vérifiée** (18 + 7 scénarios HTTP bout
-  en bout) : contrat OpenAPI **2.5.0** sur `/v1/openapi.json` (routes `/` et `/v1/openapi.json`
-  **publiques et seules ouvertes au navigateur** — CORS ; rendu humain sur `/api-doc`), guide
-  consommateurs dans [`docs/api-ingestion.md`](docs/api-ingestion.md). Périmètre dérivé de la clé (jamais d'un
-  header/payload) — **sauf clé PLATEFORME** (2.3.0, 2026-09-22) : source sans tenant, réservée
-  à une application de la gamme qui sert toutes les collectivités (le portail Nora), et
-  l'en-tête `X-Socle-Root-Organization-Id` nomme la collectivité, qui doit avoir une source
-  active du même code (interrupteur et journal restent par collectivité) ; **scope
-  `requests:read_tenant`** (2.4.0, 2026-09-23) : lecture des demandes d'UN usager nommé
-  (`?socle_contact_id=`) toutes sources confondues — vue usager de Clara —, jamais du tenant entier,
-  et fil d'une demande `GET /v1/requests/{id}/timeline` (2.5.0 : texte, activité, **notes internes**,
-  interventions — la seule sortie des notes internes, réservée à ce scope), **démarche obligatoire** (vérifiée dans le cache du tenant, snapshot
-  construit côté serveur — dégradé + anomalie si Socle injoignable, jamais un refus), rejeu
-  identique → 200, divergent → 409, pièces par URL signée uniquement (`form_field_key` pour
-  rattacher une pièce à un champ du formulaire).
-  Détail des tables, gardes et policies : [`docs/data-model.md`](docs/data-model.md).
-  Tests d'étanchéité : `supabase/tests/fondations.test.sql` (transactionnel annulé,
-  15 scénarios) + `supabase/tests/profils-droits.test.sql`. Visibilité par **sous-arbre**
-  Socle et par démarche : livrée le 2026-08-22 par les profils de droits (bullet ci-dessous).
-- **`socle-proxy`** (edge, JWT vérifié en code + périmètre : membre du tenant demandé ET
-  racine Socle du tenant dans le périmètre **réel** de la clé Socle — introspection
-  `/v1/organizations` mémoïsée, 403 sinon) : `POST /v1/procedures/list` (démarches PROPOSABLES du
-  tenant : ni brouillon, ni interne, ni hors période de publication — le résumé porte depuis
-  le 2026-09-18 leurs **publics admis**, `audiences`, lecture de `requester_config` sans la
-  configuration elle-même),
-  `/v1/procedures/get` (fiche complète, et **aucun de ces filtres** — une demande déjà déposée
-  doit rester lisible si sa démarche repasse en brouillon ou sort de période :
-  `form_schema`, `requester_config`, et —
-  depuis le 2026-08-28 — la **part agent** de la `knowledge_base` : consignes, procédures,
-  documents d'aide, liens, FAQ, garde-fous ; `trainingDocuments` et `aiSources`, matière de
-  l'assistant IA, ne franchissent PAS la frontière par cette route (depuis le 2026-09-19,
-  `request-assistant` en montre le LIBELLÉ — et l'adresse d'une page — dans sa carte de
-  proposition ; jamais le chemin d'un document, jamais leur contenu) ; et depuis le 2026-09-01 le bloc
-  **`documents`** — les modèles de document et de courrier de la démarche, pour que l'écran
-  PROPOSE : le fichier, lui, ne transite jamais par le navigateur ; et depuis le 2026-09-18
-  **`user_communication`** — ce que la collectivité écrit pour ses usagers, PUBLIC par
-  invariant du Socle, whitelisté par `_shared/procedures/userCommunication.ts`, `null` =
-  rien d'écrit),
-  **`/v1/procedures/document-url`** (URL signée d'un document d'aide agent, relayée du Socle
-  après vérification que le chemin est cité par CETTE démarche — sans quoi la route serait un
-  lecteur libre du bucket `procedure-documents`), `/v1/contacts/search`, `/v1/contacts/list` (annuaire paginé de la page
-  « Usagers » : `offset`, et seule route qui sait montrer les fiches archivées),
-  `/v1/contacts/match` (rapprochement/homonymes),
-  `/v1/contacts/get`, `/v1/contacts/create`, `/v1/contacts/update` (via contacts-api Socle
-  uniquement, whitelist d'entrée ; l'update est un **PATCH partiel** — `contact_type` et
-  `status` refusés, pays jamais vidé — et les refus du Socle sont relayés tels quels),
-  **`/v1/ai/usage`** (consommation IA relayée du guichet `ai-api` — depuis le contrat 1.3.0,
-  2026-09-22, `limit`/`used_tokens`/`reserved_tokens` sont ceux d'**Iris** : le plafond commun
-  de la collectivité moins les parts que le Socle réserve à d'autres applications ; seul
-  `by_consumer` reste la ventilation de toute la collectivité —
-  ⚠️ **réservée aux administrateurs, garde réécrite DANS la fonction** : la lecture se fait en
-  service role, le RLS qui gardait autrefois les tables ne s'applique plus),
-  **`/v1/organizations/root`** (fiche de l'organisation **principale** du tenant — `id`, `name`,
-  `address`, whitelist stricte : ni téléphone, ni courriel, aucun écran n'en ayant l'usage. La
-  route ne prend **aucun identifiant du navigateur** : c'est `tenant.socleOrgId`, sinon elle
-  serait un lecteur libre du référentiel d'organisations. Ouverte à tout membre — l'adresse
-  d'une mairie est publique. Sert de **repli au cadrage de la carte des interventions**,
-  quand le référentiel ne publie aucun quartier),
-  **`/v1/organizations/branding`** (2026-09-10 : le **logo du client** dans le header —
-  `GET /v1/organizations/{racine}/branding` du Socle, qui résout l'héritage ; même règle
-  qu'au-dessus, aucun identifiant du navigateur ; whitelist réduite au `logo_url` http(s) ;
-  décoratif donc **jamais une erreur** : Socle muet ⇒ `branding: null` et le header écrit
-  le nom),
-  **`/v1/organizations/agent-guidance`** (2026-09-19 : les **recommandations générales** de
-  la collectivité à ses agents, Socle 1.27.0 — même règle, aucun identifiant du navigateur ;
-  ouverte à tout membre ; whitelist `_shared/organizations/agentGuidance.ts` partagée avec
-  l'écran et l'assistant ; ⚠️ Socle muet = **erreur relayée**, pas un vide — sinon l'écran
-  lirait « rien d'écrit »),
-  **`/v1/quartiers/list`** (quartiers du territoire **avec leur géométrie**, pour la carte du
-  champ d'adresse **et le cadrage de la carte des interventions** — qui s'ouvre depuis le
-  2026-08-31 sur l'étendue du territoire, et non sur ses épingles ; ouverte à tout membre
-  comme `/v1/procedures/*` : une limite de quartier n'est pas une donnée personnelle ; 404 du
-  Socle ⇒ `available: false`, pas une erreur).
-  ⚠️ `geom` ne franchit la frontière que par CETTE route : `sanitizeContact` continue de le
-  retirer du quartier d'une fiche usager — un polygone par ligne d'annuaire serait du poids pur. Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`, pur, testé) :
-  `internal_notes`, consentements, relations, `external_references` ne sont **jamais**
-  transmis au navigateur ; champs Socle inconnus tolérés (ignorés). Les **rôles** d'une
-  fiche passent depuis le 2026-10-16, réduits aux rôles **codés** reconnus (`elu`,
-  `interne` — contacts-api 1.3.0) et à leur seul code (`CONTACT_ROLE_CODES`) : pastille
-  « Élu » / « Interne », filtre de la liste des usagers, signal au guichet. `X-Organization-Id`
-  toujours dérivé côté serveur.
-- **Profils de droits** (10 migrations `20260822100000` à `20260822100900`) : 5 tables
-  `permission_*`, moteur de combinaison par couple (`permission_pairs_of`), `requests.
-  socle_scope_org_id`, garde unique `requests_guard_write`, reprise (deux profils par tenant),
-  `organization_members.role` dérivé, bascule des policies. Détail : [`docs/droits.md`](docs/droits.md)
-  et [`docs/data-model.md`](docs/data-model.md) ; rollback dédié dans `supabase/rollback/`
-  (jamais via `apply_migration`).
-- **Emails** : gabarit unique dans `supabase/functions/_shared/email/` (modules purs testés
-  + `transport.ts` nodemailer), serveur d'envoi **hérité du Socle** (`smtp_settings` = miroir
-  de l'organisation principale, écrit par la seule synchro du référentiel via
-  `sync_smtp_settings_from_socle`, mot de passe au Vault) avec repli sur un relais de
-  plateforme (`IRIS_SMTP_*`). La clé Socle doit porter le scope `smtp`. Deux chemins :
-  `auth-email-hook` (hook « Send Email » de GoTrue — mot de passe oublié self-service, **à
-  activer une fois dans le dashboard**) et `admin-users` (invitation, renvoi de lien — liens
-  produits par `generateLink`, donc indépendants du hook). Depuis le 2026-08-26, un troisième
-  chemin sort du cercle des agents : **`send-request-email`**, la réponse à l'usager depuis
-  l'onglet Échanges (envoi SYNCHRONE, droit d'**instruction** revérifié en SQL, destinataire et
-  chemins de pièces résolus côté serveur, marque = la collectivité seule). La doctrine « ce qui
-  sort d'Iris » de `notifications.ts` vise les e-mails **aux agents** et ne s'y applique pas —
-  seul reste absolu : **le corps d'une note interne ne sort jamais**. Depuis le 2026-08-28,
-  `send-request-email` a un second mode : l'**avis de clôture** (`kind: "cloture"`), composé
-  intégralement par le serveur et exigeant le droit de **clôture** — c'est parce que le
-  navigateur ne compose rien que l'ouverture à ce droit est sans risque ; le motif de clôture,
-  lui, ne sort jamais — et l'avis **ne part jamais pour une demande issue de Clara**
-  (2026-10-16, `closureNoticeApplies` : Iris n'écrit rien à leur auteur, accusé compris).
-  Depuis le 2026-10-09, un quatrième chemin, sans agent : l'**accusé de réception au dépôt**
-  (guichet et API d'ingestion — **jamais pour une demande issue de Clara**, règle posée dans
-  `enqueue_request_receipt` ; aucune désactivation, décision PO). Les deux fonctions de dépôt
-  **enfilent** (`request_receipts`) et `notifications-mailer` **draine** — un relais qui tousse
-  ne fait jamais échouer un dépôt ; composé par le serveur (`_shared/email/accuse.ts`), tracé
-  dans `request_emails` avec `sent_by` NULL (« Iris · envoi automatique »). Pas de trigger sur
-  `requests`, pour qu'un jeu de démonstration n'écrive à personne.
-  Depuis le 2026-08-30, ces deux messages à l'usager portent la **charte graphique de la
-  collectivité** — couleur principale des bordures et du bouton, logo — lue chez le Socle
-  (`GET /v1/organizations/{id}/branding`, scope `read`) pour l'organisation **porteuse de la
-  demande** (`socle_scope_org_id`) : la route RÉSOUT l'héritage, donc « à défaut, celle de
-  l'organisation parente » est déjà répondu et Iris ne remonte aucun arbre. ⚠️ **Jamais depuis
-  `/v1/organizations/{id}`** : les colonnes brutes d'une organisation qui hérite sont nulles.
-  Depuis le 2026-09-23 le **bandeau est blanc** (logo centré, depuis le 2026-09-24 ; colonne
-  arrondie aux quatre coins, en VML pour Outlook — même cadre que Clara et le Socle) : la couleur ne trace plus que les bordures de
-  la carte, le filet sous le bandeau et le fond du bouton — un aplat de couleur entrait en
-  collision avec le logo. Seul le logo **couleur** est servi (le blanc disparaîtrait sur le
-  bandeau), sans pastille. L'encre du bouton est **calculée** par contraste
-  (`_shared/email/charte.ts`, pur, testé) — le blanc tant qu'il suffit, sinon l'encre sombre. **Ni table, ni miroir** (cache court en mémoire, 5 min) et
-  **jamais bloquant** : Socle muet ⇒ habillage Iris, pas un refus — l'inverse du relais
-  d'envoi. Les messages aux **agents** gardent le vert d'Iris.
-  Détail : [`docs/emails.md`](docs/emails.md).
+- **Fondations et API d'ingestion `requests-api`** : modèle multi-source
+  (`integration_sources`…, aucune logique spécifique à un émetteur), contrat OpenAPI sur
+  `/v1/openapi.json`, périmètre dérivé de la clé (sauf clé PLATEFORME), démarche obligatoire,
+  rejeu identique → 200 / divergent → 409 →
+  [`docs/features/ingestion-partenaires.md`](docs/features/ingestion-partenaires.md),
+  guide consommateurs [`docs/api-ingestion.md`](docs/api-ingestion.md), tables et gardes
+  [`docs/data-model.md`](docs/data-model.md). Tests d'étanchéité :
+  `supabase/tests/fondations.test.sql` + `supabase/tests/profils-droits.test.sql`.
+- **`socle-proxy`** (edge, JWT vérifié en code + périmètre) : la seule route du navigateur vers
+  le référentiel. Réponses **sanitisées par whitelist** (`_shared/sanitize.ts`) —
+  `internal_notes`, relations, `external_references` ne passent jamais ; `X-Organization-Id`
+  toujours dérivé côté serveur ; les routes `organizations/*` ne prennent **aucun identifiant
+  du navigateur** ; `/v1/ai/usage` est réservée aux administrateurs, **garde réécrite dans la
+  fonction** → [`docs/features/socle-proxy.md`](docs/features/socle-proxy.md).
+- **E-mails** : gabarit unique `supabase/functions/_shared/email/`, serveur d'envoi hérité du
+  Socle avec repli `IRIS_SMTP_*`. Chemins : `auth-email-hook`, `admin-users`,
+  `send-request-email` (réponse et avis de clôture), accusé de réception enfilé
+  (`request_receipts`, drainé par `notifications-mailer`, jamais pour une demande issue de
+  Clara). Charte de la collectivité lue chez le Socle, jamais bloquante
+  → [`docs/features/emails.md`](docs/features/emails.md).
 - `src/types/database.types.ts` est **généré depuis le schéma live** (Supabase MCP
   `generate_typescript_types`) — ne jamais l'éditer à la main, régénérer après chaque migration.
 - `supabase/` : `config.toml` (CLI), `migrations/` (fichiers miroirs des migrations
@@ -385,249 +200,71 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
   décider le contournement côté appelant, resté `SECURITY INVOKER`. Détail :
   [`docs/droits.md`](docs/droits.md).
 
-## Features — détail chargé à la demande
+## Index des features
 
-Chaque feature a son `CLAUDE.md` de dossier, chargé automatiquement quand on y travaille ;
+Chaque dossier de feature a son `CLAUDE.md`, chargé automatiquement quand on y travaille ;
 les invariants ci-dessus restent la référence.
 
-- **Parcours agent** (`src/features/requests`, `src/features/tenant`) : liste, fiche
-  (dont **lieu d'intervention** : adresse, carte, itinéraire, et **transfert vers un autre
-  organisme responsable** depuis « Prise en charge » — cible limitée aux organismes qui
-  ASSURENT la démarche, droits de l'auteur sur la cible NON exigés (RM-19 : se dessaisir,
-  c'est confier), modale de confirmation qui annonce la perte d'accès quand elle aura lieu,
-  libellé relu dans le miroir et affectation retirée côté SERVEUR, notification
-  `transferred_in` à l'organisme qui hérite. ⚠️ **Le geste passe par la RPC
-  `transfer_request`, seule porte** : un `update` client est refusé par le RLS dès que la
-  cible sort du périmètre de l'auteur — invisible pour un admin plateforme, cf.
-  `docs/data-model.md`), **carte des interventions**
-  (`carte/`, route `/carte`), **tableau des demandes** (`tableau/`, route
-  `/demandes/tableau`, entrée de rail — kanban : une colonne par statut du workflow, glisser-déposer ET
-  menu clavier, seules les colonnes que `requests_guard_write` accepterait s'ouvrent, le
-  dépôt DEMANDE la transition et passe par le dialogue commun de la fiche), transitions,
-  **parcours de création guidé** (`creation/`),
-  brouillon local, demandes proches, **fiche démarche** (2026-09-18 : bouton « i » des
-  cartes de l'étape Démarche — ce que voit l'usager, consignes internes, assistant),
-  **échanges avec l'usager** (onglet Échanges : e-mail avec
-  ou sans modèle, variables résolues sur la demande, pièces jointes réelles — edge function
-  `send-request-email`), edge function `create-request-from-procedure` et moteur
-  partagé `@fn/create-request-from-procedure/_shared/procedureForm.ts`,
-  **base de connaissances de la démarche** (onglet « Procédure » du rail, au guichet comme à
-  l'instruction : ce que le Socle destine à l'agent, RELU à chaque visite — jamais stocké,
-  jamais versé au snapshot ; l'assistant IA est un chantier distinct, son onglet est posé et
-  grisé),
-  **documents d'instruction et courriers** (onglet Documents : trois natures — pièce
-  d'instruction INTERNE, qui ne sort jamais, pièce EXTERNE et COURRIER —, générés depuis un
-  **modèle Word** en **PDF ou en Word**, variables du dossier fusionnées côté serveur, edge
-  function `generate-request-document` ; le PDF est **redessiné par Iris**, aucun convertisseur
-  externe, et les documents transmissibles se joignent aux échanges — un interne, jamais :
-  trigger `t05_attachments_internal_never_sent`),
-  **qualification des pièces justificatives** (conforme / non conforme avec motif fermé ;
-  une pièce obligatoire non conforme ferme la seule résolution *positive*, une pièce non
-  conforme place la demande « En attente d'information », le retour en instruction est
-  proposé), **ajout d'une pièce** sur une exigence non conforme ou manquante (« la plus
-  récente fait foi » : la nouvelle remplace, les remplacées restent au dossier) et
-  **modification des réponses** au formulaire figé de la demande (jamais la définition de la
-  démarche, qui vit dans le Socle), **interventions** (2026-09-14 : l'agent sollicite un
-  intervenant — profil `is_intervenant` — pendant l'instruction, l'intervenant est prévenu
-  par e-mail, ne voit que ces demandes-là dans « Mes interventions » `/interventions` et
-  déclare l'intervention réalisée avec jusqu'à 4 justificatifs — documents ou photos prises
-  à la caméra —, reçus par la porte unique avec la portée `intervention_id`, nature
-  `intervention` hors du dossier de l'usager) →
-  [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
-- **Demande complexe** (`src/features/requests/complexe`, edge `relay-courrier-clara`, module
-  pur `_shared/clara/relay.ts`, 2026-10-10) : chevron du bouton « Nouvelle demande » (liste,
-  tableau, carte). Écran calqué sur le « Nouveau courrier » de Clara — deux étapes, onglets
-  Importer des fichiers / Coller un texte (dictée **masquée** pour l'instant, décision PO) —, puis
-  organisme, usager (`RequesterIdentification`) et consentements. Le serveur vérifie le droit
-  de **création sur au moins une démarche de l'organisme** (`user_can_create_on_organization`),
-  relit la fiche Socle, passe chaque fichier par la liste fermée, nomme l'agent, et transmet de
-  serveur à serveur (`CLARA_IRIS_INTAKE_URL` / `CLARA_IRIS_INTAKE_KEY`). Rien n'est stocké ;
-  idempotence par `submission_id` tiré à l'ouverture →
-  [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
-- **Contacts / Usagers** (`src/features/contacts`) : identification du demandeur via
-  `socle-proxy` (homonymes cherchés automatiquement, création, sans rapprochement,
-  anonymat), **fiche usager** `/usagers/:contactId` (motif de la fiche contact Clara :
-  identité Socle relue sans rétention + demandes de l'usager bornées par le RLS, création
-  de demande avec usager imposé) et **liste des usagers** `/usagers` (motif de l'annuaire
-  Clara, entrée de rail : recherche par mot-clé, filtres type / actifs-archivés /
-  quartier / volumétrie de demandes, tri par colonne, export CSV — fiches du Socle et
-  compteurs Iris bornés par le RLS, rapprochés dans le navigateur) →
-  [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
-- **Base de connaissances** (`src/features/knowledge`, routes `/base-de-connaissances` et
-  `/base-de-connaissances/:procedureId`, entrée de rail — 2026-09-18, maquette Claude Design
-  « Base de connaissance ») : le catalogue des démarches **publiées** du tenant (la liste
-  du guichet : production, externes, dans leur période), **par catégorie**, avec recherche ;
-  chaque carte dit qui la propose (miroir des activations, opt-in strict), si elle est
-  **ouverte temporairement** et si elle est **absente du portail**. Au clic, la fiche en
-  trois colonnes — rubriques, lecture, **assistant** élargissable —, avec les rubriques de
-  la fiche du guichet (`procedure/FicheSections.tsx`). Depuis le 2026-09-19, les
-  **recommandations générales** de la collectivité (rôle des agents, accueil physique,
-  consignes générales, FAQ, sources — rédigées dans le **Socle**, sur la racine, jamais dans
-  Iris) : carte en tête du catalogue, page `/base-de-connaissances/recommandations`, rubrique
-  « Toutes démarches » de chaque fiche ; l'assistant les lit aussi, et **la consigne de la
-  démarche l'emporte**. Ouvert par l'attribut de profil
-  `knowledge_base_access` (bullet « Profils de droits ») ; bureau seul →
-  [`src/features/knowledge/CLAUDE.md`](src/features/knowledge/CLAUDE.md).
-- **Statistiques** (`src/features/stats`, route `/statistiques`, entrée de rail — 2026-09-18) :
-  motif Clara **à l'identique** (ApexCharts 3.54 via `react-apexcharts`, `chartConfig.ts`
-  recopié, cartes KPI, grille 2 colonnes, filtres organisme + période 7 j / 30 j / 1 an sur
-  `received_at`). Onze indicateurs : demandes reçues (total, par mois, **par canal** — portail,
-  Clara, création directe, partenaires API : regroupement des `source` dans `stats.ts`, pur et
-  testé —, par organisme), délais moyens avant instruction et avant résolution par organisme,
-  taux de résolution positive, agents ayant le plus résolu (**l'agent qui a instruit = l'auteur
-  de la résolution**, décision PO), interventions réalisées, délai de clôture des
-  interventions, intervenants les plus actifs. **Ouvert à tout membre, borné par ses droits** :
-  huit RPC `stats_*` SECURITY INVOKER sur les tables de faits (invariant « Aucune suppression
-  de demande »), même prédicat de consultation par couple que la liste — un administrateur
-  sans consultation voit des graphiques vides. Bureau seul →
-  [`src/features/stats/CLAUDE.md`](src/features/stats/CLAUDE.md).
-- **Recherche globale** (`src/features/search`, barre au centre du header) : une saisie, deux
-  natures — **demande** (code de suivi, libellé, date de dépôt, statut, agent instructeur,
-  organisme responsable) et **usager** (nom, prénom, ville) —, résultats **groupés par nature**,
-  lancée dès **3 caractères** avec temporisation. Deux sources qu'aucun serveur ne joint : les
-  demandes par la RPC `search_requests` (`SECURITY INVOKER`, **bornée par le RLS**), les
-  usagers par `socle-proxy /v1/contacts/search` — donc seulement pour qui a un droit de
-  création (RM-64), et **sans aucune rétention**. Socle muet ⇒ le groupe « Usagers »
-  disparaît, les demandes restent. La recherche porte sur la **référence et l'objet** seuls
-  (ni corps, ni formulaire figé) et **ignore les accents** (`unaccent` + index GIN trigramme,
-  `20260901130000`) : la normalisation vit au SERVEUR, seul endroit d'où les deux côtés de la
-  comparaison se voient — aucun jumeau JavaScript. ⚠️ Côté **usagers**, la recherche du Socle
-  (`ilike` sur `display_name` brut) reste sensible aux accents : le correctif lui appartient →
-  [`src/features/search/CLAUDE.md`](src/features/search/CLAUDE.md).
-- **Droits / Paramètres** (`src/features/permissions`, `src/features/rights`) : profils de
-  droits (création, matrice, périmètre, attribution), reflet pur des droits effectifs
-  (`rights.ts`, miroir de `permission_pairs_of`), zone `/parametres` (`AdminRoute`, accueil
-  en blocs cliquables au motif Clara) →
-  doctrine dans [`docs/droits.md`](docs/droits.md), détail front dans
-  [`src/features/permissions/CLAUDE.md`](src/features/permissions/CLAUDE.md).
-- **Notifications** (`src/features/notifications`, edge `notifications-mailer`) : cloche du
-  header **et e-mail**, neuf motifs (affectation, retrait d'affectation, changement de statut,
-  note interne, mention, nouvelle demande dans le périmètre d'instruction, — depuis le
-  2026-09-01 — **demande transférée** à l'organisme qu'on instruit, et — depuis le
-  2026-09-14 — **intervention demandée** / **intervention réalisée**, produites par les RPC
-  d'intervention). **La base est le seul
-  producteur** — triggers `t40_*` `SECURITY DEFINER`, aucune policy d'écriture cliente, jamais
-  de notification pour son propre geste ; temps réel + repli par sondage. **Un événement, une
-  ligne, N canaux** : l'e-mail part d'une **boîte d'envoi** drainée sur cron (jamais du
-  déclencheur), et `notification_preferences` (*fail open*, **globales au compte**) décide des
-  canaux, réglées depuis « Mon compte ». Depuis le 2026-09-10, un **troisième canal, le push
-  sur appareil** (Web Push / VAPID, edge `notifications-push`, service worker `public/sw.js`
-  PUSH SEUL — aucun cache, aucun hors-ligne) : il **suit le canal in-app**, se règle **par
-  appareil** (« Notifications sur cet appareil »), et son texte est encore plus court que
-  l'e-mail — un écran verrouillé se lit par n'importe qui →
-  [`src/features/notifications/CLAUDE.md`](src/features/notifications/CLAUDE.md).
-- **Mon compte** (`src/features/account`, route `/mon-compte`, entrée du menu compte) :
-  identité et **photo de profil** (bucket privé `avatars`, URL signée — jamais public : la
-  photo d'un agent est une donnée personnelle), **changement de mot de passe** avec
-  revérification de l'ancien, et **préférences de notification** par événement × canal
-  (in-app / e-mail / rien). Photo et préférences sont **globales au compte**, pas par tenant. L'**adresse e-mail n'est pas modifiable par son titulaire** :
-  c'est l'identifiant de connexion, administré — garde `t03_users_protect_email`, l'UI ne fait
-  que refléter →
-  [`src/features/account/CLAUDE.md`](src/features/account/CLAUDE.md).
-- **Modèles d'e-mail** (`src/features/templates`, Paramètres › « Modèles d'e-mail » et
-  « Organisations ») : textes réutilisables pour répondre à un usager, à **variables**
-  `{{groupe.cle}}` (catalogue FIGÉ, jumeau SQL, garde serveur `t03`), CRUD réservé aux
-  administrateurs, et **activation organisation par organisation** (`has_admin_scope` :
-  ouvrir un modèle à la Voirie est une décision sur la Voirie ; un modèle neuf n'est actif
-  nulle part). Texte BRUT — ni HTML ni PDF : la mise en page d'un pli est le métier de Clara
-  (D7, Q8) →
-  [`src/features/templates/CLAUDE.md`](src/features/templates/CLAUDE.md).
-- **Zone superadmin** (`src/features/superadmin`) : organisations (consultation),
-  utilisateurs, edge function `admin-users` (les plafonds IA ont quitté Iris le 2026-08-29 :
-  ils se règlent dans le Socle, seul à voir la dépense de toute la gamme) →
-  [`src/features/superadmin/CLAUDE.md`](src/features/superadmin/CLAUDE.md).
-- **Ce qui sort d'Iris vers un fournisseur IA** (assistant, 2026-08-29) : le contexte métier
-  d'une demande **SANS l'identité de l'usager** — la première défense est le `select`
-  (`REQUEST_CONTEXT_COLUMNS` ne demande ni `requester_snapshot`, ni `socle_contact_id`, ni
-  `identity_status`), la seconde le retrait des clés du catalogue `DECLARED_KEYS` dans
-  `form_data`. La promesse est BORNÉE et écrite partout, jusque dans l'UI : *aucun champ
-  d'identité connu ne sort ; un nom en texte libre peut passer*. Le **lieu d'intervention
-  reste** (un lieu n'est pas une personne). Le prompt système, le contexte et la base de
-  connaissances sont composés **côté serveur** — jamais acceptés du navigateur, dont
-  l'historique de conversation est une entrée non fiable. Détail :
+- **Parcours agent** (`src/features/requests`, `src/features/tenant`) : liste, fiche,
+  création guidée, échanges, pièces, transfert, documents, interventions, carte, tableau —
+  index des fiches dans [`src/features/requests/CLAUDE.md`](src/features/requests/CLAUDE.md).
+  ⚠️ Le transfert passe par la RPC `transfer_request`, **seule porte**.
+  Fiches : [création](docs/features/creation-de-demande.md),
+  [liste](docs/features/liste-des-demandes.md),
+  [fiche d'instruction](docs/features/fiche-instruction.md),
+  [échanges](docs/features/echanges-usager.md),
+  [pièces](docs/features/pieces-justificatives.md),
+  [transfert](docs/features/transfert-organisme.md),
+  [documents](docs/features/documents-instruction.md),
+  [interventions](docs/features/interventions.md),
+  [carte](docs/features/carte-des-interventions.md),
+  [tableau](docs/features/tableau-des-demandes.md),
+  [mobile](docs/features/demandes-mobile.md).
+- **Demande complexe** (`src/features/requests/complexe`, edge `relay-courrier-clara`) :
+  relayée à Clara de serveur à serveur, rien n'est stocké, idempotence par `submission_id`
+  → [`docs/features/demande-complexe.md`](docs/features/demande-complexe.md).
+- **Contacts / Usagers** (`src/features/contacts`) : identification du demandeur, fiche
+  usager `/usagers/:contactId`, liste `/usagers` — fiches du Socle sans rétention, compteurs
+  Iris bornés par le RLS → [`src/features/contacts/CLAUDE.md`](src/features/contacts/CLAUDE.md).
+- **Base de connaissances** (`src/features/knowledge`, `/base-de-connaissances`) : catalogue
+  des démarches publiées et recommandations générales de la collectivité (rédigées dans le
+  Socle) ; ouverte par `knowledge_base_access` — un écran, pas une frontière de données
+  → [`src/features/knowledge/CLAUDE.md`](src/features/knowledge/CLAUDE.md).
+- **Statistiques** (`src/features/stats`, `/statistiques`) : motif Clara, RPC `stats_*`
+  `SECURITY INVOKER` sur les tables de faits, bornées par les droits de consultation
+  → [`src/features/stats/CLAUDE.md`](src/features/stats/CLAUDE.md).
+- **Recherche globale** (`src/features/search`) : demandes par `search_requests` (RLS,
+  `unaccent` côté serveur, aucun jumeau JS), usagers par `socle-proxy` (droit de création,
+  sans rétention) → [`src/features/search/CLAUDE.md`](src/features/search/CLAUDE.md).
+- **Droits / Paramètres** (`src/features/permissions`, `src/features/rights`) : profils,
+  reflet pur `rights.ts` (miroir de `permission_pairs_of`), zone `/parametres` (`AdminRoute`)
+  → [`src/features/permissions/CLAUDE.md`](src/features/permissions/CLAUDE.md).
+- **Notifications** (`src/features/notifications`, edges `notifications-mailer`,
+  `notifications-push`) : la base est le seul producteur (`t40_*`), un événement = une ligne,
+  N canaux (in-app, e-mail, push par appareil)
+  → [`src/features/notifications/CLAUDE.md`](src/features/notifications/CLAUDE.md).
+- **Mon compte** (`src/features/account`, `/mon-compte`) : photo (bucket privé), mot de passe,
+  préférences ; l'e-mail n'est pas modifiable par son titulaire (`t03_users_protect_email`)
+  → [`src/features/account/CLAUDE.md`](src/features/account/CLAUDE.md).
+- **Modèles d'e-mail** (`src/features/templates`) : variables `{{groupe.cle}}` d'un catalogue
+  FIGÉ, activation organisation par organisation, texte BRUT
+  → [`src/features/templates/CLAUDE.md`](src/features/templates/CLAUDE.md).
+- **Zone superadmin** (`src/features/superadmin`) : organisations, utilisateurs, edge
+  `admin-users` → [`src/features/superadmin/CLAUDE.md`](src/features/superadmin/CLAUDE.md).
+- **Assistants IA** (assistant d'instruction, rédaction assistée des échanges, rapprochement
+  des demandes liées) : **Iris n'appelle pas Mistral**, il compose le prompt côté serveur et le
+  confie au guichet `ai-api` du Socle, qui porte le plafond. Aucun champ d'identité connu ne
+  sort ; jamais les notes internes dans un brouillon. ⚠️ Chaîne de délais **Mistral 55 s <
+  Socle 60 s < Iris 75 s** à ne pas inverser
+  → [`docs/features/assistants-ia.md`](docs/features/assistants-ia.md),
   [`docs/assistant-ia.md`](docs/assistant-ia.md).
-- **Plafond d'utilisation IA — DANS LE SOCLE, plus dans Iris** (2026-08-29) : la clé du
-  fournisseur LLM et la comptabilité des jetons ont été centralisées dans le référentiel
-  (`ai-api`). Le plafond est celui de la **collectivité**, **commun à toute la gamme** — Iris et
-  Clara puisent au même seau —, défini par l'admin plateforme dans le Socle et **consulté en
-  lecture seule** par l'administrateur du tenant (Paramètres › Assistant IA). **Depuis le
-  contrat `ai-api` 1.3.0 (2026-09-22), le Socle peut RÉSERVER une part de ce plafond à une
-  application** (l'assistant du portail, `nora`) : les applications sans part — Iris — se
-  partagent le reste et y sont bornées. Conséquences : Iris peut être refusé (`429
-  ai_quota_exceeded`, même message daté) **avant** que le plafond commun soit atteint — le
-  message du Socle est la seule information à relayer, jamais « le plafond de la collectivité
-  est atteint » ; et les chiffres rendus (`quota` d'un appel, `quota` du 429, `/v1/usage`)
-  sont ceux d'**Iris** — `limit` = le commun moins les parts des autres, `remaining_tokens =
-  limit − used − reserved` —, seul `by_consumer` couvrant toute la collectivité (ne jamais
-  l'additionner contre `limit`). Sans part réservée, rien ne change. Les trois tables
-  `ai_usage_*` d'Iris ont été **supprimées** (`20260829120000`) : les laisser n'aurait pas
-  laissé du code mort mais un **second compteur**, qui aurait affiché zéro à qui l'aurait lu.
-  ⚠️ La lecture passe par **`socle-proxy /v1/ai/usage`**, donc en service role : le RLS ne garde
-  plus rien et la garde administrateur est **réécrite dans la fonction**
-  (`is_org_admin_anywhere_for`). Détail : [`docs/assistant-ia.md`](docs/assistant-ia.md), et
-  côté Socle `CLAUDE.md` § « guichet IA ».
-- **Assistant IA d'instruction** (`src/features/requests/assistant`, edge `request-assistant`,
-  modules purs `supabase/functions/_shared/ai/`) : conversation avec un assistant Mistral, dans
-  le sous-onglet « Assistant » du panneau Procédure — à l'instruction (contexte de la demande)
-  comme au guichet (**démarche seule**, aucune saisie en cours). Depuis le 2026-09-18, sa base
-  de connaissances comprend aussi **ce que la collectivité publie pour ses usagers** (Socle
-  1.24.0 : durée d'instruction annoncée, public, pièces annoncées, FAQ usager, descriptif —
-  `_shared/ai/userCommunication.ts`), étiqueté pour que les six pièges du contrat tiennent
-  jusque dans le prompt : une pièce ANNONCÉE n'est pas une pièce à déposer, la FAQ usager
-  n'est pas celle du service. Depuis le 2026-09-19, les **recommandations générales** de la
-  collectivité à ses agents (Socle 1.27.0), lues en parallèle, en bloc distinct à plafond
-  propre — et la règle « la consigne de la démarche l'emporte » posée HORS du bloc de
-  données, parce que c'est une consigne. **Conversation ÉPHÉMÈRE** :
-  aucune table, le fil disparaît au rechargement. Droit exigé : **instruction** sur le couple,
-  ou un droit de création au guichet.
-  **Répondre d'abord, proposer ensuite** (décision PO 2026-09-19) : quand la base ne suffit
-  pas, l'assistant peut PROPOSER de consulter les sources que la collectivité a déclarées
-  **pour l'IA** — sources en ligne et documents d'entraînement de la démarche, sources
-  recommandées pour toutes ses démarches — et **l'agent approuve à chaque fois** sur une carte
-  du fil (`_shared/ai/sources/`). Ce n'est **pas un outil** : le modèle écrit une ligne
-  `[[CONSULTER: …]]` qu'Iris retire, l'agent décide, Iris lit dans un catalogue FERMÉ qu'il
-  relit lui-même dans le Socle (identifiant inconnu ⇒ 400), et `ai-api` reste sans `tools`.
-  Le texte lu ne passe **jamais** par l'historique du navigateur : il est relu à chaque tour
-  tant que l'accord tient. Une page n'est lue qu'en `https` publique (garde SSRF revérifiée
-  à chaque redirection) ; le chemin et l'URL signée d'un document ne quittent pas le serveur.
-  ⚠️ **Iris n'appelle pas Mistral** : il compose le prompt — ce qu'il est seul à savoir faire,
-  le Socle ignorant ce qu'est une demande — et le confie au guichet `ai-api`, qui réserve,
-  appelle et solde. **Iris décide ce qui est dit, le Socle décide si ça peut l'être et ce que ça
-  a coûté.** Aucun secret du fournisseur ne vit ici ; la clé Socle d'Iris porte le scope `ai` et
-  l'imputation `consumer = iris`. Les refus du guichet sont retraduits par
-  `_shared/ai/socleErrors.ts` (pur, testé) : une erreur d'authentification n'est **jamais**
-  relayée, un 400 est **notre** bug, et le 429 relaie le message du Socle **mot pour mot** —
-  seul lui connaît la date de renouvellement.
-  ⚠️ **Chaîne de délais à ne pas inverser : Mistral 55 s < Socle 60 s < Iris 75 s.** Inversée,
-  Iris abandonne des appels que le Socle termine et **facture**.
-  ⚠️ Un Socle injoignable **éteint** l'assistant (il le dégradait avant) — assumé, et le message
-  rappelle que l'instruction des demandes continue →
-  [`docs/assistant-ia.md`](docs/assistant-ia.md).
-- **Rédaction assistée des échanges** (2026-09-24, edge `request-email-assistant`) : dans le
-  composeur de l'onglet Échanges, un **brouillon** d'accusé de réception ou de suivi
-  (ergonomie de Clara, sans clôture) et **« Améliorer mon message »** (la langue, jamais le
-  sens). Le brouillon connaît le dossier, la démarche et les **interventions** — **jamais les
-  notes internes**. Le texte à améliorer est **pseudonymisé de façon réversible** (`⟦P1⟧`) :
-  un jeton perdu ⇒ refus, jamais un texte amputé. Droit d'instruction ; rien n'est stocké →
-  [`docs/assistant-ia.md`](docs/assistant-ia.md) § 9.
-- **Assistant de rapprochement des demandes liées** (2026-10-16, edge
-  `request-similarity-assistant`) : sur geste de l'agent, un avis « même incident / autre /
-  incertain » sur les propositions de la carte « Même incident » — il annote, **il ne lie
-  jamais** ; candidates relues sous RLS, identité masquée, clés opaques →
-  [`docs/assistant-ia.md`](docs/assistant-ia.md) § 10.
 
 ## Conventions
 
-- **Mobile = pages dédiées, même URL** (décision PO 2026-09-14) : les écrans de bureau ne
-  sont pas responsives. Sur téléphone (largeur < 768 px, ou commutateur « Version mobile »
-  mémorisé sur l'appareil — jamais le User-Agent, une tablette garde le bureau), `Adaptive`
-  rend le `MobileShell` et la page mobile de la route, sinon un écran d'orientation vers la
-  version bureau. Huit écrans mobiles (maquette Claude Design « Iris mobile — v2 ») :
-  liste et fiche des demandes, tiroir « Instruire », changement de statut, fil avec
-  l'usager, création en une page, mes interventions, déclaration d'intervention — chacun
-  dans le dossier `mobile/` de sa feature, **réutilisant les hooks et modules purs du
-  bureau, jamais un second chemin d'écriture**. Détail :
-  [`src/components/layout/CLAUDE.md`](src/components/layout/CLAUDE.md).
+- **Mobile = pages dédiées, même URL** (PO 2026-09-14) : les écrans de bureau ne sont pas
+  responsives ; `Adaptive` rend la page mobile sous 768 px (ou commutateur mémorisé — jamais
+  le User-Agent). Chaque écran mobile **réutilise les hooks et modules purs du bureau, jamais
+  un second chemin d'écriture** → [`src/components/layout/CLAUDE.md`](src/components/layout/CLAUDE.md).
 - **Organisation par feature** sous `src/features/<domaine>/` (hook `useX.ts`, dialogues,
   pages). Primitives UI génériques dans `src/components/ui/`, layout dans
   `src/components/layout/`.
@@ -636,64 +273,19 @@ les invariants ci-dessus restent la référence.
 - **Logique métier en modules purs testés** (sans DOM ni réseau), y compris la logique des edge
   functions co-localisée dans `_shared/` sans dépendance Deno (le `include` vitest couvre
   `supabase/functions/**`).
-- **Design system Notch/Ariane** — source de vérité : le projet Claude Design
-  « Ariane Design System » (`019e2566-e3ff-75e7-80a9-af82c9b99671`, accessible via DesignSync).
-  Les tokens de `colors_and_type.css` y sont **copiés tels quels** dans `src/index.css`
-  (recommandation MUTUALISATION.md §2.1) : primaire vert AA `hsl(153 90% 32%)`
-  (+ `--primary-bright` marketing), secondaire beurre, radius 14px, ombres « airbnb »
-  (`shadow-airbnb-sm…xl`, alias `iris-*`). **Police : Nunito Sans, seule famille**
-  (Google Fonts). Le shell agent calque le **shell de production Clara** : header sticky
-  `h-14` (à gauche, depuis le 2026-09-10 — maquette Claude Design « En-tête
-  multi-applications » : **bascule d'application** `AppSwitcher` dans une colonne de 52 px
-  alignée sur le rail, vers `<socle|iris|clara|ariane>.edilumen.fr` (`layout/apps.ts`, pur et
-  testé — liens nus, chaque produit a sa session), wordmark `src/assets/logo-notch.svg` en
-  `h-6`, séparateur, **logo du client** lu chez le Socle (`useOrganisationBranding`, nom à
-  défaut) et sélecteur d'organisation s'il y en a plusieurs ; à droite, pastille « I » +
-  **Iris**, chip administrateur, superadmin, **accès aux Paramètres** — tuile `h-9 w-9`,
-  active en `bg-primary/10 text-primary` — puis menu compte), **rail vert `bg-primary` 52px**
-  (tuiles 36px, icônes Lucide 20px — sauf le tableau de bord, **maison** tracée depuis la
-  maquette —, premier item épinglé, groupe centré ; l'entrée active se
-  décide par `src/components/layout/nav.ts`, pur et testé, et non par `NavLink` — deux
-  entrées partagent le préfixe `/demandes`). Le gabarit
-  horizontal de la zone de contenu est **demandé par la page** (`src/components/layout/
-  shellLayout.tsx`) : `default` = colonne centrée 1240px (formulaires, réglages), `wide` =
-  pleine largeur avec le padding du shell (`useWideLayout` — listes denses : demandes, usagers),
-  `full` = pleine hauteur sans gabarit ni padding (`useFullBleedLayout` — création, fiche,
-  carte) ; la zone superadmin
-  garde son rail forêt. L'icône des Paramètres est l'**asset de Clara** recopié tel quel
-  (`src/assets/icons/parametres.svg`, rendu en `<img>`), pas une icône Lucide — les
-  Paramètres ne sont donc **pas** dans le rail, exactement comme chez Clara. Boutons : hover `brightness-105` (pleins) /
-  bascule **beurre** (`bg-secondary`) sur outline et ghost, press `scale-[0.98]`, radius 10px
-  (idem inputs). `_adherence.oxlintrc.json` (racine) = garde-fou DS (hex bruts, px bruts,
-  polices hors DS) — ⚠️ **il ne s'exécute plus** (oxlint n'implémente pas `no-restricted-syntax`) :
-  l'adhérence se vérifie à la main en attendant, dette O1 de
-  [`docs/dette-technique.md`](docs/dette-technique.md).
-- **Cartographie libre** (`src/lib/carto.ts`, pur/testé ; rendu dans
-  `src/components/map/TileLayer.tsx`) : tuiles **OpenStreetMap** (attribution ODbL
-  obligatoire à l'affichage — elle est portée par la mosaïque, ne pas la retirer) et
-  géocodage **Base Adresse Nationale**, servie par la **Géoplateforme** (IGN) depuis le
-  retrait d'`api-adresse.data.gouv.fr` en janvier 2026 : unitaire pour une fiche, **en masse
-  par CSV** pour une carte, et **pendant la frappe** pour le champ d'adresse assisté
-  (`src/lib/adresse.ts`). Services publics sans clé ni compte, donc rien à cacher dans le
-  bundle. Ce qui transite, c'est une **ADRESSE et rien qui l'accompagne** — jamais un nom,
-  jamais la référence d'une demande : cela vaut pour le lieu d'intervention comme pour
-  l'adresse d'un usager qu'un agent saisit (le Socle re-géocode déjà cette même adresse pour
-  recalculer le quartier). **Iris ne géocode jamais pour stocker** : un point qu'Iris calcule
-  (fiche, carte, champ d'adresse) est un confort de session, jamais une donnée de la demande,
-  et aucune géométrie de quartier n'est conservée. Depuis le contrat Socle **1.29.0** (champ
-  `location` du `form_schema`, 2026-09-22), un lieu d'intervention peut arriver **avec le point
-  que l'usager a déclaré** (`{address, lat, lon, precision, adjusted}` dans `form_data`) : c'est
-  une **réponse au formulaire**, stockée comme les autres, figée avec elles, et elle **prime**
-  sur tout géocodage — l'usager sait mieux que la BAN où il a posé son épingle (150 m au plus de
-  l'adresse). Substituables sans toucher au code par `VITE_MAP_TILE_URL` / `VITE_GEOCODE_URL`
-  (fournisseur dédié le jour où le volume l'exige).
-- **Saisie d'adresse assistée** (`src/lib/adresse.ts` + `src/components/address/`) : une
-  **ligne unique** qui propose les adresses du référentiel (combobox ARIA, ↑ ↓ / Entrée /
-  Échap), un dépliant « Plus de champs » limité à ce que le contrat porte vraiment, une
-  **carte de contrôle** et « Utiliser ma position ». **Il propose, il ne garde pas la
-  porte** : retenir une proposition est toujours facultatif, la BAN ne couvre ni les adresses
-  neuves ni l'étranger, et une panne du service n'empêche jamais de saisir.
+- **Design system Notch/Ariane** (projet Claude Design « Ariane Design System », tokens copiés
+  tels quels dans `src/index.css`, police Nunito Sans seule) et **shell calqué sur Clara**
+  (header `h-14`, rail vert 52 px, entrée active décidée par `nav.ts`, gabarit demandé par la
+  page via `shellLayout.tsx`, Paramètres hors du rail). ⚠️ `_adherence.oxlintrc.json` ne
+  s'exécute plus (dette O1) → [`docs/features/shell-et-design-system.md`](docs/features/shell-et-design-system.md).
+- **Cartographie libre et saisie d'adresse** : tuiles OpenStreetMap (attribution ODbL
+  obligatoire), géocodage BAN via la Géoplateforme, sans clé. Ce qui transite, c'est une
+  **ADRESSE et rien qui l'accompagne**. **Iris ne géocode jamais pour stocker** ; le point
+  déclaré par l'usager (`location`) est une réponse au formulaire et prime. La saisie
+  assistée **propose, elle ne garde pas la porte**
+  → [`docs/features/adresse-et-cartographie.md`](docs/features/adresse-et-cartographie.md).
 - Textes et libellés **en français**. Formulaires en `Dialog`, confirmations destructives en
   `AlertDialog`, classes fusionnées avec `cn()`.
 - Documentation : un document = un public + une question ; toute évolution de surface de
-  contrat (futures API) sera tracée dans un `docs/api-changelog.md` append-only.
+  contrat (futures API) sera tracée dans un `docs/api-changelog.md` append-only. Le détail
+  d'une feature s'écrit dans sa fiche `docs/features/` ou dans le `CLAUDE.md` de son dossier.
