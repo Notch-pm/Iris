@@ -263,6 +263,28 @@ de sens hors du couple organisation/démarche) — planifié : retrait de la col
 `role` elle-même dans une vague ultérieure, pour éviter une seconde source de
 vérité.
 
+## Accès ouvert par le Socle (2026-10-30)
+
+L'accès d'un agent à un tenant s'ouvre **dans le Socle** (annuaire des agents de la gamme,
+`GET /v1/users`, public-api 1.43.0, rôle de base unique « acces ») ; la fonction
+`sync-socle-users` l'applique chaque minute (lecture incrémentale) et chaque nuit à 04:20 UTC
+(liste complète). Décision : le Socle **n'attribue aucun profil** — ouvrir l'accès crée le
+compte (lien d'activation par le relais du tenant) et l'appartenance `organization_members`,
+**sans profil** : l'agent ne voit rien tant qu'un administrateur Iris ne lui en a pas attribué.
+
+- **Accès retiré** : le compte est **banni** dès qu'il n'a plus d'accès actif dans aucun
+  tenant ; son appartenance et ses attributions sont **conservées** (retirer le membre les
+  supprimerait en cascade — elles reviennent ainsi à la réactivation). Un agent qui garde un
+  accès dans un autre tenant **quitte** seulement celui-ci (ses profils de ce tenant avec).
+- L'état donné par le Socle vit dans `socle_member_access` (organisation, utilisateur,
+  `is_active`) ; `users.socle_user_id` est la clé de correspondance (écrite par le service
+  role seul, trigger `t04_users_protect_socle_user_id`).
+- **Admin plateforme** : jamais touché par la synchronisation.
+- `admin-users` `invite_user` sur un tenant répond **409** ; l'écran Paramètres › Droits ›
+  Utilisateurs n'invite plus. ⚠️ La zone superadmin peut encore donner ou retirer l'accès à un
+  tenant (`useSetMembership` / `useRemoveMembership`) : la synchronisation suivante rétablit
+  l'état voulu par le Socle.
+
 ## Admin plateforme
 
 `users.is_platform_admin` contourne l'ensemble du dispositif (`is_platform_admin()`

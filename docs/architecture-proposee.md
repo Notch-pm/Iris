@@ -861,7 +861,7 @@ allow-list par clé à terme.
 | D5 | Création d'usager Socle depuis Iris | **Jamais automatique** — geste d'agent après `contacts/match` (même choix que Clara) |
 | D6 | Visibilité sous-arbre portée par le RLS (et non par un filtre applicatif comme Clara) | **RLS** — doctrine de la gamme ; Iris est un projet neuf, autant poser la vraie frontière |
 | D7 | Communication à l'usager | **Le canal d'origine porte la communication** (née d'un courrier → Clara répond avec le `closure_text` fourni ; née du portail → Iris/portail). Frontière produit à confirmer |
-| D8 | Comptes et affectations | Utilisateurs **locaux** Iris au MVP (Socle n'expose aucune API utilisateurs) ; fédération = évolution de gamme à ouvrir séparément |
+| D8 | Comptes et affectations | ~~Utilisateurs **locaux** Iris au MVP (Socle n'expose aucune API utilisateurs) ; fédération = évolution de gamme à ouvrir séparément~~ **Révisée le 2026-10-30** : le Socle **ouvre l'accès** à Iris (annuaire des agents, `GET /v1/users`, public-api 1.43.0) et `sync-socle-users` crée compte et appartenance ; **aucun rôle ni profil** ne vient du Socle — les profils de droits restent attribués dans Iris. Voir [`droits.md`](droits.md) § « Accès ouvert par le Socle ». Cible suivante : connexion unique par Keycloak (lot 4 de la gamme). |
 | D9 | Rétention | Proposition de départ : 1 an après clôture (demande + PJ), 3 ans pour les journaux d'accès — à valider juridiquement |
 | D10 | Région Supabase du projet Iris | **UE, à confirmer avant création — irréversible** |
 | D11 | Antivirus PJ | Accepter l'absence (documentée) ou budgéter un service externe |

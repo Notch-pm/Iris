@@ -148,9 +148,15 @@ Deno.serve(async (req) => {
     if (!EMAIL_RE.test(email)) return fail(req, 400, "bad_request", "Email invalide.");
 
     if (orgId) {
-      if (!(await isTenantAdmin(caller.id, orgId))) {
-        return fail(req, 403, "forbidden", "Administration requise sur ce tenant.");
-      }
+      // Annuaire des agents (2026-10-30) : l'accès d'un agent à un tenant
+      // s'ouvre dans le Socle, `sync-socle-users` crée le compte et
+      // l'appartenance. Les profils, eux, restent attribués ici.
+      return fail(
+        req,
+        409,
+        "conflict",
+        "L'accès à Iris s'ouvre dans le Socle (Paramètres › Utilisateurs) ; attribuez ensuite ses profils ici.",
+      );
     } else if (!isPlatformAdmin) {
       return fail(req, 400, "bad_request", "Tenant de rattachement requis.");
     }

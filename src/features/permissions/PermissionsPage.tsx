@@ -18,7 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { syncSummary, useTriggerSocleSync } from "@/features/socle/useSocleSync";
@@ -35,7 +34,7 @@ import { OrganisationsPanel } from "@/features/templates/OrganisationsPanel";
 import { AiUsagePanel } from "@/features/ai/AiUsagePanel";
 import { LinkSettingsPanel } from "@/features/linking/LinkSettingsPanel";
 import { CitizenNoticesPanel } from "@/features/notifications/usager/CitizenNoticesPanel";
-import { useInviteMember, useSendMemberPasswordReset } from "./useComptes";
+import { useSendMemberPasswordReset } from "./useComptes";
 import {
   useAllProcedureRows, useAssignProfile, useAuditLog, useCoverageReport, useDeleteProfile,
   useMembersWithoutProfile, useRevokeProfile, useSetProfileStatus, useSocleOrgRows, useTenantMemberRows,
@@ -163,19 +162,16 @@ export function PermissionsPage() {
   const deleteProfile = useDeleteProfile(orgId);
   const assignProfile = useAssignProfile(orgId);
   const revokeProfile = useRevokeProfile(orgId);
-  const inviteMember = useInviteMember(orgId);
   const sendPasswordReset = useSendMemberPasswordReset();
   // Une seule instance de la mutation pour les deux boutons (en-tête des
   // paramètres et section Référentiel) : même état « en cours » des deux côtés.
   const sync = useTriggerSocleSync(orgId);
 
-  // ---- Invitation d'un membre ----------------------------------------------
-  const [inviteOpen, setInviteOpen] = React.useState(false);
+  // ---- Comptes des membres --------------------------------------------------
+  // L'invitation n'est plus ici : l'accès s'ouvre dans le Socle (annuaire des
+  // agents, 2026-10-30). Reste le renvoi d'un lien de mot de passe.
   const [inviteError, setInviteError] = React.useState<string | null>(null);
   const [memberNotice, setMemberNotice] = React.useState<string | null>(null);
-  const [iEmail, setIEmail] = React.useState("");
-  const [iFirst, setIFirst] = React.useState("");
-  const [iLast, setILast] = React.useState("");
 
   const orgNameById = React.useMemo(
     () => new Map((orgRows.data ?? []).map((r) => [r.socle_id, r.name])),
@@ -275,30 +271,6 @@ export function PermissionsPage() {
       setRevokeTarget(null);
     } catch (err) {
       setRevokeError(err instanceof Error ? err.message : "Retrait impossible.");
-    }
-  }
-
-  // ---- Invitation d'un membre (RM-20 : geste d'administrateur de tenant) ----
-  async function submitInvite(e: React.FormEvent) {
-    e.preventDefault();
-    setInviteError(null);
-    try {
-      const result = await inviteMember.mutateAsync({
-        email: iEmail,
-        firstName: iFirst,
-        lastName: iLast,
-      });
-      setInviteOpen(false);
-      setIEmail(""); setIFirst(""); setILast("");
-      if (!result.invited) {
-        setMemberNotice(`${result.email} avait déjà un compte Iris : il a simplement reçu l'accès à ce tenant.`);
-      } else if (result.email_sent) {
-        setMemberNotice(`Invitation envoyée à ${result.email}. Attribuez-lui un profil de droits : sans profil, il ne verra aucune demande.`);
-      } else {
-        setInviteError(result.email_error ?? "Compte créé, mais l'invitation n'est pas partie.");
-      }
-    } catch (err) {
-      setInviteError(err instanceof Error ? err.message : "Invitation impossible.");
     }
   }
 
@@ -540,13 +512,13 @@ export function PermissionsPage() {
       {section === "utilisateurs" ? (
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
+            {/* Annuaire des agents (2026-10-30) : l'accès s'ouvre dans le Socle,
+                la synchronisation crée le compte ; les profils s'attribuent ici. */}
             <p className="max-w-[640px] text-sm text-muted-foreground">
-              Invitez un agent : il reçoit un lien d'activation et choisit son mot de passe. Tant
-              qu'aucun profil ne lui est attribué, il ne voit aucune demande.
+              L'accès à Iris s'ouvre dans le Socle (Paramètres › Utilisateurs) : l'agent reçoit
+              alors un lien d'activation et apparaît ici. Tant qu'aucun profil ne lui est
+              attribué, il ne voit aucune demande.
             </p>
-            <Button onClick={() => { setInviteError(null); setMemberNotice(null); setInviteOpen(true); }}>
-              <UserPlus className="size-4" aria-hidden="true" /> Inviter un utilisateur
-            </Button>
           </div>
 
           {inviteError ? <p role="alert" className="text-sm text-destructive">{inviteError}</p> : null}
@@ -854,39 +826,6 @@ export function PermissionsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Invitation d'un membre — le compte s'ouvre par un lien d'activation */}
-      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Inviter un utilisateur</DialogTitle>
-          </DialogHeader>
-          <form onSubmit={submitInvite} className="flex flex-col gap-4">
-            <p className="text-sm text-muted-foreground">
-              Le compte est ouvert sans mot de passe : son titulaire reçoit un lien d'activation
-              envoyé par le serveur de {current.organizationName} et choisit lui-même le sien.
-            </p>
-            <Field label="Email" htmlFor="inv-email" required>
-              <Input id="inv-email" type="email" required value={iEmail}
-                onChange={(e) => setIEmail(e.target.value)} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Prénom" htmlFor="inv-first">
-                <Input id="inv-first" value={iFirst} onChange={(e) => setIFirst(e.target.value)} />
-              </Field>
-              <Field label="Nom" htmlFor="inv-last">
-                <Input id="inv-last" value={iLast} onChange={(e) => setILast(e.target.value)} />
-              </Field>
-            </div>
-            {inviteError ? <p role="alert" className="text-sm text-destructive">{inviteError}</p> : null}
-            <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}>Annuler</Button>
-              <Button type="submit" disabled={inviteMember.isPending}>
-                {inviteMember.isPending ? "Envoi…" : "Inviter"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

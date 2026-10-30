@@ -43,6 +43,11 @@ verify_jwt = false
 [functions.sync-socle-referentiel]
 verify_jwt = false
 
+# Agents gérés par le Socle (2026-10-30) : pg_cron (x-cron-secret) ou admin
+# plateforme (JWT vérifié en code).
+[functions.sync-socle-users]
+verify_jwt = false
+
 # Assistant IA : JWT de l'agent vérifié EN CODE (préflights OPTIONS), droits
 # revérifiés en SQL (request_right_for / has_any_creation_right_for).
 [functions.request-assistant]
