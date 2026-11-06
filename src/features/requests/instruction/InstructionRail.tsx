@@ -1,4 +1,4 @@
-// Rail latéral de la fiche d'instruction : prise en charge (urgence, agent
+// Rail latéral de la fiche d'instruction : prise en charge (priorité, agent
 // instructeur, organisme responsable), avancement (étapes du cycle de vie +
 // action principale) et usager (identité RELUE dans le Socle quand elle est
 // disponible, écarts avec le dépôt, correction sur place, autres demandes du
@@ -95,7 +95,7 @@ export function PriseEnChargeCard({
               )}
             >
               <Icon className={cn("size-3.5 shrink-0", TONE_TEXT[option.tone])} strokeWidth={2.6} aria-hidden="true" />
-              <span className="flex-1">Urgence {option.label.toLowerCase()}</span>
+              <span className="flex-1">Priorité {option.label.toLowerCase()}</span>
               <ChevronDown className="size-3 shrink-0 opacity-50" aria-hidden="true" />
             </button>
           )}

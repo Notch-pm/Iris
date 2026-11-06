@@ -11,6 +11,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { OPEN_STATUSES } from "@/features/requests/statuts";
+import { dueRange, type DueValue } from "@/features/requests/echeance";
 import type { RequestListItem } from "@/features/requests/useRequests";
 import { callStats } from "@/features/stats/useStats";
 import type { MonthlyFlow } from "./dashboard";
@@ -32,6 +33,33 @@ export function useMonthlyFlows(orgId: string) {
     enabled: Boolean(orgId),
     queryFn: () =>
       callStats<MonthlyFlow>("stats_monthly_flows", { p_org_id: orgId, p_months: 2, p_socle_org_id: null }),
+  });
+}
+
+/**
+ * Échéances (B16) : combien de demandes EN COURS ont dépassé leur échéance, ou
+ * l'atteignent dans 3 jours ou moins. Un STOCK à l'instant, pas un flux daté —
+ * il n'a donc pas d'équivalent M−1. Mêmes bornes que le filtre de la liste
+ * (`dueRange`), vers laquelle la carte renvoie : le chiffre et la liste
+ * filtrée disent la même chose.
+ */
+export function useDueCount(orgId: string, value: DueValue) {
+  return useQuery({
+    queryKey: ["dashboard", "due", orgId, value],
+    enabled: Boolean(orgId),
+    queryFn: async (): Promise<number> => {
+      const range = dueRange([value], new Date())!;
+      let query = supabase
+        .from("requests")
+        .select("id", { count: "exact", head: true })
+        .eq("organization_id", orgId)
+        .in("status", [...OPEN_STATUSES])
+        .lt("due_at", range.lt);
+      if (range.gte) query = query.gte("due_at", range.gte);
+      const { error, count } = await query;
+      if (error) throw error;
+      return count ?? 0;
+    },
   });
 }
 

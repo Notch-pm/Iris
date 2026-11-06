@@ -32,7 +32,7 @@ import {
 // config demandeur) pèserait lourd × 500 demandes, pour rien ici.
 const MAP_SELECT =
   "id, reference, subject, status, priority, socle_procedure_id, socle_procedure_label, " +
-  "socle_category_label, socle_organization_label, assigned_to, received_at, closed_at, identity_status, " +
+  "socle_category_label, socle_organization_label, assigned_to, received_at, closed_at, due_at, identity_status, " +
   "requester_snapshot, form_data, form_schema:procedure_snapshot->form_schema";
 
 export interface MapRequestsResult {

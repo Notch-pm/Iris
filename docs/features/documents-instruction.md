@@ -24,7 +24,7 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
   - **Ce que le catalogue porte** (`_shared/document/variables.ts`, contrat recopié dans les
     modèles des collectivités : on AJOUTE, on ne renomme pas) : `usager.*` (identité relue
     dans le Socle, bloc adresse d'un seul tenant), `demande.*` (démarche, code de suivi,
-    dates, urgence, état, instructeur), `organisme.*` (nom, adresse, charte), et une **boucle**
+    dates, priorité — `demande.priorite`, l'ancienne clé `demande.urgence` restant valable —, état, instructeur), `organisme.*` (nom, adresse, charte), et une **boucle**
     `{{#demande.pieces}} … {{libelle}} : {{statut}} … {{/demande.pieces}}`. Vérifié sur le
     document de référence fourni par le PO : 35 variables, 1 boucle, **0 jeton inconnu**.
   - **Un jeton hors catalogue est laissé tel quel**, délibérément : le modèle appartient à la

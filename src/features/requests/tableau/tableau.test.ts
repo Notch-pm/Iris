@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { emptyRights, type MyRights, type RightsProfile } from "@/features/rights/rights";
 import {
   activeFilterCount, AGENT_FACET, BOARD_COLUMNS, boardCard, boardCards, boardContent,
-  boardRightsResolver, closedSince, dropTargets, EMPTY_BOARD_FILTERS, facetsOf, filterCards,
+  boardRightsResolver, closedSince, dropTargets, dueFacets, EMPTY_BOARD_FILTERS, facetsOf, filterCards,
   isMineOnly, NO_AGENT, NO_PROCEDURE, PROCEDURE_FACET, refusalHint, toggleMine, toggleValue,
   transitionToast, type BoardRow,
 } from "./tableau";
@@ -24,6 +24,7 @@ function row(over: Partial<BoardRow> = {}): BoardRow {
     assigned_to: null,
     received_at: "2026-08-21T09:00:00Z",
     updated_at: "2026-08-21T09:00:00Z",
+    due_at: null,
     identity_status: "rapprochee",
     requester_snapshot: { declared: { first_name: "Marie", last_name: "Durand" } },
     source: "iris",
@@ -317,5 +318,32 @@ describe("messages", () => {
     expect(transitionToast(boardCard(row(), null), "en_instruction")).toBe(
       "DEM-2026-000001 → En cours d'instruction",
     );
+  });
+});
+
+describe("échéance (B16)", () => {
+  // Jeudi 12 novembre 2026, 15:00 locale ; échéances posées à 23:59:59 locale.
+  const now = new Date(2026, 10, 12, 15, 0);
+  const due = (day: number) => new Date(2026, 10, day, 23, 59, 59).toISOString();
+  const cards = [
+    boardCard(row({ id: "late", status: "en_instruction", due_at: due(10) }), null, now),
+    boardCard(row({ id: "soon", status: "a_traiter", due_at: due(14) }), null, now),
+    boardCard(row({ id: "far", status: "en_attente", due_at: due(25) }), null, now),
+    boardCard(row({ id: "closed", status: "resolue_positive", due_at: due(1) }), null, now),
+  ];
+  it("une mention seulement en retard ou à 3 jours ou moins, et jamais sur une close", () => {
+    expect(cards.map((c) => c.due?.label ?? null)).toEqual([
+      "En retard de 2 jours", "Échéance dans 2 jours", null, null,
+    ]);
+  });
+  it("filtre et facette « Échéance »", () => {
+    const ids = (values: string[]) =>
+      filterCards(cards, { ...EMPTY_BOARD_FILTERS, due: values }, now).map((c) => c.id);
+    expect(ids(["late"])).toEqual(["late"]);
+    expect(ids(["soon"])).toEqual(["soon"]);
+    expect(ids(["late", "soon"])).toEqual(["late", "soon"]);
+    expect(ids([])).toHaveLength(4);
+    expect(activeFilterCount({ ...EMPTY_BOARD_FILTERS, due: ["late"] })).toBe(1);
+    expect(dueFacets(cards, now).map((f) => [f.value, f.count])).toEqual([["late", 1], ["soon", 1]]);
   });
 });

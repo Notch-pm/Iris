@@ -27,7 +27,9 @@ export type NotificationKind =
   | "transferred_in"
   | "intervention_requested"
   | "intervention_completed"
-  | "citizen_replied";
+  | "citizen_replied"
+  | "deadline_soon"
+  | "deadline_overdue";
 
 /** Libellés de statut — copie assumée de `src/features/requests/statuts.ts`.
  *  Les edge functions ne partagent pas le graphe de modules du front ; un
@@ -84,6 +86,29 @@ export interface NotificationPayload {
   pieces?: number | null;
   /** `citizen_replied` : la réponse a remis la demande en instruction (B11). */
   reprise?: boolean | null;
+  /** Alertes d'échéance (B16) : l'échéance (ISO, 23:59:59 à Paris) et les jours restants au passage. */
+  due_at?: string | null;
+  days?: number | null;
+}
+
+/**
+ * La phrase d'une alerte d'échéance (B16) — partagée par l'e-mail et le push.
+ * Le jour se lit dans la chaîne ISO sans `Date` : l'échéance est posée à
+ * 23:59:59 à Paris, soit le même jour calendaire en UTC (21:59 ou 22:59).
+ */
+export function deadlineSentence(kind: string, payload: NotificationPayload): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(text(payload.due_at));
+  const day = m ? `${m[3]}/${m[2]}/${m[1]}` : "";
+  if (kind === "deadline_overdue") {
+    return day
+      ? `L'échéance de traitement est dépassée (elle tombait le ${day}).`
+      : "L'échéance de traitement est dépassée.";
+  }
+  const n = typeof payload.days === "number" ? payload.days : null;
+  const when = n === 0 ? "aujourd'hui" : n === 1 ? "demain" : n !== null ? `dans ${n} jours` : "bientôt";
+  return day
+    ? `L'échéance de traitement tombe ${when}, le ${day}.`
+    : `L'échéance de traitement tombe ${when}.`;
 }
 
 export interface NotificationEmailInput {
@@ -342,6 +367,22 @@ function bodyFor(kind: string, payload: NotificationPayload): Body {
             ? ["La demande attendait sa réponse : elle revient en instruction."]
             : []),
           "Son message est dans l'onglet Échanges de la demande.",
+        ],
+      };
+    }
+
+    // B16 : passage quotidien, sans auteur — c'est le calendrier qui parle.
+    case "deadline_soon":
+    case "deadline_overdue": {
+      const ctx = contextLine(payload);
+      const overdue = kind === "deadline_overdue";
+      return {
+        subject: subjectLine(overdue ? "Échéance dépassée" : "Échéance proche", payload),
+        heading: overdue ? "Une demande a dépassé son échéance" : "Une demande arrive à échéance",
+        paragraphs: [
+          `${deadlineSentence(kind, payload)} Demande ${what}.`,
+          ...(ctx ? [ctx] : []),
+          `Elle est au statut « ${statusLabel(payload.status)} ».`,
         ],
       };
     }

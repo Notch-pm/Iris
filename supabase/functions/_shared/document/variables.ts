@@ -55,7 +55,10 @@ export const DOCUMENT_VARIABLES: DocumentVariable[] = [
   { key: "demande.organisme_responsable", label: "Organisme responsable" },
   { key: "demande.date_depot", label: "Date de dépôt" },
   { key: "demande.date_echeance", label: "Date d'échéance" },
-  { key: "demande.urgence", label: "Urgence" },
+  { key: "demande.priorite", label: "Priorité" },
+  // 2026-11-06 : « Urgence » renommée « Priorité » partout — l'ancienne clé RESTE,
+  // les modèles Word déjà écrits la citent (on ajoute, on ne renomme pas).
+  { key: "demande.urgence", label: "Priorité (ancien nom : urgence)", hint: "Préférer {{demande.priorite}}" },
   { key: "demande.etat_actuel", label: "État actuel" },
   { key: "demande.date_cloture", label: "Date de clôture" },
   { key: "demande.etat_cloture", label: "État à la clôture", hint: "Positive ou négative" },
@@ -134,6 +137,7 @@ export interface MergeInput {
     organisme_responsable?: string | null;
     date_depot?: string | null;
     date_echeance?: string | null;
+    priorite?: string | null;
     urgence?: string | null;
     etat_actuel?: string | null;
     date_cloture?: string | null;
@@ -206,7 +210,8 @@ export function buildMergeContext(input: MergeInput): MergeContext {
   values["demande.organisme_responsable"] = clean(d.organisme_responsable);
   values["demande.date_depot"] = clean(d.date_depot);
   values["demande.date_echeance"] = clean(d.date_echeance);
-  values["demande.urgence"] = clean(d.urgence);
+  values["demande.priorite"] = clean(d.priorite ?? d.urgence);
+  values["demande.urgence"] = clean(d.urgence ?? d.priorite);
   values["demande.etat_actuel"] = clean(d.etat_actuel);
   values["demande.date_cloture"] = clean(d.date_cloture);
   values["demande.etat_cloture"] = clean(d.etat_cloture);

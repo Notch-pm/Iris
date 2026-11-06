@@ -360,3 +360,27 @@ describe("notificationEmail — réponse de l'usager (L4b, 2026-10-21)", () => {
     expect(JSON.stringify(leaked)).not.toContain("TEXTE PRIVÉ");
   });
 });
+
+describe("notificationEmail — alertes d'échéance (B16, 2026-11-06)", () => {
+  const base = {
+    reference: "DEM-2026-000042", subject: "Nid-de-poule rue des Lilas", status: "en_instruction",
+    procedure: "Signaler un nid-de-poule", destinataire: "Voirie", due_at: "2026-11-13T22:59:59+00:00",
+  };
+  it("échéance proche : le jour, et dans combien de temps", () => {
+    const mail = notificationEmail(input({ kind: "deadline_soon", payload: { ...base, days: 2 } }));
+    expect(mail.subject).toBe("DEM-2026-000042 — Échéance proche — Iris · ACCM");
+    expect(mail.paragraphs[1]).toBe(
+      "L'échéance de traitement tombe dans 2 jours, le 13/11/2026. Demande DEM-2026-000042 — Nid-de-poule rue des Lilas.");
+    expect(mail.paragraphs).toContain("Démarche : Signaler un nid-de-poule — Voirie.");
+    expect(notificationEmail(input({ kind: "deadline_soon", payload: { ...base, days: 0 } })).paragraphs[1])
+      .toMatch(/^L'échéance de traitement tombe aujourd'hui, le 13\/11\/2026\./);
+    expect(notificationEmail(input({ kind: "deadline_soon", payload: { ...base, days: 1 } })).paragraphs[1])
+      .toMatch(/tombe demain/);
+  });
+  it("échéance dépassée", () => {
+    const mail = notificationEmail(input({ kind: "deadline_overdue", payload: { ...base, days: -1 } }));
+    expect(mail.subject).toBe("DEM-2026-000042 — Échéance dépassée — Iris · ACCM");
+    expect(mail.paragraphs[1]).toMatch(/^L'échéance de traitement est dépassée \(elle tombait le 13\/11\/2026\)\./);
+    expect(mail.paragraphs).toContain("Elle est au statut « En cours d'instruction ».");
+  });
+});

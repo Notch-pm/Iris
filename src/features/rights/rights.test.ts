@@ -9,6 +9,7 @@ import {
   emptyRights,
   explainRight,
   hasAnyProfile,
+  hasCloseRightSomewhere,
   hasRight,
   isAdminOn,
   NIL_PROCEDURE_ID,
@@ -149,6 +150,20 @@ describe("rightsFor — combinaison par couple (organisation, démarche)", () =>
     const my = myRights([], { is_platform_admin: true });
     expect(rightsFor(my, MAIRIE, D1)).toEqual(setOf("consultation", "creation", "instruction", "cloture"));
     expect(isAdminOn(my, MAIRIE)).toBe(true);
+  });
+});
+
+describe("hasCloseRightSomewhere — sélection de la liste (B7)", () => {
+  it("clôture par une ligne ou par le défaut d'un profil actif, avec un périmètre", () => {
+    expect(hasCloseRightSomewhere(emptyRights(ORG))).toBe(false);
+    expect(hasCloseRightSomewhere(myRights([], { is_platform_admin: true }))).toBe(true);
+    expect(hasCloseRightSomewhere(myRights([profile({ name: "L", scope_organization_ids: [VOIRIE], procedures: { [D1]: ["cloture"] } })]))).toBe(true);
+    expect(hasCloseRightSomewhere(myRights([profile({ name: "D", scope_organization_ids: [VOIRIE], default: ["cloture"] })]))).toBe(true);
+  });
+  it("ni instruction seule, ni profil inactif, ni périmètre vide", () => {
+    expect(hasCloseRightSomewhere(myRights([profile({ name: "I", scope_organization_ids: [VOIRIE], default: ["instruction"] })]))).toBe(false);
+    expect(hasCloseRightSomewhere(myRights([profile({ name: "X", status: "inactive", scope_organization_ids: [VOIRIE], default: ["cloture"] })]))).toBe(false);
+    expect(hasCloseRightSomewhere(myRights([profile({ name: "V", default: ["cloture"] })]))).toBe(false);
   });
 });
 

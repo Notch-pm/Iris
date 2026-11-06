@@ -102,7 +102,7 @@ Cette phrase est écrite en tête de `supabase/functions/_shared/ai/redact.ts`, 
 | Base de connaissances | Socle, lue à chaque appel | ✅ | ✅ |
 | Communication aux usagers (depuis le 2026-09-18) | même lecture Socle : `user_communication` + `user_description` | ✅ | ✅ |
 | Recommandations générales de la collectivité (depuis le 2026-09-19) | Socle `GET /v1/organizations/{racine}/agent-guidance`, lu en parallèle | ✅ | ✅ |
-| Démarche, objet, description, statut, urgence, échéance | `requests` | ✅ | ❌ |
+| Démarche, objet, description, statut, priorité, échéance | `requests` | ✅ | ❌ |
 | Réponses au formulaire (conditions rejouées) | `form_data` + `procedure_snapshot` | ✅ | ❌ |
 | Historique des étapes (30 derniers événements) | `request_events` | ✅ | ❌ |
 | Catalogue des sources déclarées pour l'IA : identifiant, libellé, adresse d'une page (depuis le 2026-09-19) | la même lecture Socle | ✅ | ✅ |

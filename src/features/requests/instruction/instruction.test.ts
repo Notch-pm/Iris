@@ -413,6 +413,29 @@ describe("formAnswers", () => {
     expect(items[2].label).toBe("Retirée des demandes liées");
   });
 
+  it("nomme la résolution commune et la résolution groupée, et ce qu'elles ont fait au passage", () => {
+    const items = activityItems({
+      events: [
+        { id: "e1", event_type: "resolved_in_batch", created_by: "u1", created_at: "2026-11-04T10:00:00Z",
+          payload: { batch_size: 7, took_over: true, chained: true } },
+        { id: "e2", event_type: "resolved_with_group", created_by: "u1", created_at: "2026-11-04T09:00:00Z",
+          payload: { source_request_id: "s", source_reference: "DEM-2026-000040", took_over: false, chained: true } },
+        { id: "e3", event_type: "group_resolution", created_by: "u1", created_at: "2026-11-04T08:00:00Z",
+          payload: { count: 3, references: ["a", "b", "c"] } },
+      ],
+      notes: [], nameOf: () => "Camille Martin",
+    });
+    expect(items[0]).toMatchObject({
+      label: "Résolue dans une résolution groupée",
+      detail: "Camille Martin · lot de 7 demandes · mise en instruction au passage · instructeur affecté",
+    });
+    expect(items[1]).toMatchObject({
+      label: "Résolue avec les demandes liées",
+      detail: "avec DEM-2026-000040 · Camille Martin · mise en instruction au passage",
+    });
+    expect(items[2].label).toBe("3 demandes liées résolues avec elle");
+  });
+
   it("nomme la modification des réponses, sans jamais citer les valeurs", () => {
     const items = activityItems({
       events: [{ id: "e1", event_type: "form_data_updated", created_by: "u1",

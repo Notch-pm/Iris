@@ -30,6 +30,45 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
   des sous-chemins qui ont leur propre entrée. **Toute future route sous une entrée
   existante se déclare là.**
 
+- **Échéance : filtre et colonne** (2026-11-06, B16 — PO du jour). Critère **« Échéance »**
+  du popover, deux valeurs : « En retard » et « Urgentes (3 jours ou moins) » — ⚠️ à ne pas
+  confondre avec la PRIORITÉ « Urgente », saisie par un agent. Demandes **ouvertes**
+  seulement (une demande close n'est plus en retard), combiné en ET aux autres critères ;
+  bornes en minuit local par `dueRange` (`echeance.ts`, pur, testé, partagé avec le tableau et la carte), mêmes seuils que la pastille `dueView`
+  de la fiche ; appliqué côté serveur par `lt`/`gte` sur `due_at` (pas de second `or`, la
+  recherche en porte déjà un). Colonne **« Échéance »** triable (`due_at`, de la plus proche à
+  la plus lointaine) : la pastille de la fiche, mêmes jetons, tant que la demande est ouverte ;
+  la date seule une fois close.
+
+- **Résolution groupée d'une sélection** (2026-11-04, B7 du backlog — décision PO du jour :
+  la règle des groupes « même incident » s'étend à toute sélection). Module pur
+  `resolution/batch.ts` (testé), dialogue `resolution/BatchResolutionDialog.tsx`, RPC
+  `resolve_requests` (migration `20261104100000`, test
+  [`resolution-groupee.test.sql`](../../supabase/tests/resolution-groupee.test.sql)).
+  - **Qui voit les cases** : un agent qui détient la `clôture` quelque part
+    (`hasCloseRightSomewhere`, reflet). Une case par ligne, une case « toute la page »
+    (état intermédiaire), barre « N sélectionnées · Désélectionner · Résoudre la sélection ».
+    La sélection **survit** aux pages et aux filtres ; le dialogue liste tout ce qui est coché.
+    **50 au plus** (`BATCH_MAX_SIZE`, jumeau de `request_batch_max_size()`) : au-delà, la coche
+    est refusée et dite, plutôt que le lot échoue au serveur.
+  - **Le dialogue** : issue (positive / négative, motif facultatif pour la négative —
+    irrecevable / réorientation), commentaire pour l'usager repris pour toutes, puis, demande
+    par demande, ce qui va se passer (`batchForecast` : « à traiter : mise en instruction puis
+    résolue », « vous en deviendrez l'instructeur », « issue de Clara : aucun avis ») et les
+    **refus prévisibles**, qui ne partent pas au serveur (déjà close, pas de clôture, pas
+    d'instruction alors qu'il faut instruire). « Prévenir les usagers » est **décoché par
+    défaut** ; coché, l'avis de clôture de chaque demande résolue part par
+    `send-request-email` (Clara exclue, sans adresse comptée à part).
+  - **Résultat partiel et honnête** : refus du serveur (t17 — pièce obligatoire non conforme,
+    garde, RLS) et refus prévisibles comptent ensemble — l'agent a coché N demandes, il lit
+    « 7 demandes résolues sur 9 » et le motif de chacune. Les demandes résolues quittent la
+    sélection ; les autres y restent.
+  - ⚠️ **Ni le tableau ni le mobile** (choix PO du 2026-11-04 : liste seulement). ⚠️ Les droits
+    viennent de `socle_scope_org_id`, ajouté à `LIST_SELECT` et **facultatif** dans
+    `RequestListItem` (les autres écrans qui partagent le type ne le lisent pas) : absent,
+    aucun droit — fail closed. ⚠️ L'icône lucide `Map` est importée en `MapIcon` dans
+    `RequestsListPage` : sous son nom, elle masquait le `Map` de JavaScript.
+
 - **Liste : tri, regroupement, export** (2026-08-22, motif des listes Clara) — logique pure
   `listing.ts` (testée) : **tri serveur** par colonne (référence = année puis numéro ; dates du
   plus récent d'abord ; jamais de retour à « non trié » ; la priorité n'est pas triable —

@@ -3,8 +3,9 @@ import { supabase } from "@/lib/supabase";
 import type { Tables } from "@/types/database.types";
 import { buildRequestFacets, type RequestFacets } from "./facets";
 import type { ClosureMotif, TransitionSpec } from "./statuts";
-import { buildTransitionUpdate } from "./statuts";
+import { buildTransitionUpdate, OPEN_STATUSES } from "./statuts";
 import {
+  dueRange,
   EXPORT_MAX_ROWS, orderClauses, searchClause, type GroupKey, type SortState,
 } from "./listing";
 
@@ -32,6 +33,8 @@ export interface RequestFilters {
   procedure: string[];
   priority: string[];
   source: string[];
+  /** Échéance (B16) : `late` (dépassée) / `soon` (3 jours ou moins) — demandes ouvertes seulement. */
+  due: string[];
 }
 
 // La valeur vit dans `listing.ts` (pur) : l'importer d'ici chargerait le client
@@ -39,7 +42,7 @@ export interface RequestFilters {
 export { EMPTY_FILTERS } from "./listing";
 
 const LIST_SELECT =
-  "id, reference, subject, status, priority, source, identity_status, socle_organization_id, socle_organization_label, socle_procedure_id, socle_procedure_label, assigned_to, received_at, due_at, created_at, updated_at";
+  "id, reference, subject, status, priority, source, identity_status, socle_organization_id, socle_organization_label, socle_procedure_id, socle_procedure_label, socle_scope_org_id, assigned_to, received_at, due_at, created_at, updated_at";
 
 export interface RequestListItem {
   id: string;
@@ -53,6 +56,12 @@ export interface RequestListItem {
   socle_organization_label: string | null;
   socle_procedure_id: string | null;
   socle_procedure_label: string | null;
+  /**
+   * Organisation porteuse (droits du couple) — lue par la liste seulement, pour
+   * prévoir la résolution groupée ; les autres écrans qui partagent ce type ne
+   * la sélectionnent pas.
+   */
+  socle_scope_org_id?: string;
   assigned_to: string | null;
   received_at: string;
   due_at: string | null;
@@ -71,6 +80,13 @@ function listQuery(orgId: string, filters: RequestFilters, sort: SortState, grou
   if (filters.procedure.length > 0) query = query.in("socle_procedure_id", filters.procedure);
   if (filters.priority.length > 0) query = query.in("priority", filters.priority);
   if (filters.source.length > 0) query = query.in("source", filters.source);
+  // Échéance : une plage sur `due_at`, et seulement parmi les demandes ouvertes —
+  // une demande close n'est plus « en retard ». Combinée en ET au filtre de statut.
+  const due = dueRange(filters.due, new Date());
+  if (due) {
+    query = query.in("status", [...OPEN_STATUSES]).lt("due_at", due.lt);
+    if (due.gte) query = query.gte("due_at", due.gte);
+  }
   const search = searchClause(filters.q);
   if (search) query = query.or(search);
   for (const clause of orderClauses(sort, groupKey)) {
@@ -381,7 +397,7 @@ export function useApplyTransition() {
   });
 }
 
-/** Priorité (« urgence » de la fiche) — writer du tenant ; gelée sur une demande archivée (garde t10). */
+/** Priorité — writer du tenant ; gelée sur une demande archivée (garde t10). */
 export function useUpdatePriority() {
   const invalidate = useInvalidateRequest();
   return useMutation({

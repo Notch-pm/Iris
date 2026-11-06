@@ -5,7 +5,8 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
 - **Fiche d'instruction de la demande** (`RequestDetailPage` + `instruction/`, design Claude
   Design « Suivi demande » implémenté le 2026-08-22) : page pleine hauteur. **En-tête** : fil
   d'Ariane (Demandes / statut / référence mono), objet, statut (pastille à point), échéance
-  (`due_at` : « dans N jours » / « en retard »), sous-titre usager · canal · date · échéance,
+  (`due_at` : « dans N jours » / « en retard » — calculée par le serveur au dépôt et
+  immuable depuis le 2026-11-06, B16 : aucun écran ne la modifie), sous-titre usager · canal · date · échéance,
   **action principale** (transition « vers l'avant » : `splitTransitions`) + menu « ⋯ » (autres
   transitions, copier la référence). **Onglets** : Résumé (clôture, informations saisies
   étiquetées par `procedure_snapshot.form_schema` avec conditions rejouées — `formAnswers` —,
@@ -27,7 +28,7 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
   types côté serveur) / « Télécharger » par URL signée, « Qualifier », « Remplacer la
   pièce » ; pièces d'instruction ; courriers), Échanges, Notes internes (`request_messages`,
   bulles beurre, suppression auteur/admin), Activité (`activityItems` : journal `request_events`
-  fusionné aux notes, plus récent en tête). **Rail** : prise en charge (urgence = `priority`
+  fusionné aux notes, plus récent en tête). **Rail** : prise en charge (priorité = `priority`, libellée « Urgence » jusqu'au 2026-11-06
   via `useUpdatePriority`, agent instructeur via `useAssignRequest`, **organisme responsable**
   via `useTransferRequest` — voir « Transfert d'organisme » plus bas),
   avancement (`buildStages` : étapes datées d'après le journal, attente « sautée », clôture

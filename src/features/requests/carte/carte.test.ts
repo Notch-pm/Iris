@@ -4,6 +4,7 @@ import {
   cardAnchor,
   distinctAddresses,
   EMPTY_MAP_FILTERS,
+  dueCountsOf,
   filterRequests,
   geocodeBatchPlan,
   isResolved,
@@ -52,6 +53,7 @@ function row(over: Partial<MapRequestRow> = {}): MapRequestRow {
     assigned_to: null,
     received_at: "2026-08-21T09:00:00Z",
     closed_at: null,
+    due_at: null,
     identity_status: "rapprochee",
     requester_snapshot: { declared: { display_name: "Marie Durand" } },
     form_data: {
@@ -143,22 +145,22 @@ describe("filterRequests", () => {
   ]);
 
   it("ne filtre rien quand aucune valeur n'est retenue", () => {
-    expect(filterRequests(located, { showResolved: true, procedures: [], priorities: [] })).toHaveLength(3);
+    expect(filterRequests(located, { showResolved: true, due: [], procedures: [], priorities: [] })).toHaveLength(3);
   });
   it("combine démarches (multi) et urgences (multi)", () => {
     expect(
-      filterRequests(located, { showResolved: true, procedures: ["proc-voirie", "proc-eclairage"], priorities: [] })
+      filterRequests(located, { showResolved: true, due: [], procedures: ["proc-voirie", "proc-eclairage"], priorities: [] })
         .map((l) => l.row.id),
     ).toEqual(["r1", "r2"]);
     expect(
-      filterRequests(located, { showResolved: true, procedures: [], priorities: ["urgente", "basse"] }).map((l) => l.row.id),
+      filterRequests(located, { showResolved: true, due: [], procedures: [], priorities: ["urgente", "basse"] }).map((l) => l.row.id),
     ).toEqual(["r2", "r3"]);
     expect(
-      filterRequests(located, { showResolved: true, procedures: ["proc-voirie"], priorities: ["urgente"] }),
+      filterRequests(located, { showResolved: true, due: [], procedures: ["proc-voirie"], priorities: ["urgente"] }),
     ).toEqual([]);
   });
   it("range les demandes historiques sans démarche sous une valeur propre", () => {
-    expect(filterRequests(located, { showResolved: true, procedures: [NO_PROCEDURE], priorities: [] }).map((l) => l.row.id))
+    expect(filterRequests(located, { showResolved: true, due: [], procedures: [NO_PROCEDURE], priorities: [] }).map((l) => l.row.id))
       .toEqual(["r3"]);
   });
 });
@@ -290,7 +292,7 @@ describe("mapCard", () => {
     expect(card.rows).toEqual([
       { label: "Usager", value: "Marie Durand" },
       { label: "Déposée le", value: "21 août 2026" },
-      { label: "Urgence", value: "Haute" },
+      { label: "Priorité", value: "Haute" },
       { label: "Démarche", value: "Demande d'intervention voirie" },
       { label: "Catégorie", value: "Cadre de vie" },
       { label: "Destinataire", value: "Services techniques" },
@@ -329,5 +331,33 @@ describe("champ `location` — une demande déposée avec un point n'est pas gé
     expect(locationHint({ precision: "voie", score: 1, adjusted: true })).toBe("Point ajusté par l'usager");
     expect(locationHint({ precision: "adresse", score: 1, adjusted: false })).toBeNull();
     expect(locationHint({ precision: "voie", score: 1 })).toBe("Localisée à la voie — numéro non trouvé");
+  });
+});
+
+describe("échéance (B16)", () => {
+  // Jeudi 12 novembre 2026, 15:00 locale ; échéances posées à 23:59:59 locale.
+  const now = new Date(2026, 10, 12, 15, 0);
+  const due = (day: number) => new Date(2026, 10, day, 23, 59, 59).toISOString();
+  const { located } = locatableRequests([
+    row({ id: "late", status: "en_instruction", due_at: due(10) }),
+    row({ id: "soon", due_at: due(15) }),
+    row({ id: "far", due_at: due(30) }),
+    row({ id: "done", status: "resolue_positive", closed_at: due(11), due_at: due(5) }),
+  ]);
+  it("filtre « En retard » / « Échéance ≤ 3 jours », demandes ouvertes seulement", () => {
+    const ids = (values: string[]) =>
+      filterRequests(located, { ...EMPTY_MAP_FILTERS, due: values }, now).map((l) => l.row.id);
+    expect(ids(["late"])).toEqual(["late"]);
+    expect(ids(["soon"])).toEqual(["soon"]);
+    expect(ids([])).toHaveLength(4);
+    expect(dueCountsOf(located, now)).toEqual({ late: 1, soon: 1 });
+  });
+  it("fiche de survol : la pastille tant que la demande est ouverte, la date une fois résolue", () => {
+    const rowOf = (i: number) => mapCard(located[i]!, null, now).rows.find((r) => r.label === "Échéance");
+    expect(rowOf(0)).toEqual({ label: "Échéance", value: "En retard de 2 jours" });
+    expect(mapCard(located[0]!, null, now).due?.tone).toBe("late");
+    expect(rowOf(1)).toEqual({ label: "Échéance", value: "Échéance dans 3 jours" });
+    expect(mapCard(located[3]!, null, now).due).toBeNull();
+    expect(rowOf(3)?.value).toBe("5 novembre 2026");
   });
 });

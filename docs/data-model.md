@@ -205,7 +205,28 @@ décider le contournement côté appelant, dans une fonction restée `SECURITY I
     (`irrecevable|abandon|retrait_usager|doublon|reorientation` ; `doublon` ⇒
     `master_request_id` NOT NULL, CHECK), `closure_text` (destiné à l'usager),
     `priority`, `assigned_to`, `anomalies` JSONB (tableau), `version` (monotone, +1 à
-    chaque UPDATE — idempotence des webhooks sortants), `due_at`, `closed_at` ;
+    chaque UPDATE — idempotence des webhooks sortants), `due_at` (échéance, voir ci-dessous),
+    `closed_at` ;
+  - **Échéance `due_at`** (B16, 2026-11-06, migrations `20261106100000` / `20261106110000`) :
+    **calculée par le serveur** à l'insertion, toutes sources (trigger BEFORE INSERT
+    `t22_requests_set_due_at`, qui écrase toute valeur fournie), puis **immuable** (ajoutée à
+    `requests_protect_immutable`, service compris). Règle (`request_due_at`, pure) : 23:59:59 à
+    Paris du jour de réception (`received_at`, que Clara peut antidater) + délai de la démarche
+    lu dans `socle_procedure_cache.processing_time_value/unit` (copie de
+    `user_communication.delays` du Socle par `sync-socle-referentiel` ; `jour` = N jours,
+    `semaine` = 7N, `mois` = N mois, `jour_ouvre` = `add_business_days`, samedis et dimanches
+    exclus, fériés NON retirés), à défaut `organizations.default_due_days` (15, calendaires).
+    Non suspendue en attente ; inchangée par un transfert ou une réouverture. Une modification
+    du délai au Socle vaut pour les demandes reçues après la synchronisation suivante. La
+    reprise du 2026-11-06 a recalculé les 232 demandes existantes.
+  - **Alertes d'échéance** : `notify_request_deadlines()` (DEFINER, cron
+    `notify-request-deadlines`, `0 5 * * *` UTC), demandes ouvertes seulement, motifs
+    `deadline_soon` (0 à 3 jours restants) et `deadline_overdue`, **une fois chacun** grâce à
+    `request_deadline_alerts (request_id, kind)` (PK, sans policy, `on delete cascade`).
+    Destinataire : l'instructeur, à défaut le fan-out de `new_request_in_scope` (instruction
+    sur le couple). ⚠️ La reprise a marqué comme déjà émises les 140 alertes que le premier
+    passage aurait envoyées d'un coup (jeux de démonstration) : pour en forcer une, supprimer
+    sa ligne. Test : [`../supabase/tests/echeance.test.sql`](../supabase/tests/echeance.test.sql).
   - RGPD : `retention_until`, `purged_at`.
   - **Index** : idempotence UNIQUE partiel `(organization_id, source, external_ref)` ;
     `(org, status)`, `(org, socle_organization_id)`, `(org, socle_procedure_id)`,
@@ -613,6 +634,18 @@ Toute autre transition est refusée. `resolue_positive` est inatteignable sans p
     took_over, chained}`. Journal par `log_group_resolution` (DEFINER, ne consigne que des faits
     revérifiés) : `resolved_with_group` sur chaque demande, `group_resolution` sur la source.
     Test : [`../supabase/tests/demandes-liees-resolution.test.sql`](../supabase/tests/demandes-liees-resolution.test.sql).
+    Depuis le 2026-11-04 (migration `20261104100000`), le geste pour UNE demande vit dans
+    `resolve_one_request` (INVOKER, sa sous-transaction), partagé avec la résolution groupée.
+  - **Résolution groupée d'une sélection libre** (B7, 2026-11-04, migration `20261104100000`) :
+    `resolve_requests(ids[], statut, motif, commentaire)`, **SECURITY INVOKER**, même geste
+    par demande (`resolve_one_request` : affectation à défaut d'instructeur, passage par
+    l'instruction fait par le serveur, résolution — décision PO du 2026-11-04, qui étend celle
+    du 2026-10-16 à toute sélection). Doublons retirés, **50 demandes au plus**
+    (`request_batch_max_size()`), seule une résolution. Journal par `log_batch_resolution`
+    (DEFINER) : `resolved_in_batch` (`batch_size`, `took_over`, `chained`), consigné seulement
+    si la demande est résolue, que l'appelant y détient la clôture ET que le `status_changed`
+    vers ce statut est **de lui, dans cette transaction** (`created_at = now()`).
+    Test : [`../supabase/tests/resolution-groupee.test.sql`](../supabase/tests/resolution-groupee.test.sql).
   - **Pastilles de la liste** (lot L5, migration `20261016180000`) :
     `request_link_hints(ids[])`, **SECURITY INVOKER**, 50 identifiants au plus (une page de
     liste) : `group_size` = membres du groupe **visibles** (la demande comprise, 0 hors groupe)

@@ -13,6 +13,7 @@ import { Avatar } from "@/components/ui/surface";
 import { cn } from "@/lib/utils";
 import { pinColor } from "../carte/InterventionMap";
 import { STATUS_LABELS, type RequestStatus, type TransitionSpec } from "../statuts";
+import { DUE_TONE } from "../echeance";
 import type { BoardCardView } from "./tableau";
 
 interface Props {
@@ -33,7 +34,7 @@ export function BoardCard({
   const [menu, setMenu] = React.useState(false);
   const specs = [...targets.values()];
   const movable = specs.length > 0 && !pending;
-  // L'urgence porte la même couleur que sur la carte des interventions.
+  // La priorité porte la même couleur que sur la carte des interventions.
   const urgent = card.priority.tone !== "muted";
 
   return (
@@ -171,6 +172,12 @@ export function BoardCard({
             </span>
           ) : null}
           <span className="text-[11px] text-muted-foreground">déposée le {card.deposited}</span>
+          {/* B16 : la mention n'apparaît qu'en retard ou à 3 jours ou moins. */}
+          {card.due ? (
+            <span className={cn("rounded-full px-2 py-[2px] text-[10.5px] font-semibold", DUE_TONE[card.due.tone])}>
+              {card.due.label}
+            </span>
+          ) : null}
         </div>
 
         <div className="flex items-center gap-2 border-t border-border pt-2">

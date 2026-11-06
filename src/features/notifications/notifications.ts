@@ -17,12 +17,14 @@ export type NotificationKind =
   | "transferred_in"
   | "intervention_requested"
   | "intervention_completed"
-  | "citizen_replied";
+  | "citizen_replied"
+  | "deadline_soon"
+  | "deadline_overdue";
 
 export const NOTIFICATION_KINDS: NotificationKind[] = [
   "assigned", "unassigned", "status_changed", "note_added", "mentioned",
   "new_request_in_scope", "transferred_in", "intervention_requested", "intervention_completed",
-  "citizen_replied",
+  "citizen_replied", "deadline_soon", "deadline_overdue",
 ];
 
 export function isNotificationKind(value: string): value is NotificationKind {
@@ -59,6 +61,9 @@ export interface NotificationPayload {
   pieces?: number | null;
   /** `citizen_replied` : la réponse a remis la demande en instruction (B11). */
   reprise?: boolean | null;
+  /** Alertes d'échéance (B16) : l'échéance (ISO, 23:59:59 à Paris) et les jours restants au passage. */
+  due_at?: string | null;
+  days?: number | null;
 }
 
 export interface NotificationItem {
@@ -87,6 +92,8 @@ const KIND_TITLES: Record<NotificationKind, string> = {
   intervention_requested: "Intervention demandée",
   intervention_completed: "Intervention réalisée",
   citizen_replied: "Réponse de l'usager",
+  deadline_soon: "Échéance proche",
+  deadline_overdue: "Échéance dépassée",
 };
 
 export function notificationTitle(kind: string): string {
@@ -168,9 +175,29 @@ export function notificationMessage(kind: string, payload: NotificationPayload):
         ? `L'usager a répondu en ligne${pieces} : la demande revient en instruction.`
         : `L'usager a répondu en ligne${pieces}.`;
     }
+    case "deadline_soon":
+    case "deadline_overdue":
+      // Jumeau de `deadlineSentence` (_shared/email/notifications.ts) — même phrase partout.
+      return deadlineSentence(kind, payload);
     default:
       return "Cette demande a évolué.";
   }
+}
+
+/**
+ * Phrase d'une alerte d'échéance (B16). Le jour se lit dans la chaîne ISO sans
+ * `Date` : posée à 23:59:59 à Paris, l'échéance tombe le même jour en UTC.
+ */
+function deadlineSentence(kind: NotificationKind, payload: NotificationPayload): string {
+  const day = dayLabel(payload.due_at);
+  if (kind === "deadline_overdue") {
+    return day
+      ? `L'échéance de traitement est dépassée (elle tombait le ${day}).`
+      : "L'échéance de traitement est dépassée.";
+  }
+  const n = typeof payload.days === "number" ? payload.days : null;
+  const when = n === 0 ? "aujourd'hui" : n === 1 ? "demain" : n !== null ? `dans ${n} jours` : "bientôt";
+  return day ? `L'échéance de traitement tombe ${when}, le ${day}.` : `L'échéance de traitement tombe ${when}.`;
 }
 
 /** Titre de la demande concernée : « ACCM-2026-0042 · Nid-de-poule… ». */

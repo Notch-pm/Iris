@@ -1,15 +1,15 @@
 // Écran « Carte des interventions » : les demandes EN COURS du tenant dont la
 // démarche porte un lieu d'intervention, posées sur une carte OpenStreetMap.
 //
-// Filtres : démarches (multi-sélection) et urgence (la légende EST le filtre,
-// puisque la couleur de l'épingle porte l'urgence). Le survol d'une épingle
+// Filtres : démarches (multi-sélection) et priorité (la légende EST le filtre,
+// puisque la couleur de l'épingle porte la priorité). Le survol d'une épingle
 // donne l'essentiel de la demande et un accès direct à sa fiche.
 //
 // Le RLS reste l'autorité : cet écran n'affiche que ce que la liste afficherait.
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { Check, CheckCircle2, ChevronDown, Columns3, Layers, List, MapPin } from "lucide-react";
+import { AlarmClock, AlarmClockOff, Check, CheckCircle2, ChevronDown, Columns3, Layers, List, MapPin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dropdown, DropdownDivider, DropdownItem, DropdownLabel } from "@/components/ui/dropdown";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
@@ -27,6 +27,7 @@ import {
   filterRequests,
   locatableRequests,
   MAP_MAX_ROWS,
+  dueCountsOf,
   priorityCounts,
   procedureFacets,
   RECENT_RESOLVED_DAYS,
@@ -35,9 +36,10 @@ import {
   toggleValue,
   type MapFilters,
 } from "./carte";
+import { DUE_SHORT_LABELS, DUE_VALUES } from "../echeance";
 import { useBatchGeocode, useOpenRequestsForMap } from "./useMapRequests";
 
-/** Urgences de la plus forte à la plus faible : l'œil va d'abord au rouge. */
+/** Priorités de la plus forte à la plus faible : l'œil va d'abord au rouge. */
 const PRIORITY_FILTERS = [...PRIORITY_OPTIONS].reverse();
 
 export function CartePage() {
@@ -67,6 +69,7 @@ export function CartePage() {
 
   const facets = React.useMemo(() => procedureFacets(located), [located]);
   const counts = React.useMemo(() => priorityCounts(located), [located]);
+  const dueTotals = React.useMemo(() => dueCountsOf(located), [located]);
   const resolved = React.useMemo(() => resolvedCount(located), [located]);
   const visible = React.useMemo(() => filterRequests(located, filters), [located, filters]);
 
@@ -86,7 +89,7 @@ export function CartePage() {
   );
 
   const unlocated = visible.length - markers.length;
-  const filtered = filters.procedures.length > 0 || filters.priorities.length > 0;
+  const filtered = filters.procedures.length > 0 || filters.priorities.length > 0 || filters.due.length > 0;
   const truncated = (requests.data?.total ?? 0) > rows.length;
 
   return (
@@ -202,6 +205,37 @@ export function CartePage() {
                 <span className={cn("size-2.5 rounded-full", pinColor(priority.key))} aria-hidden="true" />
                 {priority.label}
                 <span className="text-[11px] font-bold text-muted-foreground">{counts[priority.key] ?? 0}</span>
+              </button>
+            );
+          })}
+
+          <span className="h-5 w-px bg-border" aria-hidden="true" />
+
+          {/* B16 : l'ÉCHÉANCE, à côté de la PRIORITÉ — deux notions.
+              Demandes en cours seulement ; le compteur porte sur les situées. */}
+          {DUE_VALUES.map((value) => {
+            const checked = filters.due.includes(value);
+            return (
+              <button
+                key={value}
+                type="button"
+                aria-pressed={checked}
+                title={value === "late"
+                  ? "Demandes en cours dont l'échéance de traitement est dépassée"
+                  : "Demandes en cours dont l'échéance tombe dans 3 jours ou moins"}
+                onClick={() => setFilters((f) => ({ ...f, due: toggleValue(f.due, value) }))}
+                className={cn(
+                  "flex h-8 items-center gap-1.5 rounded-full border px-3 text-[12.5px] font-semibold transition-colors",
+                  checked
+                    ? "border-primary/30 bg-primary/[0.07] text-primary"
+                    : "border-border bg-background hover:bg-secondary",
+                )}
+              >
+                {value === "late"
+                  ? <AlarmClockOff className="size-3.5 text-destructive" aria-hidden="true" />
+                  : <AlarmClock className="size-3.5" aria-hidden="true" />}
+                {DUE_SHORT_LABELS[value]}
+                <span className="text-[11px] font-bold text-muted-foreground">{dueTotals[value]}</span>
               </button>
             );
           })}

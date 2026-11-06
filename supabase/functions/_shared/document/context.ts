@@ -7,7 +7,7 @@
 // `{{usager.adresse_complete}}` signerait un courrier au nom de la
 // collectivité avec le contenu de son choix.
 //
-// Les libellés (statut, urgence) sont ceux de `_shared/ai/context.ts` — eux-
+// Les libellés (statut, priorité) sont ceux de `_shared/ai/context.ts` — eux-
 // mêmes jumeaux testés de `src/features/requests/statuts.ts`. Un courrier ne
 // doit pas nommer un statut autrement que l'écran de l'agent.
 
@@ -134,6 +134,8 @@ export function buildDocumentInput(input: DocumentInput): MergeInput {
       organisme_responsable: r.socle_organization_label,
       date_depot: frDate(r.received_at),
       date_echeance: frDate(r.due_at),
+      priorite: PRIORITY_LABELS[r.priority] ?? r.priority,
+      // Ancienne clé, conservée pour les modèles déjà écrits (le catalogue ajoute, ne renomme pas).
       urgence: PRIORITY_LABELS[r.priority] ?? r.priority,
       etat_actuel: STATUS_LABELS[r.status] ?? r.status,
       date_cloture: frDate(r.closed_at),

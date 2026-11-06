@@ -10,10 +10,26 @@ décision PO. Le mobile garde son propre accueil (`MobileHome`).
    icône, valeur 3xl, sous-titre) : demandes **reçues**, **mises en instruction**,
    **instruites**, et leur équivalent **M−1**. Le sous-titre du mois courant porte la
    variation relative (« +25 % vs M−1 », « = », « — » sans base).
+   **Deux cartes d'échéance** (B16, 2026-11-06) closent chaque rangée — grille de 4 colonnes
+   en grand écran : « Échéance dépassée » après les trois flux du mois, « Échéance
+   approchante » (3 jours ou moins) après ceux de M−1. ⚠️ Ce sont des **STOCKS à l'instant**
+   (demandes EN COURS, `useDueCount`, `count` en `head`), pas des flux : pas de M−1, pas de
+   variation. Mêmes bornes que le filtre de la liste (`dueRange`, `features/requests/
+   echeance.ts`), vers laquelle chaque carte renvoie (`/demandes?due=late|soon`) : le chiffre
+   et la liste filtrée disent la même chose. `KpiCard monthSub={false}` : le sous-titre est une
+   phrase, pas un mois à capitaliser.
 2. **Deux colonnes** : « En attente d'instruction » (statut `a_traiter`, les plus anciennes
    d'abord — elles attendent) et « Mes demandes » (affectées à l'utilisateur, statuts
    ouverts, avec la pastille de statut). Vingt lignes, compteur total en badge, « Voir
-   toutes → » au-delà, vers la liste filtrée (`/demandes?status=…`).
+   toutes → » au-delà, vers la liste filtrée (`/demandes?status=…`). Chaque ligne porte une
+   **mention d'échéance** (B16) quand la demande est en retard ou à 3 jours ou moins — la
+   pastille de la fiche, rien pour une échéance lointaine. Et sa **priorité** (2026-11-06,
+   PO), comme sur la carte du tableau : un **liseré** coloré à gauche (`pinColor`, mêmes
+   couleurs que le tableau et la carte des interventions, libellé en `title` et en
+   `sr-only`), plus une pastille « Haute » / « Urgente » quand elle est élevée — « Normale »
+   et « Basse » n'ont que le liseré. ⚠️ La `section` d'une liste porte
+   `min-w-0` : sans lui, l'élément de grille prenait la largeur du plus long objet et la
+   mention sortait de l'écran sur une colonne unique.
 
 ## Définitions — à ne pas réinterpréter
 

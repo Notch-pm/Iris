@@ -11,7 +11,7 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
   - **Une colonne = UN statut**, les 7, dans l'ordre du cycle de vie. Pas de colonne
     « Clôturées » qui regrouperait résolution positive, négative et annulation : un dépôt
     DEMANDE une transition précise, et une colonne composite ne saurait pas laquelle.
-  - **Ce que porte une carte** : référence, pastille d'urgence, objet, **l'organisme qui
+  - **Ce que porte une carte** : référence, liseré de priorité, objet, **l'organisme qui
     traite la demande** (icône `Building2`, sous l'objet — c'est l'information de ROUTAGE,
     elle passe donc avant la démarche et la date ; sur sa propre ligne, une colonne de 286 px
     ne tenant pas un troisième élément dans la rangée de pastilles, et avec un `title` pour
@@ -49,8 +49,8 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     sélection. Il ne s'allume que si la sélection d'agents est EXACTEMENT lui (`isMineOnly`) :
     dès qu'un autre agent est coché, ce ne sont plus « mes demandes », et le bouton le dit.
   - **`tableau.ts`** (pur, testé — 29 cas) porte tout : colonnes, `boardCard` (identité figée
-    au dépôt, urgence, agent, champ de recherche replié sans accents), filtres et facettes
-    croisés (agent dont « Non affectée », organisme, démarche, urgence, recherche),
+    au dépôt, priorité, agent, champ de recherche replié sans accents), filtres et facettes
+    croisés (agent dont « Non affectée », organisme, démarche, priorité, recherche),
     `boardContent` (répartition + tri par date de dépôt, dans les deux sens), et
     `boardRightsResolver` — `rightsFor` + `isAdminOn` **mémoïsés par couple** (des centaines
     de cartes, une poignée de couples). Une demande au statut inconnu n'est pas perdue :
@@ -62,3 +62,13 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     troncatures sont AFFICHÉES. Clé `["requests", "kanban", …]` À DESSEIN : c'est le préfixe
     qu'invalide `useApplyTransition`, donc le tableau se remet à jour après toute transition,
     la sienne comme celle d'une autre page.
+
+- **Échéance** (2026-11-06, B16) : facette « Échéance » (En retard / Urgentes, 3 jours ou
+  moins), toujours présente avec ses deux valeurs, même à zéro — volumes sur tout le tableau
+  comme les autres facettes ; et une **mention sur la carte**, à côté de la date de dépôt,
+  seulement quand la demande ouverte est en retard ou à 3 jours ou moins (« En retard de
+  15 jours », « Échéance dans 2 jours » — mêmes jetons que la fiche). Une échéance lointaine
+  n'affiche rien : 400 cartes ne s'alourdissent pas pour rien. ⚠️ La facette « Priorité »
+  (« Urgence » jusqu'au 2026-11-06) est la PRIORITÉ, l'« Échéance » est le délai : deux critères. Règles dans
+  `features/requests/echeance.ts` ; `due_at` ajouté à `BOARD_SELECT`. Vérifié en navigateur
+  sur l'ACCM le 2026-11-06 (41 en retard, 0 urgente).

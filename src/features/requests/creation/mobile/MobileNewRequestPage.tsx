@@ -738,7 +738,7 @@ export function MobileNewRequestPage() {
               <Textarea id="mnw-body" value={bodyText} onChange={(e) => setBodyText(e.target.value)} />
             </Field>
 
-            <Field label="Urgence" htmlFor="mnw-priority">
+            <Field label="Priorité" htmlFor="mnw-priority">
               <Select id="mnw-priority" className="h-11 px-4" value={priority}
                 onChange={(e) => setPriority(e.target.value)}>
                 {Object.entries(PRIORITY_LABELS).map(([value, label]) => (

@@ -13,6 +13,7 @@ import {
   parsePublication,
   type ProcedureStatus,
 } from "../../_shared/procedures/publication.ts";
+import { parseUserCommunication, type ProcessingTimeUnit } from "../../_shared/procedures/userCommunication.ts";
 
 export interface SocleOrg {
   id: string;
@@ -36,6 +37,8 @@ export interface SocleProcedure {
   status?: unknown;
   /** Bloc de communication possédé par le Socle (dont `visibility`). */
   communication_config?: unknown;
+  /** Communication usager (public-api 1.24.0) — on n'en retient que le délai. */
+  user_communication?: unknown;
 }
 
 export interface TenantRef {
@@ -64,6 +67,14 @@ export interface ProcCacheRow {
   portal_visible: boolean;
   publication_start: string | null;
   publication_end: string | null;
+  /**
+   * Délai d'instruction annoncé (B16, 2026-11-06) — base de l'échéance calculée
+   * par `t22_requests_set_due_at`. `null` = aucun délai : défaut de la collectivité.
+   * Même parseur que le proxy et la fiche démarche : une unité inconnue donne
+   * `null`, jamais une unité devinée.
+   */
+  processing_time_value: number | null;
+  processing_time_unit: ProcessingTimeUnit | null;
 }
 
 /** Sous-arbre d'une racine (racine incluse), protégé des cycles. */
@@ -201,6 +212,9 @@ export function buildSyncPlan(
       // (ingestion, droits, libellés des demandes déjà déposées). C'est le
       // SÉLECTEUR de démarche qui décide ensuite ce qu'il propose.
       const publication = parsePublication(proc.communication_config);
+      const delays = parseUserCommunication(proc.user_communication)?.delays;
+      // Un délai sans unité n'est pas un délai : on ne le retient qu'entier.
+      const hasDelay = delays?.processingTimeValue != null && delays.processingTimeUnit != null;
       procRows.push({
         socle_id: proc.id,
         organization_id: tenant.organizationId,
@@ -213,6 +227,8 @@ export function buildSyncPlan(
         portal_visible: publication.portalVisible,
         publication_start: publication.publicationStart,
         publication_end: publication.publicationEnd,
+        processing_time_value: hasDelay ? delays!.processingTimeValue : null,
+        processing_time_unit: hasDelay ? delays!.processingTimeUnit : null,
       });
     }
   }

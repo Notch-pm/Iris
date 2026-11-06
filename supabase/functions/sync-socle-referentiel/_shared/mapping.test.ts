@@ -108,6 +108,28 @@ describe("buildSyncPlan", () => {
     expect(plan.procRows.map((r) => r.socle_id).sort()).toEqual(["p-4", "p-5"]);
   });
 
+  // B16 : le délai annoncé de la démarche est la base de l'échéance.
+  it("retient le délai d'instruction annoncé, entier, ou rien", () => {
+    const avecDelais = [
+      { id: "d-1", organization_id: "root-a", category_id: null, name: "Ouvrés", type: "externe",
+        user_communication: { delays: { processingTimeValue: 10, processingTimeUnit: "jour_ouvre" } } },
+      { id: "d-2", organization_id: "root-a", category_id: null, name: "Sans unité", type: "externe",
+        user_communication: { delays: { processingTimeValue: 10, processingTimeUnit: null } } },
+      { id: "d-3", organization_id: "root-a", category_id: null, name: "Unité inconnue", type: "externe",
+        user_communication: { delays: { processingTimeValue: 3, processingTimeUnit: "quinzaine" } } },
+      { id: "d-4", organization_id: "root-a", category_id: null, name: "Rien", type: "externe" },
+    ];
+    const rows = buildSyncPlan(tenants, orgs, categories, avecDelais).procRows;
+    const delay = (id: string) => {
+      const r = rows.find((x) => x.socle_id === id)!;
+      return [r.processing_time_value, r.processing_time_unit];
+    };
+    expect(delay("d-1")).toEqual([10, "jour_ouvre"]);
+    expect(delay("d-2")).toEqual([null, null]);
+    expect(delay("d-3")).toEqual([null, null]);
+    expect(delay("d-4")).toEqual([null, null]);
+  });
+
   it("rafraîchit le nom d'affichage du tenant depuis la racine Socle", () => {
     const plan = buildSyncPlan(tenants, orgs, categories, procedures);
     expect(plan.tenantNames).toEqual([{ organizationId: "iris-a", name: "ACCM" }]);

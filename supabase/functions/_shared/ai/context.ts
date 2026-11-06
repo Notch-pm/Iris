@@ -11,7 +11,7 @@
  * une identité peut se glisser dans une réponse libre.
  *
  * CE QUI RESTE : la démarche, l'objet, la description, les réponses au
- * formulaire (conditions rejouées), le statut, l'urgence, l'échéance, le
+ * formulaire (conditions rejouées), le statut, la priorité, l'échéance, le
  * motif de clôture, les anomalies, et l'historique des étapes. C'est de quoi
  * répondre à « que dois-je faire de ce dossier ? » sans savoir qui l'a déposé.
  *
@@ -75,7 +75,7 @@ export const EVENT_LABELS: Record<string, string> = {
   status_changed: "Changement de statut",
   assigned: "Affectation à un agent",
   unassigned: "Retrait d'affectation",
-  priority_changed: "Changement d'urgence",
+  priority_changed: "Changement de priorité",
   attachment_added: "Pièce ajoutée",
   attachment_qualified: "Pièce qualifiée",
   attachment_replaced: "Pièce remplacée",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   activeFilterCount, DEFAULT_SORT, EMPTY_FILTERS, exportFilename, filterChips, GROUP_LABELS, groupLabelOf, groupRows,
   orderClauses, pageWindow, removeFilterChip, requestCsvColumns, searchClause, toggleFilterValue,
-  toggleSort,
+  toggleSort, dueRange,
 } from "./listing";
 import type { RequestListItem } from "./useRequests";
 
@@ -151,5 +151,28 @@ describe("export", () => {
     expect(exportFilename("Mairie d'Arles — ACCM", new Date("2026-08-22T15:00:00Z")))
       .toBe("demandes-mairie-d-arles-accm-2026-08-22.csv");
     expect(exportFilename("", new Date("2026-08-22T15:00:00Z"))).toBe("demandes-tenant-2026-08-22.csv");
+  });
+});
+
+describe("échéance (B16)", () => {
+  // Jeudi 12 novembre 2026, 15:00 locale.
+  const now = new Date(2026, 10, 12, 15, 0);
+  const midnight = (d: number) => new Date(2026, 10, d).toISOString();
+  it("« En retard » : avant aujourd'hui minuit", () => {
+    expect(dueRange(["late"], now)).toEqual({ lt: midnight(12) });
+  });
+  it("« Urgentes » : d'aujourd'hui à J+3 compris", () => {
+    expect(dueRange(["soon"], now)).toEqual({ gte: midnight(12), lt: midnight(16) });
+  });
+  it("les deux : une seule plage, retard compris ; rien coché : pas de filtre", () => {
+    expect(dueRange(["late", "soon"], now)).toEqual({ lt: midnight(16) });
+    expect(dueRange([], now)).toBeNull();
+  });
+  it("chips et compteur comme les autres critères ; tri de la plus proche à la plus lointaine", () => {
+    const f = { ...EMPTY_FILTERS, due: ["late"] };
+    expect(activeFilterCount(f)).toBe(1);
+    expect(filterChips(f, () => undefined)[0].label).toBe("Échéance : En retard");
+    expect(toggleSort(DEFAULT_SORT, "due_at")).toEqual({ key: "due_at", dir: "asc" });
+    expect(orderClauses({ key: "due_at", dir: "asc" }, null)[0]).toEqual({ column: "due_at", ascending: true });
   });
 });

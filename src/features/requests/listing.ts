@@ -11,6 +11,7 @@
 import { csvFilename, type CsvColumn } from "@/lib/csv";
 import type { RequestFilters, RequestListItem } from "./useRequests";
 import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
+import { DUE_LABELS, type DueValue } from "./echeance";
 
 // ---- Filtres ----------------------------------------------------------------
 // Maquette « Liste — en-tête compacté » (2026-09-11) : les critères se posent
@@ -24,9 +25,10 @@ export const EMPTY_FILTERS: RequestFilters = {
   procedure: [],
   priority: [],
   source: [],
+  due: [],
 };
 
-export const FILTER_KEYS = ["status", "destinataire", "procedure", "priority", "source"] as const;
+export const FILTER_KEYS = ["status", "destinataire", "procedure", "priority", "source", "due"] as const;
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
 export const FILTER_LABELS: Record<FilterKey, string> = {
@@ -35,7 +37,12 @@ export const FILTER_LABELS: Record<FilterKey, string> = {
   procedure: "Démarche",
   priority: "Priorité",
   source: "Source",
+  due: "Échéance",
 };
+
+// Échéance (B16) : critère « due », valeurs et bornes dans `echeance.ts`,
+// partagé avec le tableau et la carte.
+export { DUE_LABELS, DUE_SOON_DAYS, DUE_VALUES, dueRange, type DueValue } from "./echeance";
 
 /** Bascule d'une valeur dans un critère (coché ↔ décoché). */
 export function toggleFilterValue(filters: RequestFilters, key: FilterKey, value: string): RequestFilters {
@@ -64,6 +71,7 @@ export function filterValueLabel(
 ): string {
   if (key === "status") return STATUS_LABELS[value as keyof typeof STATUS_LABELS] ?? value;
   if (key === "priority") return PRIORITY_LABELS[value] ?? value;
+  if (key === "due") return DUE_LABELS[value as DueValue] ?? value;
   return resolve(key, value) ?? value;
 }
 
@@ -136,7 +144,7 @@ export function pageWindow(page: number, pageCount: number): (number | null)[] {
 // ---- Tri --------------------------------------------------------------------
 
 export const SORT_KEYS = [
-  "reference", "subject", "status", "destinataire", "procedure", "source", "received_at",
+  "reference", "subject", "status", "destinataire", "procedure", "source", "received_at", "due_at",
 ] as const;
 export type SortKey = (typeof SORT_KEYS)[number];
 export type SortDir = "asc" | "desc";
@@ -155,6 +163,8 @@ const SORT_COLUMNS: Record<SortKey, string[]> = {
   procedure: ["socle_procedure_label"],
   source: ["source"],
   received_at: ["received_at"],
+  // L'échéance se trie de la plus proche à la plus lointaine : c'est l'ordre du travail.
+  due_at: ["due_at"],
 };
 
 /** Les dates se trient d'abord du plus récent au plus ancien (motif Clara `sortDescFirst`). */

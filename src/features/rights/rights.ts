@@ -140,6 +140,19 @@ export function hasAnyProfile(my: MyRights): boolean {
 }
 
 /**
+ * `clôture` quelque part — ligne de matrice ou défaut d'un profil actif. Ouvre la
+ * sélection de la liste (résolution groupée) ; la garde reste celle du serveur,
+ * demande par demande.
+ */
+export function hasCloseRightSomewhere(my: MyRights): boolean {
+  if (my.is_platform_admin) return true;
+  return my.profiles.some((p) =>
+    p.status === "active"
+    && p.scope_organization_ids.length > 0
+    && (p.default.includes("cloture") || Object.values(p.procedures).some((r) => r.includes("cloture"))));
+}
+
+/**
  * Démarches explicitement citées avec `création` dans une ligne de matrice active.
  * Incomplet par construction : les démarches qui obtiennent `création` par le
  * DÉFAUT d'un profil (RM-33) n'y figurent pas tant qu'on ne connaît pas le

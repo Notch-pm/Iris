@@ -102,3 +102,15 @@ describe("citizen_replied (L4b)", () => {
     expect(pushSentence("citizen_replied", { reprise: true })).toBe("L'usager a répondu en ligne : la demande revient en instruction.");
   });
 });
+
+describe("alertes d'échéance (B16)", () => {
+  it("un titre par motif, la phrase de l'e-mail", () => {
+    expect(PUSH_TITLES.deadline_soon).toBe("Échéance proche");
+    expect(PUSH_TITLES.deadline_overdue).toBe("Échéance dépassée");
+    expect(pushSentence("deadline_soon", { due_at: "2026-11-13T22:59:59+00:00", days: 3 }))
+      .toBe("L'échéance de traitement tombe dans 3 jours, le 13/11/2026.");
+    expect(pushSentence("deadline_overdue", { due_at: "2026-11-13T22:59:59+00:00" }))
+      .toBe("L'échéance de traitement est dépassée (elle tombait le 13/11/2026).");
+    expect(pushSentence("deadline_soon", {})).toBe("L'échéance de traitement tombe bientôt.");
+  });
+});

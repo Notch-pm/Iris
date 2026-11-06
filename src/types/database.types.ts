@@ -779,6 +779,7 @@ export type Database = {
       organizations: {
         Row: {
           created_at: string
+          default_due_days: number
           id: string
           name: string
           socle_org_id: string
@@ -787,6 +788,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          default_due_days?: number
           id?: string
           name: string
           socle_org_id: string
@@ -795,6 +797,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          default_due_days?: number
           id?: string
           name?: string
           socle_org_id?: string
@@ -1647,6 +1650,32 @@ export type Database = {
           },
         ]
       }
+      request_deadline_alerts: {
+        Row: {
+          created_at: string
+          kind: string
+          request_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          request_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          request_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "request_deadline_alerts_request_id_fkey"
+            columns: ["request_id"]
+            isOneToOne: false
+            referencedRelation: "requests"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       request_emails: {
         Row: {
           body: string
@@ -2450,6 +2479,42 @@ export type Database = {
           },
         ]
       }
+      socle_member_access: {
+        Row: {
+          is_active: boolean
+          organization_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          is_active: boolean
+          organization_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          is_active?: boolean
+          organization_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_member_access_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "socle_member_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       socle_organizations: {
         Row: {
           id: string
@@ -2499,6 +2564,8 @@ export type Database = {
           obsoleted_at: string | null
           organization_id: string
           portal_visible: boolean
+          processing_time_unit: string | null
+          processing_time_value: number | null
           publication_end: string | null
           publication_start: string | null
           socle_id: string
@@ -2514,6 +2581,8 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id: string
           portal_visible?: boolean
+          processing_time_unit?: string | null
+          processing_time_value?: number | null
           publication_end?: string | null
           publication_start?: string | null
           socle_id: string
@@ -2529,6 +2598,8 @@ export type Database = {
           obsoleted_at?: string | null
           organization_id?: string
           portal_visible?: boolean
+          processing_time_unit?: string | null
+          processing_time_value?: number | null
           publication_end?: string | null
           publication_start?: string | null
           socle_id?: string
@@ -2574,6 +2645,41 @@ export type Database = {
             foreignKeyName: "socle_procedure_organizations_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: false
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_user_sync_state: {
+        Row: {
+          cursor: string | null
+          last_error: string | null
+          last_full_sync_at: string | null
+          last_run_at: string | null
+          organization_id: string
+          updated_at: string
+        }
+        Insert: {
+          cursor?: string | null
+          last_error?: string | null
+          last_full_sync_at?: string | null
+          last_run_at?: string | null
+          organization_id: string
+          updated_at?: string
+        }
+        Update: {
+          cursor?: string | null
+          last_error?: string | null
+          last_full_sync_at?: string | null
+          last_run_at?: string | null
+          organization_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_user_sync_state_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: true
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -2659,6 +2765,7 @@ export type Database = {
           landline_phone: string | null
           last_name: string | null
           mobile_phone: string | null
+          socle_user_id: string | null
         }
         Insert: {
           avatar_path?: string | null
@@ -2670,6 +2777,7 @@ export type Database = {
           landline_phone?: string | null
           last_name?: string | null
           mobile_phone?: string | null
+          socle_user_id?: string | null
         }
         Update: {
           avatar_path?: string | null
@@ -2681,6 +2789,7 @@ export type Database = {
           landline_phone?: string | null
           last_name?: string | null
           mobile_phone?: string | null
+          socle_user_id?: string | null
         }
         Relationships: []
       }
@@ -2689,6 +2798,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      add_business_days: {
+        Args: { p_day: string; p_days: number }
+        Returns: string
+      }
       administrable_organizations: {
         Args: { p_org_id: string }
         Returns: {
@@ -3168,6 +3281,15 @@ export type Database = {
         Args: { p_value: Json }
         Returns: Record<string, unknown>
       }
+      log_batch_resolution: {
+        Args: {
+          p_batch_size: number
+          p_chained: string[]
+          p_request_ids: string[]
+          p_took_over: string[]
+        }
+        Returns: undefined
+      }
       log_group_resolution: {
         Args: {
           p_chained: string[]
@@ -3245,6 +3367,7 @@ export type Database = {
       }
       notification_email_max_attempts: { Args: never; Returns: number }
       notification_push_max_attempts: { Args: never; Returns: number }
+      notify_request_deadlines: { Args: never; Returns: number }
       paris_today: { Args: never; Returns: string }
       permission_coverage_report: {
         Args: { p_org_id: string }
@@ -3380,6 +3503,16 @@ export type Database = {
           size: number
         }[]
       }
+      request_batch_max_size: { Args: never; Returns: number }
+      request_due_at: {
+        Args: {
+          p_default_days: number
+          p_received_at: string
+          p_unit: string
+          p_value: number
+        }
+        Returns: string
+      }
       request_exists: { Args: { p_id: string }; Returns: boolean }
       request_group_max_size: { Args: never; Returns: number }
       request_intervention: {
@@ -3431,6 +3564,37 @@ export type Database = {
           p_motif?: string
           p_request_ids: string[]
           p_source_request_id: string
+          p_status: string
+        }
+        Returns: {
+          chained: boolean
+          error: string
+          ok: boolean
+          reference: string
+          request_id: string
+          took_over: boolean
+        }[]
+      }
+      resolve_one_request: {
+        Args: {
+          p_closure_text?: string
+          p_motif?: string
+          p_request_id: string
+          p_status: string
+        }
+        Returns: {
+          chained: boolean
+          error: string
+          ok: boolean
+          reference: string
+          took_over: boolean
+        }[]
+      }
+      resolve_requests: {
+        Args: {
+          p_closure_text?: string
+          p_motif?: string
+          p_request_ids: string[]
           p_status: string
         }
         Returns: {

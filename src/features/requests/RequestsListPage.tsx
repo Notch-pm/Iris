@@ -10,7 +10,7 @@
 import * as React from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
-  ChevronDown, ChevronRight, Columns3, Download, Layers, Map, Rows3, Search,
+  ChevronDown, ChevronRight, Columns3, Download, Layers, Map as MapIcon, Rows3, Search,
   SlidersHorizontal, X,
 } from "lucide-react";
 import { useFullBleedLayout } from "@/components/layout/shellLayout";
@@ -24,17 +24,23 @@ import {
   useSocleOrganizationsCatalog,
   useSocleProceduresCatalog,
 } from "@/features/socle/useSocleCatalog";
-import { canViewProcedure } from "@/features/rights/rights";
+import { canViewProcedure, hasCloseRightSomewhere, rightsFor, type MyRights } from "@/features/rights/rights";
+import { BatchResolutionDialog } from "./resolution/BatchResolutionDialog";
+import {
+  BATCH_MAX_SIZE, pageSelectionState, toggleSelected, togglePage, type BatchItem,
+} from "./resolution/batch";
 import { useCanCreateRequest } from "@/features/requests/creation/useCanCreateRequest";
 import { buildCsv, downloadCsv } from "@/lib/csv";
 import { cn } from "@/lib/utils";
 import { NewRequestButton } from "./NewRequestButton";
 import { StatusBadge } from "./StatusBadge";
-import { PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
+import { OPEN_STATUSES, PRIORITY_LABELS, STATUS_LABELS } from "./statuts";
+import { DUE_TONE } from "./echeance";
+import { dueView } from "./instruction/instruction";
 import { LinkHintBadges } from "@/features/linking/LinkHintBadges";
 import { useLinkHints, type LinkHint } from "@/features/linking/useLinking";
 import {
-  activeFilterCount, DEFAULT_SORT, EXPORT_MAX_ROWS, exportFilename, filterChips, GROUP_KEYS,
+  activeFilterCount, DEFAULT_SORT, DUE_LABELS, DUE_VALUES, EXPORT_MAX_ROWS, exportFilename, filterChips, GROUP_KEYS,
   GROUP_LABELS, groupRows, pageWindow, removeFilterChip, requestCsvColumns, toggleFilterValue,
   toggleSort, type FilterKey, type GroupKey, type SortKey, type SortState,
 } from "./listing";
@@ -75,23 +81,90 @@ const COLUMNS: { key: SortKey | null; title: string; className: string; align?: 
   { key: null, title: "Priorité", className: "w-[96px]" },
   { key: "source", title: "Source", className: "w-[104px]" },
   { key: "status", title: "Statut", className: "w-[176px]" },
+  { key: "due_at", title: "Échéance", className: "w-[150px]" },
   { key: "received_at", title: "Reçue le", className: "w-[104px]", align: "right" },
   { key: null, title: "", className: "w-[36px]" },
 ];
 
+/**
+ * Ce que la résolution groupée sait d'une ligne. Les droits viennent du couple
+ * de la demande — un reflet pour prévenir l'agent, la garde reste au serveur.
+ * Sans organisation porteuse connue, aucun droit (fail closed).
+ */
+function toBatchItem(r: RequestListItem, rights: MyRights): BatchItem {
+  const rr = r.socle_scope_org_id ? rightsFor(rights, r.socle_scope_org_id, r.socle_procedure_id) : new Set();
+  return {
+    id: r.id, reference: r.reference, subject: r.subject, status: r.status, source: r.source,
+    assignedTo: r.assigned_to, canProcess: rr.has("instruction"), canClose: rr.has("cloture"),
+  };
+}
+
+const CHECKBOX = "size-4 cursor-pointer accent-[hsl(var(--primary))]";
+
+/** Case « toute la page », avec l'état intermédiaire que le HTML ne porte qu'en propriété. */
+function PageCheckbox({ state, onToggle }: { state: "all" | "some" | "none"; onToggle: () => void }) {
+  const ref = React.useRef<HTMLInputElement>(null);
+  React.useEffect(() => {
+    if (ref.current) ref.current.indeterminate = state === "some";
+  }, [state]);
+  return (
+    <input
+      ref={ref} type="checkbox" className={CHECKBOX} checked={state === "all"} onChange={onToggle}
+      aria-label={state === "all" ? "Désélectionner les demandes de la page" : "Sélectionner les demandes de la page"}
+    />
+  );
+}
+
+/**
+ * Échéance d'une ligne : la pastille de la fiche (`dueView`) tant que la
+ * demande est ouverte ; une fois close, la date seule — elle n'est plus « en
+ * retard » de rien.
+ */
+function DueCell({ dueAt, status }: { dueAt: string | null; status: string }) {
+  if (!dueAt) return <span className="text-[12.5px] text-muted-foreground">—</span>;
+  if (!(OPEN_STATUSES as readonly string[]).includes(status)) {
+    return <span className="text-[12.5px] tabular-nums text-muted-foreground">{formatDate(dueAt)}</span>;
+  }
+  const view = dueView(dueAt, new Date());
+  if (!view) return null;
+  return (
+    <span
+      title={`Échéance le ${formatDate(dueAt)}`}
+      className={cn("inline-flex max-w-full items-center truncate rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold", DUE_TONE[view.tone])}
+    >
+      {view.label}
+    </span>
+  );
+}
+
 // ---- Ligne ----------------------------------------------------------------------
 
-function RequestRow({ r, dense, hint }: { r: RequestListItem; dense: boolean; hint?: LinkHint }) {
+function RequestRow({ r, dense, hint, selection }: {
+  r: RequestListItem;
+  dense: boolean;
+  hint?: LinkHint;
+  /** Absent quand l'agent n'a la clôture nulle part : pas de case. */
+  selection?: { checked: boolean; onToggle: () => void };
+}) {
   const navigate = useNavigate();
   const href = `/demandes/${r.id}`;
   return (
     <tr
       className={cn(
-        "cursor-pointer border-b border-border/70 bg-card transition-colors hover:bg-muted/50",
+        "cursor-pointer border-b border-border/70 transition-colors hover:bg-muted/50",
+        selection?.checked ? "bg-primary/[0.06]" : "bg-card",
         dense ? "h-9" : "h-12",
       )}
       onClick={() => navigate(href)}
     >
+      {selection ? (
+        <td className="pl-4 pr-1" onClick={(e) => e.stopPropagation()}>
+          <input
+            type="checkbox" className={CHECKBOX} checked={selection.checked} onChange={selection.onToggle}
+            aria-label={`Sélectionner ${r.reference}`}
+          />
+        </td>
+      ) : null}
       <td className="px-3 font-mono text-xs tabular-nums text-muted-foreground">
         <Link
           to={href}
@@ -120,6 +193,7 @@ function RequestRow({ r, dense, hint }: { r: RequestListItem; dense: boolean; hi
         </span>
       </td>
       <td className="px-3"><StatusBadge status={r.status} variant="dot" /></td>
+      <td className="px-3"><DueCell dueAt={r.due_at} status={r.status} /></td>
       <td className="px-3 text-right text-[12.5px] font-medium tabular-nums text-muted-foreground">{formatDate(r.received_at)}</td>
       <td className="pr-4 text-right text-muted-foreground">
         <ChevronRight className="ml-auto size-4" aria-hidden="true" />
@@ -137,7 +211,9 @@ export function RequestsListPage() {
   const [searchParams] = useSearchParams();
   const [filters, setFilters] = React.useState<RequestFilters>(() => {
     const status = searchParams.get("status") ?? "";
-    return { ...EMPTY_FILTERS, status: status in STATUS_LABELS ? [status] : [] };
+    // `?due=late` / `?due=soon` : cartes d'échéance de l'accueil (B16).
+    const due = (searchParams.get("due") ?? "").split(",").filter((v) => (DUE_VALUES as readonly string[]).includes(v));
+    return { ...EMPTY_FILTERS, status: status in STATUS_LABELS ? [status] : [], due };
   });
   const [q, setQ] = React.useState("");
   const debouncedQ = useDebounced(q, SEARCH_DEBOUNCE_MS);
@@ -151,6 +227,11 @@ export function RequestsListPage() {
   const [filtersOpen, setFiltersOpen] = React.useState(false);
   const [exporting, setExporting] = React.useState(false);
   const [exportNote, setExportNote] = React.useState<{ text: string; error: boolean } | null>(null);
+  // Résolution groupée (B7) : la sélection survit au changement de page et de
+  // filtre — le dialogue liste tout ce qui est coché, visible ou non.
+  const [selected, setSelected] = React.useState<Map<string, BatchItem>>(new Map());
+  const [selectionFull, setSelectionFull] = React.useState(false);
+  const [batchOpen, setBatchOpen] = React.useState(false);
 
   // La saisie ne devient un critère qu'après une pause de frappe ; chaque
   // changement de critère ramène en page 1.
@@ -266,6 +347,20 @@ export function RequestsListPage() {
   const first = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const last = Math.min(page * PAGE_SIZE, total);
 
+  // Sélection : proposée à qui détient la clôture quelque part (reflet du serveur).
+  const selectable = hasCloseRightSomewhere(rights);
+  const colSpan = COLUMNS.length + (selectable ? 1 : 0);
+  const pageItems = items.map((r) => toBatchItem(r, rights));
+  const pageState = pageSelectionState(selected, items.map((r) => r.id));
+  const applySelection = ({ next, full }: { next: Map<string, BatchItem>; full: boolean }) => {
+    setSelected(next);
+    setSelectionFull(full);
+  };
+  const rowSelection = (r: RequestListItem) => selectable
+    ? { checked: selected.has(r.id), onToggle: () => applySelection(toggleSelected(selected, toBatchItem(r, rights))) }
+    : undefined;
+  const clearSelection = () => { setSelected(new Map()); setSelectionFull(false); };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-background">
       {/* Barre collante : titre, compteur, recherche, actions — 56 px. */}
@@ -379,6 +474,12 @@ export function RequestsListPage() {
                 onToggle={toggleFilter("priority")}
               />
               <ChipGroup label="Source" options={sourceOptions} selected={filters.source} onToggle={toggleFilter("source")} />
+              <ChipGroup
+                label="Échéance (demandes ouvertes)"
+                options={DUE_VALUES.map((value) => ({ value, label: DUE_LABELS[value] }))}
+                selected={filters.due}
+                onToggle={toggleFilter("due")}
+              />
               <CheckList label="Organisme" options={destinataireOptions} selected={filters.destinataire} onToggle={toggleFilter("destinataire")} />
               <CheckList label="Démarche" options={procedureOptions} selected={filters.procedure} onToggle={toggleFilter("procedure")} />
             </div>
@@ -403,7 +504,7 @@ export function RequestsListPage() {
             <span className="sr-only">Tableau des demandes</span>
           </Link>
           <Link to="/carte" title="Carte des interventions" className={cn(PILL, PILL_IDLE, "w-9 justify-center px-0 text-muted-foreground")}>
-            <Map className="size-[15px]" aria-hidden="true" />
+            <MapIcon className="size-[15px]" aria-hidden="true" />
             <span className="sr-only">Carte des interventions</span>
           </Link>
           <IconPill
@@ -470,11 +571,51 @@ export function RequestsListPage() {
         </div>
       ) : null}
 
+      {selected.size > 0 ? (
+        <div
+          className="flex shrink-0 items-center gap-3 border-b border-primary/20 bg-primary/[0.06] px-5 py-2"
+          aria-label="Sélection"
+        >
+          <span className="text-[13px] font-semibold tabular-nums">
+            {selected.size} demande{selected.size > 1 ? "s" : ""} sélectionnée{selected.size > 1 ? "s" : ""}
+          </span>
+          {selectionFull ? (
+            <span className="text-xs text-muted-foreground">
+              {BATCH_MAX_SIZE} demandes au plus par résolution groupée.
+            </span>
+          ) : null}
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={clearSelection}
+              className="text-[12.5px] font-semibold text-muted-foreground underline underline-offset-[3px]"
+            >
+              Désélectionner
+            </button>
+            <button
+              type="button"
+              onClick={() => setBatchOpen(true)}
+              className={cn(PILL, PILL_ACTIVE, "px-3.5")}
+            >
+              Résoudre la sélection
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {/* En-tête figé, lignes défilantes. */}
       <div className="min-h-0 flex-1 overflow-auto">
         <table className="w-full table-fixed border-collapse text-sm">
           <thead>
             <tr>
+              {selectable ? (
+                <th
+                  scope="col"
+                  className="sticky top-0 z-10 h-[38px] w-[44px] border-b border-border bg-muted/[0.45] pl-4 pr-1 text-left backdrop-blur-sm"
+                >
+                  <PageCheckbox state={pageState} onToggle={() => applySelection(togglePage(selected, pageItems))} />
+                </th>
+              ) : null}
               {COLUMNS.map((c) => (
                 <th
                   key={c.title || "actions"}
@@ -502,12 +643,12 @@ export function RequestsListPage() {
           </thead>
           <tbody>
             {list.isLoading ? (
-              <tr><td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-[13.5px] text-muted-foreground">Chargement…</td></tr>
+              <tr><td colSpan={colSpan} className="px-5 py-12 text-center text-[13.5px] text-muted-foreground">Chargement…</td></tr>
             ) : list.isError ? (
-              <tr><td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-[13.5px] text-destructive">Les demandes n'ont pas pu être chargées.</td></tr>
+              <tr><td colSpan={colSpan} className="px-5 py-12 text-center text-[13.5px] text-destructive">Les demandes n'ont pas pu être chargées.</td></tr>
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={COLUMNS.length} className="px-5 py-12 text-center text-[13.5px] text-muted-foreground">
+                <td colSpan={colSpan} className="px-5 py-12 text-center text-[13.5px] text-muted-foreground">
                   {nFilters > 0 ? "Aucune demande ne correspond aux filtres actifs." : "Aucune demande."}
                 </td>
               </tr>
@@ -517,7 +658,7 @@ export function RequestsListPage() {
                 return (
                   <React.Fragment key={g.id}>
                     <tr>
-                      <td colSpan={COLUMNS.length} className="sticky top-[38px] z-[5] h-8 border-b border-border bg-muted/[0.75] px-3 backdrop-blur-sm">
+                      <td colSpan={colSpan} className="sticky top-[38px] z-[5] h-8 border-b border-border bg-muted/[0.75] px-3 backdrop-blur-sm">
                         <button
                           type="button"
                           onClick={() => toggleGroup(g.id)}
@@ -535,13 +676,13 @@ export function RequestsListPage() {
                       </td>
                     </tr>
                     {isCollapsed ? null : g.items.map((r) => (
-                      <RequestRow key={r.id} r={r} dense={dense} hint={hints.data?.get(r.id)} />
+                      <RequestRow key={r.id} r={r} dense={dense} hint={hints.data?.get(r.id)} selection={rowSelection(r)} />
                     ))}
                   </React.Fragment>
                 );
               })
             ) : (
-              items.map((r) => <RequestRow key={r.id} r={r} dense={dense} hint={hints.data?.get(r.id)} />)
+              items.map((r) => <RequestRow key={r.id} r={r} dense={dense} hint={hints.data?.get(r.id)} selection={rowSelection(r)} />)
             )}
           </tbody>
         </table>
@@ -554,6 +695,22 @@ export function RequestsListPage() {
         </span>
         <ListPagination page={page} pageCount={pageCount} pages={pageWindow(page, pageCount)} onPage={setPage} />
       </footer>
+
+      {selectable ? (
+        <BatchResolutionDialog
+          open={batchOpen}
+          items={[...selected.values()]}
+          onClose={() => setBatchOpen(false)}
+          onResolved={(okIds) => {
+            setSelected((prev) => {
+              const next = new Map(prev);
+              for (const id of okIds) next.delete(id);
+              return next;
+            });
+            setSelectionFull(false);
+          }}
+        />
+      ) : null}
     </div>
   );
 }

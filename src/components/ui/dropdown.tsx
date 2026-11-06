@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 
 // Menu flottant minimal (popover ancré sous son déclencheur) : fermeture au
 // clic extérieur et à Échap. Suffisant pour les sélecteurs de la fiche
-// d'instruction (urgence, affectation, actions secondaires) — motif `ar-pop`
+// d'instruction (priorité, affectation, actions secondaires) — motif `ar-pop`
 // du design system.
 //
 // `portal` détache le menu dans le `body`, en position fixe : un déclencheur

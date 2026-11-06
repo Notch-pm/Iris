@@ -34,7 +34,7 @@ import { useEligibleAssignees, useTenantMembers } from "../useRequests";
 import type { RequestStatus, TransitionSpec } from "../statuts";
 import { BoardCard } from "./BoardCard";
 import {
-  activeFilterCount, AGENT_FACET, BOARD_SORT_LABELS, boardCards, boardContent,
+  activeFilterCount, AGENT_FACET, dueFacets, BOARD_SORT_LABELS, boardCards, boardContent,
   boardRightsResolver, CLOSED_WINDOW_DAYS, closedSince, DESTINATAIRE_FACET, dropTargets,
   EMPTY_BOARD_FILTERS, facetsOf, filterCards, isMineOnly, PRIORITY_FACET, PROCEDURE_FACET,
   refusalHint, toggleMine, toggleValue, transitionToast,
@@ -115,6 +115,7 @@ export function TableauPage() {
   const destinataireFacets = React.useMemo(() => facetsOf(cards, DESTINATAIRE_FACET), [cards]);
   const procedureFacets = React.useMemo(() => facetsOf(cards, PROCEDURE_FACET), [cards]);
   const priorityFacets = React.useMemo(() => facetsOf(cards, PRIORITY_FACET), [cards]);
+  const dueFacetOptions = React.useMemo(() => dueFacets(cards), [cards]);
 
   const rightsOf = React.useMemo(() => boardRightsResolver(rights), [rights]);
   const targetsOf = React.useCallback(
@@ -241,12 +242,20 @@ export function TableauPage() {
             onClear={() => setFilters((f) => ({ ...f, procedures: [] }))}
           />
           <FacetFilter
-            label="Urgence"
-            noun="urgence"
+            label="Priorité"
+            noun="priorité"
             options={priorityFacets}
             selected={filters.priorities}
             onToggle={(v) => setFilters((f) => ({ ...f, priorities: toggleValue(f.priorities, v) }))}
             onClear={() => setFilters((f) => ({ ...f, priorities: [] }))}
+          />
+          <FacetFilter
+            label="Échéance"
+            noun="échéance"
+            options={dueFacetOptions}
+            selected={filters.due}
+            onToggle={(v) => setFilters((f) => ({ ...f, due: toggleValue(f.due, v) }))}
+            onClear={() => setFilters((f) => ({ ...f, due: [] }))}
           />
 
           {nFilters > 0 ? (

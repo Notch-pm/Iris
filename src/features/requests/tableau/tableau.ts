@@ -13,8 +13,9 @@
 // pas proposer un dépôt qui sera refusé.
 
 import { isAdminOn, rightsFor, type MyRights } from "@/features/rights/rights";
+import { DUE_LABELS, DUE_VALUES, dueCounts, matchesDue, openDueView } from "../echeance";
 import {
-  formatDayMonth, initials, priorityOption, requesterIdentity, type PriorityOption,
+  formatDayMonth, initials, priorityOption, requesterIdentity, type DueView, type PriorityOption,
 } from "../instruction/instruction";
 import {
   allowedTransitionsFor, CLOSED_STATUSES, OPEN_STATUSES, STATUS_LABELS,
@@ -85,6 +86,8 @@ export interface BoardRow {
   assigned_to: string | null;
   received_at: string;
   updated_at: string;
+  /** Échéance calculée au dépôt (B16) — immuable. */
+  due_at: string | null;
   identity_status: string;
   requester_snapshot: unknown;
   /** Émetteur de la demande — `clara` n'appelle aucun avis de clôture. */
@@ -129,6 +132,14 @@ export interface BoardCardView {
   deposited: string;
   receivedAt: string;
   updatedAt: string;
+  /** Échéance brute (B16) — le filtre la relit à l'heure du filtrage. */
+  dueAt: string | null;
+  /**
+   * Mention d'échéance de la carte : seulement quand la demande ouverte est en
+   * retard ou à 3 jours ou moins — une échéance lointaine n'appelle rien et
+   * alourdirait 400 cartes.
+   */
+  due: DueView | null;
   /** Couple (organisation porteuse, démarche) — clé de résolution des droits. */
   scopeOrgId: string;
   /** Champ de recherche pré-calculé, déjà replié (sans accents, minuscules). */
@@ -145,7 +156,8 @@ function fold(value: string): string {
  * DÉPÔT (`requester_snapshot`) : le tableau n'ouvre pas 400 fiches Socle pour
  * relire 400 usagers — la fiche de la demande, elle, montre l'identité du jour.
  */
-export function boardCard(row: BoardRow, agentName: string | null): BoardCardView {
+export function boardCard(row: BoardRow, agentName: string | null, now: Date = new Date()): BoardCardView {
+  const view = openDueView(row.due_at, row.status, now);
   const identity = requesterIdentity(row.requester_snapshot, row.identity_status);
   const procedureLabel = row.socle_procedure_label ?? "Sans démarche";
   const destinataireLabel = row.socle_organization_label ?? "Sans organisme";
@@ -171,6 +183,8 @@ export function boardCard(row: BoardRow, agentName: string | null): BoardCardVie
     deposited: formatDayMonth(row.received_at, true),
     receivedAt: row.received_at,
     updatedAt: row.updated_at,
+    dueAt: row.due_at,
+    due: view && view.tone !== "normal" ? view : null,
     scopeOrgId: row.socle_scope_org_id,
     search: fold(
       [row.reference, row.subject, procedureLabel, destinataireLabel, identity.name, agentLabel].join(" "),
@@ -181,8 +195,9 @@ export function boardCard(row: BoardRow, agentName: string | null): BoardCardVie
 export function boardCards(
   rows: BoardRow[],
   nameOf: (userId: string) => string,
+  now: Date = new Date(),
 ): BoardCardView[] {
-  return rows.map((row) => boardCard(row, row.assigned_to ? nameOf(row.assigned_to) : null));
+  return rows.map((row) => boardCard(row, row.assigned_to ? nameOf(row.assigned_to) : null, now));
 }
 
 // ---- Filtres et facettes ----------------------------------------------------
@@ -194,6 +209,8 @@ export interface BoardFilters {
   destinataires: string[];
   procedures: string[];
   priorities: string[];
+  /** Échéance (B16) : `late` / `soon` — demandes ouvertes seulement. */
+  due: string[];
 }
 
 export const EMPTY_BOARD_FILTERS: BoardFilters = {
@@ -202,6 +219,7 @@ export const EMPTY_BOARD_FILTERS: BoardFilters = {
   destinataires: [],
   procedures: [],
   priorities: [],
+  due: [],
 };
 
 /** Nombre de critères posés, recherche comprise — pilote le bouton « Réinitialiser ». */
@@ -211,7 +229,8 @@ export function activeFilterCount(filters: BoardFilters): number {
     filters.agents.length +
     filters.destinataires.length +
     filters.procedures.length +
-    filters.priorities.length
+    filters.priorities.length +
+    filters.due.length
   );
 }
 
@@ -236,7 +255,8 @@ export function toggleValue(values: string[], value: string): string[] {
   return values.includes(value) ? values.filter((v) => v !== value) : [...values, value];
 }
 
-export function matchesFilters(card: BoardCardView, filters: BoardFilters): boolean {
+export function matchesFilters(card: BoardCardView, filters: BoardFilters, now: Date = new Date()): boolean {
+  if (!matchesDue(filters.due, card.dueAt, card.status, now)) return false;
   if (filters.agents.length > 0 && !filters.agents.includes(card.agentId)) return false;
   if (filters.destinataires.length > 0 && !filters.destinataires.includes(card.destinataireId)) return false;
   if (filters.procedures.length > 0 && !filters.procedures.includes(card.procedureId)) return false;
@@ -245,8 +265,8 @@ export function matchesFilters(card: BoardCardView, filters: BoardFilters): bool
   return query === "" || card.search.includes(query);
 }
 
-export function filterCards(cards: BoardCardView[], filters: BoardFilters): BoardCardView[] {
-  return cards.filter((card) => matchesFilters(card, filters));
+export function filterCards(cards: BoardCardView[], filters: BoardFilters, now: Date = new Date()): BoardCardView[] {
+  return cards.filter((card) => matchesFilters(card, filters, now));
 }
 
 export interface CountedOption {
@@ -285,6 +305,16 @@ export const AGENT_FACET = (c: BoardCardView) => ({ value: c.agentId, label: c.a
 export const DESTINATAIRE_FACET = (c: BoardCardView) => ({ value: c.destinataireId, label: c.destinataireLabel });
 export const PROCEDURE_FACET = (c: BoardCardView) => ({ value: c.procedureId, label: c.procedureLabel });
 export const PRIORITY_FACET = (c: BoardCardView) => ({ value: c.priority.key, label: c.priority.label });
+
+/**
+ * Facette « Échéance » (B16) : les deux valeurs toujours présentes, même à
+ * zéro — « aucune demande en retard » est une information. Volumes sur tout le
+ * tableau, comme les autres facettes.
+ */
+export function dueFacets(cards: BoardCardView[], now: Date = new Date()): CountedOption[] {
+  const counts = dueCounts(cards, now);
+  return DUE_VALUES.map((value) => ({ value, label: DUE_LABELS[value], count: counts[value] }));
+}
 
 // ---- Répartition en colonnes ------------------------------------------------
 

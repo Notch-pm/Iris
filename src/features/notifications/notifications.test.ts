@@ -219,3 +219,14 @@ describe("réponse de l'usager (L4b)", () => {
     expect(notificationMessage("citizen_replied", { reprise: false })).toBe("L'usager a répondu en ligne.");
   });
 });
+
+describe("alertes d'échéance (B16)", () => {
+  it("même phrase que l'e-mail et le push", () => {
+    expect(notificationTitle("deadline_soon")).toBe("Échéance proche");
+    expect(notificationTitle("deadline_overdue")).toBe("Échéance dépassée");
+    expect(notificationMessage("deadline_soon", { due_at: "2026-11-13T22:59:59+00:00", days: 1 }))
+      .toBe("L'échéance de traitement tombe demain, le 13/11/2026.");
+    expect(notificationMessage("deadline_overdue", { due_at: "2026-11-13T22:59:59+00:00" }))
+      .toBe("L'échéance de traitement est dépassée (elle tombait le 13/11/2026).");
+  });
+});

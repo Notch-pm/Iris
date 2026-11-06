@@ -1,5 +1,5 @@
 // Carte des interventions : la mosaïque de tuiles (brique partagée), une
-// épingle par demande située — colorée par l'urgence — et la fiche de survol
+// épingle par demande située — colorée par la priorité — et la fiche de survol
 // qui donne l'essentiel avant d'ouvrir la demande.
 //
 // Toute la géométrie (recadrage, projection, déplacement) vient de
@@ -29,6 +29,7 @@ import {
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "../StatusBadge";
 import { cardAnchor, isResolved, locationHint, mapCard, spreadByPoint, type LocatedRequest } from "./carte";
+import { DUE_TONE } from "../echeance";
 
 export interface MapMarker {
   item: LocatedRequest;
@@ -36,7 +37,7 @@ export interface MapMarker {
   point: GeoPoint & { adjusted?: boolean };
 }
 
-/** Ramp d'urgence : jaune (normale) → orange (haute) → rouge (urgente). */
+/** Rampe de priorité : jaune (normale) → orange (haute) → rouge (urgente). */
 const PIN_COLOR: Record<string, string> = {
   urgente: "bg-destructive",
   haute: "bg-warning",
@@ -44,7 +45,7 @@ const PIN_COLOR: Record<string, string> = {
   basse: "bg-muted-foreground",
 };
 
-/** Une demande RÉSOLUE est grise, quelle que soit son urgence : elle n'attend plus rien. */
+/** Une demande RÉSOLUE est grise, quelle que soit sa priorité : elle n'attend plus rien. */
 export function pinColor(priority: string, resolved = false): string {
   if (resolved) return "bg-muted-foreground/60";
   return PIN_COLOR[priority] ?? "bg-muted-foreground";
@@ -378,9 +379,14 @@ function RequestCard({ marker, nameOf, anchor, pinned, onEnter, onLeave, onClose
           <div key={detail.label} className="flex items-baseline justify-between gap-3">
             <dt className="shrink-0 text-[11px] font-semibold text-muted-foreground">{detail.label}</dt>
             <dd className="min-w-0 truncate text-right text-[12px] font-semibold">
-              {detail.label === "Urgence" ? (
+              {detail.label === "Priorité" ? (
                 <span className="inline-flex items-center gap-1.5">
                   <span className={cn("size-2 rounded-full", pinColor(card.priorityKey, card.resolved))} aria-hidden="true" />
+                  {detail.value}
+                </span>
+              ) : detail.label === "Échéance" && card.due ? (
+                // B16 : la pastille de la fiche, tant que la demande est en cours.
+                <span className={cn("inline-flex rounded-full px-2 py-[1px] text-[11px]", DUE_TONE[card.due.tone])}>
                   {detail.value}
                 </span>
               ) : (

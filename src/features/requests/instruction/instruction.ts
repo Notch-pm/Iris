@@ -677,6 +677,12 @@ function dayLabel(value: unknown): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : "";
 }
 
+/** Ce que la résolution commune ou groupée a fait en plus de résoudre (`took_over`, `chained`). */
+function resolutionExtras(p: Record<string, unknown>): string {
+  return (p.chained === true ? " · mise en instruction au passage" : "")
+    + (p.took_over === true ? " · instructeur affecté" : "");
+}
+
 function describeEvent(
   event: ActivityEvent,
   nameOf: ActivityInput["nameOf"],
@@ -731,6 +737,29 @@ function describeEvent(
       return {
         label: "Liée à une demande du même incident",
         detail: `${ref ?? "autre demande"} · ${who}${p.merged === true ? " · deux groupes fusionnés" : ""}`,
+      };
+    }
+    case "resolved_with_group": {
+      // Résolution commune d'un groupe « même incident » — `resolve_linked_requests`.
+      const ref = typeof p.source_reference === "string" ? p.source_reference : null;
+      return {
+        label: "Résolue avec les demandes liées",
+        detail: `avec ${ref ?? "la demande source"} · ${who}${resolutionExtras(p)}`,
+      };
+    }
+    case "group_resolution": {
+      const n = typeof p.count === "number" ? p.count : 0;
+      return {
+        label: `${n} demande${n > 1 ? "s" : ""} liée${n > 1 ? "s" : ""} résolue${n > 1 ? "s" : ""} avec elle`,
+        detail: who,
+      };
+    }
+    case "resolved_in_batch": {
+      // Résolution groupée d'une sélection de la liste — `resolve_requests` (B7).
+      const n = typeof p.batch_size === "number" ? p.batch_size : 0;
+      return {
+        label: "Résolue dans une résolution groupée",
+        detail: `${who}${n > 1 ? ` · lot de ${n} demandes` : ""}${resolutionExtras(p)}`,
       };
     }
     case "request_unlinked": {

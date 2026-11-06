@@ -189,7 +189,7 @@ export function contextBlock(ctx: RequestContext): string {
   if (ctx.service) lines.push(`Organisme responsable : ${ctx.service}`);
   lines.push(`Objet : ${ctx.subject}`);
   lines.push(`Statut : ${ctx.status}`);
-  lines.push(`Urgence : ${ctx.priority}`);
+  lines.push(`Priorité : ${ctx.priority}`);
   if (ctx.channel) lines.push(`Canal de dépôt : ${ctx.channel}`);
   lines.push(`Déposée le : ${ctx.receivedAt}`);
   if (ctx.dueAt) lines.push(`Échéance : ${ctx.dueAt}`);

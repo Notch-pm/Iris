@@ -1051,7 +1051,7 @@ export function RequestDetailPage() {
               onTransfer={(socleOrgId) => { setTransferError(null); setTransferTo(socleOrgId); }}
               onPriority={(priority) => void guarded(
                 () => updatePriority.mutateAsync({ requestId: r!.id, priority }),
-                `Urgence : ${priorityOption(priority).label.toLowerCase()}`,
+                `Priorité : ${priorityOption(priority).label.toLowerCase()}`,
               )}
               onAssign={(userId) => void guarded(
                 () => assignRequest.mutateAsync({ requestId: r!.id, assigneeId: userId }),

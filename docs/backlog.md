@@ -2,7 +2,7 @@
 
 > **Public** : PO et équipe Iris · **Question traitée** : qu'est-ce qui a été demandé, pas
 > encore arbitré, et que faut-il savoir avant de s'y mettre ? · **Dernière mise à jour** :
-> 2026-10-21
+> 2026-11-04
 
 Ce document porte les demandes **produit** en attente. Il ne double pas
 [`dette-technique.md`](dette-technique.md), qui traite de ce qui est **assumé comme dette** :
@@ -15,6 +15,35 @@ pistes citées sont des pistes, pas des décisions. Une entrée réalisée quitt
 le `CLAUDE.md` de sa feature.
 
 Consigné le **2026-08-30** sur demande du PO, sans priorisation.
+
+## Client Vernon (présentation GRU du 2026-10-30)
+
+Prospect chaud : la **ville de Vernon et Seine Normandie Agglomération** (SNA, services
+appelés à se rapprocher) cherchent une gestion du courrier intégrée à la relation usager ; SNA
+réévalue le marché à cause des restrictions de FranceConnect V2. Délai de réponse attendu à
+Vernon : **quinze jours**. Les entrées marquées **🏷 Vernon** portent un ajustement issu de
+cette présentation, vérifié dans le code le 2026-11-04 :
+
+- **B3** — transfert entre collectivités (ville ↔ agglo) ;
+- **B5** — sous-tâches / tâches internes ;
+- **B15** — modèles validés comme cadre de la rédaction assistée (**engagement pris en
+  séance**, d'abord pour Clara) ;
+- ~~**B16**~~ — échéance de réponse calculée et alertée : **livrée le 2026-11-06** (voir « Entrées sorties ») ;
+- **B17** — satisfaction exprimée par l'usager (alternative à l'analyse de sentiment).
+
+Aussi lié à Vernon, hors de ce document : l'**annuaire des agents dans le Socle** (lots 0–3
+livrés le 2026-10-30, `sync-socle-users` ; suite — connexion unique Keycloak / Entra ID, retrait
+du « donner / retirer l'accès » de la zone superadmin — dans `Socle/docs/roadmap.md`
+§ « Annuaire des agents ») et les entrées 🏷 Vernon du backlog de Clara.
+
+**Déjà couvert, à montrer tel quel** : photos sur une demande et sur un compte rendu
+d'intervention ([pièces](features/pieces-justificatives.md),
+[interventions](features/interventions.md)) ; pages mobiles dédiées et push sur appareil ;
+courrier à plusieurs actions → plusieurs demandes ingérées depuis Clara ; « même incident » et
+résolution commune ([demandes liées](demandes-liees.md)) ; un usager **élu** est déjà signalé
+sur sa fiche (catégorie de contact du Socle, `src/features/contacts/usager.ts`). Ce que les
+élus attendent de plus (suivi des demandes qu'ils ont transmises ? statistiques ?) n'a pas été
+dit : à creuser avec le client.
 
 ---
 
@@ -36,7 +65,7 @@ transitions.
 
 **Touche** : `src/features/requests/tableau/`.
 
-## B3 — Transfert d'une demande d'une collectivité à l'autre
+## B3 — Transfert d'une demande d'une collectivité à l'autre · 🏷 Vernon
 
 **⚠️ La demande est ambiguë, et les deux lectures n'ont rien à voir.** À clarifier avant tout
 chiffrage :
@@ -61,6 +90,15 @@ pas parce que les deux entrées emploient le même mot qu'elles parlent du même
 
 **Touche** : selon la lecture, `src/features/requests/` seul, ou le modèle de données et
 [`architecture-proposee.md`](architecture-proposee.md).
+
+**🏷 Vernon — état au 2026-11-04.** La **lecture 1 est livrée** depuis le 2026-09-01 :
+transfert d'organisme responsable dans le sous-arbre, RPC `transfer_request`
+([fiche](features/transfert-organisme.md)). Reste la **lecture 2**, que Vernon rend concrète :
+ville et agglomération aux compétences qui se croisent. **Question à poser au client avant tout
+chiffrage** : ville et agglo seront-elles **un seul tenant** (Vernon organisation du sous-arbre
+de SNA — le transfert existe déjà) ou **deux tenants** (il faudrait la clôture pour
+réorientation + création reliée décrite ci-dessus) ? Le jeu de démonstration **SNA27** est le
+bon terrain pour la montrer.
 
 ## B9 — Retrait d'un consentement RGPD par l'usager
 
@@ -104,9 +142,26 @@ Rien à changer côté Socle. Ce qui manque est **côté Iris** : l'écran, et l
 **Touche** : `src/features/contacts/`, `supabase/functions/socle-proxy/`. Le catalogue partagé
 `supabase/functions/_shared/consents/catalog.ts` porterait les libellés de retrait.
 
-## B5 — Sous-tâches
+## B5 — Sous-tâches · 🏷 Vernon
 
-**Rien n'existe.** À cadrer entièrement.
+**🏷 Vernon — corrigé le 2026-11-04 : « rien n'existe » n'était plus vrai.** Deux objets
+jouent déjà ce rôle, chacun dans son application :
+- **Iris — les interventions** (2026-09-14, [fiche](features/interventions.md)) : pendant
+  l'instruction, l'agent **sollicite un intervenant** (date souhaitée, ce qui est attendu),
+  qui ne voit que cette demande et **déclare l'intervention réalisée** (justificatifs, photos).
+  C'est une tâche confiée, avec retard visible et notifications — mais **à un intervenant
+  seulement** : rien pour confier une tâche à un collègue ou à un service sans profil
+  intervenant, ni pour une simple liste à cocher.
+- **Clara — les tâches internes** (2026-10-09, `action_tickets.kind = 'tache'`) : issues d'une
+  action du courrier, affectées à un membre, à un contact interne ou élu, ou à une adresse
+  e-mail, clôturables sans connexion (`/tache/:token`). C'est ce qui a été montré à Vernon
+  (« créer une tâche interne »).
+
+**L'ajustement restant à cadrer** : faut-il, dans Iris, une tâche **plus légère que
+l'intervention** (destinataire = agent ou service, sans profil intervenant), ou élargir
+l'intervention ? Réutiliser l'intervention garde une seule porte (`request_intervention`) et
+ses tests d'étanchéité. Aucune des deux applications n'a de vraie **sous-tâche** (tâche
+enfant d'une tâche), ni d'échéance sur une tâche de Clara.
 
 **Question à poser avant d'écrire une ligne** : une sous-tâche est-elle une **demande** (donc
 une pièce administrative, avec référence, statut, RLS et journal) ou un **objet interne léger**
@@ -116,9 +171,10 @@ réponse décide de tout le reste : modèle, droits, notifications, statistiques
 
 ## B6 — Liens entre les demandes
 
-> **2026-10-16 — à l'étude, avec B7** : [`demandes-liees.md`](demandes-liees.md) (groupe
-> « même incident » sans demande principale, détection serveur, résolution commune). Le
-> texte ci-dessous reste le constat de départ.
+> **2026-11-04 — ce qui reste.** Le groupe « même incident » est livré (2026-10-16,
+> [`demandes-liees.md`](demandes-liees.md) : sans demande principale, détection serveur,
+> résolution commune) et B7 est sortie de ce document. Reste ce que le groupe ne couvre pas :
+> les liens **typés** et ce qu'ils entraînent (ci-dessous). Le texte reste le constat de départ.
 
 **Ce qui existe déjà, et qu'il faut regarder avant de concevoir** : la fiche porte des
 **demandes liées** (`useLinkRequests`, `useRequestSummaries`), et le parcours de création
@@ -130,24 +186,6 @@ clôture ? Un lien « dépend de » devrait-il retenir une résolution ? Sujet v
 B7 : les trois gagneraient à être cadrés ensemble.
 
 **Touche** : `src/features/requests/` (fiche, création).
-
-## B7 — Résolution groupée
-
-> **2026-10-16 — à l'étude, avec B6** : [`demandes-liees.md`](demandes-liees.md) §1 et §4
-> (une transition par demande, résultat partiel, avis au choix de l'agent).
-
-**Ce qui existe.** Les transitions passent toutes par le **dialogue commun** de la fiche, que
-le tableau réutilise déjà pour un dépôt. La garde `requests_guard_write` juge **demande par
-demande**.
-
-**Le point dur** : une résolution groupée doit rester **une transition par demande côté
-serveur** — la garde ne se contourne pas, et « Résolue positivement » exige un passage par
-l'instruction ET des pièces obligatoires conformes (`t17`). Certaines demandes du lot seront
-donc refusées : l'écran doit annoncer un **résultat partiel** honnête (« 7 sur 12 ») avec le
-motif de chaque refus, pas un succès global. Reste aussi à décider le sort de l'**avis de
-clôture à l'usager** : douze envois d'un coup, ou aucun ?
-
-**Touche** : `src/features/requests/` (liste, tableau), `send-request-email`.
 
 ## B8 — Ergonomie du menu haut (nom de la collectivité)
 
@@ -311,12 +349,91 @@ verrouillé), préférence par canal (déjà prévue), réemploi éventuel des e
 
 **Touche** : file de B12, `_shared/`, préférence Nora, Paramètres.
 
+## B15 — Modèles validés comme cadre de la rédaction assistée · 🏷 Vernon
+
+**Demandé le 2026-10-30** (Vernon) : que l'IA s'appuie sur des **modèles de réponse validés
+par la commune** pour stabiliser ce qu'elle produit. Engagement pris en séance — d'abord
+formulé pour les courriers (Clara), il vaut aussi pour les réponses par e-mail d'Iris.
+
+**Ce qui existe, vérifié le 2026-11-04** : les deux moitiés, **sans lien entre elles**.
+- **Modèles d'e-mail** (2026-08-26, `src/features/templates/`, table `email_templates`) :
+  texte brut, variables d'un catalogue figé, activation organisation par organisation ;
+  l'agent en insère un dans le composeur.
+- **Rédaction assistée** (2026-09-24, edge `request-email-assistant`,
+  `_shared/ai/emailDraft.ts`) : brouillon d'accusé ou de suivi, et « Améliorer mon message »
+  (la langue, jamais le sens — couvre déjà le « corriger sans changer le sens » demandé en
+  séance). **Aucune lecture de `email_templates`** dans `_shared/ai/` ni dans l'edge : le
+  brouillon s'écrit de zéro.
+
+**L'ajustement** : un geste « Adapter ce modèle au dossier » — l'agent choisit un modèle
+validé, le serveur substitue les variables, puis l'IA n'ajuste que ce que le modèle laisse
+ouvert. Le modèle est un **cadre**, pas une inspiration : le texte validé ne doit pas être
+réécrit.
+
+**Questions ouvertes** : comment garantir que l'IA ne touche pas aux passages validés (zones
+marquées dans le modèle ? contrôle serveur que le texte rendu contient le modèle à
+l'identique ?) ; un modèle doit-il pouvoir être **rattaché à une démarche** pour être proposé
+d'office ; « validé » suppose-t-il un statut de validation (qui valide, trace) au-delà de
+l'actuel « actif » ?
+
+**Touche** : `src/features/templates/`, `src/features/requests/` (composeur des Échanges),
+`supabase/functions/request-email-assistant/`, `_shared/ai/` ; mêmes règles qu'aujourd'hui
+(pseudonymisation, jamais de notes internes).
+
+## B17 — Satisfaction exprimée par l'usager · 🏷 Vernon
+
+**Évoqué le 2026-10-30** (Vernon), sans décision : la qualification des **sentiments** par
+l'IA (côté Clara) soulève une question RGPD de finalité ; deux alternatives ont été citées —
+des **indicateurs objectifs**, ou une **évaluation exprimée directement par l'usager**.
+
+**Ce qui existe, vérifié le 2026-11-04** : rien. Aucune notion de satisfaction, de note ou
+d'avis de l'usager dans Iris ni dans les tables de faits.
+
+**Piste** : une question facultative proposée à la clôture (lien de l'avis de clôture,
+espace usager de Nora), réponse rangée dans les **faits** (`request_stats`, sans donnée
+d'usager, survit à la purge) et restituée dans `/statistiques`. Déclarative, à finalité
+claire : plus défendable qu'une émotion déduite d'un texte.
+
+**Questions ouvertes** : échelle et question exactes ; une seule réponse par demande ;
+l'usager sans compte (accès invité, B13) ; exclure les demandes issues de Clara, qui répond
+elle-même à l'usager ? ; et la position RGPD sur l'analyse de sentiment de Clara, à trancher
+de son côté.
+
+**Touche** : `send-request-email` (avis de clôture), `requests-api` / Nora, `request_stats`,
+`src/features/stats/`.
+
 ---
 
 ## Entrées sorties de ce document
 
 Les numéros ne sont pas réattribués : une entrée traitée laisse son numéro derrière elle, pour
 que qui l'a en tête retrouve où elle a atterri.
+
+- **B16 — Échéance de réponse calculée et alertée** · 🏷 Vernon · livrée le **2026-11-06**,
+  décisions PO du jour : échéance = jour de réception (Paris) + « durée habituelle
+  d'instruction » de la démarche (seul délai que porte le Socle — aucun délai légal n'existe
+  dans la gamme), à défaut **15 jours calendaires** (`organizations.default_due_days`) ;
+  jours ouvrés respectés quand la démarche les annonce (samedis et dimanches exclus, fériés
+  non retirés) ; délai **non suspendu** en attente d'information ; échéance **immuable** ;
+  filtre « Échéance » (En retard / Urgentes, 3 jours ou moins) et colonne triable dans la
+  liste ; alertes « échéance proche » puis « dépassée », une fois chacune, à l'instructeur ou
+  au périmètre. Migrations `20261106100000` et `20261106110000`, détail dans
+  [`data-model.md`](data-model.md) § « Échéance » et
+  [`features/liste-des-demandes.md`](features/liste-des-demandes.md). **Restent hors lot** :
+  un délai LÉGAL distinct (à créer au Socle s'il est demandé), les jours fériés, un écran pour
+  régler le défaut de la collectivité (SQL pour l'instant), un indicateur de retard au tableau
+  de bord.
+
+- **B7 — Résolution groupée** · livrée en deux temps. Le **groupe « même incident »** le
+  2026-10-16 (résolution commune depuis la fiche, le tableau et le mobile —
+  [`demandes-liees.md`](demandes-liees.md)) ; la **sélection libre depuis la liste** le
+  **2026-11-04**, sur décision PO du jour : la règle du groupe s'étend à toute sélection (une
+  demande « À traiter » ou « En attente » passe par l'instruction, fait par le serveur ;
+  l'agent devient instructeur à défaut), liste seulement, 50 demandes par lot, avis à
+  l'usager au choix de l'agent (décoché par défaut). RPC `resolve_requests`, détail dans
+  [`features/liste-des-demandes.md`](features/liste-des-demandes.md) et
+  [`data-model.md`](data-model.md). Reste ouvert, en **B6** : les liens **typés** (doublon,
+  dépendance), que le groupe « même incident » ne couvre pas.
 
 - **Espace usager — code perdu, coupure d'accès, réponse de l'usager** · livrés le
   **2026-10-21** : lot L4a (contrat 2.8.0 — renvoi du code perdu, coupure et nouveau code par un

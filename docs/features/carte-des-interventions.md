@@ -67,9 +67,9 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     service. Aucun point calculé n'est stocké côté Iris ; une demande déposée **avec** un
     point (champ `location`) est située par lui et ne part pas au lot.
   - **`InterventionMap.tsx`** : `TileLayer` (brique partagée avec la fiche), épingles
-    **colorées par urgence** (jaune `normale` → orange `haute` → rouge `urgente`, gris
+    **colorées par priorité** (jaune `normale` → orange `haute` → rouge `urgente`, gris
     `basse` : sans urgence particulière), survol/focus → fiche (référence, statut, objet,
-    adresse, usager, dépôt, urgence, démarche, catégorie, destinataire, agent instructeur,
+    adresse, usager, dépôt, priorité, démarche, catégorie, destinataire, agent instructeur,
     « Ouvrir la fiche »), clic = fiche épinglée, Échap ferme. Déplacement à la souris, zoom
     molette (listener non passif — sinon la roue est ignorée) et boutons, « Recadrer ».
     **Molette** (retour PO 2026-09-19, `wheelSteps` / `wheelDeltaPixels` / `zoomAround` dans
@@ -80,8 +80,8 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     n'existent qu'à des niveaux entiers) ; un zoom fractionnaire demanderait de mettre la
     mosaïque à l'échelle entre deux niveaux — pas fait.
     Recadrage automatique à l'arrivée des points et à chaque changement de filtre.
-  - **Filtres** : démarches en **multi-sélection** (menu à cases, volumes) et urgences en
-    pastilles colorées — la légende EST le filtre, puisque la couleur porte l'urgence.
+  - **Filtres** : démarches en **multi-sélection** (menu à cases, volumes) et priorités en
+    pastilles colorées — la légende EST le filtre, puisque la couleur porte la priorité.
   - **Résolues récemment** (retour PO 2026-09-19) : la carte charge aussi les demandes
     **résolues** (`resolue_positive` / `resolue_negative` — jamais une annulée, qui n'a pas
     eu lieu) dont `closed_at` a moins de **30 jours** (`RESOLVED_STATUSES`,
@@ -89,8 +89,8 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     montage et dans la clé). Elles sont **grises** (`pinColor(priority, resolved)`), visibles
     par défaut, débrayables par le commutateur « Voir les demandes résolues récemment »
     (`filters.showResolved`, compteur `resolvedCount`). Elles **n'entrent pas dans la légende
-    des urgences** (`priorityCounts` les saute) : compter une résolue sous une couleur
-    d'urgence ferait mentir la légende, puisque son épingle est grise.
+    des priorités** (`priorityCounts` les saute) : compter une résolue sous une couleur
+    de priorité ferait mentir la légende, puisque son épingle est grise.
   - **Quartiers** (2026-08-28) : le découpage du territoire se superpose aux épingles,
     chaque quartier tracé et **nommé en son centre** à la couleur du référentiel
     (`QuartierLayer`, brique partagée avec la carte du champ d'adresse). Bascule
@@ -105,3 +105,12 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     (10 avenue de Frémeur, 44000 Nantes) — épingle posée, fiche de survol complète, et le
     bloc « Lieu d'intervention » de la fiche d'instruction (carte, « Numéro localisé »,
     « Guider »).
+
+- **Échéance** (2026-11-06, B16) : deux boutons de filtre à côté de la priorité — « En retard »
+  et « Échéance ≤ 3 jours », avec leur volume parmi les demandes situées — et une ligne
+  « Échéance » dans la fiche de survol : la pastille de la fiche (« En retard de 70 jours »,
+  mêmes jetons `DUE_TONE`) tant que la demande est en cours, la date seule une fois résolue.
+  Demandes en cours seulement ; ⚠️ la PRIORITÉ (appelée « Urgence » jusqu'au 2026-11-06) et l'ÉCHÉANCE sont deux critères
+  distincts. Règles dans `features/requests/echeance.ts` (pur, testé, partagé avec la liste et
+  le tableau) ; `due_at` ajouté à `MAP_SELECT`. Vérifié en navigateur sur l'ACCM le 2026-11-06
+  (15 en retard, fiche de survol).

@@ -9,7 +9,8 @@
 // adresses sans point partent au géocodeur.
 
 import type { BatchAddress, GeoPoint, GeoPrecision } from "@/lib/carto";
-import { formatDayMonth, priorityOption, requesterIdentity } from "../instruction/instruction";
+import { formatDayMonth, priorityOption, requesterIdentity, type DueView } from "../instruction/instruction";
+import { dueCounts, matchesDue, openDueView, type DueValue } from "../echeance";
 import { interventionLocation, type InterventionLocation } from "../instruction/lieu";
 
 // « En cours » = ni clôturée ni archivée. La liste vit avec la matrice de
@@ -51,6 +52,8 @@ export interface MapRequestRow {
   received_at: string;
   /** Date de clôture (posée par la garde serveur) — renseignée sur une résolue. */
   closed_at: string | null;
+  /** Échéance calculée au dépôt (B16) — immuable. */
+  due_at: string | null;
   identity_status: string;
   requester_snapshot: unknown;
   form_data: unknown;
@@ -159,27 +162,35 @@ export const NO_PROCEDURE = "__sans_demarche__";
 export interface MapFilters {
   /** Ids de démarches retenus — vide = toutes. */
   procedures: string[];
-  /** Urgences retenues — vide = toutes. */
+  /** Priorités retenues — vide = toutes. */
   priorities: string[];
   /** Montrer les demandes résolues récemment (épingles grises) — vrai par défaut. */
   showResolved: boolean;
+  /** Échéance (B16) : `late` / `soon` — demandes ouvertes seulement, vide = toutes. */
+  due: string[];
 }
 
-export const EMPTY_MAP_FILTERS: MapFilters = { procedures: [], priorities: [], showResolved: true };
+export const EMPTY_MAP_FILTERS: MapFilters = { procedures: [], priorities: [], showResolved: true, due: [] };
 
 export function procedureKey(row: MapRequestRow): string {
   return row.socle_procedure_id ?? NO_PROCEDURE;
 }
 
-export function filterRequests(located: LocatedRequest[], filters: MapFilters): LocatedRequest[] {
+export function filterRequests(located: LocatedRequest[], filters: MapFilters, now: Date = new Date()): LocatedRequest[] {
   const procedures = new Set(filters.procedures);
   const priorities = new Set(filters.priorities);
   return located.filter(
     (item) =>
       (filters.showResolved || !isResolved(item.row)) &&
       (procedures.size === 0 || procedures.has(procedureKey(item.row))) &&
-      (priorities.size === 0 || priorities.has(item.row.priority)),
+      (priorities.size === 0 || priorities.has(item.row.priority)) &&
+      matchesDue(filters.due, item.row.due_at, item.row.status, now),
   );
+}
+
+/** Volumes « En retard » / « Échéance ≤ 3 jours » parmi les demandes situées (B16). */
+export function dueCountsOf(located: LocatedRequest[], now: Date = new Date()): Record<DueValue, number> {
+  return dueCounts(located.map((item) => ({ dueAt: item.row.due_at, status: item.row.status })), now);
 }
 
 /** Demandes résolues récemment parmi les situables (le compteur du commutateur). */
@@ -213,9 +224,9 @@ export function procedureFacets(located: LocatedRequest[]): CountedOption[] {
 }
 
 /**
- * Volume par urgence parmi les demandes situées EN COURS (pour la légende
+ * Volume par priorité parmi les demandes situées EN COURS (pour la légende
  * filtrante). Les résolues n'y entrent pas : elles sont grises sur la carte,
- * les compter sous une couleur d'urgence ferait mentir la légende.
+ * les compter sous une couleur de priorité ferait mentir la légende.
  */
 export function priorityCounts(located: LocatedRequest[]): Record<string, number> {
   const counts: Record<string, number> = {};
@@ -340,6 +351,8 @@ export interface MapCard {
   /** Résolue récemment : épingle et point grisés. */
   resolved: boolean;
   priorityLabel: string;
+  /** Pastille d'échéance d'une demande OUVERTE (B16) — `null` pour une résolue. */
+  due: DueView | null;
   usager: string;
   address: string[];
   rows: MapCardRow[];
@@ -347,11 +360,12 @@ export interface MapCard {
 
 /**
  * Informations essentielles d'une demande pour la fiche de survol : état,
- * usager, date de dépôt, urgence, démarche, catégorie, destinataire et agent
+ * usager, date de dépôt, priorité, démarche, catégorie, destinataire et agent
  * instructeur — l'identité est celle figée au dépôt (`requester_snapshot`).
  */
-export function mapCard(item: LocatedRequest, agentName: string | null): MapCard {
+export function mapCard(item: LocatedRequest, agentName: string | null, now: Date = new Date()): MapCard {
   const row = item.row;
+  const due = openDueView(row.due_at, row.status, now);
   const identity = requesterIdentity(row.requester_snapshot, row.identity_status);
   const priority = priorityOption(row.priority);
   return {
@@ -362,12 +376,16 @@ export function mapCard(item: LocatedRequest, agentName: string | null): MapCard
     priorityKey: row.priority,
     resolved: isResolved(row),
     priorityLabel: priority.label,
+    due,
     usager: identity.name,
     address: [...item.lieu.lines, ...item.lieu.details.map((d) => `${d.label} : ${d.value}`)],
     rows: [
       { label: "Usager", value: identity.name },
       { label: "Déposée le", value: formatDayMonth(row.received_at, true) },
-      { label: "Urgence", value: priority.label },
+      { label: "Priorité", value: priority.label },
+      // Ouverte : la pastille de la fiche (« En retard de 2 jours »…) ; résolue : la date seule.
+      ...(due ? [{ label: "Échéance", value: due.label }]
+        : row.due_at ? [{ label: "Échéance", value: formatDayMonth(row.due_at, true) }] : []),
       { label: "Démarche", value: row.socle_procedure_label ?? "Sans démarche" },
       { label: "Catégorie", value: row.socle_category_label ?? "—" },
       { label: "Destinataire", value: row.socle_organization_label ?? "À affecter" },

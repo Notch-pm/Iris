@@ -10,7 +10,7 @@
 
 import * as React from "react";
 import { Link } from "react-router-dom";
-import { CheckCircle2, Clock, FileText, Inbox, UserCheck } from "lucide-react";
+import { AlarmClock, AlarmClockOff, CheckCircle2, Clock, FileText, Inbox, UserCheck } from "lucide-react";
 import { useWideLayout } from "@/components/layout/shellLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +18,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/features/auth/AuthProvider";
 import { useTenant } from "@/features/tenant/TenantProvider";
 import { StatusBadge } from "@/features/requests/StatusBadge";
+import { DUE_TONE, openDueView } from "@/features/requests/echeance";
+import { priorityOption } from "@/features/requests/instruction/instruction";
+import { pinColor } from "@/features/requests/carte/InterventionMap";
 import type { RequestListItem } from "@/features/requests/useRequests";
 import {
   formatVariation,
@@ -28,6 +31,7 @@ import {
 import {
   DASHBOARD_LIST_LIMIT,
   useAwaitingRequests,
+  useDueCount,
   useMonthlyFlows,
   useMyAssignedRequests,
   type DashboardList,
@@ -44,9 +48,11 @@ interface KpiCardProps {
   iconClassName: string;
   href?: string;
   loading: boolean;
+  /** Le sous-titre est un mois (« novembre 2026 ») : majuscule initiale. Faux pour une phrase. */
+  monthSub?: boolean;
 }
 
-function KpiCard({ label, value, sub, Icon, iconClassName, href, loading }: KpiCardProps) {
+function KpiCard({ label, value, sub, Icon, iconClassName, href, loading, monthSub = true }: KpiCardProps) {
   const inner = (
     <Card className={cn("h-full", href && "cursor-pointer transition-shadow hover:shadow-airbnb-md")}>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
@@ -59,7 +65,7 @@ function KpiCard({ label, value, sub, Icon, iconClassName, href, loading }: KpiC
         ) : (
           <div className="text-3xl font-bold">{value.toLocaleString("fr-FR")}</div>
         )}
-        <p className="mt-1 text-xs capitalize text-muted-foreground">{sub}</p>
+        <p className={cn("mt-1 text-xs text-muted-foreground", monthSub && "capitalize")}>{sub}</p>
       </CardContent>
     </Card>
   );
@@ -90,11 +96,48 @@ interface RequestListProps {
   showStatus?: boolean;
 }
 
+/**
+ * Pastille de priorité, seulement quand elle est élevée (haute, urgente) — la
+ * règle de la carte du tableau (`BoardCard`) : « normale » et « basse » n'ont
+ * que le liseré.
+ */
+function PriorityMention({ priority }: { priority: string }) {
+  const option = priorityOption(priority);
+  if (option.tone === "muted") return null;
+  return (
+    <span
+      className={cn(
+        "shrink-0 rounded-full px-[7px] py-[2px] text-[10px] font-bold",
+        option.tone === "danger" ? "bg-destructive/10 text-destructive" : "bg-secondary/40 text-secondary-foreground",
+      )}
+    >
+      {option.label}
+    </span>
+  );
+}
+
+/**
+ * Mention d'échéance d'une ligne (B16) : seulement quand la demande ouverte est
+ * en retard ou à 3 jours ou moins — la pastille de la fiche, mêmes jetons.
+ */
+function DueMention({ r, now }: { r: RequestListItem; now: Date }) {
+  const view = openDueView(r.due_at, r.status, now);
+  if (!view || view.tone === "normal") return null;
+  return (
+    <span className={cn("whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-semibold", DUE_TONE[view.tone])}>
+      {view.label}
+    </span>
+  );
+}
+
 function RequestList({ title, Icon, list, loading, emptyText, moreHref, showStatus = false }: RequestListProps) {
   const items: RequestListItem[] = list?.items ?? [];
+  const now = new Date();
   const total = list?.total ?? 0;
   return (
-    <section className="flex flex-col gap-3" aria-label={title}>
+    // `min-w-0` : sans lui, l'élément de grille prend la largeur du plus long
+    // objet, la troncature ne joue plus et la mention d'échéance sort de l'écran.
+    <section className="flex min-w-0 flex-col gap-3" aria-label={title}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Icon className="size-4 text-muted-foreground" aria-hidden="true" />
@@ -122,12 +165,20 @@ function RequestList({ title, Icon, list, loading, emptyText, moreHref, showStat
               <li key={r.id}>
                 <Link
                   to={`/demandes/${r.id}`}
-                  className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-muted/50"
+                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/50"
                 >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      <span className="font-mono text-xs text-muted-foreground">{r.reference}</span>{" "}
-                      {r.subject}
+                  {/* Liseré de PRIORITÉ — mêmes couleurs que le tableau et la carte (`pinColor`). */}
+                  <span
+                    title={`Priorité ${priorityOption(r.priority).label.toLowerCase()}`}
+                    className={cn("w-1 shrink-0 self-stretch rounded-full", pinColor(r.priority))}
+                  >
+                    <span className="sr-only">Priorité {priorityOption(r.priority).label.toLowerCase()}</span>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="flex min-w-0 items-center gap-1.5 text-sm font-medium">
+                      <span className="shrink-0 font-mono text-xs text-muted-foreground">{r.reference}</span>
+                      <PriorityMention priority={r.priority} />
+                      <span className="truncate">{r.subject}</span>
                     </p>
                     <p className="text-xs text-muted-foreground">
                       {frDate(r.received_at)}
@@ -137,6 +188,7 @@ function RequestList({ title, Icon, list, loading, emptyText, moreHref, showStat
                     </p>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
+                    <DueMention r={r} now={now} />
                     {showStatus ? <StatusBadge status={r.status} /> : null}
                     <span className="text-muted-foreground" aria-hidden="true">→</span>
                   </div>
@@ -166,6 +218,8 @@ export function DashboardPage() {
   const flows = useMonthlyFlows(orgId);
   const awaiting = useAwaitingRequests(orgId);
   const mine = useMyAssignedRequests(orgId, userId);
+  const dueLate = useDueCount(orgId, "late");
+  const dueSoon = useDueCount(orgId, "soon");
 
   const pair = React.useMemo(() => pickMonthPair(flows.data ?? []), [flows.data]);
   const currentLabel = monthLongLabel(pair.current.month_key);
@@ -209,7 +263,10 @@ export function DashboardPage() {
         </p>
       </div>
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+      {/* Quatre colonnes : les trois flux du mois puis « Échéance dépassée » ;
+          les trois flux de M−1 puis « Échéance approchante » (B16). Les deux
+          cartes d'échéance sont des STOCKS à l'instant, sans M−1. */}
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <KpiCard
           label="Demandes reçues"
           value={pair.current.received_count}
@@ -238,6 +295,16 @@ export function DashboardPage() {
           loading={flows.isLoading}
         />
         <KpiCard
+          label="Échéance dépassée"
+          value={dueLate.data ?? 0}
+          sub="Demandes en cours, à traiter en priorité"
+          Icon={AlarmClockOff}
+          iconClassName="text-destructive"
+          href="/demandes?due=late"
+          loading={dueLate.isLoading}
+          monthSub={false}
+        />
+        <KpiCard
           label="Demandes reçues (M−1)"
           value={pair.previous.received_count}
           sub={previousLabel}
@@ -260,6 +327,16 @@ export function DashboardPage() {
           Icon={CheckCircle2}
           iconClassName="text-muted-foreground"
           loading={flows.isLoading}
+        />
+        <KpiCard
+          label="Échéance approchante"
+          value={dueSoon.data ?? 0}
+          sub="Demandes en cours, échéance dans 3 jours ou moins"
+          Icon={AlarmClock}
+          iconClassName="text-secondary-foreground"
+          href="/demandes?due=soon"
+          loading={dueSoon.isLoading}
+          monthSub={false}
         />
       </div>
 

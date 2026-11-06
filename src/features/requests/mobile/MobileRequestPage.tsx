@@ -1,7 +1,7 @@
 // Écran 2 « Fiche demande » (maquette Claude Design « Iris mobile — v2 »,
 // lignes 162-271) — route `/demandes/:id` sur téléphone. Reprend les hooks et
 // les dérivations pures de `RequestDetailPage.tsx` (bureau), condensés en une
-// seule colonne défilante : en-tête (statut, urgence, avancement horizontal),
+// seule colonne défilante : en-tête (statut, priorité, avancement horizontal),
 // trois actions rapides, interventions, usager, lieu d'intervention, résumé,
 // pièces, notes internes, activité — et un pied « Instruire » qui ouvre le
 // tiroir des quatre gestes d'instruction. Le RLS et les gardes SQL restent
@@ -353,7 +353,7 @@ export function MobileRequestPage() {
           <h1 className="text-2xl font-extrabold leading-tight tracking-tight">{r.subject}</h1>
           <div className="flex flex-wrap items-center gap-2">
             <StatusBadge status={r.status} size="md" />
-            <Pill tone="neutral">Urgence {PRIORITY_LABELS[r.priority]?.toLowerCase() ?? r.priority}</Pill>
+            <Pill tone="neutral">Priorité {PRIORITY_LABELS[r.priority]?.toLowerCase() ?? r.priority}</Pill>
             {due ? (
               <span className={cn(
                 "inline-flex items-center rounded-full px-[11px] py-[5px] text-[11.5px] font-semibold",

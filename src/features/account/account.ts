@@ -71,6 +71,16 @@ export const PREFERENCE_ROWS: { kind: NotificationKind; label: string; hint: str
     label: "Réponse de l'usager",
     hint: "L'usager répond en ligne sur une demande qui m'est affectée (ou que j'instruis, si personne ne l'a).",
   },
+  {
+    kind: "deadline_soon",
+    label: "Une demande arrive à échéance",
+    hint: "Il reste 3 jours ou moins pour traiter une demande qui m'est affectée (ou que j'instruis, si personne ne l'a).",
+  },
+  {
+    kind: "deadline_overdue",
+    label: "Une demande a dépassé son échéance",
+    hint: "Le délai de traitement d'une demande qui m'est affectée (ou que j'instruis, si personne ne l'a) est passé.",
+  },
 ];
 
 /** Sans préférence enregistrée, tout est activé — *fail open*, comme en base. */

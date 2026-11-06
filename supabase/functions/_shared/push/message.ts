@@ -14,6 +14,7 @@
 // Le texte est court : un titre (motif · référence) et une phrase.
 
 import {
+  deadlineSentence,
   type NotificationPayload,
   requestPermalink,
   statusLabel,
@@ -47,6 +48,8 @@ export const PUSH_TITLES: Record<string, string> = {
   intervention_requested: "Intervention demandée",
   intervention_completed: "Intervention réalisée",
   citizen_replied: "Réponse de l'usager",
+  deadline_soon: "Échéance proche",
+  deadline_overdue: "Échéance dépassée",
 };
 
 /** Longueur maximale du corps : au-delà, les systèmes tronquent eux-mêmes, mal. */
@@ -118,6 +121,9 @@ export function pushSentence(kind: string, payload: NotificationPayload): string
         ? `L'usager a répondu en ligne${pieces} : la demande revient en instruction.`
         : `L'usager a répondu en ligne${pieces}.`;
     }
+    case "deadline_soon":
+    case "deadline_overdue":
+      return deadlineSentence(kind, payload);
     default:
       return "Cette demande a évolué.";
   }
