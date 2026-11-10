@@ -107,7 +107,9 @@ s'écrit dans la fiche, jamais ici.** `src/claudeMd.test.ts` tient chaque `CLAUD
   démarche) — `création` / `instruction` / `clôture`, chacun impliquant `consultation`, défauts
   *fail closed*. L'**administration**, l'attribut **intervenant** et l'attribut **base de
   connaissances** n'accordent par eux-mêmes aucun droit sur les demandes. Les tables
-  `permission_*` n'ont aucune policy d'écriture cliente : les RPC sont l'unique porte
+  `permission_*` n'ont aucune policy d'écriture cliente : les RPC sont l'unique porte. ⚠️ Le
+  profil système « Administrateur » (`system_key`) n'appartient qu'au **Socle** : verrouillé
+  dans Iris, seule porte `socle_set_admin_profile` (2026-11-10)
   → [`docs/features/profils-de-droits.md`](docs/features/profils-de-droits.md).
 
 ## Commandes

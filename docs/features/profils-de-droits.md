@@ -27,3 +27,10 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
   `organization_members.role` dérivé, bascule des policies. Détail : [`docs/droits.md`](../droits.md)
   et [`docs/data-model.md`](../data-model.md) ; rollback dédié dans `supabase/rollback/`
   (jamais via `apply_migration`).
+
+- **Profil système « Administrateur »** (2026-11-10) : `system_key = 'admin'`, un par tenant,
+  attribué et retiré par le **Socle** (rôle Iris « Administrateur ») via la seule RPC
+  `socle_set_admin_profile` ; verrouillé dans Iris par la garde `permission_system_profile_guard`
+  (quatre tables). Détail, ordre de mise en service et test :
+  [`docs/droits.md`](../droits.md) § « Profil système ».
+

@@ -151,6 +151,11 @@ export function PermissionsPage() {
   const [section, setSection] = React.useState<Section>("menu");
 
   const profiles = useTenantProfiles(orgId);
+  // Profils système (attribués par le Socle) : pas de retrait ni d'attribution ici.
+  const systemProfileIds = React.useMemo(
+    () => new Set((profiles.data ?? []).filter((p) => p.isSystem).map((p) => p.id)),
+    [profiles.data],
+  );
   const members = useTenantMemberRows(orgId);
   const membersWithoutProfile = useMembersWithoutProfile(orgId);
   const coverage = useCoverageReport(orgId);
@@ -249,7 +254,7 @@ export function PermissionsPage() {
     }
   }
   const eligibleProfiles = (profiles.data ?? []).filter(
-    (p) => p.status === "active" && !assignTarget?.assignedProfiles.some((ap) => ap.id === p.id),
+    (p) => p.status === "active" && !p.isSystem && !assignTarget?.assignedProfiles.some((ap) => ap.id === p.id),
   );
 
   // ---- Retrait d'un profil attribué (B1 : TOUJOURS confirmé, pas seulement l'auto-retrait) --
@@ -466,6 +471,7 @@ export function PermissionsPage() {
                             <p className="font-medium">{row.name}</p>
                             {row.description ? <p className="text-xs text-muted-foreground">{row.description}</p> : null}
                             {row.isAdmin ? <Badge variant="secondary" className="mt-1">Administration</Badge> : null}
+                            {row.isSystem ? <Badge variant="outline" className="mt-1 ml-1">Géré par le Socle</Badge> : null}
                             {row.isIntervenant ? <Badge variant="outline" className="mt-1 ml-1">Intervenant</Badge> : null}
                             {row.knowledgeBase ? <Badge variant="outline" className="mt-1 ml-1">Base de connaissances</Badge> : null}
                           </td>
@@ -479,23 +485,30 @@ export function PermissionsPage() {
                           </td>
                           <td className="px-4 py-3">
                             <div className="flex justify-end gap-1">
-                              <Button variant="ghost" size="icon" title="Modifier" aria-label={`Modifier ${row.name}`} onClick={() => openEdit(row)}>
-                                <Pencil />
-                              </Button>
+                              {/* Profil système : attribué par le Socle, verrouillé ici — seule la duplication reste. */}
+                              {row.isSystem ? null : (
+                                <Button variant="ghost" size="icon" title="Modifier" aria-label={`Modifier ${row.name}`} onClick={() => openEdit(row)}>
+                                  <Pencil />
+                                </Button>
+                              )}
                               <Button variant="ghost" size="icon" title="Dupliquer" aria-label={`Dupliquer ${row.name}`} onClick={() => openDuplicate(row)}>
                                 <Copy />
                               </Button>
-                              <Button variant="ghost" size="icon" title={row.status === "active" ? "Désactiver" : "Réactiver"}
-                                aria-label={`${row.status === "active" ? "Désactiver" : "Réactiver"} ${row.name}`}
-                                onClick={() => { setStatusError(null); setStatusTarget(row); }}>
-                                <Power />
-                              </Button>
-                              <Button variant="ghost" size="icon" title={row.assignedUserIds.length > 0 ? "Attribué : désactivez-le plutôt" : "Supprimer"}
-                                disabled={row.assignedUserIds.length > 0}
-                                aria-label={`Supprimer ${row.name}`}
-                                onClick={() => { setDeleteError(null); setDeleteTarget(row); }}>
-                                <Trash2 />
-                              </Button>
+                              {row.isSystem ? null : (
+                                <>
+                                  <Button variant="ghost" size="icon" title={row.status === "active" ? "Désactiver" : "Réactiver"}
+                                    aria-label={`${row.status === "active" ? "Désactiver" : "Réactiver"} ${row.name}`}
+                                    onClick={() => { setStatusError(null); setStatusTarget(row); }}>
+                                    <Power />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" title={row.assignedUserIds.length > 0 ? "Attribué : désactivez-le plutôt" : "Supprimer"}
+                                    disabled={row.assignedUserIds.length > 0}
+                                    aria-label={`Supprimer ${row.name}`}
+                                    onClick={() => { setDeleteError(null); setDeleteTarget(row); }}>
+                                    <Trash2 />
+                                  </Button>
+                                </>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -567,14 +580,20 @@ export function PermissionsPage() {
                                   >
                                     {p.name}
                                     {p.status === "inactive" ? <span className="text-xs">(désactivé)</span> : null}
-                                    <button
-                                      type="button"
-                                      aria-label={`Retirer le profil ${p.name} à ${m.displayName}`}
-                                      onClick={() => requestRevoke(m, p)}
-                                      className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
-                                    >
-                                      <X className="size-3" aria-hidden="true" />
-                                    </button>
+                                    {systemProfileIds.has(p.id) ? (
+                                      <span className="text-xs font-normal text-muted-foreground" title="Attribué et retiré par le Socle (rôle Iris « Administrateur »).">
+                                        · Socle
+                                      </span>
+                                    ) : (
+                                      <button
+                                        type="button"
+                                        aria-label={`Retirer le profil ${p.name} à ${m.displayName}`}
+                                        onClick={() => requestRevoke(m, p)}
+                                        className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full hover:bg-foreground/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/40"
+                                      >
+                                        <X className="size-3" aria-hidden="true" />
+                                      </button>
+                                    )}
                                   </span>
                                 ))
                               )}

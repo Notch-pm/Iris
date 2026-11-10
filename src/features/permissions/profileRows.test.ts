@@ -56,6 +56,7 @@ describe("buildProfileRows", () => {
         procedures: { [D1]: ["consultation", "instruction"] },
         defaultRights: [],
         assignedUserIds: ["u1", "u2"],
+        isSystem: false,
       },
     ]);
   });
@@ -145,5 +146,35 @@ describe("matrixSummary", () => {
   it("affiche 'Détaillé' quand le défaut ne correspond à aucun préréglage", () => {
     const row = buildProfileRows([{ ...PROFILE, default_view: true, default_create: true, default_close: true, default_process: false }], [], [], [])[0];
     expect(matrixSummary(row)).toBe("Défaut : Détaillé · aucune démarche personnalisée");
+  });
+});
+
+describe("buildProfileRows — profil système (2026-11-10)", () => {
+  it("marque le profil « Administrateur » attribué par le Socle, et lui seul", () => {
+    const base = {
+      description: null,
+      is_admin: true,
+      is_intervenant: false,
+      knowledge_base_access: true,
+      status: "active",
+      version: 1,
+      default_view: true,
+      default_create: true,
+      default_process: true,
+      default_close: true,
+    };
+    const rows = buildProfileRows(
+      [
+        { ...base, id: "p-sys", name: "Administrateur", system_key: "admin" },
+        { ...base, id: "p-libre", name: "Instructeur", is_admin: false },
+      ],
+      [],
+      [],
+      [],
+    );
+    expect(rows.map((r) => [r.id, r.isSystem])).toEqual([
+      ["p-sys", true],
+      ["p-libre", false],
+    ]);
   });
 });
