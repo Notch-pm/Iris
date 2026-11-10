@@ -171,6 +171,31 @@ Projet Supabase : `tqcoqlneybtbrrcvpkpk` (région `eu-west-1` — UE, décision 
 - `supabase/` : `config.toml` (CLI), `migrations/` (fichiers miroirs des migrations
   appliquées), `tests/`, `functions/README.md` (plan des edge functions à venir).
 
+### Production, migrations et déploiement
+
+Iris est **en production** sur `https://iris.edilumen.fr` (projet Supabase
+`tqcoqlneybtbrrcvpkpk`) : un push sur `main` est une **mise en ligne**, pas un geste de dépôt.
+Pousser sur `main` exige un accord explicite ; sans moyen de vérifier (ni tests, ni build, ni
+navigateur — session cloud), travailler sur une branche.
+
+- **Migrations** : par `apply_migration` (MCP), **jamais `supabase db push`**. Si l'outil est
+  refusé, ne pas chercher de détour : préparer migration + test SQL et rendre la main à
+  l'utilisateur, qui lance `npx supabase db query --linked -f <fichier>.sql`. Le fichier miroir
+  dans `supabase/migrations/` reste obligatoire.
+- ⚠️ **Les miroirs de `supabase/migrations/` peuvent être en retard sur la base.** Avant
+  d'appeler une fonction ou de raisonner sur une policy, lire le catalogue **live** (`pg_proc`,
+  `pg_get_functiondef`, `pg_policy`). Une migration qui appelle une fonction disparue
+  s'applique sans erreur (PL/pgSQL n'analyse le corps qu'au premier appel) et casse en
+  production : cas vécu le 2026-09-01 avec `can_process_request_for`, devenue
+  `request_right_for`. **Jouer le test SQL juste après la migration.**
+- **Edge functions** : par la CLI depuis la racine du dépôt (`npx supabase functions deploy
+  <slug>`, sans `--workdir`), qui embarque `_shared/` toute seule. Une modification de
+  `_shared/` n'atteint une fonction que lorsque **celle-ci** est redéployée. ⚠️ `socle-proxy`
+  est la porte de tout ce qu'Iris lit du Socle : faire confirmer son déploiement.
+- **Toucher au Socle depuis Iris** : `git fetch` du dépôt Socle avant de numéroter une version
+  de contrat (d'autres sessions poussent le même jour), et toute migration appliquée au Socle
+  laisse son miroir dans `Socle/supabase/migrations/`.
+
 ### Pièges connus (hérités de la gamme, à respecter dès la première implémentation)
 
 - **AuthProvider** : quand le chargement du profil sera ajouté, le keyer sur **l'id
