@@ -280,6 +280,13 @@ compte (lien d'activation par le relais du tenant) et l'appartenance `organizati
 - L'état donné par le Socle vit dans `socle_member_access` (organisation, utilisateur,
   `is_active`) ; `users.socle_user_id` est la clé de correspondance (écrite par le service
   role seul, trigger `t04_users_protect_socle_user_id`).
+- **Connexion par le compte de la collectivité** (lot 4 de la gamme, branche `feature/sso-lot4`) :
+  bouton « Se connecter avec le compte de ma collectivité » sur `/login` → Keycloak
+  (`auth.edilumen.fr`, realm `edilumen`, client `iris`, provider `keycloak` du Supabase d'Iris),
+  qui oriente par le domaine de l'e-mail (aucun `kc_idp_hint`). Un agent non provisionné par le
+  Socle est refusé par Supabase Auth (inscriptions fermées depuis le 2026-11-10) ; l'erreur
+  revient sur `/login` (`src/features/auth/sso.ts`, testé). ⚠️ `scopes: "openid"` obligatoire.
+  Ne pas mettre en ligne avant l'essai réel sur le Socle et la configuration du provider.
 - **Admin plateforme** : jamais touché par la synchronisation.
 - `admin-users` `invite_user` sur un tenant répond **409** ; l'écran Paramètres › Droits ›
   Utilisateurs n'invite plus. ⚠️ La zone superadmin peut encore donner ou retirer l'accès à un
