@@ -990,6 +990,7 @@ export type Database = {
           name: string
           organization_id: string
           status: string
+          system_key: string | null
           updated_at: string
           updated_by: string | null
           version: number
@@ -1009,6 +1010,7 @@ export type Database = {
           name: string
           organization_id: string
           status?: string
+          system_key?: string | null
           updated_at?: string
           updated_by?: string | null
           version?: number
@@ -1028,6 +1030,7 @@ export type Database = {
           name?: string
           organization_id?: string
           status?: string
+          system_key?: string | null
           updated_at?: string
           updated_by?: string | null
           version?: number
@@ -3118,6 +3121,10 @@ export type Database = {
         Args: { p_org: string; p_path: string; p_reason: string }
         Returns: undefined
       }
+      ensure_system_admin_profile: {
+        Args: { p_org_id: string }
+        Returns: string
+      }
       expired_attachment_uploads: {
         Args: { p_limit?: number }
         Returns: {
@@ -3768,6 +3775,10 @@ export type Database = {
           use_tls: boolean
           username: string
         }[]
+      }
+      socle_set_admin_profile: {
+        Args: { p_admin: boolean; p_org_id: string; p_user_id: string }
+        Returns: string
       }
       start_citizen_notice_email: {
         Args: {
