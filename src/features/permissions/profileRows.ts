@@ -23,6 +23,8 @@ export interface ProfileTableRow {
   default_create: boolean;
   default_process: boolean;
   default_close: boolean;
+  /** Profil système (`'admin'` = « Administrateur », attribué par le Socle), 2026-11-10. */
+  system_key?: string | null;
 }
 
 export interface ProfileOrgRow {
@@ -58,6 +60,13 @@ export interface ProfileRow {
   procedures: Record<string, Right[]>;
   defaultRights: Right[];
   assignedUserIds: string[];
+  /**
+   * Profil système « Administrateur » (2026-11-10) : attribué et retiré par le
+   * Socle (rôle Iris « Administrateur »), verrouillé dans Iris — ni modifié,
+   * ni désactivé, ni supprimé, ni attribué ici. La base le garantit ; l'écran
+   * se contente de ne pas proposer ces gestes.
+   */
+  isSystem: boolean;
 }
 
 function rightsFromFlags(view: boolean, create: boolean, process: boolean, close: boolean): Right[] {
@@ -108,6 +117,7 @@ export function buildProfileRows(
     procedures: proceduresByProfile.get(p.id) ?? {},
     defaultRights: rightsFromFlags(p.default_view, p.default_create, p.default_process, p.default_close),
     assignedUserIds: usersByProfile.get(p.id) ?? [],
+    isSystem: Boolean(p.system_key),
   }));
 }
 

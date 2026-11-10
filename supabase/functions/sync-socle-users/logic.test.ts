@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { activeInTenant, missingFromFullList, planAccount, readSocleAgents, type SocleAgent } from "./logic";
+import { activeInTenant, missingFromFullList, planAccount, readSocleAgents, wantsAdmin, type SocleAgent } from "./logic";
 
 function agent(overrides: Partial<SocleAgent> = {}): SocleAgent {
   return {
@@ -9,7 +9,7 @@ function agent(overrides: Partial<SocleAgent> = {}): SocleAgent {
     last_name: "Martin",
     status: "active",
     is_active: true,
-    accesses: [{ organization_id: "racine", is_active: true }],
+    accesses: [{ organization_id: "racine", is_active: true, role: "acces" }],
     ...overrides,
   };
 }
@@ -20,7 +20,7 @@ describe("activeInTenant", () => {
   });
   it("suspendu, ou tous les accès retirés ⇒ inactif", () => {
     expect(activeInTenant(agent({ status: "suspended", is_active: false }))).toBe(false);
-    expect(activeInTenant(agent({ is_active: false, accesses: [{ organization_id: "racine", is_active: false }] }))).toBe(false);
+    expect(activeInTenant(agent({ is_active: false, accesses: [{ organization_id: "racine", is_active: false, role: "acces" }] }))).toBe(false);
   });
 });
 
@@ -72,7 +72,7 @@ describe("readSocleAgents", () => {
     expect(asOf).toBe("2026-10-30T10:00:00Z");
     expect(agents).toHaveLength(1);
     expect(agents[0].email).toBe("alice@ville.fr");
-    expect(agents[0].accesses).toEqual([{ organization_id: "o", is_active: true }]);
+    expect(agents[0].accesses).toEqual([{ organization_id: "o", is_active: true, role: "acces" }]);
   });
 
   it("réponse inattendue ⇒ aucun agent", () => {
@@ -83,5 +83,35 @@ describe("readSocleAgents", () => {
 describe("missingFromFullList", () => {
   it("les agents rattachés absents de la liste complète", () => {
     expect(missingFromFullList(["u-1", "u-2"], [agent()])).toEqual(["u-2"]);
+  });
+});
+
+describe("wantsAdmin", () => {
+  it("rôle administrateur actif ⇒ profil système", () => {
+    expect(wantsAdmin(agent({ accesses: [{ organization_id: "racine", is_active: true, role: "administrateur" }] }))).toBe(true);
+  });
+  it("rôle accès seul ⇒ pas de profil système", () => {
+    expect(wantsAdmin(agent())).toBe(false);
+  });
+  it("administrateur retiré, ou agent suspendu ⇒ non", () => {
+    expect(
+      wantsAdmin(
+        agent({
+          accesses: [
+            { organization_id: "racine", is_active: false, role: "administrateur" },
+            { organization_id: "service", is_active: true, role: "acces" },
+          ],
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      wantsAdmin(
+        agent({
+          status: "suspended",
+          is_active: false,
+          accesses: [{ organization_id: "racine", is_active: true, role: "administrateur" }],
+        }),
+      ),
+    ).toBe(false);
   });
 });

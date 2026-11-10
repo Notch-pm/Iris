@@ -7,6 +7,9 @@
 //     tenant) et appartenance SANS profil ;
 //   - accès retiré ⇒ compte banni s'il n'a plus d'accès nulle part (appartenance
 //     et profils conservés), sinon il quitte ce tenant ;
+//   - rôle Iris `administrateur` ⇒ profil système « Administrateur » attribué,
+//     sinon retiré (jamais au dernier administrateur racine : signalé) — par la
+//     RPC `socle_set_admin_profile`, seule porte de ce profil verrouillé ;
 //   - admin plateforme jamais touché. Logique pure : logic.ts.
 //
 // Modes (corps JSON) : `incremental` (défaut, cron chaque minute, depuis le
@@ -21,7 +24,7 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveSmtp, type SmtpRow } from "../_shared/email/config.ts";
 import { authEmailContent, brandFor } from "../_shared/email/messages.ts";
 import { sendBrandedEmail } from "../_shared/email/transport.ts";
-import { activeInTenant, missingFromFullList, planAccount, readSocleAgents, type SocleAgent } from "./logic.ts";
+import { activeInTenant, missingFromFullList, planAccount, readSocleAgents, wantsAdmin, type SocleAgent } from "./logic.ts";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -106,6 +109,10 @@ interface Counters {
   memberships_removed: number;
   banned: number;
   unbanned: number;
+  admin_granted: number;
+  admin_revoked: number;
+  /** Agents que le Socle ne veut plus administrateurs, gardés : derniers administrateurs racine. */
+  admin_kept_last: string[];
   skipped: string[];
   invitation_errors: string[];
 }
@@ -149,7 +156,14 @@ async function syncAgent(orgId: string, agent: SocleAgent, dryRun: boolean, c: C
   const plan = planAccount({ activeHere, activeElsewhere, hasMembership, isPlatformAdmin: user?.is_platform_admin === true });
 
   if (dryRun) {
-    plans.push({ email: agent.email, socle_user_id: agent.socle_user_id, iris_user_id: user?.id ?? null, activeHere, ...plan });
+    plans.push({
+      email: agent.email,
+      socle_user_id: agent.socle_user_id,
+      iris_user_id: user?.id ?? null,
+      activeHere,
+      admin: activeHere ? wantsAdmin(agent) : null,
+      ...plan,
+    });
     return;
   }
   if (!user && !activeHere) return; // jamais créé pour un agent sans accès
@@ -209,6 +223,22 @@ async function syncAgent(orgId: string, agent: SocleAgent, dryRun: boolean, c: C
     c.memberships_removed++;
   }
 
+  // 3 bis. Le profil système « Administrateur » suit le rôle donné par le
+  // Socle — seulement tant que l'accès est ouvert (accès retiré : profils
+  // conservés avec le compte banni).
+  if (activeHere) {
+    const { data: outcome, error: adminError } = await supabase.rpc("socle_set_admin_profile", {
+      p_org_id: orgId,
+      p_user_id: user.id,
+      p_admin: wantsAdmin(agent),
+    });
+    if (adminError) throw adminError;
+    if (outcome === "granted") c.admin_granted++;
+    else if (outcome === "revoked") c.admin_revoked++;
+    else if (outcome === "kept_last_admin") c.admin_kept_last.push(agent.email);
+    else if (outcome === "no_profile") c.skipped.push(`${agent.email} : profil Administrateur absent (racine hors miroir)`);
+  }
+
   // 4. Le compte : banni s'il n'a plus d'accès nulle part.
   if (plan.ban === true) {
     await supabase.auth.admin.updateUserById(user.id, { ban_duration: BAN_DURATION });
@@ -247,7 +277,7 @@ Deno.serve(async (req) => {
   for (const tenant of (tenants ?? []) as Array<{ id: string; name: string; socle_org_id: string }>) {
     const c: Counters = {
       agents: 0, created: 0, memberships_added: 0, memberships_removed: 0, banned: 0, unbanned: 0,
-      skipped: [], invitation_errors: [],
+      admin_granted: 0, admin_revoked: 0, admin_kept_last: [], skipped: [], invitation_errors: [],
     };
     const plans: unknown[] = [];
     const now = new Date().toISOString();

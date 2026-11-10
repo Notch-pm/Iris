@@ -1,8 +1,11 @@
 // Agents gérés par le Socle — logique pure de `sync-socle-users` (Iris).
 //
-// Le Socle OUVRE l'accès à Iris (`GET /v1/users`, public-api 1.43.0) ; il ne
-// donne aucun rôle (décision du 2026-10-30) : ce qu'un agent voit et fait vient
-// de ses profils de droits, attribués dans Iris. D'où, par tenant :
+// Le Socle OUVRE l'accès à Iris (`GET /v1/users`, public-api 1.43.0) ; ce
+// qu'un agent voit et fait vient de ses profils de droits, attribués dans Iris
+// (décision du 2026-10-30) — à UNE exception près (2026-11-10) : le rôle Iris
+// `administrateur` donne le profil SYSTÈME « Administrateur » du tenant,
+// verrouillé dans Iris, que seul le Socle attribue ou retire (`wantsAdmin`,
+// RPC `socle_set_admin_profile`). D'où, par tenant :
 //   - accès ouvert ⇒ appartenance (`organization_members`), sans profil ;
 //   - accès retiré ⇒ le compte est BANNI s'il n'a plus d'accès nulle part —
 //     appartenance et profils conservés (retirer le membre emporterait ses
@@ -15,7 +18,12 @@
 export interface SocleAgentAccess {
   organization_id: string;
   is_active: boolean;
+  /** Rôle de base Iris donné par le Socle (`acces`, `administrateur`), `null` si absent. */
+  role: string | null;
 }
+
+/** Code du rôle Iris qui donne le profil système « Administrateur ». */
+export const ADMIN_ROLE = "administrateur";
 
 export interface SocleAgent {
   socle_user_id: string;
@@ -39,7 +47,11 @@ export function readSocleAgents(body: unknown): { agents: SocleAgent[]; asOf: st
     const accesses = Array.isArray(item.accesses)
       ? (item.accesses as Array<Record<string, unknown>>)
         .filter((a) => typeof a?.organization_id === "string")
-        .map((a) => ({ organization_id: a.organization_id as string, is_active: a.is_active === true }))
+        .map((a) => ({
+          organization_id: a.organization_id as string,
+          is_active: a.is_active === true,
+          role: typeof a.role === "string" ? a.role : null,
+        }))
       : [];
     agents.push({
       socle_user_id: item.socle_user_id,
@@ -57,6 +69,16 @@ export function readSocleAgents(body: unknown): { agents: SocleAgent[]; asOf: st
 /** L'agent a-t-il accès à CE tenant ? (Le Socle ne sert que les accès du tenant demandé.) */
 export function activeInTenant(agent: SocleAgent): boolean {
   return agent.status === "active" && agent.is_active && agent.accesses.some((a) => a.is_active);
+}
+
+/**
+ * Le Socle veut-il l'agent administrateur de CE tenant ? Accès actif ET un
+ * accès actif au rôle `administrateur` (le Socle le pose sur la racine). Sans
+ * accès au tenant, on ne touche pas aux profils (ils sont conservés avec le
+ * compte banni).
+ */
+export function wantsAdmin(agent: SocleAgent): boolean {
+  return activeInTenant(agent) && agent.accesses.some((a) => a.is_active && a.role === ADMIN_ROLE);
 }
 
 export interface AccountPlan {

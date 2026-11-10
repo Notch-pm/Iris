@@ -266,7 +266,8 @@ vérité.
 ## Accès ouvert par le Socle (2026-10-30)
 
 L'accès d'un agent à un tenant s'ouvre **dans le Socle** (annuaire des agents de la gamme,
-`GET /v1/users`, public-api 1.43.0, rôle de base unique « acces ») ; la fonction
+`GET /v1/users`, public-api 1.43.0, rôle de base « acces » — et « administrateur » depuis le
+2026-11-10, voir ci-dessous) ; la fonction
 `sync-socle-users` l'applique chaque minute (lecture incrémentale) et chaque nuit à 04:20 UTC
 (liste complète). Décision : le Socle **n'attribue aucun profil** — ouvrir l'accès crée le
 compte (lien d'activation par le relais du tenant) et l'appartenance `organization_members`,
@@ -284,6 +285,34 @@ compte (lien d'activation par le relais du tenant) et l'appartenance `organizati
   Utilisateurs n'invite plus. ⚠️ La zone superadmin peut encore donner ou retirer l'accès à un
   tenant (`useSetMembership` / `useRemoveMembership`) : la synchronisation suivante rétablit
   l'état voulu par le Socle.
+
+## Profil système « Administrateur », attribué par le Socle (2026-11-10)
+
+Exception unique à « le Socle n'attribue aucun profil » : le Socle déclare pour Iris un second
+rôle de base, **`administrateur`** (posé sur la racine de la collectivité — le Socle l'exige).
+Il donne le **profil système** « Administrateur » du tenant (`permission_profiles.system_key =
+'admin'`, un par tenant) : administration + tous droits sur toutes les démarches, présentes et
+futures, périmètre = la racine. Le profil « Administrateur » de reprise (RM-48) l'est devenu,
+normalisé sans changer aucun droit effectif (migration `profil_administrateur_socle`).
+
+- ⚠️ **Verrouillé dans Iris** : ni modifié, ni désactivé, ni supprimé, ni attribué, ni retiré —
+  RPC d'administration et propriétaire compris. Garde `permission_system_profile_guard` sur les
+  quatre tables `permission_*` (et non dans chaque RPC : toute écriture future est couverte) ;
+  elle lit un GUC transactionnel (`iris.socle_admin_profile`), jamais `current_user` (piège
+  DEFINER, voir `profils-droits.test.sql`). Les cascades passent (membre retiré du tenant).
+- **Seule porte** : `socle_set_admin_profile(org, user, admin)` (service role), appelée par
+  `sync-socle-users` tant que l'accès est ouvert (accès retiré : profils conservés, compte
+  banni). Elle crée le profil au besoin (`ensure_system_admin_profile`, idempotent ; `null` si
+  la racine manque au miroir), journalise (`actor_id` nul, `source: socle`), et **ne retire
+  jamais le dernier administrateur racine** (`kept_last_admin`, signalé dans le compte rendu
+  de la synchro).
+- Les autres profils restent attribués dans Iris. L'écran Paramètres marque le profil « Géré
+  par le Socle », ne propose que « Dupliquer », et ne l'offre ni à l'attribution ni au retrait.
+- ⚠️ Ordre de mise en service : migration Socle (rôle) → reprise au Socle des administrateurs
+  Iris actuels (rôle `administrateur` sur la racine) → migration Iris → `sync-socle-users`
+  redéployée → synchro complète. Dans l'autre ordre, la synchro retirerait le profil aux
+  administrateurs actuels (sauf au dernier de chaque tenant).
+- Test : `supabase/tests/profil-administrateur-socle.test.sql`.
 
 ## Admin plateforme
 
