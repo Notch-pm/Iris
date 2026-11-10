@@ -270,7 +270,9 @@ L'accès d'un agent à un tenant s'ouvre **dans le Socle** (annuaire des agents 
 2026-11-10, voir ci-dessous) ; la fonction
 `sync-socle-users` l'applique chaque minute (lecture incrémentale) et chaque nuit à 04:20 UTC
 (liste complète). Décision : le Socle **n'attribue aucun profil** — ouvrir l'accès crée le
-compte (lien d'activation par le relais du tenant) et l'appartenance `organization_members`,
+compte (sans mot de passe ni e-mail depuis la connexion unique : branche `feature/sso-lot4`,
+le Socle envoie seul le message de bienvenue ; avant, un lien d'activation par le relais du
+tenant) et l'appartenance `organization_members`,
 **sans profil** : l'agent ne voit rien tant qu'un administrateur Iris ne lui en a pas attribué.
 
 - **Accès retiré** : le compte est **banni** dès qu'il n'a plus d'accès actif dans aucun

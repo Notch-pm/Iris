@@ -3,8 +3,9 @@
 // Le Socle OUVRE l'accès à Iris (`GET /v1/users`, public-api 1.43.0, scope
 // `users` sur SOCLE_API_KEY) ; il ne donne aucun rôle : les profils de droits
 // restent attribués dans Iris (décision du 2026-10-30). Pour chaque tenant :
-//   - accès ouvert ⇒ compte créé au besoin (lien d'activation par le relais du
-//     tenant) et appartenance SANS profil ;
+//   - accès ouvert ⇒ compte créé au besoin (SANS mot de passe ni e-mail : la
+//     connexion passe par Keycloak, le Socle envoie seul le message de
+//     bienvenue — connexion unique, 2026-11-10) et appartenance SANS profil ;
 //   - accès retiré ⇒ compte banni s'il n'a plus d'accès nulle part (appartenance
 //     et profils conservés), sinon il quitte ce tenant ;
 //   - rôle Iris `administrateur` ⇒ profil système « Administrateur » attribué,
@@ -21,9 +22,6 @@
 
 import { createClient } from "npm:@supabase/supabase-js@2";
 
-import { resolveSmtp, type SmtpRow } from "../_shared/email/config.ts";
-import { authEmailContent, brandFor } from "../_shared/email/messages.ts";
-import { sendBrandedEmail } from "../_shared/email/transport.ts";
 import { activeInTenant, missingFromFullList, planAccount, readSocleAgents, wantsAdmin, type SocleAgent } from "./logic.ts";
 
 const supabase = createClient(
@@ -32,7 +30,6 @@ const supabase = createClient(
   { auth: { persistSession: false } },
 );
 
-const APP_URL = (Deno.env.get("IRIS_APP_URL") ?? "http://localhost:5174").replace(/\/+$/, "");
 /** Bannissement « définitif » (≈ 100 ans) : le compte reste, la connexion est refusée. */
 const BAN_DURATION = "876000h";
 const SOCLE_TIMEOUT_MS = 20_000;
@@ -73,35 +70,6 @@ async function fetchAgents(socleOrgId: string, since: string | null): Promise<Re
   }
 }
 
-/** Lien d'activation au premier accès — même message qu'`admin-users`. */
-async function sendInvitation(orgId: string, agent: SocleAgent): Promise<string | null> {
-  try {
-    const { data: link, error } = await supabase.auth.admin.generateLink({
-      type: "invite",
-      email: agent.email,
-      options: { redirectTo: `${APP_URL}/activer-compte` },
-    });
-    if (error || !link?.properties?.hashed_token) throw new Error("lien d'activation impossible");
-    const { data } = await supabase.rpc("smtp_config_for_org", { p_org_id: orgId });
-    const row = ((Array.isArray(data) ? data[0] : null) ?? null) as (SmtpRow & { organization_name?: string | null }) | null;
-    const smtp = resolveSmtp(row, Deno.env.toObject());
-    if (!smtp) throw new Error("aucun serveur d'envoi");
-    const actionUrl = new URL(`${APP_URL}/activer-compte`);
-    actionUrl.searchParams.set("token_hash", link.properties.hashed_token);
-    actionUrl.searchParams.set("type", "invite");
-    const tenantName = row?.organization_name ?? null;
-    const content = authEmailContent("invite", {
-      tenantName,
-      recipientName: [agent.first_name, agent.last_name].filter(Boolean).join(" ") || null,
-      actionUrl: actionUrl.toString(),
-    });
-    await sendBrandedEmail(smtp, agent.email, content, brandFor(tenantName));
-    return null;
-  } catch (e) {
-    return e instanceof Error ? e.message : String(e);
-  }
-}
-
 interface Counters {
   agents: number;
   created: number;
@@ -114,7 +82,6 @@ interface Counters {
   /** Agents que le Socle ne veut plus administrateurs, gardés : derniers administrateurs racine. */
   admin_kept_last: string[];
   skipped: string[];
-  invitation_errors: string[];
 }
 
 interface UserRow {
@@ -168,7 +135,7 @@ async function syncAgent(orgId: string, agent: SocleAgent, dryRun: boolean, c: C
   }
   if (!user && !activeHere) return; // jamais créé pour un agent sans accès
 
-  // 1. Le compte.
+  // 1. Le compte — sans mot de passe : l'agent se connecte par Keycloak.
   let isNew = false;
   if (!user) {
     const { data: created, error } = await supabase.auth.admin.createUser({
@@ -251,12 +218,6 @@ async function syncAgent(orgId: string, agent: SocleAgent, dryRun: boolean, c: C
       c.unbanned++;
     }
   }
-
-  // 5. Lien d'activation au premier accès.
-  if (isNew) {
-    const failure = await sendInvitation(orgId, agent);
-    if (failure) c.invitation_errors.push(`${agent.email} : ${failure}`);
-  }
 }
 
 Deno.serve(async (req) => {
@@ -277,7 +238,7 @@ Deno.serve(async (req) => {
   for (const tenant of (tenants ?? []) as Array<{ id: string; name: string; socle_org_id: string }>) {
     const c: Counters = {
       agents: 0, created: 0, memberships_added: 0, memberships_removed: 0, banned: 0, unbanned: 0,
-      admin_granted: 0, admin_revoked: 0, admin_kept_last: [], skipped: [], invitation_errors: [],
+      admin_granted: 0, admin_revoked: 0, admin_kept_last: [], skipped: [],
     };
     const plans: unknown[] = [];
     const now = new Date().toISOString();

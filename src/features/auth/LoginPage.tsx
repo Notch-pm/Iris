@@ -24,6 +24,10 @@ export function LoginPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [redirecting, setRedirecting] = React.useState(false);
+  // Connexion unique (lot 4) : Keycloak est l'entrée de la gamme. Le mot de
+  // passe d'Iris reste en secours (admin plateforme, panne de Keycloak),
+  // derrière « Autre méthode de connexion ».
+  const [showPassword, setShowPassword] = React.useState(false);
   // Erreur rapportée au retour de Keycloak (agent non provisionné, suspendu…),
   // lue une fois au montage, puis effacée de l'URL pour ne pas réapparaître.
   const [ssoError, setSsoError] = React.useState<string | null>(
@@ -75,11 +79,11 @@ export function LoginPage() {
   return (
     <AuthCard description="Connectez-vous pour accéder à votre espace.">
       <div className="flex flex-col gap-2">
-        <Button type="button" variant="outline" size="lg" disabled={redirecting} onClick={handleSso}>
+        <Button type="button" size="lg" disabled={redirecting} onClick={handleSso}>
           {redirecting ? "Redirection…" : "Se connecter avec le compte de ma collectivité"}
         </Button>
         <p className="text-center text-xs text-muted-foreground">
-          Si votre collectivité a relié son annuaire (Microsoft…).
+          Un seul compte pour toutes les applications de la gamme.
         </p>
         {ssoError ? (
           <p role="alert" className="text-sm text-destructive">
@@ -88,51 +92,63 @@ export function LoginPage() {
         ) : null}
       </div>
 
-      <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
-        <span className="h-px flex-1 bg-border" />
-        ou avec votre mot de passe
-        <span className="h-px flex-1 bg-border" />
-      </div>
-
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <Field label="Email" htmlFor="email">
-          <Input
-            id="email"
-            type="email"
-            autoComplete="email"
-            required
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </Field>
-        <Field label="Mot de passe" htmlFor="password">
-          <Input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </Field>
-
-        <Link
-          to="/mot-de-passe-oublie"
-          className="-mt-2 self-end text-sm text-primary hover:underline"
+      {!showPassword ? (
+        <button
+          type="button"
+          onClick={() => setShowPassword(true)}
+          className="mt-6 w-full text-center text-sm text-muted-foreground hover:text-primary hover:underline"
         >
-          Mot de passe oublié ?
-        </Link>
+          Autre méthode de connexion
+        </button>
+      ) : (
+        <>
+          <div className="my-5 flex items-center gap-3 text-xs text-muted-foreground">
+            <span className="h-px flex-1 bg-border" />
+            ou avec le mot de passe d'Iris
+            <span className="h-px flex-1 bg-border" />
+          </div>
 
-        {error ? (
-          <p role="alert" className="text-sm text-destructive">
-            {error}
-          </p>
-        ) : null}
+          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <Field label="Email" htmlFor="email">
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </Field>
+            <Field label="Mot de passe" htmlFor="password">
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </Field>
 
-        <Button type="submit" size="lg" disabled={submitting} className="mt-2">
-          {submitting ? "Connexion…" : "Se connecter"}
-        </Button>
-      </form>
+            <Link
+              to="/mot-de-passe-oublie"
+              className="-mt-2 self-end text-sm text-primary hover:underline"
+            >
+              Mot de passe oublié ?
+            </Link>
+
+            {error ? (
+              <p role="alert" className="text-sm text-destructive">
+                {error}
+              </p>
+            ) : null}
+
+            <Button type="submit" variant="outline" size="lg" disabled={submitting} className="mt-2">
+              {submitting ? "Connexion…" : "Se connecter"}
+            </Button>
+          </form>
+        </>
+      )}
     </AuthCard>
   );
 }
