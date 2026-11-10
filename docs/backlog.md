@@ -302,8 +302,14 @@ la session Socle en cours.
   (réponse de l'usager : rien d'enfilé), **8** (renvoi à qualifier : `evenement_non_retenu`),
   **10** (Clara : aucune ligne) validés. Ne restent couverts que par les tests : 6, 11, 12, 16.
   **Décision PO du 2026-10-25** : pas de tenant Sceaux pour l'instant, l'ACCM sert de référence.
-  **Reste pour L4c-5** : Sceaux n'est pas ouvert dans Iris (provisioning) ; slug
-  `notifications` au Socle.
+  **L4c-5 — mise en service le 2026-11-10** (décision PO : tous les tenants, sans attendre
+  Sceaux) : interrupteur allumé sur les six tenants existants (ACCM, Agglomération Normandie
+  Démo, Saône-et-Loire, Saint Laurent, [TEST], Test 2), `notifications-mailer` vérifié actif.
+  Socle : `suivi`, `compte` et `notifications` réservés comme slugs d'organisme (migration
+  Socle `20261110133033`). ⚠️ Un tenant créé plus tard naît **éteint** (aucune ligne = éteint) :
+  l'allumer dans Paramètres › « Avis à l'usager ». Saône-et-Loire et Saint Laurent n'ont pas
+  d'adresse d'espace (`citizen_space_url`) : seuls leurs invités sont prévenus tant que Nora ne
+  la pousse pas. Sceaux reste à provisionner.
   **Retouches relevées** (mineures) : (a) l'onglet Échanges ne relit pas `citizen_notices` —
   un non-envoi réglé dix minutes après le geste n'apparaît qu'au rechargement ; (b) le
   composeur affiche le texte « courriel complet » tant que l'aperçu n'est pas revenu ; (c) l'avis

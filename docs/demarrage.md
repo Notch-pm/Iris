@@ -158,11 +158,12 @@ nettoyage — commence sa transaction par :
 select set_config('iris.silence_usager', 'on', true);
 ```
 
-Le drapeau est transactionnel : il ne vaut que pour la transaction du script. Ceinture
-supplémentaire : l'interrupteur est éteint par défaut sur tous les tenants, et le facteur
-relit l'interrupteur au moment d'envoyer. ⚠️ Un seed passé **par l'API d'ingestion** envoie
-déjà de vrais accusés de réception (hors B12) : le faire sur un tenant éteint, sans adresses
-réelles.
+Le drapeau est transactionnel : il ne vaut que pour la transaction du script. ⚠️ Depuis la
+mise en service du 2026-11-10, **l'interrupteur est allumé sur tous les tenants existants**,
+démonstrations comprises : le drapeau est le seul verrou. Le facteur relit l'interrupteur au
+moment d'envoyer — l'éteindre (Paramètres › « Avis à l'usager ») fait taire ce qui est en
+file. ⚠️ Un seed passé **par l'API d'ingestion** envoie de vrais accusés de réception et,
+désormais, de vrais avis : le faire sans adresses réelles.
 
 ## Vérifications
 

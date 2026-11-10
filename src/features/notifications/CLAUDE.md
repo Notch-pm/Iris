@@ -310,7 +310,8 @@ sécurité, seulement une économie de trafic — c'est le serveur qui décide, 
 
 Rien à voir avec la cloche : ce sont des courriels **à l'usager**, pas aux agents. L'écran ne
 porte que l'**interrupteur** de la collectivité (Paramètres › « Avis à l'usager »,
-`CitizenNoticesPanel`), éteint par défaut, réglé par la seule RPC
+`CitizenNoticesPanel`), éteint par défaut (allumé sur tous les tenants existants à la mise en
+service du 2026-11-10 ; un nouveau tenant naît éteint), réglé par la seule RPC
 `save_citizen_notification_settings` (administration de la racine — l'UI reflète). Allumer
 demande confirmation : ce sont de vrais habitants. Tout le reste vit au serveur — trigger
 t41, file `citizen_notices`, facteur `notifications-mailer/citizenNotices.ts`, règles pures

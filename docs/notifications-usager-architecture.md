@@ -242,7 +242,9 @@ de plus de 15 min).
 ### ADR-9 — Aucun jeu de démonstration n'écrit à personne : trois verrous
 
 1. **L'interrupteur éteint par défaut** (ADR-7) couvre tous les tenants de démonstration
-   existants.
+   existants. ⚠️ **Plus vrai depuis le 2026-11-10** : la mise en service (L4c-5) l'a allumé
+   sur tous les tenants, démonstrations comprises. Le drapeau ci-dessous est désormais le
+   seul verrou d'un seed.
 2. **Le drapeau transactionnel `iris.silence_usager`**, posé par `set_config(..., true)` en
    tête de tout script de seed, de démonstration ou de nettoyage. Il est lu par le trigger t41
    **et** par les RPC qui enfilent (M2), sur le motif `iris.reprise_usager`. Il s'ajoute à la
@@ -511,7 +513,7 @@ avant le premier avis**.
 | **L4c-2** — contrat 2.10.0 | Routes §3, colonnes `integration_sources` et `request_access_codes`, `citizen_space_links` ; OpenAPI, changelog, `api-ingestion.md` | L4c-1 (migration) |
 | **L4c-3** — M2 | `send-request-email` : `delivery`, mode `apercu`, enfilement de l'avis de message ; composeur bureau et mobile avec annonce ; onglet Échanges : avis automatiques et raisons des non-envois (lecture de `citizen_notices`) | L4c-0, L4c-1 |
 | **L4c-4** — Nora (+ Socle, ADR-14) | Confirmer / modifier l'adresse de courriel avec alignement de la fiche Socle (évolution contacts-api à coordonner avec la session Socle) ; préférence par espace (colonnes sur `citizen_spaces`, une par canal), écran, poussées (rattachement, changement, adresse, session, suppression), `PUT /v1/citizen/space`, page de désinscription + point `List-Unsubscribe-Post`, interrupteur invité dans `/suivi` (facultatif en V1) | L4c-2 |
-| **L4c-5** — mise en service | Allumer l'interrupteur de Sceaux après vérification réelle des critères d'acceptation 1 à 17 du cadrage | L4c-3, L4c-4 |
+| **L4c-5** — mise en service | Allumer l'interrupteur de Sceaux après vérification réelle des critères d'acceptation 1 à 17 du cadrage. **Fait le 2026-11-10 sur tous les tenants existants** (décision PO, Sceaux pas encore ouvert) ; slugs `suivi`, `compte`, `notifications` réservés au Socle | L4c-3, L4c-4 |
 | Second temps | `citizen_notification_event_settings` et écran par collectivité, puis par démarche ; SMS ; avis de clôture par la file | — |
 
 - **Socle** : rien de L4c-0 à L4c-3 ; une évolution additive de contacts-api pour L4c-4 (ADR-14), à coordonner avec la session Socle en cours.
