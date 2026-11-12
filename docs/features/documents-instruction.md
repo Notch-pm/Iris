@@ -80,7 +80,7 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     courrier et du format (PDF / Word). `ClosureLetterSection`, état contrôlé par le dialogue.
     - **La liste** = `closureLetters(documents, issue CHOISIE)` (`templates.ts`) : les courriers
       visibles pour cette issue (« toujours » + positive ou négative, après
-      `restrict_visibility`), fusionnables, **jamais un document interne**. Aucun courrier prévu
+      `restrict_visibility`), fusionnables, de **type** courrier (pas seulement rangés parmi les courriers : le type fixe la nature enregistrée). Aucun courrier prévu
       ⇒ pas d'interrupteur, une phrase le dit.
     - ⚠️ **La génération SUIT la clôture, sans la conditionner** (`useClosureLetter`, fiche et
       mobile, même hook) : elle vient après pour que `demande.etat_cloture` et

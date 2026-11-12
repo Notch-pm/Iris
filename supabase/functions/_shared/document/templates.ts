@@ -167,12 +167,14 @@ export function unmergeableReason(fileName: string): string {
 //
 // La modale de clôture propose les courriers de la démarche visibles pour
 // l'issue CHOISIE (pas pour le statut courant, qui n'est pas encore clos), et
-// seulement ceux que la fusion sait ouvrir. Un document INTERNE n'y figure
-// jamais, même mal rangé : il ne quitte pas Iris.
+// seulement ceux que la fusion sait ouvrir. Il faut être un courrier à la fois
+// par le RANGEMENT (`group`) et par le TYPE : c'est le type qui fixe la nature
+// enregistrée (`kindOfTemplate`), et le droit de clôture n'ouvre que des
+// courriers — jamais un document interne ou externe mal rangé.
 // ---------------------------------------------------------------------------
 
 function isClosureLetter(item: DocumentTemplate): boolean {
-  return item.group === "courrier" && item.type !== "interne";
+  return item.group === "courrier" && item.type === "courrier";
 }
 
 /** Les courriers proposés à la clôture pour une issue donnée. */
