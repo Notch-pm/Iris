@@ -1,0 +1,126 @@
+[
+  {
+    "key": "accuse_reception",
+    "subject": "Nous avons bien reçu votre demande",
+    "body": "{{usager.salutation}},\n\nNous avons bien reçu votre demande {{#demande.objet}}« {{demande.objet}} » {{/demande.objet}}(référence {{demande.reference}}){{#demande.date_depot}}, déposée le {{demande.date_depot}}{{/demande.date_depot}}.\n{{#demande.destinataire}}\nElle sera traitée par : {{demande.destinataire}}.\n{{/demande.destinataire}}\nConservez cette référence : elle vous sera demandée pour toute question au sujet de votre demande.\n{{#demande.code_acces}}\nPour suivre votre demande en ligne, rendez-vous sur {{demande.lien}}\navec votre adresse de courriel, cette référence et votre code d'accès : {{demande.code_acces}}\nCe code est personnel : ne le communiquez à personne.\n{{/demande.code_acces}}\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "usager.salutation",
+      "demande.objet",
+      "demande.reference",
+      "demande.date_depot",
+      "demande.destinataire",
+      "demande.lien",
+      "demande.code_acces",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "debut_instruction",
+    "subject": "Votre demande {{demande.reference}} est en cours de traitement",
+    "body": "Bonjour,\n\nVotre demande {{#demande.demarche}}« {{demande.demarche}} » {{/demande.demarche}}(référence {{demande.reference}}) est désormais prise en charge par nos services.\n\nStatut : {{demande.statut_usager}}.\n\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "demande.demarche",
+      "demande.reference",
+      "demande.statut_usager",
+      "demande.lien",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "attente_information",
+    "subject": "Votre demande {{demande.reference}} attend votre réponse",
+    "body": "Bonjour,\n\nNos services ont besoin d'un complément pour poursuivre le traitement de votre demande {{#demande.demarche}}« {{demande.demarche}} » {{/demande.demarche}}(référence {{demande.reference}}). Consultez-la en ligne pour savoir ce qui vous est demandé.\n\nStatut : {{demande.statut_usager}}.\n\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "demande.demarche",
+      "demande.reference",
+      "demande.statut_usager",
+      "demande.lien",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "reprise_instruction",
+    "subject": "Votre demande {{demande.reference}} est de nouveau en cours de traitement",
+    "body": "Bonjour,\n\nVotre demande {{#demande.demarche}}« {{demande.demarche}} » {{/demande.demarche}}(référence {{demande.reference}}) est de nouveau en cours de traitement.\n\nStatut : {{demande.statut_usager}}.\n\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "demande.demarche",
+      "demande.reference",
+      "demande.statut_usager",
+      "demande.lien",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "annulation",
+    "subject": "Votre demande {{demande.reference}} a été annulée",
+    "body": "Bonjour,\n\nVotre demande {{#demande.demarche}}« {{demande.demarche}} » {{/demande.demarche}}(référence {{demande.reference}}) a été annulée.\n\nStatut : {{demande.statut_usager}}.\n\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "demande.demarche",
+      "demande.reference",
+      "demande.statut_usager",
+      "demande.lien",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "reouverture",
+    "subject": "Votre demande {{demande.reference}} a été rouverte",
+    "body": "Bonjour,\n\nVotre demande {{#demande.demarche}}« {{demande.demarche}} » {{/demande.demarche}}(référence {{demande.reference}}) a été rouverte : elle est de nouveau en cours de traitement.\n\nStatut : {{demande.statut_usager}}.\n\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "demande.demarche",
+      "demande.reference",
+      "demande.statut_usager",
+      "demande.lien",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "cloture_positive",
+    "subject": "Votre demande a été résolue positivement",
+    "body": "{{usager.salutation}},\n\nVotre demande {{#demande.objet}}« {{demande.objet}} » {{/demande.objet}}(référence {{demande.reference}}) a reçu une suite favorable.\n{{#demande.commentaire_cloture}}\n{{demande.commentaire_cloture}}\n{{/demande.commentaire_cloture}}\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "usager.salutation",
+      "demande.objet",
+      "demande.reference",
+      "demande.commentaire_cloture",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "cloture_negative",
+    "subject": "Nous ne pouvons répondre positivement à votre demande",
+    "body": "{{usager.salutation}},\n\nVotre demande {{#demande.objet}}« {{demande.objet}} » {{/demande.objet}}(référence {{demande.reference}}) n'a pas pu recevoir une suite favorable.\n{{#demande.commentaire_cloture}}\n{{demande.commentaire_cloture}}\n{{/demande.commentaire_cloture}}\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "usager.salutation",
+      "demande.objet",
+      "demande.reference",
+      "demande.commentaire_cloture",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "nouveau_message",
+    "subject": "Nouveau message concernant votre demande {{demande.reference}}",
+    "body": "Bonjour,\n\nVous avez reçu un nouveau message concernant votre demande {{#demande.demarche}}« {{demande.demarche}} » {{/demande.demarche}}(référence {{demande.reference}}) :\n\n« {{message.extrait}} »\n\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "demande.demarche",
+      "demande.reference",
+      "message.extrait",
+      "message.nombre",
+      "demande.lien",
+      "organisation.nom"
+    ]
+  },
+  {
+    "key": "code_acces",
+    "subject": "Votre nouveau code d'accès",
+    "body": "Bonjour,\n\nUn nouveau code d'accès a été créé pour suivre en ligne votre demande {{#demande.objet}}« {{demande.objet}} » {{/demande.objet}}(référence {{demande.reference}}).\n\nVotre code d'accès : {{demande.code_acces}}\nIl remplace le précédent, qui ne fonctionne plus.\n\nPour suivre votre demande, rendez-vous sur {{demande.lien}}\navec votre adresse de courriel, la référence et ce code. Ce code est personnel : ne le communiquez à personne.\n\nSi vous n'êtes pas à l'origine de cette demande, ignorez ce message : seul ce code permet d'accéder à votre demande.\n\nCordialement,\n{{organisation.nom}}",
+    "variables": [
+      "demande.objet",
+      "demande.reference",
+      "demande.code_acces",
+      "demande.lien",
+      "organisation.nom"
+    ]
+  }
+]

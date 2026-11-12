@@ -6,7 +6,7 @@
 
 import * as React from "react";
 import {
-  AlertTriangle, ArrowLeft, BellRing, Building2, ClipboardList, Copy, KeyRound, Layers, Link2, Mail, Pencil,
+  AlertTriangle, ArrowLeft, BellRing, Building2, ClipboardList, Copy, KeyRound, Layers, Link2, Pencil,
   Plus, Power, RefreshCw, Settings, Sparkles, Trash2, UserPlus, Users, X,
 } from "lucide-react";
 import {
@@ -29,7 +29,6 @@ import {
 } from "./profileRows";
 import type { ProfileDraft } from "./profileValidation";
 import { ProfileDialog } from "./ProfileDialog";
-import { EmailTemplatesPanel } from "@/features/templates/EmailTemplatesPanel";
 import { OrganisationsPanel } from "@/features/templates/OrganisationsPanel";
 import { AiUsagePanel } from "@/features/ai/AiUsagePanel";
 import { LinkSettingsPanel } from "@/features/linking/LinkSettingsPanel";
@@ -42,7 +41,7 @@ import {
 } from "./usePermissions";
 
 type SectionId =
-  | "profils" | "utilisateurs" | "couverture" | "modeles" | "liees" | "avis" | "referentiel" | "journal" | "ia";
+  | "profils" | "utilisateurs" | "couverture" | "liees" | "avis" | "referentiel" | "journal" | "ia";
 type Section = "menu" | SectionId;
 
 // Motif Clara (`SettingsPage`) : une page d'accueil « Paramètres » faite de blocs
@@ -67,12 +66,6 @@ const SECTIONS: { id: SectionId; title: string; description: string; icon: typeo
     icon: AlertTriangle,
   },
   {
-    id: "modeles",
-    title: "Modèles d'e-mail",
-    description: "Textes réutilisables pour répondre à un usager, avec variables de la demande.",
-    icon: Mail,
-  },
-  {
     id: "liees",
     title: "Demandes liées",
     description: "Démarches où plusieurs usagers signalent le même incident : liaison et résolution commune.",
@@ -87,7 +80,7 @@ const SECTIONS: { id: SectionId; title: string; description: string; icon: typeo
   {
     id: "referentiel",
     title: "Organisations",
-    description: "Arbre des organisations que vous administrez, et modèles d'e-mail actifs sur chacune.",
+    description: "Arbre des organisations que vous administrez, et modèles d'e-mail du Socle proposés sur chacune.",
     icon: Building2,
   },
   {
@@ -662,8 +655,6 @@ export function PermissionsPage() {
           </CardContent>
         </Card>
       ) : null}
-
-      {section === "modeles" ? <EmailTemplatesPanel orgId={orgId} /> : null}
 
       {section === "ia" ? <AiUsagePanel orgId={orgId} /> : null}
 

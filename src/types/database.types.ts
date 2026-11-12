@@ -1753,13 +1753,6 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "request_emails_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "email_templates"
-            referencedColumns: ["id"]
-          },
         ]
       }
       request_events: {
@@ -2477,6 +2470,62 @@ export type Database = {
             foreignKeyName: "smtp_settings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_email_templates: {
+        Row: {
+          body: string
+          description: string | null
+          id: string
+          is_customized: boolean
+          name: string
+          organization_id: string
+          socle_org_ids: string[] | null
+          socle_template_id: string | null
+          socle_updated_at: string | null
+          subject: string
+          synced_at: string
+          system_key: string | null
+          variables: string[]
+        }
+        Insert: {
+          body: string
+          description?: string | null
+          id?: string
+          is_customized?: boolean
+          name: string
+          organization_id: string
+          socle_org_ids?: string[] | null
+          socle_template_id?: string | null
+          socle_updated_at?: string | null
+          subject: string
+          synced_at?: string
+          system_key?: string | null
+          variables?: string[]
+        }
+        Update: {
+          body?: string
+          description?: string | null
+          id?: string
+          is_customized?: boolean
+          name?: string
+          organization_id?: string
+          socle_org_ids?: string[] | null
+          socle_template_id?: string | null
+          socle_updated_at?: string | null
+          subject?: string
+          synced_at?: string
+          system_key?: string | null
+          variables?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_email_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -3898,6 +3947,10 @@ export type Database = {
           user_id: string
           user_name: string
         }[]
+      }
+      sync_email_templates_from_socle: {
+        Args: { p_org_id: string; p_templates: Json }
+        Returns: number
       }
       sync_smtp_settings_from_socle: {
         Args: {

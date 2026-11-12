@@ -34,7 +34,18 @@ import { citizenEventFor } from "../_shared/citizenNotices/events.ts";
 import { shouldSend, type Decision, type SkipReason } from "../_shared/citizenNotices/decision.ts";
 import { citizenChannel, spaceRequestUrl } from "../_shared/citizenNotices/channel.ts";
 import { unsubscribeToken, unsubscribeUrl } from "../_shared/citizenNotices/unsubscribe.ts";
-import { messageExcerpt, messageNoticeEmail, statusNoticeEmail, type NoticeEvent } from "../_shared/email/avisUsager.ts";
+import {
+  NOTICE_TEMPLATE_KEYS,
+  messageExcerpt,
+  messageNoticeEmail,
+  messageNoticeFromTemplate,
+  shouldUseMessageTemplate,
+  statusNoticeEmail,
+  statusNoticeFromTemplate,
+  type NoticeEvent,
+} from "../_shared/email/avisUsager.ts";
+import { SYSTEM_KEYS, type SystemTemplates } from "../_shared/email/socleTemplates.ts";
+import { loadSystemTemplates } from "../_shared/email/socleTemplatesStore.ts";
 
 const LOG = "[mailer:avis-usager]";
 
@@ -104,6 +115,8 @@ export async function drainCitizenNotices(
   now: () => Date = () => new Date(),
 ): Promise<NoticeCounters> {
   const counters: NoticeCounters = { claimed: 0, sent: 0, skipped: 0, deferred: 0, failed: 0 };
+  // Textes du Socle, une lecture par tenant et par passage.
+  const templateCache = new Map<string, SystemTemplates>();
   const { data, error } = await supabase.rpc("claim_citizen_notices", { p_limit: batch });
   if (error) {
     console.error(`${LOG} claim : ${error.message}`);
@@ -290,8 +303,11 @@ export async function drainCitizenNotices(
     const unsubscribe = withStatus ? unsubscribeUrl(url, token) : null;
 
     const statusPart = withStatus ? { event: event as NoticeEvent, status: row.status } : null;
-    const notice = last !== null
-      ? messageNoticeEmail({
+    // Le texte de la collectivité (Socle) s'il est là, sinon celui d'Iris.
+    const templates = await loadSystemTemplates(supabase, row.notice_org_id, LOG, templateCache);
+    let notice;
+    if (last !== null) {
+      const input = {
         reference: row.reference,
         procedureName: row.procedure_name,
         excerpt: messageExcerpt(last.body ?? ""),
@@ -302,8 +318,13 @@ export async function drainCitizenNotices(
         tenantName: row.organization_name,
         closed: row.closed_at !== null,
         repliesOpen,
-      })
-      : statusNoticeEmail({
+      };
+      const template = templates.get(SYSTEM_KEYS.nouveauMessage);
+      notice = template && shouldUseMessageTemplate(input.messageCount, template)
+        ? messageNoticeFromTemplate(input, template)
+        : messageNoticeEmail(input);
+    } else {
+      const input = {
         event: event as NoticeEvent,
         status: row.status,
         reference: row.reference,
@@ -311,7 +332,10 @@ export async function drainCitizenNotices(
         url,
         unsubscribeUrl: unsubscribe,
         tenantName: row.organization_name,
-      });
+      };
+      const template = templates.get(NOTICE_TEMPLATE_KEYS[input.event]);
+      notice = template ? statusNoticeFromTemplate(input, template) : statusNoticeEmail(input);
+    }
     const eventSent = withStatus ? event : "nouveau_message";
 
     // Une reprise renvoie à l'adresse déjà tracée : l'échange dit où c'est parti.

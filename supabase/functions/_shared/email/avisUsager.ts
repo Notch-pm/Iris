@@ -11,6 +11,13 @@
 
 import type { EmailContent } from "./template.ts";
 import { CITIZEN_STATUS_LABELS, type CitizenEvent } from "../citizenNotices/events.ts";
+import {
+  SYSTEM_KEYS,
+  bodyParagraphs,
+  composeFromTemplate,
+  presentValues,
+  type SocleSystemTemplate,
+} from "./socleTemplates.ts";
 
 /** Les événements qui donnent lieu à un avis (défaut V1, `decision.ts`). */
 export type NoticeEvent = Extract<
@@ -199,4 +206,118 @@ export function messageExcerpt(body: string, max = EXCERPT_LENGTH): string {
   const space = cut.lastIndexOf(" ");
   const head = (space > max / 2 ? cut.slice(0, space) : text.slice(0, max)).replace(/[\s,;:.!?…-]+$/, "");
   return `${head}…`;
+}
+
+// ---------------------------------------------------------------------------
+// Textes du SOCLE (courriels système, 2026-11-12)
+//
+// Le Socle fournit l'objet et le texte ; Iris garde ce qui relève de
+// l'habillage et de la mécanique : le bouton (« Voir ma demande »), la ligne
+// « Pour la consulter : <lien> » de la version texte, le lien de
+// désinscription. Sans modèle, l'appelant garde `statusNoticeEmail` /
+// `messageNoticeEmail`.
+// ---------------------------------------------------------------------------
+
+/**
+ * La version texte (celle qu'enregistre l'onglet Échanges) : la ligne du lien
+ * se glisse AVANT la signature — le dernier paragraphe, par convention des
+ * textes du Socle —, comme dans les textes d'origine ; le pied vient après.
+ */
+function textBody(paragraphs: string[], linkLine: string, footnote: string | undefined): string {
+  const head = paragraphs.slice(0, -1);
+  const closing = paragraphs.slice(-1);
+  return [...head, linkLine, ...closing, ...(footnote ? [footnote] : [])].join("\n\n");
+}
+
+/** Le courriel système du Socle qui porte chaque événement. */
+export const NOTICE_TEMPLATE_KEYS: Record<NoticeEvent, string> = {
+  prise_en_charge: SYSTEM_KEYS.debutInstruction,
+  attente_information: SYSTEM_KEYS.attenteInformation,
+  reprise_instruction: SYSTEM_KEYS.repriseInstruction,
+  annulation: SYSTEM_KEYS.annulation,
+  reouverture: SYSTEM_KEYS.reouverture,
+};
+
+export function statusNoticeFromTemplate(
+  input: StatusNoticeInput,
+  template: SocleSystemTemplate,
+): StatusNotice {
+  const values = presentValues({
+    "demande.demarche": input.procedureName,
+    "demande.reference": input.reference,
+    "demande.statut_usager": CITIZEN_STATUS_LABELS[input.status],
+    "demande.lien": input.url,
+    "organisation.nom": input.tenantName,
+  });
+  const { subject, body: rendered } = composeFromTemplate(template, values);
+  const footnote = input.unsubscribeUrl
+    ? `Vous ne souhaitez plus recevoir ces avis pour cette demande ? ${input.unsubscribeUrl}`
+    : undefined;
+  const body = textBody(bodyParagraphs(rendered), `Pour la consulter : ${input.url}`, footnote);
+  return {
+    subject,
+    body,
+    content: {
+      subject,
+      heading: subject,
+      paragraphs: bodyParagraphs(rendered),
+      cta: { label: CTA_LABEL, url: input.url },
+      footnote,
+    },
+  };
+}
+
+/**
+ * L'avis « nouveau message » depuis le texte du SOCLE. Le texte d'origine du
+ * Socle est rédigé pour UN message : quand plusieurs arrivent dans la même
+ * fenêtre et que la collectivité n'a pas réécrit ce texte, l'appelant garde
+ * `messageNoticeEmail`, qui sait dire « 2 nouveaux messages »
+ * (`shouldUseMessageTemplate`). Un statut de la même fenêtre s'annonce dans un
+ * paragraphe glissé AVANT la signature (le dernier paragraphe).
+ */
+export function shouldUseMessageTemplate(messageCount: number, template: SocleSystemTemplate): boolean {
+  return messageCount <= 1 || template.isCustomized;
+}
+
+export function messageNoticeFromTemplate(
+  input: MessageNoticeInput,
+  template: SocleSystemTemplate,
+): StatusNotice {
+  const several = input.messageCount > 1;
+  const values = presentValues({
+    "demande.demarche": input.procedureName,
+    "demande.reference": input.reference,
+    "message.extrait": input.excerpt,
+    "message.nombre": String(input.messageCount),
+    "demande.lien": input.url,
+    "organisation.nom": input.tenantName,
+  });
+  const { subject, body: rendered } = composeFromTemplate(template, values);
+  const paragraphs = bodyParagraphs(rendered);
+  if (input.statusPart) {
+    const label = CITIZEN_STATUS_LABELS[input.statusPart.status];
+    if (label) {
+      const line = `Votre demande a aussi changé de statut : ${label}.`;
+      paragraphs.splice(Math.max(paragraphs.length - 1, 0), 0, line);
+    }
+  }
+  const footnote = input.unsubscribeUrl
+    ? `Vous ne souhaitez plus recevoir les avis de changement de statut pour cette demande ? ${input.unsubscribeUrl}`
+    : undefined;
+  const canReply = !input.closed && input.repliesOpen === true;
+  const readLine = several
+    ? (canReply ? "Pour les lire en entier et y répondre" : "Pour les lire en entier")
+    : (canReply ? "Pour le lire en entier et y répondre" : "Pour le lire en entier");
+  const body = textBody(paragraphs, `${readLine} : ${input.url}`, footnote);
+  return {
+    subject,
+    body,
+    content: {
+      subject,
+      heading: subject,
+      paragraphs,
+      cta: { label: several ? "Lire les messages" : "Lire le message", url: input.url },
+      footnote,
+    },
+  };
 }

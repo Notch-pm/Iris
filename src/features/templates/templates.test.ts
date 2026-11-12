@@ -1,20 +1,26 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildOrgTree, emptyDraft, flattenOrgTree, hasErrors, insertVariable, isKnownVariable,
-  parseVariables, previewValues, renderTemplate, TEMPLATE_VARIABLES, unknownVariables,
-  validateTemplateDraft, VARIABLE_GROUP_LABELS, type OrgRow,
+  buildOrgTree, flattenOrgTree, renderTemplate, TEMPLATE_VARIABLES,
+  VARIABLE_GROUP_LABELS, type OrgRow,
 } from "./templates";
 
-describe("catalogue de variables", () => {
-  it("n'a aucune clé en double", () => {
-    const keys = TEMPLATE_VARIABLES.map((v) => v.key);
-    expect(new Set(keys).size).toBe(keys.length);
-  });
+/**
+ * Le catalogue COMMUN du Socle (`email_template_common_variables()`, servi par
+ * `GET /v1/email-templates/variables`), dans son ordre. Le Socle refuse tout
+ * modèle qui cite une autre clé : Iris doit savoir remplir chacune.
+ */
+const SOCLE_COMMON_VARIABLES = [
+  "usager.salutation", "usager.civilite", "usager.prenom", "usager.nom", "usager.nom_complet",
+  "usager.raison_sociale", "usager.courriel", "usager.telephone", "usager.adresse",
+  "demande.reference", "demande.objet", "demande.description", "demande.statut", "demande.priorite",
+  "demande.demarche", "demande.categorie", "demande.destinataire", "demande.canal", "demande.date_depot",
+  "demande.date_instruction", "demande.date_cloture", "demande.date_echeance", "demande.motif_cloture",
+  "agent.nom", "organisation.nom",
+];
 
-  it("respecte la forme `groupe.cle` attendue par la base", () => {
-    for (const v of TEMPLATE_VARIABLES) {
-      expect(v.key).toMatch(/^[a-z_]+\.[a-z_]+$/);
-    }
+describe("catalogue de variables", () => {
+  it("est la copie exacte du catalogue commun du Socle, dans le même ordre", () => {
+    expect(TEMPLATE_VARIABLES.map((v) => v.key)).toEqual(SOCLE_COMMON_VARIABLES);
   });
 
   it("déclare un groupe connu et une valeur d'exemple pour chaque variable", () => {
@@ -23,49 +29,6 @@ describe("catalogue de variables", () => {
       expect(v.label.trim()).not.toBe("");
       expect(v.sample.trim()).not.toBe("");
     }
-  });
-
-  it("couvre les informations citées par le PO", () => {
-    for (const key of [
-      "usager.nom", "usager.prenom",
-      "demande.demarche", "demande.categorie",
-      "demande.date_depot", "demande.date_instruction",
-    ]) {
-      expect(isKnownVariable(key)).toBe(true);
-    }
-  });
-
-  it("ne connaît pas une clé inventée", () => {
-    expect(isKnownVariable("usager.pseudo")).toBe(false);
-    expect(isKnownVariable("demande.inexistant")).toBe(false);
-  });
-});
-
-describe("parseVariables", () => {
-  it("relève les clés dans l'ordre, sans doublon", () => {
-    expect(parseVariables("{{usager.nom}} — {{demande.reference}} — {{usager.nom}}"))
-      .toEqual(["usager.nom", "demande.reference"]);
-  });
-
-  it("tolère les espaces intérieurs, comme le motif SQL", () => {
-    expect(parseVariables("{{  usager.nom  }}")).toEqual(["usager.nom"]);
-  });
-
-  it("ignore ce qui n'est pas une variable", () => {
-    expect(parseVariables("Une accolade { seule, et {{ PAS UNE VARIABLE }}")).toEqual([]);
-    expect(parseVariables("{{Usager.Nom}}")).toEqual([]); // majuscules : pas le motif
-    expect(parseVariables("{{sansgroupe}}")).toEqual([]);
-    expect(parseVariables("")).toEqual([]);
-  });
-});
-
-describe("unknownVariables", () => {
-  it("ne signale que ce qui manque au catalogue", () => {
-    expect(unknownVariables("{{usager.nom}} et {{usager.pseudo}}")).toEqual(["usager.pseudo"]);
-  });
-
-  it("rend un tableau vide quand tout est connu", () => {
-    expect(unknownVariables("{{demande.reference}} {{agent.nom}}")).toEqual([]);
   });
 });
 
@@ -90,82 +53,11 @@ describe("renderTemplate", () => {
       .toBe("Durand/Durand");
   });
 
-  it("rend un aperçu complet avec les valeurs d'exemple", () => {
-    const rendu = renderTemplate(
-      "Objet : {{demande.reference}} — {{demande.objet}}",
-      previewValues(),
-    );
-    expect(rendu).toBe("Objet : DEM-2026-000042 — Nid-de-poule rue des Lilas");
-    expect(rendu).not.toContain("{{");
-  });
-});
-
-describe("previewValues", () => {
-  it("couvre TOUT le catalogue — aucun trou dans l'aperçu", () => {
-    const values = previewValues();
-    for (const v of TEMPLATE_VARIABLES) expect(values[v.key]).toBe(v.sample);
-    expect(Object.keys(values)).toHaveLength(TEMPLATE_VARIABLES.length);
-  });
-});
-
-describe("insertVariable", () => {
-  it("insère au curseur et rend la position d'après", () => {
-    expect(insertVariable("Bonjour , merci", 8, "usager.nom")).toEqual({
-      text: "Bonjour {{usager.nom}}, merci",
-      caret: 8 + "{{usager.nom}}".length,
-    });
-  });
-
-  it("insère en fin de texte quand le curseur est au bout", () => {
-    expect(insertVariable("Bonjour ", 8, "usager.nom").text).toBe("Bonjour {{usager.nom}}");
-  });
-
-  it("borne un curseur aberrant", () => {
-    expect(insertVariable("abc", 99, "agent.nom").text).toBe("abc{{agent.nom}}");
-    expect(insertVariable("abc", -5, "agent.nom").text).toBe("{{agent.nom}}abc");
-  });
-});
-
-describe("validateTemplateDraft", () => {
-  const ok = {
-    name: "Accusé de réception",
-    description: "",
-    subject: "Votre demande {{demande.reference}}",
-    body: "Bonjour {{usager.nom}},",
-  };
-
-  it("accepte un modèle complet et n'employant que des variables connues", () => {
-    expect(hasErrors(validateTemplateDraft(ok))).toBe(false);
-  });
-
-  it("exige un nom, un objet et un corps", () => {
-    const errors = validateTemplateDraft(emptyDraft());
-    expect(errors.name).toBe("Donnez un nom à ce modèle.");
-    expect(errors.subject).toBe("L'objet est obligatoire.");
-    expect(errors.body).toBe("Le corps du message est obligatoire.");
-  });
-
-  it("refuse un nom fait d'espaces", () => {
-    expect(validateTemplateDraft({ ...ok, name: "   " }).name).toBeTruthy();
-  });
-
-  it("signale une variable inconnue dans l'objet", () => {
-    expect(validateTemplateDraft({ ...ok, subject: "Votre demande {{demande.numero}}" }).subject)
-      .toBe("Variable inconnue : {{demande.numero}}.");
-  });
-
-  it("signale une variable inconnue dans le corps", () => {
-    expect(validateTemplateDraft({ ...ok, body: "Bonjour {{usager.pseudo}}," }).body)
-      .toBe("Variable inconnue : {{usager.pseudo}}.");
-  });
-
-  it("accorde le message au pluriel", () => {
-    expect(validateTemplateDraft({ ...ok, body: "{{a.b}} et {{c.d}}" }).body)
-      .toBe("Variables inconnues : {{a.b}}, {{c.d}}.");
-  });
-
-  it("la description reste facultative", () => {
-    expect(hasErrors(validateTemplateDraft({ ...ok, description: "" }))).toBe(false);
+  it("rend une section seulement si sa variable a une valeur (syntaxe du Socle)", () => {
+    const text = "Votre demande {{#demande.demarche}}« {{demande.demarche}} » {{/demande.demarche}}({{demande.reference}})";
+    expect(renderTemplate(text, { "demande.demarche": "Voirie", "demande.reference": "R1" }))
+      .toBe("Votre demande « Voirie » (R1)");
+    expect(renderTemplate(text, { "demande.reference": "R1" })).toBe("Votre demande (R1)");
   });
 });
 

@@ -273,8 +273,9 @@ les invariants ci-dessus restent la référence.
 - **Mon compte** (`src/features/account`, `/mon-compte`) : photo (bucket privé), mot de passe,
   préférences ; l'e-mail n'est pas modifiable par son titulaire (`t03_users_protect_email`)
   → [`src/features/account/CLAUDE.md`](src/features/account/CLAUDE.md).
-- **Modèles d'e-mail** (`src/features/templates`) : variables `{{groupe.cle}}` d'un catalogue
-  FIGÉ, activation organisation par organisation, texte BRUT
+- **Modèles d'e-mail** (`src/features/templates`) : **rédigés dans le Socle** depuis le
+  2026-11-12 (miroir `socle_email_templates`, lecture seule) — modèles proposés dans les
+  Échanges et textes des courriels automatiques à l'usager, catalogue de variables du Socle
   → [`src/features/templates/CLAUDE.md`](src/features/templates/CLAUDE.md).
 - **Zone superadmin** (`src/features/superadmin`) : organisations, utilisateurs, edge
   `admin-users` → [`src/features/superadmin/CLAUDE.md`](src/features/superadmin/CLAUDE.md).

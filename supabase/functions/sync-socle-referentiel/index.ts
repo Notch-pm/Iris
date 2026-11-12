@@ -25,6 +25,7 @@ import {
   type TenantRef,
 } from "./_shared/mapping.ts";
 import { smtpMirrorArgs, smtpWarning, type SocleSmtpDto } from "./_shared/smtp.ts";
+import { emailTemplateMirrorRows, emailTemplatesWarning } from "./_shared/emailTemplates.ts";
 import { createSocleGate } from "./_shared/socleGate.ts";
 
 /**
@@ -172,6 +173,22 @@ async function fetchSocleSmtp(
   const res = await socleFetch(`${base}/v1/organizations/${socleOrgId}/smtp`, { Authorization: `Bearer ${key}` });
   if (!res.ok) return { status: res.status, dto: null };
   return { status: res.status, dto: (await res.json()) as SocleSmtpDto };
+}
+
+/**
+ * Modèles de courriels d'une organisation principale, pour Iris
+ * (`GET /v1/email-templates`, public-api ≥ 1.45.0). Comme le SMTP : un statut
+ * d'erreur n'est pas une exception, le miroir reste en l'état.
+ */
+async function fetchSocleEmailTemplates(
+  base: string,
+  key: string,
+  socleOrgId: string,
+): Promise<{ status: number; payload: unknown }> {
+  const query = `organization_id=${encodeURIComponent(socleOrgId)}&application=iris`;
+  const res = await socleFetch(`${base}/v1/email-templates?${query}`, { Authorization: `Bearer ${key}` });
+  if (!res.ok) return { status: res.status, payload: null };
+  return { status: res.status, payload: await res.json() };
 }
 
 /**
@@ -442,6 +459,36 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Modèles de courriels — le Socle en est propriétaire (décision PO du
+    // 2026-11-12) : courriels système (textes de la collectivité, repli sur
+    // ceux d'Iris) et modèles proposés aux agents dans l'onglet Échanges.
+    // Miroir strict par tenant ; un échec laisse le miroir en l'état.
+    let modelesCourrielsSynchronises = 0;
+    for (const tenant of observedTenants) {
+      try {
+        const { status, payload } = await fetchSocleEmailTemplates(base, socleKey, tenant.socleOrgId);
+        if (status !== 200) {
+          warnings.push(emailTemplatesWarning(tenant, status));
+          continue;
+        }
+        const rows = emailTemplateMirrorRows(tenant, payload);
+        if (rows === null) {
+          warnings.push(emailTemplatesWarning(tenant, 0));
+          continue;
+        }
+        const { data: n, error } = await supabase.rpc("sync_email_templates_from_socle", {
+          p_org_id: tenant.organizationId,
+          p_templates: rows,
+        });
+        if (error) throw error;
+        modelesCourrielsSynchronises += typeof n === "number" ? n : 0;
+      } catch (err) {
+        const message = errorMessage(err);
+        console.error(`sync-socle-referentiel modèles ${tenant.organizationId}:`, message);
+        warnings.push(`modèles de courriels (tenant ${tenant.organizationId}) : ${message}`);
+      }
+    }
+
     // Source « clara » d'après les abonnements du Socle (public-api 1.42.0) :
     // une collectivité abonnée à Iris ET à Clara reçoit d'office sa source,
     // sans clé — Clara dépose avec sa clé PLATEFORME. Décocher Clara dans le
@@ -526,6 +573,7 @@ Deno.serve(async (req) => {
       requests_scope_recalculees: requestsScopeRecalculees,
       smtp_synchronises: smtpSynchronises,
       smtp_retires: smtpRetires,
+      modeles_courriels_synchronises: modelesCourrielsSynchronises,
       sources_clara_ouvertes: sourcesClaraOuvertes,
       sources_clara_suspendues: sourcesClaraSuspendues,
       ...(warnings.length > 0 ? { warnings } : {}),

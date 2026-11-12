@@ -19,7 +19,9 @@ import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
 import type { SmtpConfig } from "../_shared/email/config.ts";
 import { sendBrandedEmail } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
-import { receiptEmail, revealAccessCode } from "../_shared/email/accuse.ts";
+import { receiptEmail, receiptEmailFromTemplate, revealAccessCode } from "../_shared/email/accuse.ts";
+import { SYSTEM_KEYS, type SystemTemplates } from "../_shared/email/socleTemplates.ts";
+import { loadSystemTemplates } from "../_shared/email/socleTemplatesStore.ts";
 import { accessEmailHash, normalizeAccessEmail, pepperFrom } from "../_shared/access/accessCode.ts";
 import { recipientIdentity } from "../_shared/email/destinataire.ts";
 import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
@@ -77,6 +79,8 @@ export async function drainReceipts(
   batch: number,
 ): Promise<ReceiptCounters> {
   const counters: ReceiptCounters = { claimed: 0, sent: 0, skipped: 0, failed: 0 };
+  // Textes du Socle, une lecture par tenant et par passage.
+  const templateCache = new Map<string, SystemTemplates>();
   const { data, error } = await supabase.rpc("claim_request_receipts", { p_limit: batch });
   if (error) {
     console.error(`${LOG} claim : ${error.message}`);
@@ -127,7 +131,7 @@ export async function drainReceipts(
         continue;
       }
       const withCode = row.access_code !== null && await sentToDeclared(to, row.access_email_hash);
-      const composed = receiptEmail({
+      const input = {
         reference: row.reference,
         requestSubject: row.subject,
         receivedAt: row.received_at,
@@ -135,7 +139,11 @@ export async function drainReceipts(
         recipient: { civility: who.civility, fullName: who.fullName },
         tenantName: row.organization_name,
         access: withCode ? { trackingUrl: row.tracking_url } : null,
-      });
+      };
+      // Le texte de la collectivité (Socle) s'il est là, sinon celui d'Iris.
+      const template = (await loadSystemTemplates(supabase, row.receipt_org_id, LOG, templateCache))
+        .get(SYSTEM_KEYS.accuse);
+      const composed = template ? receiptEmailFromTemplate(input, template) : receiptEmail(input);
       subject = composed.subject;
       body = composed.body;
 
