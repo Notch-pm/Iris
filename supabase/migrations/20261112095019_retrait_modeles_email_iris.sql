@@ -7,8 +7,8 @@
 -- Normandie Démo, Mairie de Saint Laurent) ont été rapatriés dans le Socle le
 -- même jour, avec leurs organisations d'activation.
 --
--- ⚠️ À APPLIQUER AU DÉPLOIEMENT DU CODE, pas avant : le code précédent lit
--- encore `email_templates` (onglet Échanges, Paramètres › Modèles d'e-mail).
+-- Appliquée le 2026-11-12, après le déploiement du code (le code précédent lisait
+-- encore `email_templates`).
 --
 -- `request_emails.template_id` n'a plus de FK depuis la migration précédente :
 -- l'historique des échanges garde ses identifiants et `template_name`.
