@@ -263,106 +263,6 @@ export type Database = {
           },
         ]
       }
-      email_template_organizations: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          socle_org_id: string
-          template_id: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          socle_org_id: string
-          template_id: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          socle_org_id?: string
-          template_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "email_template_organizations_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "email_template_organizations_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "email_templates"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      email_templates: {
-        Row: {
-          body: string
-          created_at: string
-          created_by: string | null
-          description: string | null
-          id: string
-          name: string
-          organization_id: string
-          subject: string
-          updated_at: string
-          updated_by: string | null
-          version: number
-        }
-        Insert: {
-          body: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          name: string
-          organization_id: string
-          subject: string
-          updated_at?: string
-          updated_by?: string | null
-          version?: number
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          name?: string
-          organization_id?: string
-          subject?: string
-          updated_at?: string
-          updated_by?: string | null
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "email_templates_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "email_templates_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "email_templates_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       integration_api_logs: {
         Row: {
           created_at: string
@@ -3157,11 +3057,6 @@ export type Database = {
           user_id: string
         }[]
       }
-      email_template_unknown_variables: {
-        Args: { p_text: string }
-        Returns: string[]
-      }
-      email_template_variables: { Args: never; Returns: string[] }
       enqueue_request_receipt: {
         Args: { p_request_id: string }
         Returns: boolean
