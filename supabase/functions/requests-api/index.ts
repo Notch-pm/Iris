@@ -72,6 +72,10 @@ import {
 import { CITIZEN_TOKEN_HEADER, type CitizenSubject, verifyCitizenToken } from "./_shared/citizenToken.ts";
 import { parseChannelsBody, parseSpaceBody, parseUnsubscribeBody } from "./_shared/citizenPreferences.ts";
 import { verifyUnsubscribeToken } from "../_shared/citizenNotices/unsubscribe.ts";
+import { parseReplyEvent } from "../_shared/clara/reply.ts";
+
+/** Scope de l'avis de Clara sur un courrier de réponse (2026-11-12). */
+const REPLY_LETTER_SCOPE = "requests:reply_letter";
 
 const supabase = createClient(
   Deno.env.get("SUPABASE_URL")!,
@@ -1493,6 +1497,42 @@ async function handleAddAttachments(auth: AuthContext, id: string, req: Request)
   return json(201, { registered: attached.registered });
 }
 
+/**
+ * Avis de Clara sur un courrier de réponse (2026-11-12) — scope
+ * `requests:reply_letter`, source `clara` seulement. Clara transmet un FAIT
+ * (courrier envoyé / abandonné) ; l'issue a été choisie par l'agent Iris au
+ * dépôt (`reply_pending_outcome`) — Iris reste seule source de vérité du statut.
+ * Rejeu → 200 `already` ; demande hors tenant → 404 ; courrier qui n'est pas
+ * celui en attente → 409 (Clara cesse de relancer).
+ */
+async function handleReplyLetterEvent(auth: AuthContext, id: string, req: Request): Promise<Response> {
+  if (auth.sourceCode !== "clara") return fail("forbidden", "Réservé à Clara.");
+  const event = parseReplyEvent(await req.json().catch(() => null));
+  if ("error" in event) return fail("bad_request", event.error);
+
+  const rpc = event.event === "sent" ? "finalize_clara_reply" : "cancel_clara_reply";
+  const args: Record<string, unknown> = {
+    p_organization_id: auth.organizationId,
+    p_request_id: id,
+    p_courier_id: event.courierId,
+  };
+  if (event.event === "sent") args.p_sent_at = event.occurredAt;
+  const { data, error } = await supabase.rpc(rpc, args);
+  if (error) {
+    if (error.code === "P0002") return fail("not_found", "Ressource introuvable.");
+    if (error.code === "P0434") return fail("conflict", error.message);
+    console.error(`requests-api ${rpc}:`, error);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  const { data: row } = await supabase
+    .from("requests")
+    .select("status, version")
+    .eq("id", id)
+    .eq("organization_id", auth.organizationId)
+    .maybeSingle();
+  return json(200, { result: data, status: row?.status ?? null, version: row?.version ?? null });
+}
+
 Deno.serve(async (req) => {
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/requests-api/, "") || "/";
@@ -1535,6 +1575,7 @@ Deno.serve(async (req) => {
   const idMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})$/i);
   const attachMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/attachments$/i);
   const timelineMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/timeline$/i);
+  const replyEventMatch = path.match(/^\/v1\/requests\/([0-9a-f-]{36})\/reply-letter\/events$/i);
   const citizenMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})$/i);
   const citizenMessageMatch = path.match(/^\/v1\/citizen\/requests\/([0-9a-f-]{36})\/messages$/i);
   const citizenContactMatch = path.match(/^\/v1\/citizen\/contacts\/([0-9a-f-]{36})\/requests$/i);
@@ -1556,6 +1597,9 @@ Deno.serve(async (req) => {
   } else if (timelineMatch && method === "GET" && UUID_RE.test(timelineMatch[1])) {
     requestId = timelineMatch[1];
     response = requireScope("requests:read") ?? requireScope(READ_TENANT_SCOPE) ?? await handleTimeline(auth, requestId);
+  } else if (replyEventMatch && method === "POST" && UUID_RE.test(replyEventMatch[1])) {
+    requestId = replyEventMatch[1];
+    response = requireScope(REPLY_LETTER_SCOPE) ?? await handleReplyLetterEvent(auth, requestId, req);
   } else if (attachMatch && method === "POST" && UUID_RE.test(attachMatch[1])) {
     requestId = attachMatch[1];
     response = requireScope("requests:write") ?? await handleAddAttachments(auth, requestId, req);
@@ -1588,7 +1632,7 @@ Deno.serve(async (req) => {
   } else if (citizenContactMatch && method === "GET" && UUID_RE.test(citizenContactMatch[1])) {
     response = requireScope(CITIZEN_SCOPE) ?? await handleCitizenContactRequests(auth, req, citizenContactMatch[1], url);
   } else if (
-    path === "/v1/requests" || idMatch || attachMatch || timelineMatch ||
+    path === "/v1/requests" || idMatch || attachMatch || timelineMatch || replyEventMatch ||
     path === CITIZEN_ACCESS_PATH || path === CITIZEN_RESEND_PATH || citizenMatch || citizenMessageMatch || citizenFileMatch || citizenContactMatch ||
     path === CITIZEN_SPACE_PATH || path === CITIZEN_UNSUBSCRIBE_PATH || contactPrefsMatch || guestPrefsMatch
   ) {

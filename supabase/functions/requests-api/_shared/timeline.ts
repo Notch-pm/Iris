@@ -85,6 +85,11 @@ export function eventDetail(type: string, payload: Row | null, names: UserNames)
       return { file_name: str(p.file_name), compliance: str(p.compliance) };
     case "form_data_updated":
       return { count: typeof p.count === "number" ? p.count : null };
+    case "clara_reply_submitted":
+    case "clara_reply_sent":
+    case "clara_reply_cancelled":
+      // L'issue réservée n'est pas reprise : elle ne sort qu'avec le statut.
+      return { courier_reference: str(p.courier_reference) };
     default:
       return {};
   }

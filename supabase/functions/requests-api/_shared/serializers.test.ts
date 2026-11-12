@@ -48,4 +48,21 @@ describe("serializeRequest — whitelist stricte", () => {
     }
     expect(out.url).toBeNull();
   });
+
+  it("expose le sous-état « Réponse en validation » (2.12.0), null hors validation", () => {
+    expect(serializeRequest(row, null).reply_validation).toBeNull();
+    const out = serializeRequest({
+      ...row, status: "en_instruction", reply_validation_state: "en_validation",
+      clara_courier_id: "c0c0c0c0-0000-4000-8000-000000000001", clara_courier_reference: "2026-S-00042",
+      reply_pending_outcome: "resolue_positive", reply_pending_closure_text: "secret",
+    }, null) as unknown as Record<string, unknown>;
+    expect(out.reply_validation).toEqual({
+      state: "en_validation",
+      clara_courier_id: "c0c0c0c0-0000-4000-8000-000000000001",
+      clara_courier_reference: "2026-S-00042",
+    });
+    // L'issue réservée et le texte en attente ne sortent pas avant l'envoi.
+    expect(JSON.stringify(out)).not.toContain("resolue_positive");
+    expect(JSON.stringify(out)).not.toContain("secret");
+  });
 });

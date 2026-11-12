@@ -9,6 +9,26 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.12.0 — 2026-11-12 — courrier de réponse validé dans Clara
+
+Quand une démarche fait valider ses courriers de réponse dans Clara (Socle
+`communication_config.replyLetters.claraOutbound`, contrat Socle 1.46.0) et que la
+collectivité est abonnée à Clara, l'agent Iris rédige le courrier mais Iris ne l'envoie pas :
+il est déposé dans Clara comme **courrier sortant** lié à la demande. La demande reste
+`en_instruction` — **aucun nouveau statut** — jusqu'à ce que Clara signale l'envoi.
+
+- **`Request.reply_validation`** (toutes les lectures) : `null` hors validation, sinon
+  `{ state: "depot_en_cours" | "en_validation", clara_courier_id, clara_courier_reference }`.
+  L'issue choisie par l'agent et le texte de clôture en attente ne sortent **pas** avant l'envoi.
+- **`POST /v1/requests/{id}/reply-letter/events`** (nouveau scope **`requests:reply_letter`**,
+  accordé aux clés de la source `clara`, réservé à Clara) : `{ courier_id, event: "sent" |
+  "cancelled", occurred_at? }`. `sent` → la demande prend l'issue choisie par l'agent
+  (`closed_at` = date d'envoi) ; `cancelled` → retour à l'instruction simple. Rejeu → 200
+  `already` ; 404 hors tenant ; 409 si ce courrier n'est pas celui en attente (ne pas relancer).
+- Ajout additif : aucune forme existante ne change.
+
+---
+
 ## 2.11.0 — 2026-10-25 — messagerie de l'usager fermée par défaut
 
 Décision PO du 2026-10-25 : les agents ne veulent pas de relances continues. L'usager ne peut

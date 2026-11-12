@@ -130,6 +130,20 @@ describe("buildSyncPlan", () => {
     expect(delay("d-4")).toEqual([null, null]);
   });
 
+  // 1.46.0 : le courrier de réponse se valide dans Clara — seul `true` explicite compte.
+  it("retient le circuit Clara des courriers de réponse, faux au doute", () => {
+    const avecReponse = [
+      { id: "c-1", organization_id: "root-a", category_id: null, name: "Clara", type: "externe",
+        communication_config: { replyLetters: { claraOutbound: true } } },
+      { id: "c-2", organization_id: "root-a", category_id: null, name: "Chaîne", type: "externe",
+        communication_config: { replyLetters: { claraOutbound: "true" } } },
+      { id: "c-3", organization_id: "root-a", category_id: null, name: "Rien", type: "externe" },
+    ];
+    const rows = buildSyncPlan(tenants, orgs, categories, avecReponse).procRows;
+    const via = (id: string) => rows.find((x) => x.socle_id === id)!.reply_via_clara;
+    expect([via("c-1"), via("c-2"), via("c-3")]).toEqual([true, false, false]);
+  });
+
   it("rafraîchit le nom d'affichage du tenant depuis la racine Socle", () => {
     const plan = buildSyncPlan(tenants, orgs, categories, procedures);
     expect(plan.tenantNames).toEqual([{ organizationId: "iris-a", name: "ACCM" }]);

@@ -754,6 +754,29 @@ function describeEvent(
         detail: who,
       };
     }
+    case "clara_reply_submitted": {
+      // Courrier de réponse validé dans Clara — `confirm_clara_reply`.
+      const ref = typeof p.courier_reference === "string" ? p.courier_reference : null;
+      const issue = p.outcome === "resolue_negative" ? "réponse négative" : "réponse positive";
+      return {
+        label: "Courrier de réponse déposé dans Clara pour validation",
+        detail: `${ref ? `courrier ${ref} · ` : ""}${issue} · ${who}`,
+      };
+    }
+    case "clara_reply_sent": {
+      const ref = typeof p.courier_reference === "string" ? p.courier_reference : null;
+      return {
+        label: "Courrier de réponse envoyé par Clara",
+        detail: `${ref ? `courrier ${ref} · ` : ""}la demande prend l'issue choisie au dépôt`,
+      };
+    }
+    case "clara_reply_cancelled": {
+      const ref = typeof p.courier_reference === "string" ? p.courier_reference : null;
+      return {
+        label: "Courrier de réponse abandonné dans Clara",
+        detail: `${ref ? `courrier ${ref} · ` : ""}retour à l'instruction`,
+      };
+    }
     case "resolved_in_batch": {
       // Résolution groupée d'une sélection de la liste — `resolve_requests` (B7).
       const n = typeof p.batch_size === "number" ? p.batch_size : 0;

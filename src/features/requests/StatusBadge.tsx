@@ -1,5 +1,9 @@
 import { cn } from "@/lib/utils";
-import { STATUS_LABELS, type RequestStatus } from "./statuts";
+import { displayStatusLabel, type ReplyValidationState, type RequestStatus } from "./statuts";
+
+/** Sous-état « Réponse en validation » (courrier de réponse attendu chez Clara). */
+const REPLY_STYLE = "bg-warning/15 text-foreground border-warning/40";
+const REPLY_INK = "text-warning";
 
 const STYLES: Record<RequestStatus, string> = {
   a_traiter: "bg-secondary text-secondary-foreground border-transparent",
@@ -22,6 +26,8 @@ const INKS: Record<RequestStatus, string> = {
   archivee: "text-muted-foreground",
 };
 
+const STATUS_KNOWN = new Set(Object.keys(STYLES));
+
 interface Props {
   status: string;
   /** Pastille d'en-tête : plus grande, avec un point de couleur. */
@@ -31,20 +37,24 @@ interface Props {
    * fond — la ligne d'une liste dense (maquette « Liste — en-tête compacté »).
    */
   variant?: "pill" | "dot";
+  /** Sous-état de `en_instruction` : affiché à la place du statut (pas un 8ᵉ statut). */
+  replyState?: ReplyValidationState | null;
 }
 
-export function StatusBadge({ status, size = "sm", variant = "pill" }: Props) {
+export function StatusBadge({ status, size = "sm", variant = "pill", replyState = null }: Props) {
   const code = status as RequestStatus;
+  const inReply = code === "en_instruction" && replyState !== null;
+  const label = STATUS_KNOWN.has(code) ? displayStatusLabel(code, replyState) : status;
   if (variant === "dot") {
     return (
       <span
         className={cn(
           "inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-semibold",
-          INKS[code] ?? "text-foreground",
+          inReply ? REPLY_INK : (INKS[code] ?? "text-foreground"),
         )}
       >
         <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-current" aria-hidden="true" />
-        {STATUS_LABELS[code] ?? status}
+        {label}
       </span>
     );
   }
@@ -53,11 +63,11 @@ export function StatusBadge({ status, size = "sm", variant = "pill" }: Props) {
       className={cn(
         "inline-flex items-center gap-[7px] whitespace-nowrap rounded-full border font-semibold",
         size === "md" ? "px-[11px] py-[5px] text-[11.5px] font-bold" : "px-2.5 py-0.5 text-xs",
-        STYLES[code] ?? "border-input",
+        inReply ? REPLY_STYLE : (STYLES[code] ?? "border-input"),
       )}
     >
       {size === "md" ? <span className="h-1.5 w-1.5 rounded-full bg-current" aria-hidden="true" /> : null}
-      {STATUS_LABELS[code] ?? status}
+      {label}
     </span>
   );
 }

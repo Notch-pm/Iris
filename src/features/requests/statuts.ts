@@ -306,3 +306,52 @@ export function buildTransitionUpdate(
   }
   return { ok: true, update };
 }
+
+// ---------------------------------------------------------------------------
+// Courrier de réponse validé dans Clara (2026-11-12) — miroir de
+// `requests_guard_clara_reply` (migration 20261112135555).
+// ⚠️ PAS un 8ᵉ statut : un SOUS-ÉTAT de `en_instruction`, affiché comme un statut.
+// ---------------------------------------------------------------------------
+
+export type ReplyValidationState = "depot_en_cours" | "en_validation";
+
+/** Ce que l'agent lit à la place de « En cours d'instruction ». */
+export const REPLY_VALIDATION_LABEL = "Réponse en validation";
+
+/** Sous-état lu sur une ligne de demande (colonne `reply_validation_state`), tolérant. */
+export function replyValidationStateOf(row: unknown): ReplyValidationState | null {
+  const value = (row as { reply_validation_state?: unknown } | null)?.reply_validation_state;
+  return value === "depot_en_cours" || value === "en_validation" ? value : null;
+}
+
+/** Libellé affiché du statut : le sous-état prend la place de « En cours d'instruction ». */
+export function displayStatusLabel(status: RequestStatus, replyState: ReplyValidationState | null): string {
+  return status === "en_instruction" && replyState ? REPLY_VALIDATION_LABEL : STATUS_LABELS[status] ?? status;
+}
+
+/**
+ * Transitions encore proposées quand la démarche fait valider ses courriers de
+ * réponse dans Clara :
+ *  - pendant la validation, AUCUNE (la demande se clôt quand Clara signale l'envoi) ;
+ *  - sinon, plus de résolution directe depuis l'instruction — elle passe par
+ *    « Préparer le courrier de réponse » (`canPrepareClaraReply`).
+ */
+export function withClaraReplyCircuit(
+  status: RequestStatus,
+  transitions: TransitionSpec[],
+  circuit: { viaClara: boolean; replyState: ReplyValidationState | null },
+): TransitionSpec[] {
+  if (circuit.replyState) return [];
+  if (!circuit.viaClara || status !== "en_instruction") return transitions;
+  return transitions.filter((t) => t.to !== "resolue_positive" && t.to !== "resolue_negative");
+}
+
+/** Le geste « Préparer le courrier de réponse » : en instruction, circuit actif, droit de clôture. */
+export function canPrepareClaraReply(
+  status: RequestStatus,
+  rr: RequestRights,
+  circuit: { viaClara: boolean; replyState: ReplyValidationState | null },
+): boolean {
+  return status === "en_instruction" && circuit.viaClara && circuit.replyState === null
+    && rr.rights.has("cloture");
+}

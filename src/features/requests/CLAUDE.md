@@ -51,6 +51,9 @@ note interne → résolution avec texte de clôture → journal.
 - [**Demande complexe relayée à Clara**](../../../docs/features/demande-complexe.md)
   (`complexe/`, edge `relay-courrier-clara`) — Iris n'en garde ni ligne ni octet ; un refus de
   Clara dit toujours que **rien n'est parti**.
+- [**Courrier de réponse validé dans Clara**](../../../docs/features/reponse-validation-clara.md)
+  (`instruction/ClaraReplyDialog.tsx`, edge `submit-reply-to-clara`) — sous-état
+  « Réponse en validation » de `en_instruction`, pas un 8ᵉ statut ; l'issue reste dans Iris.
 - [**Liste des demandes**](../../../docs/features/liste-des-demandes.md) (`useRequests.ts`,
   pages, `listing.ts`) — tri serveur, regroupement, export. ⚠️ À l'écran on dit
   **« Organisme »**, les clés restent `destinataire` ; toute route sous une entrée de rail
