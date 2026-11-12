@@ -20,6 +20,12 @@
 // l'exige plus. Sans lui, le message reste complet et se tient tout seul.
 
 import { salutation, quotedSubject, type Recipient } from "./adresse.ts";
+import {
+  SYSTEM_KEYS,
+  composeFromTemplate,
+  presentValues,
+  type SocleSystemTemplate,
+} from "./socleTemplates.ts";
 
 /** Les deux issues qui préviennent l'usager. L'annulation, elle, ne dit rien. */
 export type ClosureOutcome = "resolue_positive" | "resolue_negative";
@@ -93,4 +99,26 @@ export function closureEmail(input: ClosureInput): ClosureEmail {
   if (tenant !== "") lines.push(tenant);
 
   return { subject: CLOSURE_SUBJECTS[input.outcome], body: lines.join("\n") };
+}
+
+/** Le courriel système du Socle qui porte chaque issue. */
+export const CLOSURE_TEMPLATE_KEYS: Record<ClosureOutcome, string> = {
+  resolue_positive: SYSTEM_KEYS.cloturePositive,
+  resolue_negative: SYSTEM_KEYS.clotureNegative,
+};
+
+/**
+ * L'avis composé depuis le texte du SOCLE. Le commentaire de l'agent n'y entre
+ * que par `{{demande.commentaire_cloture}}` ; le motif ne sort toujours pas
+ * (il n'est pas au catalogue des courriels système).
+ */
+export function closureEmailFromTemplate(input: ClosureInput, template: SocleSystemTemplate): ClosureEmail {
+  const values = presentValues({
+    "usager.salutation": salutation(input.recipient),
+    "demande.objet": input.requestSubject,
+    "demande.reference": input.reference,
+    "demande.commentaire_cloture": input.closureText,
+    "organisation.nom": input.tenantName,
+  });
+  return composeFromTemplate(template, values);
 }

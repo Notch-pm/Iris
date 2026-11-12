@@ -101,3 +101,36 @@ describe("drainAccessMails", () => {
     expect(errors.join("\n")).not.toMatch(/usager@example\.org|WXYZ-WXYZ-WX/);
   });
 });
+
+describe("drainAccessMails — texte du Socle", () => {
+  function withSocleText(rows: unknown[]): SupabaseClient {
+    const base = fakeSupabase(rows) as unknown as Record<string, unknown>;
+    const chain = {
+      select: () => chain,
+      eq: () => chain,
+      not: async () => ({
+        data: [{
+          system_key: "code_acces",
+          subject: "Votre code pour {{demande.reference}}",
+          body: "Bonjour,\n\nVoici votre code : {{demande.code_acces}}\n\n{{organisation.nom}}",
+          is_customized: true,
+        }],
+        error: null,
+      }),
+    };
+    return { ...base, from: (table: string) => (table === "socle_email_templates" ? chain : null) } as unknown as SupabaseClient;
+  }
+
+  it("le texte réglé par la collectivité part, code masqué dans l'échange, clair à l'envoi", async () => {
+    await drainAccessMails(withSocleText([ROW]), async () => SMTP, 25);
+    const [start] = called("start_request_access_mail_email");
+    expect(start.params.p_subject).toBe("Votre code pour DEM-2026-000042");
+    expect(String(start.params.p_body)).toBe(`Bonjour,\n\nVoici votre code : ${MASKED_ACCESS_CODE}\n\nVille de Sceaux`);
+    expect(JSON.stringify(sent[0].content)).toContain("Voici votre code : WXYZ-WXYZ-WX");
+  });
+
+  it("miroir illisible : les textes d'origine d'Iris partent", async () => {
+    await drainAccessMails(fakeSupabase([ROW]), async () => SMTP, 25);
+    expect(called("start_request_access_mail_email")[0].params.p_subject).toBe("Votre nouveau code d'accès");
+  });
+});

@@ -2,15 +2,19 @@
 //
 // Un modèle est du TEXTE BRUT (objet + corps) parsemé de variables
 // `{{groupe.cle}}` remplacées, au moment de l'usage, par les informations de la
-// demande et de son usager. Ni HTML, ni PDF : la mise en page d'un pli est le
-// métier de Clara (décision D7, question Q8 restée ouverte).
+// demande et de son usager, et de SECTIONS `{{#cle}}…{{/cle}}` (rendues
+// seulement si la variable a une valeur). Ni HTML, ni PDF : la mise en page
+// d'un pli est le métier de Clara (décision D7, question Q8 restée ouverte).
 //
-// ⚠️ LE CATALOGUE EST UN CONTRAT, et il a un JUMEAU EN BASE
-// (`public.email_template_variables()`). C'est la base qui refuse une variable
-// inconnue — trigger `t03_email_templates_guard_variables` : ce module ne fait
-// que dire la même chose plus tôt, en français, avant d'envoyer une écriture
-// qu'on sait vouée à l'échec. Ajouter une variable ici SANS migration donnerait
-// un écran qui promet ce que le serveur refuse.
+// ⚠️ Depuis le 2026-11-12, les modèles se rédigent dans le SOCLE (décision PO)
+// et LE CATALOGUE EST CELUI DU SOCLE : une liste unique pour la gamme,
+// publiée par `GET /v1/email-templates/variables` (`common`), gardée en base
+// par le Socle, qui REFUSE une variable inconnue. Ses clés sont celles qu'Iris
+// a toujours remplies, plus `usager.salutation`. Ce fichier en est la copie
+// côté Iris : une clé ajoutée au Socle doit l'être ici ET dans
+// `requestTemplateValues` (courriel.ts), sinon elle part vide.
+
+import { renderTemplateText } from "@fn/_shared/email/socleTemplates";
 
 export type VariableGroup = "usager" | "demande" | "agent" | "organisation";
 
@@ -19,7 +23,7 @@ export interface TemplateVariable {
   key: string;
   group: VariableGroup;
   label: string;
-  /** Valeur affichée dans l'aperçu — jamais une vraie donnée. */
+  /** Valeur affichée dans un aperçu — jamais une vraie donnée. */
   sample: string;
   /** Précision affichée dans la liste quand la source mérite un mot. */
   hint?: string;
@@ -33,12 +37,17 @@ export const VARIABLE_GROUP_LABELS: Record<VariableGroup, string> = {
 };
 
 /**
- * Catalogue complet. Chaque entrée correspond à une donnée qu'Iris possède
- * réellement — colonne de `requests`, identité figée dans `requester_snapshot`,
- * ou événement du journal.
+ * Catalogue commun (contrat Socle, même ordre que
+ * `email_template_common_variables()`). Chaque entrée correspond à une donnée
+ * qu'Iris possède réellement — colonne de `requests`, identité figée dans
+ * `requester_snapshot`, ou événement du journal.
  */
 export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   // — Usager : identité retenue au dépôt (requester_snapshot.declared) ------
+  {
+    key: "usager.salutation", group: "usager", label: "Formule d'appel", sample: "Madame Marie Durand",
+    hint: "« Madame Marie Durand », à défaut « Madame, Monsieur »",
+  },
   { key: "usager.civilite", group: "usager", label: "Civilité", sample: "Madame" },
   { key: "usager.prenom", group: "usager", label: "Prénom", sample: "Marie" },
   { key: "usager.nom", group: "usager", label: "Nom", sample: "Durand" },
@@ -79,120 +88,17 @@ export const TEMPLATE_VARIABLES: TemplateVariable[] = [
   { key: "organisation.nom", group: "organisation", label: "Collectivité", sample: "Ville de Saint-Aubin" },
 ];
 
-const VARIABLE_KEYS = new Set(TEMPLATE_VARIABLES.map((v) => v.key));
-
-/** Jumeau exact du motif SQL : `{{groupe.cle}}`, espaces intérieurs tolérés. */
-const VARIABLE_RE = /\{\{\s*([a-z_]+\.[a-z_]+)\s*\}\}/g;
-
-export function isKnownVariable(key: string): boolean {
-  return VARIABLE_KEYS.has(key);
-}
-
-/** Clés citées par un texte, dédoublonnées, dans l'ordre d'apparition. */
-export function parseVariables(text: string): string[] {
-  const out: string[] = [];
-  for (const m of text.matchAll(VARIABLE_RE)) {
-    if (!out.includes(m[1])) out.push(m[1]);
-  }
-  return out;
-}
-
-/** Celles que la base refusera. Vide = le texte peut partir. */
-export function unknownVariables(text: string): string[] {
-  return parseVariables(text).filter((k) => !isKnownVariable(k));
-}
-
 /**
- * Substitution. Une clé absente de `values` devient une chaîne vide plutôt que
- * de laisser le gabarit à nu : mieux vaut une phrase avec un trou qu'un e-mail
- * qui montre `{{usager.nom}}` à un usager.
+ * Substitution. Sections d'abord, puis variables ; une clé absente de
+ * `values` devient une chaîne vide plutôt que de laisser le gabarit à nu :
+ * mieux vaut une phrase avec un trou qu'un e-mail qui montre `{{usager.nom}}`
+ * à un usager. Même moteur que les courriels automatiques (`@fn`).
  *
  * Le texte hors variables est rendu tel quel — c'est du texte brut, aucun
- * échappement n'a de sens ici (et l'échappement HTML se ferait, le jour venu,
- * au moment du rendu de l'e-mail, pas ici).
+ * échappement n'a de sens ici (l'échappement HTML se fait au rendu du courriel).
  */
 export function renderTemplate(text: string, values: Record<string, string>): string {
-  return text.replace(VARIABLE_RE, (_match, key: string) => values[key] ?? "");
-}
-
-/** Valeurs d'exemple de l'aperçu — jamais une vraie demande. */
-export function previewValues(): Record<string, string> {
-  return Object.fromEntries(TEMPLATE_VARIABLES.map((v) => [v.key, v.sample]));
-}
-
-/** Insertion d'une variable à la position du curseur. */
-export function insertVariable(
-  text: string,
-  caret: number,
-  key: string,
-): { text: string; caret: number } {
-  const token = `{{${key}}}`;
-  const at = Math.max(0, Math.min(caret, text.length));
-  return {
-    text: text.slice(0, at) + token + text.slice(at),
-    caret: at + token.length,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Validation du formulaire
-// ---------------------------------------------------------------------------
-
-export interface TemplateDraft {
-  name: string;
-  description: string;
-  subject: string;
-  body: string;
-}
-
-export function emptyDraft(): TemplateDraft {
-  return { name: "", description: "", subject: "", body: "" };
-}
-
-export interface TemplateErrors {
-  name?: string;
-  subject?: string;
-  body?: string;
-}
-
-/** Le libellé d'une variable inconnue, en français, prêt à afficher. */
-function unknownMessage(keys: string[]): string {
-  const liste = keys.map((k) => `{{${k}}}`).join(", ");
-  return keys.length > 1
-    ? `Variables inconnues : ${liste}.`
-    : `Variable inconnue : ${liste}.`;
-}
-
-/**
- * Contrôles côté écran. Ils DOUBLENT la base (contraintes `btrim(...) <> ''`,
- * index unique de nom, garde de variables) — ils ne la remplacent pas : ils
- * évitent un aller-retour serveur et disent pourquoi en français.
- * L'unicité du nom, elle, ne peut être vue qu'au serveur.
- */
-export function validateTemplateDraft(draft: TemplateDraft): TemplateErrors {
-  const errors: TemplateErrors = {};
-
-  if (draft.name.trim() === "") errors.name = "Donnez un nom à ce modèle.";
-
-  if (draft.subject.trim() === "") {
-    errors.subject = "L'objet est obligatoire.";
-  } else {
-    const unknown = unknownVariables(draft.subject);
-    if (unknown.length > 0) errors.subject = unknownMessage(unknown);
-  }
-
-  if (draft.body.trim() === "") {
-    errors.body = "Le corps du message est obligatoire.";
-  } else {
-    const unknown = unknownVariables(draft.body);
-    if (unknown.length > 0) errors.body = unknownMessage(unknown);
-  }
-
-  return errors;
-}
-
-export function hasErrors(errors: TemplateErrors): boolean {
-  return Object.keys(errors).length > 0;
+  return renderTemplateText(text, values);
 }
 
 // ---------------------------------------------------------------------------

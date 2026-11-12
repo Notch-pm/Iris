@@ -28,6 +28,19 @@ couleurs de la collectivité** (§ 4, « Charte graphique de la collectivité »
 
 Tous partagent le gabarit et le serveur d'envoi décrits ci-dessous.
 
+**Le texte des messages à l'usager vient du Socle** (2026-11-12, décision PO) — sauf la
+réponse libre de l'agent. Chaque message correspond à un **courriel système** du Socle
+(`accuse_reception`, `debut_instruction`, `attente_information`, `reprise_instruction`,
+`annulation`, `reouverture`, `cloture_positive`, `cloture_negative`, `nouveau_message`,
+`code_acces`) dont la collectivité règle l'objet et le texte (Socle › Référentiels › Modèles de
+courriels). La synchronisation du référentiel en recopie la version applicable dans
+`socle_email_templates` ; l'envoi la lit (`_shared/email/socleTemplatesStore.ts`), la rend avec
+les données de la demande (`socleTemplates.ts`, sections `{{#cle}}…{{/cle}}`), puis l'habille
+comme avant. **Repli** : sans ligne au miroir (Socle injoignable, tenant jamais synchronisé),
+les textes d'origine d'Iris (`accuse.ts`, `avisUsager.ts`, `cloture.ts`, `codeAcces.ts`)
+partent tels quels. Les modèles que l'agent choisit dans l'onglet Échanges viennent du même
+miroir (`system_key` NULL).
+
 ## 1. Le gabarit
 
 `supabase/functions/_shared/email/` — **modules purs, testés par vitest** (le rendu ne
