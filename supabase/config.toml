@@ -106,3 +106,8 @@ verify_jwt = false
 # fermée, puis relais de serveur à serveur. Iris ne conserve rien.
 [functions.relay-courrier-clara]
 verify_jwt = false
+
+# Courrier de réponse validé dans Clara (2026-11-12) : JWT vérifié en code,
+# gardes métier dans les RPC *_clara_reply, dépôt de serveur à serveur.
+[functions.submit-reply-to-clara]
+verify_jwt = false

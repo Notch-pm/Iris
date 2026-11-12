@@ -47,7 +47,10 @@ s'écrit dans la fiche, jamais ici.** `src/claudeMd.test.ts` tient chaque `CLAUD
   l'instruction — et que toute pièce **obligatoire** ait été qualifiée conforme
   (`t17_requests_require_pieces_conformes`). `en_attente` s'intitule « En attente
   d'information » : c'est là que va une demande dont une pièce est déclarée non conforme.
-  Aucun 8ᵉ statut n'est à créer pour un nouveau besoin d'attente.
+  Aucun 8ᵉ statut n'est à créer pour un nouveau besoin d'attente : la **« Réponse en
+  validation »** (courrier de réponse attendu chez Clara, 2026-11-12) est un SOUS-ÉTAT gardé
+  de `en_instruction`, pas un statut
+  → [`docs/features/reponse-validation-clara.md`](docs/features/reponse-validation-clara.md).
   **Résolution commune des demandes liées** (même incident, décision PO 2026-10-16) : une
   demande « À traiter » se résout avec son groupe sans geste préalable — c'est la RPC
   `resolve_linked_requests` qui l'ENCHAÎNE par l'instruction, la matrice de la garde n'est pas
@@ -247,6 +250,10 @@ les invariants ci-dessus restent la référence.
   [carte](docs/features/carte-des-interventions.md),
   [tableau](docs/features/tableau-des-demandes.md),
   [mobile](docs/features/demandes-mobile.md).
+- **Courrier de réponse validé dans Clara** (edge `submit-reply-to-clara`, route
+  `requests-api` `…/reply-letter/events`) : quand la démarche le demande (Socle 1.46.0), le
+  courrier part dans Clara comme courrier sortant ; Clara signale l'envoi, Iris applique
+  l'issue choisie par l'agent → [`docs/features/reponse-validation-clara.md`](docs/features/reponse-validation-clara.md).
 - **Demande complexe** (`src/features/requests/complexe`, edge `relay-courrier-clara`) :
   relayée à Clara de serveur à serveur, rien n'est stocké, idempotence par `submission_id`
   → [`docs/features/demande-complexe.md`](docs/features/demande-complexe.md).

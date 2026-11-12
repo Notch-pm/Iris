@@ -11,6 +11,7 @@
 import {
   parseProcedureStatus,
   parsePublication,
+  parseReplyViaClara,
   type ProcedureStatus,
 } from "../../_shared/procedures/publication.ts";
 import { parseUserCommunication, type ProcessingTimeUnit } from "../../_shared/procedures/userCommunication.ts";
@@ -75,6 +76,12 @@ export interface ProcCacheRow {
    */
   processing_time_value: number | null;
   processing_time_unit: ProcessingTimeUnit | null;
+  /**
+   * Socle `communication_config.replyLetters.claraOutbound` (1.46.0), BRUT :
+   * le courrier de réponse se valide dans Clara. Sans source `clara` active,
+   * sans effet (`request_reply_via_clara`).
+   */
+  reply_via_clara: boolean;
 }
 
 /** Sous-arbre d'une racine (racine incluse), protégé des cycles. */
@@ -229,6 +236,7 @@ export function buildSyncPlan(
         publication_end: publication.publicationEnd,
         processing_time_value: hasDelay ? delays!.processingTimeValue : null,
         processing_time_unit: hasDelay ? delays!.processingTimeUnit : null,
+        reply_via_clara: parseReplyViaClara(proc.communication_config),
       });
     }
   }

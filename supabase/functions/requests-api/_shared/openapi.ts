@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.11.0";
+export const CONTRACT_VERSION = "2.12.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -293,6 +293,17 @@ const requestResourceSchema = {
     updated_at: { type: "string", format: "date-time" },
     closed_at: { type: "string", format: "date-time", nullable: true },
     url: { type: "string", nullable: true, description: "URL de consultation dans l'app Iris." },
+    reply_validation: {
+      type: "object", nullable: true,
+      description:
+        "Sous-état « Réponse en validation » (2.12.0) : la démarche fait valider ses courriers de réponse " +
+        "dans Clara, et celui de cette demande attend son envoi. Le statut reste `en_instruction` ; `null` hors validation.",
+      properties: {
+        state: { type: "string", enum: ["depot_en_cours", "en_validation"] },
+        clara_courier_id: { type: "string", format: "uuid", nullable: true },
+        clara_courier_reference: { type: "string", nullable: true },
+      },
+    },
   },
 } as const;
 
@@ -449,7 +460,9 @@ export function buildOpenApi(baseUrl: string) {
         "désinscription, champ `notifications` de la vue invitée — ajout additif. **2.11.0 (2026-10)** :",
         "messagerie de l'usager fermée par défaut — champ `replies_open` de la vue usager, 409 sur un",
         "message envoyé messagerie fermée — ajout additif côté lecture ; un portail qui ignorait la règle",
-        "reçoit désormais 409 là où il recevait 201.",
+        "reçoit désormais 409 là où il recevait 201. **2.12.0 (2026-11)** : courrier de réponse validé",
+        "dans Clara — champ `reply_validation` de la demande, `POST /v1/requests/{id}/reply-letter/events`",
+        "(scope `requests:reply_letter`, Clara) — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -776,6 +789,48 @@ export function buildOpenApi(baseUrl: string) {
             "401": err("Authentification requise."),
             "403": err("Scopes requests:read et requests:read_tenant requis."),
             "404": err("Ressource introuvable."),
+          },
+        },
+      },
+      "/v1/requests/{id}/reply-letter/events": {
+        post: {
+          tags: ["Demandes"],
+          summary: "Avis de Clara sur un courrier de réponse",
+          description:
+            "Scope requests:reply_letter — réservé à Clara. Quand la démarche fait valider ses courriers de réponse " +
+            "dans Clara, Iris y dépose le courrier rédigé par l'agent (courrier sortant lié à la demande) et la demande " +
+            "reste `en_instruction` (`reply_validation`). Clara signale ici un FAIT : `sent` (le courrier est parti — la " +
+            "demande prend l'issue choisie par l'agent Iris au dépôt) ou `cancelled` (le courrier est abandonné — retour à " +
+            "l'instruction simple). Rejeu : 200 `already`. 404 hors tenant ; 409 si ce courrier n'est pas celui en attente " +
+            "(inutile de relancer). Toute clé inconnue est refusée (400).",
+          parameters: [{ $ref: "#/components/parameters/TenantHeader" }, { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } }],
+          requestBody: {
+            required: true,
+            content: { "application/json": { schema: {
+              type: "object",
+              required: ["courier_id", "event"],
+              additionalProperties: false,
+              properties: {
+                courier_id: { type: "string", format: "uuid", description: "Le courrier sortant Clara rendu au dépôt." },
+                event: { type: "string", enum: ["sent", "cancelled"] },
+                occurred_at: { type: "string", format: "date-time", nullable: true, description: "Date d'envoi (sent) ; défaut : maintenant." },
+              },
+            } } },
+          },
+          responses: {
+            "200": { description: "Avis appliqué (ou déjà appliqué).", content: { "application/json": { schema: {
+              type: "object",
+              properties: {
+                result: { type: "string", enum: ["finalized", "cancelled", "already"] },
+                status: { type: "string", nullable: true },
+                version: { type: "integer", nullable: true },
+              },
+            } } } },
+            "400": err("Corps invalide."),
+            "401": err("Authentification requise."),
+            "403": err("Scope requests:reply_letter requis (Clara)."),
+            "404": err("Ressource introuvable."),
+            "409": err("Ce courrier n'est pas le courrier de réponse en attente de cette demande."),
           },
         },
       },
