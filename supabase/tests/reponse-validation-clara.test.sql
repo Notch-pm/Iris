@@ -1,5 +1,5 @@
 -- ============================================================================
--- Tests du COURRIER DE RÉPONSE VALIDÉ DANS CLARA (migration 20261112150000).
+-- Tests du COURRIER DE RÉPONSE VALIDÉ DANS CLARA (migration 20261112135555).
 --
 --   C1. Le circuit ne s'applique que si la démarche l'active ET que la source
 --       clara du tenant est active (request_reply_via_clara).

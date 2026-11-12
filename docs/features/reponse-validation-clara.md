@@ -80,7 +80,7 @@ Iris.
 
 ## Déploiement
 
-Migration `20261112150000_reponse_validation_clara.sql` (test
+Migration `20261112135555_reponse_validation_clara.sql` (test
 `supabase/tests/reponse-validation-clara.test.sql`) → `database.types.ts` régénéré →
 `sync-socle-referentiel`, `requests-api`, `submit-reply-to-clara` déployées → secrets
 `CLARA_IRIS_REPLY_URL` (+ `CLARA_IRIS_REPLY_KEY`, repli `CLARA_IRIS_INTAKE_KEY`). Côté Clara :
@@ -89,7 +89,7 @@ démarche est réglée au Socle : rien ne change pour les autres démarches.
 
 ## Code
 
-`supabase/migrations/20261112150000_reponse_validation_clara.sql`,
+`supabase/migrations/20261112135555_reponse_validation_clara.sql`,
 `supabase/functions/_shared/clara/reply.ts` (+ test), `supabase/functions/submit-reply-to-clara/`,
 `supabase/functions/requests-api/index.ts` (`handleReplyLetterEvent`),
 `supabase/functions/_shared/procedures/publication.ts` (`parseReplyViaClara`),

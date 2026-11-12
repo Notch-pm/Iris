@@ -309,7 +309,7 @@ export function buildTransitionUpdate(
 
 // ---------------------------------------------------------------------------
 // Courrier de réponse validé dans Clara (2026-11-12) — miroir de
-// `requests_guard_clara_reply` (migration 20261112150000).
+// `requests_guard_clara_reply` (migration 20261112135555).
 // ⚠️ PAS un 8ᵉ statut : un SOUS-ÉTAT de `en_instruction`, affiché comme un statut.
 // ---------------------------------------------------------------------------
 

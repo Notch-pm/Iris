@@ -19,12 +19,7 @@ export function useReplyViaClara(requestId: string | undefined, enabled = true) 
     enabled: Boolean(requestId) && enabled,
     staleTime: 60_000,
     queryFn: async (): Promise<boolean> => {
-      // ⚠️ RPC absente des types générés tant que la migration 20261112150000
-      // n'est pas appliquée et `database.types.ts` régénéré : appel non typé.
-      const rpc = supabase.rpc as unknown as (
-        fn: string, args: Record<string, unknown>,
-      ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
-      const { data, error } = await rpc("request_reply_via_clara", { p_request_id: requestId });
+      const { data, error } = await supabase.rpc("request_reply_via_clara", { p_request_id: requestId! });
       if (error) throw new Error(error.message);
       return data === true;
     },
