@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  closureOutcome, emptyDocuments, findTemplate, groupTemplates, isMergeable, kindOfTemplate,
+  closureLetterAllowed, closureLetters, closureOutcome, emptyDocuments, findTemplate, groupTemplates, isMergeable, kindOfTemplate,
   parseProcedureDocuments, unmergeableReason, visibleTemplates,
 } from "./templates";
 
@@ -140,5 +140,58 @@ describe("écran et fusion", () => {
     expect(isMergeable("libre.odt")).toBe(false);
     expect(unmergeableReason("libre.odt")).toContain(".odt");
     expect(unmergeableReason("libre.odt")).toContain(".docx");
+  });
+});
+
+describe("courrier de réponse papier à la clôture", () => {
+  const docs = parseProcedureDocuments({
+    ...RAW,
+    items: [
+      ...RAW.items,
+      {
+        id: "d001", name: "Courrier commun", description: null,
+        type: "courrier", group: "courrier", file_name: "commun.docx", visibility: "toujours",
+      },
+      {
+        id: "d002", name: "Ancien courrier", description: null,
+        type: "courrier", group: "courrier", file_name: "ancien.odt", visibility: "toujours",
+      },
+      {
+        id: "d003", name: "Note interne mal rangée", description: null,
+        type: "interne", group: "courrier", file_name: "note.docx", visibility: "toujours",
+      },
+    ],
+  });
+  const names = (items: { name: string }[]) => items.map((i) => i.name);
+
+  it("propose les courriers de l'issue choisie, plus les « toujours »", () => {
+    expect(names(closureLetters(docs, "positive"))).toEqual(["Lettre d'acceptation", "Courrier commun"]);
+    expect(names(closureLetters(docs, "negative"))).toEqual(["Lettre de refus", "Courrier commun"]);
+  });
+
+  it("sans restriction, tous les courriers sont proposés quelle que soit l'issue", () => {
+    const open = { ...docs, restrict_visibility: false };
+    expect(names(closureLetters(open, "negative"))).toEqual([
+      "Lettre d'acceptation", "Lettre de refus", "Courrier commun",
+    ]);
+  });
+
+  it("écarte les documents (non courriers), les internes et les modèles non fusionnables", () => {
+    const all = names(closureLetters({ ...docs, restrict_visibility: false }, "positive"));
+    expect(all).not.toContain("Notice explicative");
+    expect(all).not.toContain("Note interne mal rangée");
+    expect(all).not.toContain("Ancien courrier");
+  });
+
+  it("rien hors d'une issue positive ou négative", () => {
+    expect(closureLetters(docs, null)).toEqual([]);
+  });
+
+  it("garde serveur : courrier visible pour l'issue d'une demande DÉJÀ close", () => {
+    expect(closureLetterAllowed(docs, "a92b", "resolue_positive")).toBe(true);
+    expect(closureLetterAllowed(docs, "a92b", "resolue_negative")).toBe(false);
+    expect(closureLetterAllowed(docs, "c47d", "en_instruction")).toBe(false);
+    expect(closureLetterAllowed(docs, "6f1c", "resolue_positive")).toBe(false);
+    expect(closureLetterAllowed(docs, "inconnu", "resolue_positive")).toBe(false);
   });
 });

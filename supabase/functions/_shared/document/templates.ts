@@ -161,3 +161,43 @@ export function unmergeableReason(fileName: string): string {
   return `Le modèle est au format ${nom} : la fusion ne sait ouvrir que le .docx. ` +
     "Redéposez-le en .docx dans le Référentiel (Enregistrer sous → Document Word).";
 }
+
+// ---------------------------------------------------------------------------
+// Courrier de réponse papier, à la CLÔTURE (2026-11-12)
+//
+// La modale de clôture propose les courriers de la démarche visibles pour
+// l'issue CHOISIE (pas pour le statut courant, qui n'est pas encore clos), et
+// seulement ceux que la fusion sait ouvrir. Un document INTERNE n'y figure
+// jamais, même mal rangé : il ne quitte pas Iris.
+// ---------------------------------------------------------------------------
+
+function isClosureLetter(item: DocumentTemplate): boolean {
+  return item.group === "courrier" && item.type !== "interne";
+}
+
+/** Les courriers proposés à la clôture pour une issue donnée. */
+export function closureLetters(
+  documents: ProcedureDocuments,
+  outcome: ClosureOutcome,
+): DocumentTemplate[] {
+  if (outcome === null) return [];
+  return visibleTemplates(documents, outcome)
+    .filter(isClosureLetter)
+    .filter((item) => isMergeable(item.file_name));
+}
+
+/**
+ * Garde SERVEUR du chemin « clôture » de `generate-request-document` : le droit
+ * de clôture suffit pour générer CE courrier — un courrier de la démarche,
+ * fusionnable, visible pour l'issue d'une demande DÉJÀ close. Hors de ce cas,
+ * la génération reste réservée au droit d'instruction.
+ */
+export function closureLetterAllowed(
+  documents: ProcedureDocuments,
+  templateId: string,
+  status: string,
+): boolean {
+  const outcome = closureOutcome(status);
+  if (outcome === null) return false;
+  return closureLetters(documents, outcome).some((item) => item.id === templateId);
+}

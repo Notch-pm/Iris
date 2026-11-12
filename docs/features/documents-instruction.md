@@ -74,6 +74,24 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     - **Le Socle ne convertit rien** : il rend le fichier tel qu'il a été déposé (`.doc`,
       `.docx`, `.odt`). La fusion ne sait ouvrir qu'un `.docx` — le refus est explicite et dit
       quoi faire (`unmergeableReason`), à l'écran comme au serveur.
+  - **Courrier de réponse papier à la clôture** (2026-11-12) : la modale de clôture (fiche
+    `TransitionDialog`, mobile `MobileStatusSheet` — pas le tableau, qui garde une clôture
+    rapide) propose l'interrupteur « Générer un courrier de réponse papier », puis le choix du
+    courrier et du format (PDF / Word). `ClosureLetterSection`, état contrôlé par le dialogue.
+    - **La liste** = `closureLetters(documents, issue CHOISIE)` (`templates.ts`) : les courriers
+      visibles pour cette issue (« toujours » + positive ou négative, après
+      `restrict_visibility`), fusionnables, **jamais un document interne**. Aucun courrier prévu
+      ⇒ pas d'interrupteur, une phrase le dit.
+    - ⚠️ **La génération SUIT la clôture, sans la conditionner** (`useClosureLetter`, fiche et
+      mobile, même hook) : elle vient après pour que `demande.etat_cloture` et
+      `demande.date_cloture` soient remplies ; un échec laisse la demande close et renvoie à
+      l'onglet Documents.
+    - ⚠️ **Bloqueur de fenêtres** : l'onglet d'un PDF est réservé **au clic**
+      (`reserveLetterTab`, dans le gestionnaire de soumission du dialogue), puis reçoit l'URL
+      signée ; il se referme si la clôture ou la génération échoue. Un Word se télécharge.
+    - **Droit** : `generate-request-document` accepte le droit de **clôture** à la place de
+      l'instruction pour CE seul cas — `closureLetterAllowed` : un courrier de la démarche,
+      visible pour l'issue d'une demande déjà close, vérifié sur la démarche RECHARGÉE.
   - Tests : `docxMerge.test.ts`, `docxParse.test.ts`, `pdfLayout.test.ts`, `context.test.ts`,
     `templates.test.ts` (78 cas, modules purs — dont le piège `restrict_visibility`) + `documents.test.ts` côté écran + le test SQL transactionnel
     `supabase/tests/documents-instruction.test.sql` (14 assertions, dont les trois niveaux de

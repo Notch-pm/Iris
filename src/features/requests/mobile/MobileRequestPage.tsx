@@ -36,6 +36,8 @@ import { cn } from "@/lib/utils";
 import { googleMapsDirectionsUrl } from "@/lib/carto";
 import { closureNoticeApplies } from "@fn/_shared/email/cloture";
 import { useTransitionRunner, type TransitionInput } from "../TransitionActions";
+import { useClosureLetter } from "../instruction/useClosureLetter";
+import { useProcedureDocuments } from "../procedure/useProcedureKnowledge";
 import {
   allowedTransitionsFor, canProcessWith, canWriteWith, PRIORITY_LABELS, STATUS_LABELS,
   type RequestRights, type RequestStatus, type TransitionSpec,
@@ -137,6 +139,8 @@ export function MobileRequestPage() {
     flash, onFailure: setError,
   });
   const groupAfter = groupResolution.after;
+  // Courrier de réponse papier choisi à la clôture — même suite qu'au bureau.
+  const closureLetterAfter = useClosureLetter({ flash, onFailure: setError });
   const onTransitionDone = React.useCallback(
     (spec: TransitionSpec, input: TransitionInput) => {
       setStatusOpen(false);
@@ -149,14 +153,22 @@ export function MobileRequestPage() {
       }
       closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`);
       void groupAfter(spec, input);
+      if (input.letter && id) void closureLetterAfter(id, input.letter);
     },
-    [closureNoticeAfter, groupAfter, id, r, addMessage, session],
+    [closureNoticeAfter, groupAfter, closureLetterAfter, id, r, addMessage, session],
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
     assignedTo: r?.assigned_to ?? null,
     onDone: onTransitionDone,
   });
+  // Courriers de la démarche pour la feuille Statut : chargés à son ouverture
+  // (la transition se choisit DANS la feuille ; même cache que le bureau).
+  const closureLetterDocs = useProcedureDocuments(
+    r?.organization_id ?? "",
+    r?.socle_procedure_id ?? null,
+    statusOpen,
+  );
   // À chaque ouverture de la feuille : demandes liées recochées, personne prévenu.
   const resetGroup = groupResolution.reset;
   React.useEffect(() => {
@@ -696,6 +708,11 @@ export function MobileRequestPage() {
         closureNotice={closureNoticeApplies(r?.source)}
         onSubmit={submitStatus}
         extra={groupResolution.section}
+        letterSource={{
+          documents: closureLetterDocs.data,
+          loading: closureLetterDocs.isLoading,
+          error: closureLetterDocs.isError,
+        }}
       />
 
       <MobileEcrireSheet
