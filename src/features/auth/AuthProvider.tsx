@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Session } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { ssoLogoutRedirect } from "@/features/auth/sso";
 import { forgetDevicePush } from "@/features/notifications/usePushSubscription";
 import type { Tables } from "@/types/database.types";
 
@@ -80,7 +81,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Poste partagé : cet appareil ne doit pas continuer à recevoir les
     // notifications push du titulaire qui s'en va. Best effort, jamais bloquant.
     try { await forgetDevicePush(); } catch { /* ignoré */ }
+    // Déconnexion unique : on ferme aussi la session Keycloak (voir sso.ts).
+    const { data } = await supabase.auth.getSession();
+    const keycloakLogout = ssoLogoutRedirect(data.session?.user, "iris", window.location.origin, "/login");
     await supabase.auth.signOut();
+    if (keycloakLogout) window.location.assign(keycloakLogout);
   }, []);
 
   // ⚠️ Volontairement SANS setLoading : passer `loading` à true ferait
