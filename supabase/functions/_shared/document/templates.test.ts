@@ -160,6 +160,10 @@ describe("courrier de réponse papier à la clôture", () => {
         id: "d003", name: "Note interne mal rangée", description: null,
         type: "interne", group: "courrier", file_name: "note.docx", visibility: "toujours",
       },
+      {
+        id: "d004", name: "Document externe mal rangé", description: null,
+        type: "externe", group: "courrier", file_name: "externe.docx", visibility: "toujours",
+      },
     ],
   });
   const names = (items: { name: string }[]) => items.map((i) => i.name);
@@ -180,6 +184,7 @@ describe("courrier de réponse papier à la clôture", () => {
     const all = names(closureLetters({ ...docs, restrict_visibility: false }, "positive"));
     expect(all).not.toContain("Notice explicative");
     expect(all).not.toContain("Note interne mal rangée");
+    expect(all).not.toContain("Document externe mal rangé");
     expect(all).not.toContain("Ancien courrier");
   });
 
@@ -192,6 +197,9 @@ describe("courrier de réponse papier à la clôture", () => {
     expect(closureLetterAllowed(docs, "a92b", "resolue_negative")).toBe(false);
     expect(closureLetterAllowed(docs, "c47d", "en_instruction")).toBe(false);
     expect(closureLetterAllowed(docs, "6f1c", "resolue_positive")).toBe(false);
+    // Un externe rangé parmi les courriers serait enregistré `instruction_externe` :
+    // le droit de clôture ne l'ouvre pas.
+    expect(closureLetterAllowed(docs, "d004", "resolue_positive")).toBe(false);
     expect(closureLetterAllowed(docs, "inconnu", "resolue_positive")).toBe(false);
   });
 });
