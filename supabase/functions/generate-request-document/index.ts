@@ -24,6 +24,10 @@
 //
 // Droit exigé : **INSTRUCTION** sur le couple (organisation porteuse, démarche)
 // — le même que celui qui autorise déjà à déposer une pièce sur la demande.
+// Seule exception (2026-11-12) : le droit de **CLÔTURE** suffit pour le
+// courrier de réponse papier proposé dans la modale de clôture — un courrier de
+// la démarche visible pour l'issue d'une demande déjà close
+// (`closureLetterAllowed`).
 //
 // ⚠️ LE MODÈLE VIENT DU SOCLE, PAS DU NAVIGATEUR (contrat public-api 1.6.0,
 // brief du 2026-09-01). Le client n'envoie qu'un `template_id` ; le serveur
@@ -44,7 +48,7 @@ import { parseDocument } from "../_shared/document/docxParse.ts";
 import { isDocx, openDocx, readXml, saveDocx, textParts, writeXml } from "../_shared/document/docxZip.ts";
 import { renderPdf } from "../_shared/document/pdfRender.ts";
 import {
-  findTemplate, isMergeable, kindOfTemplate, parseProcedureDocuments, unmergeableReason,
+  closureLetterAllowed, findTemplate, isMergeable, kindOfTemplate, parseProcedureDocuments, unmergeableReason,
 } from "../_shared/document/templates.ts";
 import { buildMergeContext } from "../_shared/document/variables.ts";
 import { charteFromSocle, type SocleBrandingDto } from "../_shared/email/charte.ts";
@@ -228,18 +232,34 @@ Deno.serve(async (req) => {
     return fail(req, 409, "archived", "Cette demande est archivée : aucun document ne s'y ajoute.");
   }
 
-  const { data: allowed, error: rightError } = await supabase.rpc("request_right_for", {
-    p_user_id: actorId,
-    p_org_id: request.organization_id,
-    p_socle_org_id: request.socle_scope_org_id,
-    p_socle_procedure_id: request.socle_procedure_id,
-    p_right: "instruction",
-  });
-  if (rightError) {
-    console.error("generate-request-document: request_right_for en échec", rightError);
+  // Deux portes (2026-11-12) : le droit d'INSTRUCTION ouvre toute la
+  // génération ; le droit de CLÔTURE n'ouvre que le courrier de réponse
+  // papier d'une demande close (`closureLetterAllowed`, vérifié plus bas sur la
+  // démarche RECHARGÉE) — même logique que l'avis de clôture par courriel.
+  const rightFor = (right: "instruction" | "cloture") =>
+    supabase.rpc("request_right_for", {
+      p_user_id: actorId,
+      p_org_id: request.organization_id,
+      p_socle_org_id: request.socle_scope_org_id,
+      p_socle_procedure_id: request.socle_procedure_id,
+      p_right: right,
+    });
+  const instruction = await rightFor("instruction");
+  if (instruction.error) {
+    console.error("generate-request-document: request_right_for en échec", instruction.error);
     return fail(req, 500, "rights_unavailable", "Droits indisponibles — réessayez.");
   }
-  if (allowed !== true) {
+  const canInstruct = instruction.data === true;
+  let canCloseOnly = false;
+  if (!canInstruct) {
+    const cloture = await rightFor("cloture");
+    if (cloture.error) {
+      console.error("generate-request-document: request_right_for en échec", cloture.error);
+      return fail(req, 500, "rights_unavailable", "Droits indisponibles — réessayez.");
+    }
+    canCloseOnly = cloture.data === true;
+  }
+  if (!canInstruct && !canCloseOnly) {
     return fail(req, 403, "forbidden", "Produire un document exige le droit d'instruction sur cette demande.");
   }
 
@@ -257,6 +277,10 @@ Deno.serve(async (req) => {
       "Le référentiel est injoignable : les modèles de la démarche n'ont pas pu être lus.");
   }
   const documents = parseProcedureDocuments(procedureDto.documents);
+  if (!canInstruct && !closureLetterAllowed(documents, templateId, request.status)) {
+    return fail(req, 403, "forbidden",
+      "Avec le droit de clôture, seul un courrier de réponse prévu pour l'issue de cette demande close peut être produit.");
+  }
   const template = findTemplate(documents, templateId);
   if (!template) {
     // Même réponse qu'un modèle inexistant : on ne révèle pas ce qui existe

@@ -24,7 +24,10 @@ import { hasRight, isAdminOn, rightsFor } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { closureNoticeApplies } from "@fn/_shared/email/cloture";
-import { TransitionDialog, useTransitionRunner, type TransitionInput } from "./TransitionActions";
+import {
+  TransitionDialog, offersClosureLetter, useTransitionRunner, type TransitionInput,
+} from "./TransitionActions";
+import { useClosureLetter } from "./instruction/useClosureLetter";
 import { useGroupResolution } from "@/features/linking/GroupResolution";
 import {
   allowedTransitionsFor, canAdminWith, canProcessWith, canWriteWith, isFinal, STATUS_LABELS,
@@ -258,18 +261,29 @@ export function RequestDetailPage() {
     orgId, requestId: id ?? "", procedureId: r?.socle_procedure_id ?? null, flash, onFailure: setError,
   });
   const groupAfter = groupResolution.after;
+  // Le courrier de réponse papier choisi à la clôture — APRÈS la transition,
+  // sans la conditionner (même suite que le mobile).
+  const closureLetterAfter = useClosureLetter({ flash, onFailure: setError });
   const onTransitionDone = React.useCallback(
     (spec: TransitionSpec, input: TransitionInput) => {
       closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`);
       void groupAfter(spec, input);
+      if (input.letter && id) void closureLetterAfter(id, input.letter);
     },
-    [closureNoticeAfter, groupAfter, id, r?.source],
+    [closureNoticeAfter, groupAfter, closureLetterAfter, id, r?.source],
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
     assignedTo: r?.assigned_to ?? null,
     onDone: onTransitionDone,
   });
+  // Courriers de la démarche pour la modale de clôture : chargés seulement à
+  // l'ouverture d'une clôture (même cache que l'onglet Documents).
+  const closureLetterDocs = useProcedureDocuments(
+    r?.organization_id ?? "",
+    r?.socle_procedure_id ?? null,
+    offersClosureLetter(runner.active),
+  );
   // À chaque ouverture du dialogue : toutes les demandes liées recochées,
   // personne prévenu tant que l'agent ne l'a pas décidé.
   const resetGroup = groupResolution.reset;
@@ -1100,6 +1114,11 @@ export function RequestDetailPage() {
         members={eligibleMembers}
         closureNotice={closureNotice}
         extra={groupResolution.section}
+        letterSource={{
+          documents: closureLetterDocs.data,
+          loading: closureLetterDocs.isLoading,
+          error: closureLetterDocs.isError,
+        }}
       />
 
       <CitizenVisibilityDialog
