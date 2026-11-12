@@ -6,7 +6,8 @@ export const REQUEST_SELECT =
   "id, reference, status, version, source, external_ref, organization_id, " +
   "socle_root_org_id, socle_organization_id, socle_procedure_id, socle_contact_id, " +
   "subject, priority, closure_motif, closure_text, " +
-  "received_at, created_at, updated_at, closed_at, ingest_fingerprint, idempotency_key";
+  "received_at, created_at, updated_at, closed_at, ingest_fingerprint, idempotency_key, " +
+  "reply_validation_state, clara_courier_id, clara_courier_reference";
 
 export interface SerializedRequest {
   id: string;
@@ -28,6 +29,15 @@ export interface SerializedRequest {
   updated_at: string;
   closed_at: string | null;
   url: string | null;
+  /**
+   * Sous-état « Réponse en validation » (2.12.0) : le courrier de réponse attend
+   * son envoi dans Clara. `null` hors validation. Le statut reste `en_instruction`.
+   */
+  reply_validation: {
+    state: "depot_en_cours" | "en_validation";
+    clara_courier_id: string | null;
+    clara_courier_reference: string | null;
+  } | null;
 }
 
 // deno-lint-ignore no-explicit-any
@@ -52,5 +62,12 @@ export function serializeRequest(row: any, appUrl: string | null): SerializedReq
     updated_at: row.updated_at,
     closed_at: row.closed_at ?? null,
     url: appUrl ? `${appUrl.replace(/\/+$/, "")}/demandes/${row.id}` : null,
+    reply_validation: row.reply_validation_state
+      ? {
+        state: row.reply_validation_state,
+        clara_courier_id: row.clara_courier_id ?? null,
+        clara_courier_reference: row.clara_courier_reference ?? null,
+      }
+      : null,
   };
 }

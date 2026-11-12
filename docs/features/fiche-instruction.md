@@ -32,7 +32,8 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
   via `useUpdatePriority`, agent instructeur via `useAssignRequest`, **organisme responsable**
   via `useTransferRequest` — voir « Transfert d'organisme » plus bas),
   avancement (`buildStages` : étapes datées d'après le journal, attente « sautée », clôture
-  avec motif ; bouton d'action principale), usager (`requesterView` : identité normalisée
+  avec motif ; bouton d'action principale ; la modale de clôture propose le **courrier de
+  réponse papier** de la démarche — voir [documents](documents-instruction.md)), usager (`requesterView` : identité normalisée
   quelle que soit l'origine — contacts-api, publics Iris, clés partenaires conservées en
   clair —, **relue dans le Socle** quand la demande y est rattachée, correction sur place,
   autres demandes du même usager Socle via `useRequesterRequests`).

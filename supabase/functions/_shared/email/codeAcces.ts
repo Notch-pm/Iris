@@ -11,6 +11,12 @@
 
 import { MASKED_ACCESS_CODE } from "../access/accessCode.ts";
 import { quotedSubject } from "./adresse.ts";
+import {
+  PORTAL_TRACKING_FALLBACK,
+  composeFromTemplate,
+  presentValues,
+  type SocleSystemTemplate,
+} from "./socleTemplates.ts";
 
 /** Objet FIGÉ : l'agent doit reconnaître le message dans l'onglet Échanges. */
 export const ACCESS_CODE_SUBJECT = "Votre nouveau code d'accès";
@@ -53,4 +59,22 @@ export function accessCodeEmail(input: AccessCodeEmailInput): { subject: string;
   lines.push("Cordialement,");
   if (tenant !== "") lines.push(tenant);
   return { subject: ACCESS_CODE_SUBJECT, body: lines.join("\n") };
+}
+
+/**
+ * Le message composé depuis le texte du SOCLE (courriel système `code_acces`).
+ * Le code n'y figure que MASQUÉ ; `revealAccessCode` met le clair à l'envoi.
+ */
+export function accessCodeEmailFromTemplate(
+  input: AccessCodeEmailInput,
+  template: SocleSystemTemplate,
+): { subject: string; body: string } {
+  const values = presentValues({
+    "demande.objet": input.requestSubject,
+    "demande.reference": input.reference,
+    "demande.code_acces": MASKED_ACCESS_CODE,
+    "demande.lien": input.trackingUrl ?? PORTAL_TRACKING_FALLBACK,
+    "organisation.nom": input.tenantName,
+  });
+  return composeFromTemplate(template, values);
 }

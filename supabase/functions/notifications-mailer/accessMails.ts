@@ -15,7 +15,9 @@ import type { SmtpConfig } from "../_shared/email/config.ts";
 import { sendBrandedEmail } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
 import { revealAccessCode } from "../_shared/email/accuse.ts";
-import { accessCodeEmail } from "../_shared/email/codeAcces.ts";
+import { accessCodeEmail, accessCodeEmailFromTemplate } from "../_shared/email/codeAcces.ts";
+import { SYSTEM_KEYS, type SystemTemplates } from "../_shared/email/socleTemplates.ts";
+import { loadSystemTemplates } from "../_shared/email/socleTemplatesStore.ts";
 import { charteFor } from "../_shared/email/socleUsager.ts";
 
 const LOG = "[mailer:code]";
@@ -52,6 +54,8 @@ export async function drainAccessMails(
   batch: number,
 ): Promise<AccessMailCounters> {
   const counters: AccessMailCounters = { claimed: 0, sent: 0, skipped: 0, failed: 0 };
+  // Textes du Socle, une lecture par tenant et par passage.
+  const templateCache = new Map<string, SystemTemplates>();
   const { data, error } = await supabase.rpc("claim_request_access_mails", { p_limit: batch });
   if (error) {
     console.error(`${LOG} claim : ${error.message}`);
@@ -90,13 +94,17 @@ export async function drainAccessMails(
     let subject = row.email_subject ?? "";
     let body = row.email_body ?? "";
     if (!row.email_id) {
-      const composed = accessCodeEmail({
+      const input = {
         reference: row.reference,
         requestSubject: row.subject,
         trackingUrl: row.tracking_url,
         tenantName: row.organization_name,
         reason: row.reason,
-      });
+      };
+      // Le texte de la collectivité (Socle) s'il est là, sinon celui d'Iris.
+      const template = (await loadSystemTemplates(supabase, row.organization_id, LOG, templateCache))
+        .get(SYSTEM_KEYS.codeAcces);
+      const composed = template ? accessCodeEmailFromTemplate(input, template) : accessCodeEmail(input);
       subject = composed.subject;
       body = composed.body;
       const { data: emailId, error: startError } = await supabase.rpc("start_request_access_mail_email", {

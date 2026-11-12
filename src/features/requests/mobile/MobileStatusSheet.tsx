@@ -21,7 +21,16 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { MobileSheet } from "@/components/layout/mobile/MobilePage";
 import { cn } from "@/lib/utils";
-import { NO_CLOSURE_NOTICE, type TransitionDialogRunner, type TransitionInput } from "../TransitionActions";
+import {
+  NO_CLOSURE_NOTICE, offersClosureLetter,
+  type ClosureLetterSource, type TransitionDialogRunner, type TransitionInput,
+} from "../TransitionActions";
+import { closureLetters, closureOutcome } from "@fn/_shared/document/templates";
+import {
+  ClosureLetterSection, closureLetterChoice, closureLetterReady, emptyClosureLetter,
+  type ClosureLetterDraft,
+} from "../instruction/ClosureLetterSection";
+import { reserveLetterTab } from "../instruction/useClosureLetter";
 import {
   MOTIF_LABELS, STATUS_LABELS, type ClosureMotif, type RequestStatus, type TransitionSpec,
 } from "../statuts";
@@ -43,11 +52,13 @@ interface Props {
   closureNotice: boolean;
   /** Section supplémentaire pour la transition choisie (résolution commune des demandes liées). */
   extra?: (spec: TransitionSpec) => React.ReactNode;
+  /** Courriers de la démarche : section « courrier de réponse papier » à la clôture (comme au bureau). */
+  letterSource?: ClosureLetterSource;
 }
 
 export function MobileStatusSheet({
   open, onOpenChange, status, transitions, members, runner, organizationName, piecesBlocking, onSubmit,
-  closureNotice, extra,
+  closureNotice, extra, letterSource,
 }: Props) {
   const [selectedTo, setSelectedTo] = React.useState<RequestStatus | "">("");
   const [assigneeId, setAssigneeId] = React.useState("");
@@ -55,6 +66,7 @@ export function MobileStatusSheet({
   const [closureText, setClosureText] = React.useState("");
   const [note, setNote] = React.useState("");
   const [submitted, setSubmitted] = React.useState(false);
+  const [letter, setLetter] = React.useState<ClosureLetterDraft>(emptyClosureLetter);
 
   React.useEffect(() => {
     if (open) {
@@ -64,12 +76,20 @@ export function MobileStatusSheet({
       setClosureText("");
       setNote("");
       setSubmitted(false);
+      setLetter(emptyClosureLetter());
     }
   }, [open]);
 
   const selectedSpec = transitions.find((t) => t.to === selectedTo) ?? null;
   const blocked = selectedSpec?.to === "resolue_positive" && status === "en_instruction" ? piecesBlocking : null;
   const currentLabel = STATUS_LABELS[status] ?? status;
+  const showsLetter = letterSource !== undefined && offersClosureLetter(selectedSpec);
+  const letters = React.useMemo(
+    () => (showsLetter && selectedSpec && letterSource?.documents
+      ? closureLetters(letterSource.documents, closureOutcome(selectedSpec.to))
+      : []),
+    [showsLetter, selectedSpec, letterSource?.documents],
+  );
 
   function selectTransition(to: RequestStatus) {
     setSelectedTo(to);
@@ -77,6 +97,7 @@ export function MobileStatusSheet({
     setMotif("");
     setClosureText("");
     setSubmitted(false);
+    setLetter(emptyClosureLetter());
   }
 
   function trySubmit() {
@@ -84,12 +105,16 @@ export function MobileStatusSheet({
     if (!selectedSpec || blocked || runner.pending) return;
     if (selectedSpec.needsAssignee && !assigneeId) return;
     if (selectedSpec.motifChoices && selectedSpec.motifChoices.length > 0 && selectedSpec.motifRequired && !motif) return;
+    if (showsLetter && !closureLetterReady(letter)) return;
+    const choice = showsLetter ? closureLetterChoice(letter) : undefined;
     onSubmit(
       selectedSpec,
       {
         assigneeId: selectedSpec.needsAssignee ? assigneeId : undefined,
         motif: motif === "" ? undefined : motif,
         closureText: closureText.trim() === "" ? undefined : closureText,
+        // L'onglet d'un PDF se réserve ICI, pendant le geste de l'agent.
+        letter: choice ? { ...choice, tab: reserveLetterTab(choice.format) } : undefined,
       },
       note,
     );
@@ -109,7 +134,7 @@ export function MobileStatusSheet({
             type="button"
             size="lg"
             className="h-12 w-full rounded-[14px] text-base"
-            disabled={!selectedSpec || Boolean(blocked) || runner.pending}
+            disabled={!selectedSpec || Boolean(blocked) || runner.pending || (showsLetter && !closureLetterReady(letter))}
             onClick={trySubmit}
           >
             {runner.pending ? "Application…" : "Valider le changement"}
@@ -203,6 +228,17 @@ export function MobileStatusSheet({
       <Field label="Note interne" htmlFor="mst-note" hint="Facultatif — non visible par l'usager">
         <Textarea id="mst-note" value={note} onChange={(e) => setNote(e.target.value)} />
       </Field>
+
+      {showsLetter && letterSource ? (
+        <ClosureLetterSection
+          idPrefix="mst"
+          letters={letters}
+          loading={letterSource.loading}
+          error={letterSource.error}
+          value={letter}
+          onChange={setLetter}
+        />
+      ) : null}
 
       {selectedSpec && extra ? extra(selectedSpec) : null}
 

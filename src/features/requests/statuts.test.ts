@@ -201,3 +201,46 @@ describe("canWriteWith / canProcessWith / canAdminWith", () => {
     expect(canAdminWith({ rights: new Set(["consultation", "cloture"]), isAdmin: false })).toBe(false);
   });
 });
+
+describe("courrier de réponse validé dans Clara — miroir de requests_guard_clara_reply", () => {
+  const all = { rights: new Set<Right>(["consultation", "creation", "instruction", "cloture"]), isAdmin: false };
+  const sansCloture = { rights: new Set<Right>(["consultation", "instruction"]), isAdmin: false };
+
+  it("retire la résolution directe en instruction quand le circuit est actif", async () => {
+    const { allowedTransitionsFor, withClaraReplyCircuit } = await import("./statuts");
+    const base = allowedTransitionsFor("en_instruction", all);
+    const kept = withClaraReplyCircuit("en_instruction", base, { viaClara: true, replyState: null }).map((t) => t.to);
+    expect(kept).not.toContain("resolue_positive");
+    expect(kept).not.toContain("resolue_negative");
+    expect(kept).toContain("annulee");
+    expect(withClaraReplyCircuit("en_instruction", base, { viaClara: false, replyState: null })).toEqual(base);
+    // « À traiter » garde sa clôture irrecevable / réorientation : ce n'est pas une réponse.
+    const aTraiter = allowedTransitionsFor("a_traiter", all);
+    expect(withClaraReplyCircuit("a_traiter", aTraiter, { viaClara: true, replyState: null })).toEqual(aTraiter);
+  });
+
+  it("ne propose plus rien pendant la validation", async () => {
+    const { allowedTransitionsFor, withClaraReplyCircuit } = await import("./statuts");
+    const base = allowedTransitionsFor("en_instruction", all);
+    expect(withClaraReplyCircuit("en_instruction", base, { viaClara: true, replyState: "en_validation" })).toEqual([]);
+  });
+
+  it("le geste exige l'instruction en cours, le circuit, aucun dépôt en cours et le droit de clôture", async () => {
+    const { canPrepareClaraReply } = await import("./statuts");
+    const on = { viaClara: true, replyState: null };
+    expect(canPrepareClaraReply("en_instruction", all, on)).toBe(true);
+    expect(canPrepareClaraReply("en_instruction", sansCloture, on)).toBe(false);
+    expect(canPrepareClaraReply("en_attente", all, on)).toBe(false);
+    expect(canPrepareClaraReply("en_instruction", all, { viaClara: false, replyState: null })).toBe(false);
+    expect(canPrepareClaraReply("en_instruction", all, { viaClara: true, replyState: "depot_en_cours" })).toBe(false);
+  });
+
+  it("affiche le sous-état à la place d'« En cours d'instruction »", async () => {
+    const { displayStatusLabel, replyValidationStateOf } = await import("./statuts");
+    expect(displayStatusLabel("en_instruction", "en_validation")).toBe("Réponse en validation");
+    expect(displayStatusLabel("en_instruction", null)).toBe("En cours d'instruction");
+    expect(replyValidationStateOf({ reply_validation_state: "en_validation" })).toBe("en_validation");
+    expect(replyValidationStateOf({ reply_validation_state: "autre" })).toBeNull();
+    expect(replyValidationStateOf(null)).toBeNull();
+  });
+});

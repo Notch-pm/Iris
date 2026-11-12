@@ -18,6 +18,12 @@
 
 import { salutation, quotedSubject, type Recipient } from "./adresse.ts";
 import { MASKED_ACCESS_CODE } from "../access/accessCode.ts";
+import {
+  PORTAL_TRACKING_FALLBACK,
+  composeFromTemplate,
+  presentValues,
+  type SocleSystemTemplate,
+} from "./socleTemplates.ts";
 
 /** Objet FIGÉ : l'agent doit pouvoir reconnaître le message dans l'onglet Échanges. */
 export const RECEIPT_SUBJECT = "Nous avons bien reçu votre demande";
@@ -103,4 +109,25 @@ export function receiptEmail(input: ReceiptInput): ReceiptEmail {
  */
 export function revealAccessCode(body: string, code: string | null): string {
   return code ? body.replace(MASKED_ACCESS_CODE, code) : body;
+}
+
+/**
+ * L'accusé composé depuis le texte du SOCLE (courriel système
+ * `accuse_reception`). Mêmes données que `receiptEmail`, mêmes règles : le code
+ * n'y figure que MASQUÉ (et seulement si le suivi en ligne a été accepté), la
+ * clé d'une valeur absente est omise. Sans modèle, l'appelant garde
+ * `receiptEmail`.
+ */
+export function receiptEmailFromTemplate(input: ReceiptInput, template: SocleSystemTemplate): ReceiptEmail {
+  const values = presentValues({
+    "usager.salutation": salutation(input.recipient),
+    "demande.objet": input.requestSubject,
+    "demande.reference": input.reference,
+    "demande.date_depot": depositDay(input.receivedAt),
+    "demande.destinataire": input.organisme,
+    "demande.lien": input.access ? (input.access.trackingUrl ?? PORTAL_TRACKING_FALLBACK) : null,
+    "demande.code_acces": input.access ? MASKED_ACCESS_CODE : null,
+    "organisation.nom": input.tenantName,
+  });
+  return composeFromTemplate(template, values);
 }

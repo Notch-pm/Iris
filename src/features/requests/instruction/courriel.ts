@@ -14,6 +14,7 @@
 // d'interface glissé dans un courrier.
 
 import type { Tables } from "@/types/database.types";
+import { salutation } from "@fn/_shared/email/adresse";
 import { MOTIF_LABELS, PRIORITY_LABELS, STATUS_LABELS, type ClosureMotif } from "../statuts";
 import {
   channelLabel,
@@ -78,6 +79,16 @@ export function requestTemplateValues(input: TemplateValuesInput): Record<string
   };
 
   // — Usager : l'identité FIGÉE au dépôt, jamais une relecture du Socle -------
+  // La formule d'appel des courriels à l'usager (« Madame Marie Durand », à
+  // défaut « Madame, Monsieur ») : le MÊME helper que les courriels
+  // automatiques, pour qu'Iris salue partout dans les mêmes termes.
+  // Rien pour un dépôt anonyme : le groupe usager reste vide (trou visible).
+  if (identity.known || identity.civility) {
+    put("usager.salutation", salutation({
+      civility: identity.civility,
+      fullName: identity.known ? identity.name : null,
+    }));
+  }
   put("usager.civilite", identity.civility);
   put("usager.prenom", identity.firstName);
   put("usager.nom", identity.lastName);

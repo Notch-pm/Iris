@@ -1276,38 +1276,32 @@ la philosophie d'instantané du projet.
 main). Le normaliser côté base coûterait une réécriture de chaîne dans un trigger pour un gain
 nul : **l'affichage** préfère toujours le nom vivant de l'annuaire.
 
-### Modèles d'e-mail (`20260826100000`, `20260826100100`, `20260826110000`)
+### Modèles de courriels du Socle (`20261112092509`, `20261112130000`)
 
-`email_templates` — textes réutilisables du tenant : `name` (unique par tenant, casse et
-espaces ignorés), `description`, `subject`, `body`, `version` (verrou optimiste RM-56),
-traçabilité `created_by` / `updated_by`. Texte BRUT à variables `{{groupe.cle}}`.
+Depuis le 2026-11-12 (décision PO), **les modèles se rédigent dans le Socle** (Référentiels ›
+Modèles de courriels) ; les anciennes tables d'Iris (`email_templates`,
+`email_template_organizations`, 2026-08-26) sont **supprimées**, leurs trois modèles rapatriés
+dans le Socle avec leurs organisations.
 
-**Écriture par policies, pas par RPC** — à rebours des tables `permission_*`, et délibérément :
-une ligne, un prédicat simple (`is_org_admin_anywhere`), aucune lecture de cette table par le
-moteur de droits, aucun secret. Le seul invariant qui dépasse le prédicat est porté par un
-trigger. Lecture ouverte à tout membre (`is_org_member`) : un agent choisira un modèle depuis
-une demande, rien ne justifie de le lui cacher.
+`socle_email_templates` — **MIROIR** des modèles servis par le Socle pour l'application `iris`
+(`GET /v1/email-templates`, public-api ≥ 1.45.0), une ligne par modèle et par tenant :
+- **courriels système** (`system_key` : `accuse_reception`, `debut_instruction`,
+  `attente_information`, `reprise_instruction`, `annulation`, `reouverture`,
+  `cloture_positive`, `cloture_negative`, `nouveau_message`, `code_acces`) — le texte de la
+  collectivité (`is_customized`) ou celui d'origine ; `socle_org_ids` NULL (valent partout) ;
+  `variables` = ce que l'événement fournit ;
+- **modèles créés** (`socle_template_id`, `system_key` NULL) — proposés dans l'onglet Échanges
+  aux seules organisations Socle de `socle_org_ids`, **nommément** (pas de descendance).
 
-**Le catalogue de variables est un contrat** : `email_template_variables()` (liste figée) et
-`email_template_unknown_variables(text)`, toutes deux internes, alimentent
-`t03_email_templates_guard_variables` qui **refuse** l'écriture citant une variable inconnue.
-⚠️ Cette garde doit être **`SECURITY DEFINER`** : en `INVOKER` elle s'exécute comme l'agent,
-qui n'a aucun droit sur le catalogue — c'est le défaut corrigé par `20260826100100`, invisible
-au test tant que celui-ci se contentait de constater « une erreur a été levée ».
+Écriture : **uniquement** `sync_email_templates_from_socle(p_org_id, p_templates)` (service,
+appelée par `sync-socle-referentiel`), qui remplace le miroir du tenant d'un geste — miroir
+strict. Lecture : membres du tenant (`is_org_member`). Aucune écriture cliente.
 
-**Activation par organisation** (`email_template_organizations`, clé
-`(template_id, socle_org_id)`) — satellite au motif de `permission_profile_organizations` :
-`socle_org_id` est un UUID Socle **nu** (aucune FK ne franchit une frontière de projet), la
-cohérence de tenant étant tenue par `t01_email_template_organizations_scope`.
+`request_emails.template_id` n'a **plus de FK** : il porte l'identifiant SOCLE nu du modèle
+employé (avant le 2026-11-12, celui d'un modèle Iris supprimé) ; `template_name` reste lisible.
 
-- **Un modèle neuf n'est activé nulle part.** L'absence de ligne vaut « inactif ».
-- **Pas de descendance implicite** (contrairement au périmètre d'un profil) : chaque
-  organisation est activée nommément.
-- Écriture gouvernée par **`has_admin_scope(tenant, socle_org)`** et non
-  `is_org_admin_anywhere` : ouvrir un modèle à la Voirie est une décision sur la Voirie.
-- Pas de policy UPDATE : on active (insert) ou on désactive (delete).
-- `administrable_organizations(p_org_id)` (RPC `authenticated`) rend les organisations du
-  tenant que l'appelant administre — la LISTE que `has_admin_scope` ne donne que nœud à nœud.
+`administrable_organizations(p_org_id)` (RPC `authenticated`) reste : elle rend les
+organisations du tenant que l'appelant administre (arbre des Paramètres › Organisations).
 
 ### Qualification des pièces (`20260828100000`, `20260828100100`)
 
@@ -1651,7 +1645,7 @@ qui sont pour deux d'entre eux immuables même en service_role).
 | `notifications` | **soi seul** (`user_id = auth.uid()`) | — (triggers DEFINER) | — (RPC `mark_*_read`) | — |
 | `notification_preferences` | soi seul | soi seul | soi seul | soi seul |
 | `push_subscriptions` | soi seul | **—** (RPC `register_push_subscription`, qui reprend un endpoint) | soi seul (`last_seen_at`) | soi seul |
-| `email_templates` | membre du tenant | `is_org_admin_anywhere` + `created_by = auth.uid()` | `is_org_admin_anywhere` | `is_org_admin_anywhere` |
+| `socle_email_templates` | membre du tenant | — (service seul) | — | — |
 | `email_template_organizations` | membre du tenant du modèle | **`has_admin_scope`** sur l'organisation visée | — (rien à modifier) | **`has_admin_scope`** sur l'organisation visée |
 | `storage.objects` (bucket `avatars`) | son dossier, ou celui d'un membre du même tenant | **son dossier seul** | son dossier seul | son dossier seul |
 | `permission_profiles` | administration quelque part dans le tenant (`is_org_admin_anywhere`), sinon **seulement** les profils auxquels on est attribué | — | — | — |

@@ -263,106 +263,6 @@ export type Database = {
           },
         ]
       }
-      email_template_organizations: {
-        Row: {
-          created_at: string
-          created_by: string | null
-          socle_org_id: string
-          template_id: string
-        }
-        Insert: {
-          created_at?: string
-          created_by?: string | null
-          socle_org_id: string
-          template_id: string
-        }
-        Update: {
-          created_at?: string
-          created_by?: string | null
-          socle_org_id?: string
-          template_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "email_template_organizations_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "email_template_organizations_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "email_templates"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      email_templates: {
-        Row: {
-          body: string
-          created_at: string
-          created_by: string | null
-          description: string | null
-          id: string
-          name: string
-          organization_id: string
-          subject: string
-          updated_at: string
-          updated_by: string | null
-          version: number
-        }
-        Insert: {
-          body: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          name: string
-          organization_id: string
-          subject: string
-          updated_at?: string
-          updated_by?: string | null
-          version?: number
-        }
-        Update: {
-          body?: string
-          created_at?: string
-          created_by?: string | null
-          description?: string | null
-          id?: string
-          name?: string
-          organization_id?: string
-          subject?: string
-          updated_at?: string
-          updated_by?: string | null
-          version?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "email_templates_created_by_fkey"
-            columns: ["created_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "email_templates_organization_id_fkey"
-            columns: ["organization_id"]
-            isOneToOne: false
-            referencedRelation: "organizations"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "email_templates_updated_by_fkey"
-            columns: ["updated_by"]
-            isOneToOne: false
-            referencedRelation: "users"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       integration_api_logs: {
         Row: {
           created_at: string
@@ -1753,13 +1653,6 @@ export type Database = {
             referencedRelation: "users"
             referencedColumns: ["id"]
           },
-          {
-            foreignKeyName: "request_emails_template_id_fkey"
-            columns: ["template_id"]
-            isOneToOne: false
-            referencedRelation: "email_templates"
-            referencedColumns: ["id"]
-          },
         ]
       }
       request_events: {
@@ -2279,6 +2172,9 @@ export type Database = {
           body: string | null
           channel: string | null
           citizen_visible: boolean
+          clara_courier_id: string | null
+          clara_courier_reference: string | null
+          clara_courier_url: string | null
           closed_at: string | null
           closure_motif: string | null
           closure_text: string | null
@@ -2301,6 +2197,13 @@ export type Database = {
           reference: string
           reference_seq: number
           reference_year: number
+          reply_pending_closure_text: string | null
+          reply_pending_motif: string | null
+          reply_pending_outcome: string | null
+          reply_submission_id: string | null
+          reply_submitted_at: string | null
+          reply_submitted_by: string | null
+          reply_validation_state: string | null
           requester_snapshot: Json | null
           retention_until: string | null
           socle_category_label: string | null
@@ -2323,6 +2226,9 @@ export type Database = {
           body?: string | null
           channel?: string | null
           citizen_visible?: boolean
+          clara_courier_id?: string | null
+          clara_courier_reference?: string | null
+          clara_courier_url?: string | null
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null
@@ -2345,6 +2251,13 @@ export type Database = {
           reference: string
           reference_seq: number
           reference_year: number
+          reply_pending_closure_text?: string | null
+          reply_pending_motif?: string | null
+          reply_pending_outcome?: string | null
+          reply_submission_id?: string | null
+          reply_submitted_at?: string | null
+          reply_submitted_by?: string | null
+          reply_validation_state?: string | null
           requester_snapshot?: Json | null
           retention_until?: string | null
           socle_category_label?: string | null
@@ -2367,6 +2280,9 @@ export type Database = {
           body?: string | null
           channel?: string | null
           citizen_visible?: boolean
+          clara_courier_id?: string | null
+          clara_courier_reference?: string | null
+          clara_courier_url?: string | null
           closed_at?: string | null
           closure_motif?: string | null
           closure_text?: string | null
@@ -2389,6 +2305,13 @@ export type Database = {
           reference?: string
           reference_seq?: number
           reference_year?: number
+          reply_pending_closure_text?: string | null
+          reply_pending_motif?: string | null
+          reply_pending_outcome?: string | null
+          reply_submission_id?: string | null
+          reply_submitted_at?: string | null
+          reply_submitted_by?: string | null
+          reply_validation_state?: string | null
           requester_snapshot?: Json | null
           retention_until?: string | null
           socle_category_label?: string | null
@@ -2425,6 +2348,13 @@ export type Database = {
             columns: ["organization_id"]
             isOneToOne: false
             referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "requests_reply_submitted_by_fkey"
+            columns: ["reply_submitted_by"]
+            isOneToOne: false
+            referencedRelation: "users"
             referencedColumns: ["id"]
           },
         ]
@@ -2477,6 +2407,62 @@ export type Database = {
             foreignKeyName: "smtp_settings_organization_id_fkey"
             columns: ["organization_id"]
             isOneToOne: true
+            referencedRelation: "organizations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      socle_email_templates: {
+        Row: {
+          body: string
+          description: string | null
+          id: string
+          is_customized: boolean
+          name: string
+          organization_id: string
+          socle_org_ids: string[] | null
+          socle_template_id: string | null
+          socle_updated_at: string | null
+          subject: string
+          synced_at: string
+          system_key: string | null
+          variables: string[]
+        }
+        Insert: {
+          body: string
+          description?: string | null
+          id?: string
+          is_customized?: boolean
+          name: string
+          organization_id: string
+          socle_org_ids?: string[] | null
+          socle_template_id?: string | null
+          socle_updated_at?: string | null
+          subject: string
+          synced_at?: string
+          system_key?: string | null
+          variables?: string[]
+        }
+        Update: {
+          body?: string
+          description?: string | null
+          id?: string
+          is_customized?: boolean
+          name?: string
+          organization_id?: string
+          socle_org_ids?: string[] | null
+          socle_template_id?: string | null
+          socle_updated_at?: string | null
+          subject?: string
+          synced_at?: string
+          system_key?: string | null
+          variables?: string[]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "socle_email_templates_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
             referencedRelation: "organizations"
             referencedColumns: ["id"]
           },
@@ -2571,6 +2557,7 @@ export type Database = {
           processing_time_value: number | null
           publication_end: string | null
           publication_start: string | null
+          reply_via_clara: boolean
           socle_id: string
           socle_root_org_id: string
           status: string
@@ -2588,6 +2575,7 @@ export type Database = {
           processing_time_value?: number | null
           publication_end?: string | null
           publication_start?: string | null
+          reply_via_clara?: boolean
           socle_id: string
           socle_root_org_id: string
           status?: string
@@ -2605,6 +2593,7 @@ export type Database = {
           processing_time_value?: number | null
           publication_end?: string | null
           publication_start?: string | null
+          reply_via_clara?: boolean
           socle_id?: string
           socle_root_org_id?: string
           status?: string
@@ -2858,6 +2847,14 @@ export type Database = {
       can_process_request: { Args: { p_request_id: string }; Returns: boolean }
       can_read_request: { Args: { p_request_id: string }; Returns: boolean }
       can_write_request: { Args: { p_request_id: string }; Returns: boolean }
+      cancel_clara_reply: {
+        Args: {
+          p_courier_id: string
+          p_organization_id: string
+          p_request_id: string
+        }
+        Returns: string
+      }
       check_request_access: {
         Args: {
           p_code_hash: string
@@ -3038,6 +3035,16 @@ export type Database = {
         }
         Returns: Json
       }
+      confirm_clara_reply: {
+        Args: {
+          p_courier_id: string
+          p_reference: string
+          p_request_id: string
+          p_submission_id: string
+          p_url: string
+        }
+        Returns: undefined
+      }
       consume_attachment_upload: {
         Args: {
           p_actor: string
@@ -3108,11 +3115,6 @@ export type Database = {
           user_id: string
         }[]
       }
-      email_template_unknown_variables: {
-        Args: { p_text: string }
-        Returns: string[]
-      }
-      email_template_variables: { Args: never; Returns: string[] }
       enqueue_request_receipt: {
         Args: { p_request_id: string }
         Returns: boolean
@@ -3158,6 +3160,15 @@ export type Database = {
           p_replaces_id?: string
         }
         Returns: Json
+      }
+      finalize_clara_reply: {
+        Args: {
+          p_courier_id: string
+          p_organization_id: string
+          p_request_id: string
+          p_sent_at?: string
+        }
+        Returns: string
       }
       find_similar_requests: {
         Args: {
@@ -3487,6 +3498,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      release_clara_reply: {
+        Args: { p_request_id: string; p_submission_id: string }
+        Returns: undefined
+      }
       request_access_resend: {
         Args: {
           p_code: string
@@ -3547,6 +3562,10 @@ export type Database = {
         Args: { p_form_data: Json; p_form_schema: Json; p_request_id: string }
         Returns: string[]
       }
+      request_reply_via_clara: {
+        Args: { p_request_id: string }
+        Returns: boolean
+      }
       request_right_for: {
         Args: {
           p_org_id: string
@@ -3564,6 +3583,17 @@ export type Database = {
       request_search_text: {
         Args: { p_reference: string; p_subject: string }
         Returns: string
+      }
+      reserve_clara_reply: {
+        Args: {
+          p_closure_text?: string
+          p_motif?: string
+          p_outcome: string
+          p_request_id: string
+          p_submission_id: string
+          p_uid: string
+        }
+        Returns: undefined
       }
       resolve_linked_requests: {
         Args: {
@@ -3898,6 +3928,10 @@ export type Database = {
           user_id: string
           user_name: string
         }[]
+      }
+      sync_email_templates_from_socle: {
+        Args: { p_org_id: string; p_templates: Json }
+        Returns: number
       }
       sync_smtp_settings_from_socle: {
         Args: {

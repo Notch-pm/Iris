@@ -143,3 +143,19 @@ export function publicationPeriodLabel(publication: ProcedurePublication): strin
   if (end) return `Publiée jusqu'au ${formatPublicationDate(end)}`;
   return null;
 }
+
+/**
+ * Bloc « Courriers de réponse » du Socle (contrat 1.46.0) :
+ * `communication_config.replyLetters.claraOutbound`. Vrai = le courrier de
+ * réponse se valide dans Clara (courrier sortant) au lieu d'être envoyé par Iris.
+ *
+ * ⚠️ Valeur BRUTE : seul `true` explicite compte (au doute, Iris envoie
+ * lui-même). Elle n'a d'effet que si la source `clara` du tenant est active —
+ * c'est `request_reply_via_clara` (SQL) qui combine les deux.
+ */
+export function parseReplyViaClara(communicationConfig: unknown): boolean {
+  if (typeof communicationConfig !== "object" || communicationConfig === null) return false;
+  const block = (communicationConfig as Record<string, unknown>).replyLetters;
+  if (typeof block !== "object" || block === null) return false;
+  return (block as Record<string, unknown>).claraOutbound === true;
+}

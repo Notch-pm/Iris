@@ -69,10 +69,15 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
     l'un ni l'autre — l'usager ne peut pas répondre).
   - **Le composeur résout les variables à l'INSERTION, pas à l'envoi.** Choisir un modèle
     remplit l'objet et le corps déjà personnalisés ; choisir une variable insère la **valeur**
-    au curseur, pas le jeton `{{…}}`. C'est la différence assumée avec l'éditeur de modèles des
-    Paramètres : ici l'agent rédige le message final, le voit tel qu'il partira, et c'est ce
+    au curseur, pas le jeton `{{…}}`. C'est la différence assumée avec l'éditeur de modèles du
+    Socle : ici l'agent rédige le message final, le voit tel qu'il partira, et c'est ce
     texte-là qui part. Un trou — variable sans valeur pour cette demande — se voit donc tout de
     suite. Le menu ne propose d'ailleurs **que** les variables qui ont une valeur.
+  - **Les modèles viennent du Socle** (2026-11-12) : le sélecteur propose les modèles cochés
+    pour Iris dans le Socle et **activés nommément** sur l'organisation porteuse de la demande
+    (miroir `socle_email_templates`, `useActiveEmailTemplates`). L'échange trace l'identifiant
+    SOCLE du modèle et son nom. Sections `{{#cle}}…{{/cle}}` rendues par le même moteur que
+    les courriels automatiques (`_shared/email/socleTemplates.ts`).
   - ⚠️ **Une valeur absente ⇒ la clé est OMISE** (`requestTemplateValues`), jamais un repli.
     « Identité déclarée », « Utilisateur », « Système / intégration », « date inconnue », et
     l'e-mail de l'agent que `useTenantMembers` met à défaut de nom : ce sont des mots d'écran

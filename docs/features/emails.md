@@ -2,6 +2,17 @@
 
 Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. Les invariants de [`CLAUDE.md`](../../CLAUDE.md) priment.
 
+- **Textes des courriels à l'usager : le Socle** (2026-11-12, décision PO). Accusé de
+  réception, avis de statut, nouveau message, avis de clôture et nouveau code d'accès
+  partent avec l'objet et le texte que la collectivité règle dans le Socle (courriels
+  système, miroir `socle_email_templates`, lecture `loadSystemTemplates`). Iris garde
+  l'**habillage** (charte, bouton, ligne du lien, pied, désinscription), le code d'accès
+  **masqué** dans l'échange enregistré, et **ses textes d'origine en repli** (miroir vide ou
+  illisible). Les textes d'origine du Socle ont été repris d'Iris : rendus avec les mêmes
+  données, ils donnent le message d'avant au caractère près (`socleTemplates.test.ts`).
+  ⚠️ « Plusieurs nouveaux messages » : le texte d'origine du Socle est au singulier, Iris garde
+  le sien tant que la collectivité ne l'a pas réécrit. Détail : [`docs/emails.md`](../emails.md).
+
 - **Aucun mot de passe n'est généré ni affiché à un administrateur** : un compte s'ouvre par
   une **invitation** (lien d'activation à usage unique, mot de passe choisi par son titulaire)
   et se dépanne par un **lien de réinitialisation** envoyé au titulaire. Le **serveur d'envoi

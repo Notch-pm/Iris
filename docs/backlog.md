@@ -356,13 +356,13 @@ par la commune** pour stabiliser ce qu'elle produit. Engagement pris en séance 
 formulé pour les courriers (Clara), il vaut aussi pour les réponses par e-mail d'Iris.
 
 **Ce qui existe, vérifié le 2026-11-04** : les deux moitiés, **sans lien entre elles**.
-- **Modèles d'e-mail** (2026-08-26, `src/features/templates/`, table `email_templates`) :
-  texte brut, variables d'un catalogue figé, activation organisation par organisation ;
-  l'agent en insère un dans le composeur.
+- **Modèles d'e-mail** (2026-08-26 ; **rédigés dans le Socle depuis le 2026-11-12**, miroir
+  `socle_email_templates`) : texte brut, variables du catalogue commun du Socle, activation
+  organisme par organisme ; l'agent en insère un dans le composeur.
 - **Rédaction assistée** (2026-09-24, edge `request-email-assistant`,
   `_shared/ai/emailDraft.ts`) : brouillon d'accusé ou de suivi, et « Améliorer mon message »
   (la langue, jamais le sens — couvre déjà le « corriger sans changer le sens » demandé en
-  séance). **Aucune lecture de `email_templates`** dans `_shared/ai/` ni dans l'edge : le
+  séance). **Aucune lecture des modèles** dans `_shared/ai/` ni dans l'edge : le
   brouillon s'écrit de zéro.
 
 **L'ajustement** : un geste « Adapter ce modèle au dossier » — l'agent choisit un modèle

@@ -12,7 +12,15 @@ import {
   type ClosureMotif, type RequestStatus, type TransitionSpec,
 } from "./statuts";
 import { CLOSURE_SUBJECTS } from "@fn/_shared/email/cloture";
+import {
+  closureLetters, closureOutcome, type ProcedureDocuments,
+} from "@fn/_shared/document/templates";
 import { useApplyTransition, type TenantMember } from "./useRequests";
+import {
+  ClosureLetterSection, closureLetterChoice, closureLetterReady, emptyClosureLetter,
+  type ClosureLetterDraft,
+} from "./instruction/ClosureLetterSection";
+import { reserveLetterTab, type ClosureLetterRequest } from "./instruction/useClosureLetter";
 
 // Transitions de statut — reflet de la garde SQL, qui reste la seule autorité.
 // Le hook porte l'état (transition en cours, erreur) ; la fiche décide OÙ
@@ -23,6 +31,27 @@ export interface TransitionInput {
   closureText?: string;
   motif?: ClosureMotif;
   assigneeId?: string | null;
+  /**
+   * Courrier de réponse papier à générer APRÈS une clôture réussie
+   * (`useClosureLetter`) — jamais transmis à la transition elle-même.
+   */
+  letter?: ClosureLetterRequest;
+}
+
+/**
+ * Les courriers de la démarche, pour la section « courrier de réponse papier »
+ * de la modale de clôture. Fournis par l'écran qui les charge (fiche, mobile) ;
+ * absent sur le tableau, qui garde une clôture rapide.
+ */
+export interface ClosureLetterSource {
+  documents: ProcedureDocuments | undefined;
+  loading: boolean;
+  error: boolean;
+}
+
+/** La section n'existe que pour une issue positive ou négative. */
+export function offersClosureLetter(spec: TransitionSpec | null): boolean {
+  return spec !== null && closureOutcome(spec.to) !== null;
 }
 
 /**
@@ -62,11 +91,14 @@ export function useTransitionRunner(opts: {
 
   const run = React.useCallback(async (spec: TransitionSpec, input: TransitionInput) => {
     setError(null);
+    const { letter, ...transition } = input;
     try {
-      await apply.mutateAsync({ requestId, spec, ...input });
+      await apply.mutateAsync({ requestId, spec, ...transition });
       setActive(null);
       onDone?.(spec, input);
     } catch (err) {
+      // La clôture n'a pas eu lieu : l'onglet réservé au courrier se referme.
+      letter?.tab?.close();
       setError(err instanceof Error ? err.message : "Transition refusée.");
     }
   }, [apply, requestId, onDone]);
@@ -102,6 +134,8 @@ interface DialogProps {
   closureNotice?: boolean;
   /** Section supplémentaire pour cette transition (résolution commune des demandes liées). */
   extra?: (spec: TransitionSpec) => React.ReactNode;
+  /** Courriers de la démarche : présent = section « courrier de réponse papier » à la clôture. */
+  letterSource?: ClosureLetterSource;
 }
 
 /** Ce que l'agent lit à la place quand aucun avis ne partira. */
@@ -122,11 +156,14 @@ const CLOSURE_NOTICE: Partial<Record<RequestStatus, string>> = {
 };
 
 /** Dialogue motif / commentaire / assigné — monté une seule fois par fiche. */
-export function TransitionDialog({ runner, members, subtitle, closureNotice = true, extra }: DialogProps) {
+export function TransitionDialog({
+  runner, members, subtitle, closureNotice = true, extra, letterSource,
+}: DialogProps) {
   const { active } = runner;
   const [motif, setMotif] = React.useState<ClosureMotif | "">("");
   const [closureText, setClosureText] = React.useState("");
   const [assigneeId, setAssigneeId] = React.useState("");
+  const [letter, setLetter] = React.useState<ClosureLetterDraft>(emptyClosureLetter);
 
   // Remise à zéro à chaque ouverture (l'assigné proposé suit la demande).
   React.useEffect(() => {
@@ -134,8 +171,17 @@ export function TransitionDialog({ runner, members, subtitle, closureNotice = tr
       setMotif("");
       setClosureText("");
       setAssigneeId(runner.defaultAssignee);
+      setLetter(emptyClosureLetter());
     }
   }, [active, runner.defaultAssignee]);
+
+  const showsLetter = letterSource !== undefined && offersClosureLetter(active);
+  const letters = React.useMemo(
+    () => (showsLetter && active && letterSource?.documents
+      ? closureLetters(letterSource.documents, closureOutcome(active.to))
+      : []),
+    [showsLetter, active, letterSource?.documents],
+  );
 
   return (
     <Dialog open={active !== null} onOpenChange={(o) => { if (!o) runner.close(); }}>
@@ -150,10 +196,14 @@ export function TransitionDialog({ runner, members, subtitle, closureNotice = tr
               className="flex flex-col gap-4"
               onSubmit={(e) => {
                 e.preventDefault();
+                if (showsLetter && !closureLetterReady(letter)) return;
+                const choice = showsLetter ? closureLetterChoice(letter) : undefined;
                 void runner.run(active, {
                   closureText: closureText || undefined,
                   motif: motif === "" ? undefined : motif,
                   assigneeId: active.needsAssignee ? (assigneeId || null) : undefined,
+                  // L'onglet d'un PDF se réserve ICI, pendant le clic.
+                  letter: choice ? { ...choice, tab: reserveLetterTab(choice.format) } : undefined,
                 });
               }}
             >
@@ -191,11 +241,21 @@ export function TransitionDialog({ runner, members, subtitle, closureNotice = tr
                     onChange={(e) => setClosureText(e.target.value)} />
                 </Field>
               ) : null}
+              {showsLetter && letterSource ? (
+                <ClosureLetterSection
+                  idPrefix="tr"
+                  letters={letters}
+                  loading={letterSource.loading}
+                  error={letterSource.error}
+                  value={letter}
+                  onChange={setLetter}
+                />
+              ) : null}
               {extra?.(active)}
               {runner.error ? <p role="alert" className="text-sm text-destructive">{runner.error}</p> : null}
               <DialogFooter>
                 <Button type="button" variant="ghost" onClick={runner.close}>Annuler</Button>
-                <Button type="submit" disabled={runner.pending}>
+                <Button type="submit" disabled={runner.pending || (showsLetter && !closureLetterReady(letter))}>
                   {runner.pending ? "Application…" : "Confirmer"}
                 </Button>
               </DialogFooter>

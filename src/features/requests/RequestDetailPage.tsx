@@ -23,11 +23,17 @@ import { UsagerEditDialog } from "@/features/contacts/UsagerEditDialog";
 import { hasRight, isAdminOn, rightsFor } from "@/features/rights/rights";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
+import { ClaraReplyBanner, ClaraReplyDialog } from "./instruction/ClaraReplyDialog";
+import { useReplyViaClara } from "./instruction/useClaraReply";
 import { closureNoticeApplies } from "@fn/_shared/email/cloture";
-import { TransitionDialog, useTransitionRunner, type TransitionInput } from "./TransitionActions";
+import {
+  TransitionDialog, offersClosureLetter, useTransitionRunner, type TransitionInput,
+} from "./TransitionActions";
+import { useClosureLetter } from "./instruction/useClosureLetter";
 import { useGroupResolution } from "@/features/linking/GroupResolution";
 import {
   allowedTransitionsFor, canAdminWith, canProcessWith, canWriteWith, isFinal, STATUS_LABELS,
+  canPrepareClaraReply, displayStatusLabel, replyValidationStateOf, withClaraReplyCircuit,
   type RequestRights, type RequestStatus, type TransitionSpec,
 } from "./statuts";
 import {
@@ -258,18 +264,33 @@ export function RequestDetailPage() {
     orgId, requestId: id ?? "", procedureId: r?.socle_procedure_id ?? null, flash, onFailure: setError,
   });
   const groupAfter = groupResolution.after;
+  // Le courrier de réponse papier choisi à la clôture — APRÈS la transition,
+  // sans la conditionner (même suite que le mobile).
+  const closureLetterAfter = useClosureLetter({ flash, onFailure: setError });
   const onTransitionDone = React.useCallback(
     (spec: TransitionSpec, input: TransitionInput) => {
       closureNoticeAfter({ id: id ?? "", source: r?.source }, spec.to, `Statut : ${STATUS_LABELS[spec.to]}`);
       void groupAfter(spec, input);
+      if (input.letter && id) void closureLetterAfter(id, input.letter);
     },
-    [closureNoticeAfter, groupAfter, id, r?.source],
+    [closureNoticeAfter, groupAfter, closureLetterAfter, id, r?.source],
   );
+  // Courrier de réponse validé dans Clara (2026-11-12) : la démarche le
+  // demande-t-elle ? Le geste remplace alors la résolution directe.
+  const replyViaClara = useReplyViaClara(id, Boolean(r) && r?.status === "en_instruction");
+  const [claraReplyOpen, setClaraReplyOpen] = React.useState(false);
   const runner = useTransitionRunner({
     requestId: id ?? "",
     assignedTo: r?.assigned_to ?? null,
     onDone: onTransitionDone,
   });
+  // Courriers de la démarche pour la modale de clôture : chargés seulement à
+  // l'ouverture d'une clôture (même cache que l'onglet Documents).
+  const closureLetterDocs = useProcedureDocuments(
+    r?.organization_id ?? "",
+    r?.socle_procedure_id ?? null,
+    offersClosureLetter(runner.active),
+  );
   // À chaque ouverture du dialogue : toutes les demandes liées recochées,
   // personne prévenu tant que l'agent ne l'a pas décidé.
   const resetGroup = groupResolution.reset;
@@ -315,7 +336,14 @@ export function RequestDetailPage() {
   // `send-request-email` (request_right_for … 'instruction'), qui reste l'autorité.
   const canInstruct = canProcessWith(rr);
   const status = r.status as RequestStatus;
-  const transitions = writer ? allowedTransitionsFor(status, rr) : [];
+  // Sous-état « Réponse en validation » et circuit Clara — miroir de
+  // `requests_guard_clara_reply`, qui reste l'autorité.
+  const claraReplyState = replyValidationStateOf(r);
+  const claraCircuit = { viaClara: replyViaClara.data === true, replyState: claraReplyState };
+  const transitions = writer
+    ? withClaraReplyCircuit(status, allowedTransitionsFor(status, rr), claraCircuit)
+    : [];
+  const canPrepareReply = canPrepareClaraReply(status, rr, claraCircuit);
   // Visibilité dans l'espace usager : même droit que l'écriture à l'usager
   // (instruction) — miroir de `t14`, qui reste l'autorité.
   const citizenView = citizenVisibilityView(r.socle_contact_id, r.citizen_visible);
@@ -743,7 +771,7 @@ export function RequestDetailPage() {
           <Link to="/demandes" className="font-semibold text-primary hover:underline">Demandes</Link>
           <span aria-hidden="true">/</span>
           <Link to={`/demandes?status=${status}`} className="font-semibold text-primary hover:underline">
-            {STATUS_LABELS[status] ?? r.status}
+            {displayStatusLabel(status, claraReplyState)}
           </Link>
           <span aria-hidden="true">/</span>
           <span className="font-mono font-semibold text-foreground">{r.reference}</span>
@@ -753,7 +781,7 @@ export function RequestDetailPage() {
           <div className="flex min-w-[260px] flex-1 flex-col gap-2">
             <div className="flex flex-wrap items-center gap-2.5">
               <h1 className="text-[23px] font-bold leading-tight tracking-tight">{r.subject}</h1>
-              <StatusBadge status={r.status} size="md" />
+              <StatusBadge status={r.status} size="md" replyState={claraReplyState} />
               {due ? (
                 <span className={cn("inline-flex items-center rounded-full px-[11px] py-[5px] text-[11.5px] font-semibold", DUE_TONE[due.tone])}>
                   {due.label}
@@ -778,6 +806,11 @@ export function RequestDetailPage() {
             >
               <MessageSquare /> Écrire à l'usager
             </Button>
+            {canPrepareReply ? (
+              <Button type="button" size="sm" onClick={() => setClaraReplyOpen(true)}>
+                Préparer le courrier de réponse
+              </Button>
+            ) : null}
             {writer && primary ? (
               <Button
                 type="button"
@@ -815,6 +848,15 @@ export function RequestDetailPage() {
             </Dropdown>
           </div>
         </div>
+
+        {claraReplyState ? (
+          <ClaraReplyBanner
+            state={claraReplyState}
+            courierReference={(r as { clara_courier_reference?: string | null }).clara_courier_reference ?? null}
+            courierUrl={(r as { clara_courier_url?: string | null }).clara_courier_url ?? null}
+            outcome={(r as { reply_pending_outcome?: string | null }).reply_pending_outcome ?? null}
+          />
+        ) : null}
 
         {headerError ? (
           <p role="alert" className="rounded-[14px] border border-destructive/30 bg-destructive/5 px-4 py-2.5 text-sm text-destructive">
@@ -1095,11 +1137,24 @@ export function RequestDetailPage() {
         </div>
       </div>
 
+      <ClaraReplyDialog
+        open={claraReplyOpen}
+        onClose={() => setClaraReplyOpen(false)}
+        request={{ id: r.id, reference: r.reference, subject: r.subject, requesterEmail: identity.email ?? null }}
+        piecesBlocking={piecesBlocking}
+        onSubmitted={(ref) => flash(`Courrier de réponse déposé dans Clara${ref ? ` (${ref})` : ""} — réponse en validation.`)}
+      />
+
       <TransitionDialog
         runner={runner}
         members={eligibleMembers}
         closureNotice={closureNotice}
         extra={groupResolution.section}
+        letterSource={{
+          documents: closureLetterDocs.data,
+          loading: closureLetterDocs.isLoading,
+          error: closureLetterDocs.isError,
+        }}
       />
 
       <CitizenVisibilityDialog

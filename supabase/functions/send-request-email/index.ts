@@ -67,7 +67,14 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { resolveSmtp, type SmtpConfig, type SmtpRow } from "../_shared/email/config.ts";
 import { sendBrandedEmail, type EmailAttachment } from "../_shared/email/transport.ts";
 import { usagerBrand, usagerEmailContent } from "../_shared/email/usager.ts";
-import { closureEmail, closureNoticeApplies, isClosureOutcome } from "../_shared/email/cloture.ts";
+import {
+  CLOSURE_TEMPLATE_KEYS,
+  closureEmail,
+  closureEmailFromTemplate,
+  closureNoticeApplies,
+  isClosureOutcome,
+} from "../_shared/email/cloture.ts";
+import { loadSystemTemplates } from "../_shared/email/socleTemplatesStore.ts";
 import { recipientIdentity } from "../_shared/email/destinataire.ts";
 import { charteFor, socleContactIdentity } from "../_shared/email/socleUsager.ts";
 import { checkUploadRow, type UploadRow } from "../_shared/files/uploads.ts";
@@ -349,7 +356,7 @@ Deno.serve(async (req) => {
 
   // ---- L'avis de clôture, composé ICI ---------------------------------------
   if (closureMode && outcome) {
-    const composed = closureEmail({
+    const input = {
       outcome,
       reference: request.reference,
       requestSubject: request.subject,
@@ -358,7 +365,11 @@ Deno.serve(async (req) => {
       closureText: request.closure_text,
       recipient: { civility: who.civility, fullName: who.fullName },
       tenantName,
-    });
+    };
+    // Le texte de la collectivité (Socle) s'il est là, sinon celui d'Iris.
+    const template = (await loadSystemTemplates(supabase, request.organization_id, LOG))
+      .get(CLOSURE_TEMPLATE_KEYS[outcome]);
+    const composed = template ? closureEmailFromTemplate(input, template) : closureEmail(input);
     subject = composed.subject;
     message = composed.body;
   }
