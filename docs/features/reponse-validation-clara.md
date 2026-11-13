@@ -81,6 +81,14 @@ Iris.
   « Insérer une variable… » des Échanges, `requestTemplateValues`). Une base destinée à une
   résolution aligne l'issue sur la sienne ; « Rétablir mon texte » annule un remplacement tant
   que rien n'a été retouché.
+- **Modèles d'e-mail aussi** (même jour) : groupe « Modèles d'e-mail » en fin de liste — les
+  modèles proposés pour l'organisme de la demande (`useActiveEmailTemplates`, miroir
+  `socle_email_templates`, égalité stricte sur l'organisation). Déjà du texte : remplis côté
+  navigateur par `renderTemplate` + `requestTemplateValues`, comme dans les Échanges ; l'objet
+  du modèle remplace l'objet du courrier. Une variable sans valeur devient du vide, et
+  l'avertissement la nomme. Un modèle d'e-mail n'a pas d'issue : il ne touche pas à
+  l'« Issue ». Piège vécu : un « courrier » créé comme modèle d'e-mail dans le Socle n'apparaît
+  pas dans les courriers de la démarche (catalogue `document_templates`, Word seulement).
 - ⚠️ Déploiement : `generate-request-document` doit être redéployée pour que le select
   fonctionne (sinon le mode `text` est traité comme une génération).
 

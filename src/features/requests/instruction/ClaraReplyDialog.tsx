@@ -13,6 +13,8 @@ import {
   type ReplyChannel, type ReplyOutcome,
 } from "@fn/_shared/clara/reply";
 import { replyLetterBases, type ProcedureDocuments } from "@fn/_shared/document/templates";
+import { renderTemplate } from "@/features/templates/templates";
+import type { ProposedEmailTemplate } from "@/features/templates/useEmailTemplates";
 import { MOTIF_LABELS, type ClosureMotif, type ReplyValidationState } from "../statuts";
 import { insertAtCaret } from "./courriel";
 import { VariableSelect } from "./EchangesPane";
@@ -38,6 +40,8 @@ import { useReplyLetterBase } from "./useGenerateDocument";
 // Échanges. Un courrier destiné à une résolution aligne l'issue sur la sienne.
 
 const NEGATIVE_MOTIFS: ClosureMotif[] = ["irrecevable", "reorientation"];
+/** Préfixe des modèles d'e-mail dans le select des bases (les courriers n'en ont pas). */
+const EMAIL_PREFIX = "email:";
 
 export function ClaraReplyDialog({
   open,
@@ -47,6 +51,7 @@ export function ClaraReplyDialog({
   onSubmitted,
   documents,
   documentsLoading,
+  emailTemplates,
   templateValues,
 }: {
   open: boolean;
@@ -58,6 +63,8 @@ export function ClaraReplyDialog({
   /** Modèles de la démarche (Socle) — `undefined` tant qu'ils ne sont pas lus. */
   documents: ProcedureDocuments | undefined;
   documentsLoading: boolean;
+  /** Modèles d'e-mail proposés pour l'organisme de la demande (miroir du Socle). */
+  emailTemplates: ProposedEmailTemplate[];
   /** Valeurs des variables pour CETTE demande (`requestTemplateValues`). */
   templateValues: Record<string, string>;
 }) {
@@ -67,10 +74,12 @@ export function ClaraReplyDialog({
     () => (documents ? replyLetterBases(documents) : { resolution: [], autres: [] }),
     [documents],
   );
-  const hasBases = bases.resolution.length + bases.autres.length > 0;
+  const hasBases = bases.resolution.length + bases.autres.length + emailTemplates.length > 0;
   const [baseId, setBaseId] = React.useState("");
   /** Texte remplacé par le dernier choix de base — tant que l'agent n'a rien retouché. */
-  const [beforeBase, setBeforeBase] = React.useState<{ previous: string; applied: string } | null>(null);
+  const [beforeBase, setBeforeBase] = React.useState<{
+    previous: string; applied: string; previousSubject: string;
+  } | null>(null);
   const [baseWarning, setBaseWarning] = React.useState<string | null>(null);
   const [focused, setFocused] = React.useState<"subject" | "body">("body");
   const subjectRef = React.useRef<HTMLInputElement>(null);
@@ -104,11 +113,35 @@ export function ClaraReplyDialog({
     setBaseWarning(null);
     setError(null);
     if (id === "") return;
+    // Modèle d'e-mail : déjà du texte, rempli ICI avec les valeurs de la
+    // demande — même moteur que le composeur des Échanges (`renderTemplate`).
+    if (id.startsWith(EMAIL_PREFIX)) {
+      const tpl = emailTemplates.find((t) => `${EMAIL_PREFIX}${t.id}` === id);
+      if (!tpl) return;
+      const text = renderTemplate(tpl.body, templateValues).slice(0, REPLY_BODY_MAX);
+      const tplSubject = renderTemplate(tpl.subject, templateValues).trim().slice(0, REPLY_SUBJECT_MAX);
+      const replacesSomething = body.trim() !== "" || (tplSubject !== "" && tplSubject !== subject);
+      setBeforeBase(replacesSomething ? { previous: body, applied: text, previousSubject: subject } : null);
+      setBody(text);
+      if (tplSubject !== "") setSubject(tplSubject);
+      // `renderTemplate` remplace une variable sans valeur par du vide : on dit
+      // lesquelles, pour que le trou se comble avant le visa dans Clara.
+      const holes = [...`${tpl.subject}\n${tpl.body}`.matchAll(/\{\{\s*([\w.]+)\s*\}\}/g)]
+        .map((m) => m[1])
+        .filter((key) => !templateValues[key]);
+      if (holes.length > 0) {
+        setBaseWarning(
+          `Sans valeur pour cette demande, laissées vides : ${
+            [...new Set(holes)].map((k) => `{{${k}}}`).join(", ")} — complétez le texte à la main.`,
+        );
+      }
+      return;
+    }
     const template = [...bases.resolution, ...bases.autres].find((t) => t.id === id);
     try {
       const result = await loadBase.mutateAsync({ requestId: request.id, templateId: id });
       const text = result.text.slice(0, REPLY_BODY_MAX);
-      setBeforeBase(body.trim() !== "" ? { previous: body, applied: text } : null);
+      setBeforeBase(body.trim() !== "" ? { previous: body, applied: text, previousSubject: subject } : null);
       setBody(text);
       if (template?.visibility === "positive") setOutcome("resolue_positive");
       if (template?.visibility === "negative") setOutcome("resolue_negative");
@@ -227,6 +260,13 @@ export function ClaraReplyDialog({
                   {bases.autres.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                 </optgroup>
               ) : null}
+              {emailTemplates.length > 0 ? (
+                <optgroup label="Modèles d'e-mail">
+                  {emailTemplates.map((t) => (
+                    <option key={t.id} value={`${EMAIL_PREFIX}${t.id}`}>{t.name}</option>
+                  ))}
+                </optgroup>
+              ) : null}
             </Select>
           </Field>
           {baseWarning ? <p role="status" className="rounded-lg border border-warning/40 bg-warning/10 px-3 py-2 text-[13px]">{baseWarning}</p> : null}
@@ -248,7 +288,12 @@ export function ClaraReplyDialog({
             <VariableSelect values={templateValues} disabled={submit.isPending} onInsert={insertValue} />
             {beforeBase && body === beforeBase.applied ? (
               <Button type="button" variant="ghost" size="sm"
-                onClick={() => { setBody(beforeBase.previous); setBeforeBase(null); setBaseId(""); }}>
+                onClick={() => {
+                  setBody(beforeBase.previous);
+                  setSubject(beforeBase.previousSubject);
+                  setBeforeBase(null);
+                  setBaseId("");
+                }}>
                 Rétablir mon texte
               </Button>
             ) : null}

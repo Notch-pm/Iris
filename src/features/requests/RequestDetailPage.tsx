@@ -26,6 +26,7 @@ import { StatusBadge } from "./StatusBadge";
 import { ClaraReplyBanner, ClaraReplyDialog } from "./instruction/ClaraReplyDialog";
 import { useReplyViaClara } from "./instruction/useClaraReply";
 import { requestTemplateValues } from "./instruction/courriel";
+import { useActiveEmailTemplates } from "@/features/templates/useEmailTemplates";
 import { closureNoticeApplies } from "@fn/_shared/email/cloture";
 import {
   TransitionDialog, offersClosureLetter, useTransitionRunner, type TransitionInput,
@@ -286,6 +287,12 @@ export function RequestDetailPage() {
     r?.organization_id ?? "",
     r?.socle_procedure_id ?? null,
     claraReplyOpen,
+  );
+  // … et les modèles d'e-mail proposés pour l'organisme (même requête et même
+  // cache que le composeur des Échanges).
+  const claraReplyEmailTemplates = useActiveEmailTemplates(
+    r?.organization_id ?? "",
+    r?.socle_scope_org_id ?? null,
   );
   const runner = useTransitionRunner({
     requestId: id ?? "",
@@ -1153,6 +1160,7 @@ export function RequestDetailPage() {
         onSubmitted={(ref) => flash(`Courrier de réponse déposé dans Clara${ref ? ` (${ref})` : ""} — réponse en validation.`)}
         documents={claraReplyDocs.data}
         documentsLoading={claraReplyDocs.isLoading}
+        emailTemplates={claraReplyEmailTemplates.data ?? []}
         templateValues={claraReplyOpen
           ? requestTemplateValues({
               request: r, identity, events: events.data ?? [], members: memberList,
