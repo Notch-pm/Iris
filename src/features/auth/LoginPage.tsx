@@ -10,6 +10,7 @@ import {
   markSilentSso,
   readSilentSso,
   readSsoReturnError,
+  silentSsoRetryAllowed,
   silentSsoStorage,
   ssoSignInCredentials,
   ssoSilentSignInCredentials,
@@ -38,12 +39,12 @@ export function LoginPage() {
   // Erreur rapportée au retour de Keycloak (agent non provisionné, suspendu…),
   // lue une fois au montage, puis effacée de l'URL pour ne pas réapparaître.
   // Connexion silencieuse : un agent déjà connecté à Keycloak par une autre
-  // application entre sans recliquer (une tentative par onglet, voir sso.ts).
+  // application entre sans recliquer (voir sso.ts).
   const [storage] = React.useState(silentSsoStorage);
   const [silent] = React.useState(() =>
     readSilentSso(storage, window.location.search, window.location.hash),
   );
-  const [silentFailed, setSilentFailed] = React.useState(false);
+  const [silentPending, setSilentPending] = React.useState(silent.attempt);
   const [ssoError, setSsoError] = React.useState<string | null>(
     () =>
       readSsoReturnError(window.location.search, window.location.hash, {
@@ -51,26 +52,47 @@ export function LoginPage() {
       })?.message ?? null,
   );
 
+  // L'erreur d'un retour (« pas de session » comprise) s'efface de l'URL : sinon
+  // un F5 la relirait et ne retenterait pas la connexion silencieuse.
   React.useEffect(() => {
-    if (ssoError) window.history.replaceState(null, "", window.location.pathname);
-  }, [ssoError]);
+    if (ssoError || (silent.returning && readSsoReturnError(window.location.search, window.location.hash))) {
+      window.history.replaceState(null, "", window.location.pathname);
+    }
+  }, [ssoError, silent.returning]);
 
   React.useEffect(() => {
     if (silent.returning) markSilentSso(storage, "done");
   }, [silent.returning, storage]);
 
-  React.useEffect(() => {
-    if (!silent.attempt || loading || session) return;
+  const trySilentSso = React.useCallback(() => {
     markSilentSso(storage, "pending");
+    setSilentPending(true);
     void supabase.auth
       .signInWithOAuth(ssoSilentSignInCredentials(window.location.origin))
       .then(({ error }) => {
         if (error) {
           markSilentSso(storage, "done");
-          setSilentFailed(true);
+          setSilentPending(false);
         }
       });
-  }, [silent.attempt, storage, loading, session]);
+  }, [storage]);
+
+  React.useEffect(() => {
+    if (!silent.attempt || loading || session) return;
+    trySilentSso();
+  }, [silent.attempt, trySilentSso, loading, session]);
+
+  // Retour sur un onglet resté sur la page de connexion : l'agent s'est peut-être
+  // connecté entre-temps dans une autre application. Jamais formulaire de mot de
+  // passe ouvert (on effacerait la saisie), jamais plus d'une fois par délai.
+  React.useEffect(() => {
+    function onVisible() {
+      if (document.visibilityState !== "visible" || showPassword) return;
+      if (silentSsoRetryAllowed(storage)) trySilentSso();
+    }
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [showPassword, storage, trySilentSso]);
 
   if (loading) {
     return (
@@ -80,7 +102,7 @@ export function LoginPage() {
     );
   }
 
-  if (!session && silent.attempt && !silentFailed) {
+  if (!session && silentPending) {
     return (
       <div className="flex min-h-screen items-center justify-center text-sm text-muted-foreground">
         Connexion…
