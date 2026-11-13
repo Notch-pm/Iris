@@ -10,8 +10,6 @@ import { SuperAdminLayout } from "@/components/layout/SuperAdminLayout";
 import { SuperAdminOrganisationsPage } from "@/features/superadmin/SuperAdminOrganisationsPage";
 import { SuperAdminUsersPage } from "@/features/superadmin/SuperAdminUsersPage";
 import { LoginPage } from "@/features/auth/LoginPage";
-import { SsoLogoutPage } from "@/features/auth/SsoLogoutPage";
-import { SSO_LOGOUT_PATH } from "@/features/auth/sso";
 import { ForgotPasswordPage } from "@/features/auth/ForgotPasswordPage";
 import { SetPasswordPage } from "@/features/auth/SetPasswordPage";
 import { DashboardPage } from "@/pages/DashboardPage";
@@ -48,7 +46,6 @@ export function App() {
         <Routes>
           {/* Routes publiques (hors shell) */}
           <Route path="/login" element={<LoginPage />} />
-          <Route path={SSO_LOGOUT_PATH} element={<SsoLogoutPage />} />
           <Route path="/mot-de-passe-oublie" element={<ForgotPasswordPage />} />
           <Route path="/activer-compte" element={<SetPasswordPage mode="invite" />} />
           <Route path="/nouveau-mot-de-passe" element={<SetPasswordPage mode="recovery" />} />
