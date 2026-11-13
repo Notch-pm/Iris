@@ -52,6 +52,7 @@ import { normalizeConsents, type ConsentRecord } from "../_shared/consents/catal
 import {
   accessCodeHash,
   accessEmailHash,
+  GUICHET_SOURCE,
   newAccessCode,
   normalizeAccessCode,
   normalizeAccessEmail,
@@ -984,8 +985,10 @@ async function handleCitizenResend(auth: AuthContext, req: Request): Promise<Res
  */
 async function citizenAccessible(auth: AuthContext, id: string, version: number | null): Promise<string | null> {
   const [request, access] = await Promise.all([
+    // Sa source, ou le GUICHET d'Iris : une demande saisie au guichet porte
+    // elle aussi un code, ouvert sur le portail de la collectivité (2026-11-13).
     supabase.from("requests").select("id, closed_at")
-      .eq("id", id).eq("organization_id", auth.organizationId).eq("source", auth.sourceCode)
+      .eq("id", id).eq("organization_id", auth.organizationId).in("source", [auth.sourceCode, GUICHET_SOURCE])
       .maybeSingle(),
     supabase.from("request_access_codes").select("request_id, email_hash, access_version, revoked_at")
       .eq("request_id", id).eq("organization_id", auth.organizationId)

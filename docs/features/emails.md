@@ -48,6 +48,16 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
   ne fait jamais échouer un dépôt ; composé par le serveur (`_shared/email/accuse.ts`), tracé
   dans `request_emails` avec `sent_by` NULL (« Iris · envoi automatique »). Pas de trigger sur
   `requests`, pour qu'un jeu de démonstration n'écrive à personne.
+  **Code d'accès au GUICHET** (décision PO du 2026-11-13) : une demande saisie dans Iris reçoit
+  elle aussi un code d'accès, **toujours**, dès que l'identité porte une adresse — sans case à
+  cocher. `create-request-from-procedure` passe par `register_request_access` (même porte que
+  le portail : empreintes, accusé enfilé, code confié à la file) au lieu de
+  `enqueue_request_receipt`. Page de suivi citée = `<origine du portail>/suivi`
+  (`guichetTrackingUrl`, origine de `integration_sources.citizen_space_url`) ; **sans portail
+  déclaré, pas de code** — il n'ouvrirait rien. Le portail ouvre ces demandes parce que
+  `check_request_access`, `request_access_resend` (migration `20261113100000`) et
+  `citizenAccessible` acceptent la source `iris` en plus de la sienne, tenant toujours imposé.
+  Constat d'origine : DEM-2026-000066 (SNA27), accusé sans code.
   Depuis le 2026-08-30, ces deux messages à l'usager portent la **charte graphique de la
   collectivité** — couleur principale des bordures et du bouton, logo — lue chez le Socle
   (`GET /v1/organizations/{id}/branding`, scope `read`) pour l'organisation **porteuse de la

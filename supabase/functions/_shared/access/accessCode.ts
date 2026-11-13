@@ -85,6 +85,28 @@ export function accessEmailHash(pepper: string, normalizedEmail: string): Promis
   return hmacHex(pepper, `email:${normalizedEmail}`);
 }
 
+/**
+ * Source du GUICHET d'Iris (`requests.source`). Décision PO du 2026-11-13 : une
+ * demande saisie au guichet reçoit elle aussi un code d'accès, et le portail de
+ * la collectivité doit pouvoir l'ouvrir — les recherches d'accès invité
+ * acceptent donc cette source en plus de celle de la clé (même tenant).
+ */
+export const GUICHET_SOURCE = "iris";
+
+/**
+ * Page de suivi citée dans l'accusé d'une demande du GUICHET : le guichet n'en
+ * a pas, on prend celle du portail de la collectivité — `<origine>/suivi`,
+ * comme le portail Nora la transmet à ses propres dépôts. L'origine vient de
+ * l'espace usager déclaré par le portail (`integration_sources.citizen_space_url`).
+ * `null` si rien d'exploitable : pas de portail, pas de code.
+ */
+export function guichetTrackingUrl(citizenSpaceUrl: string | null | undefined): string | null {
+  if (!citizenSpaceUrl) return null;
+  const space = normalizeTrackingUrl(citizenSpaceUrl);
+  if (space === null) return null;
+  return normalizeTrackingUrl(`${new URL(space).origin}/suivi`);
+}
+
 /** Page de suivi transmise par le portail : https seulement, sans identifiants. */
 export function normalizeTrackingUrl(input: unknown): string | null {
   if (typeof input !== "string" || input.length > 500) return null;

@@ -21,7 +21,11 @@ import {
 import { whitelistProcedureSnapshot } from "./_shared/snapshots.ts";
 import { normalizeConsents, type ConsentRecord } from "../_shared/consents/catalog.ts";
 import { parseProcedureStatus } from "../_shared/procedures/publication.ts";
-import { contactIdentitySnapshot } from "../_shared/identity/declared.ts";
+import { contactIdentitySnapshot, pickDeclared } from "../_shared/identity/declared.ts";
+import {
+  accessCodeHash, accessEmailHash, guichetTrackingUrl, newAccessCode, normalizeAccessCode,
+  normalizeAccessEmail, pepperFrom,
+} from "../_shared/access/accessCode.ts";
 import { parsePayload } from "./_shared/payload.ts";
 import { finalPath, isStagingPath } from "../_shared/files/names.ts";
 import { checkUploadRow, type UploadRow } from "../_shared/files/uploads.ts";
@@ -124,6 +128,55 @@ async function pushConsentsToSocle(
 async function enqueueReceipt(requestId: string): Promise<void> {
   const { error } = await supabase.rpc("enqueue_request_receipt", { p_request_id: requestId });
   if (error) console.error("create-request-from-procedure: accusé de réception non enfilé", error);
+}
+
+/**
+ * Code d'accès invité d'une demande du GUICHET (décision PO du 2026-11-13 :
+ * toujours, dès qu'une adresse est connue). Même porte que le portail —
+ * `register_request_access` enregistre les empreintes, enfile l'accusé et lui
+ * confie le code en clair, qui part avec lui à l'adresse déclarée.
+ *
+ * Renonce (et l'accusé part sans code) : dépôt anonyme, pas d'adresse, pas de
+ * poivre, ou aucun portail déclaré pour la collectivité — un code sans page où
+ * le saisir n'ouvrirait rien. `true` si l'accès est ouvert (accusé enfilé).
+ */
+async function openGuichetAccess(
+  requestId: string,
+  organizationId: string,
+  declared: unknown,
+  identityStatus: string,
+): Promise<boolean> {
+  if (identityStatus === "anonyme") return false;
+  const email = normalizeAccessEmail(pickDeclared(declared, "email"));
+  if (email === null) return false;
+  const pepper = pepperFrom(Deno.env.get("IRIS_ACCESS_CODE_PEPPER"));
+  if (pepper === null) {
+    console.error("create-request-from-procedure: IRIS_ACCESS_CODE_PEPPER absent — accusé sans code d'accès");
+    return false;
+  }
+  const { data: portals } = await supabase
+    .from("integration_sources")
+    .select("citizen_space_url")
+    .eq("organization_id", organizationId)
+    .eq("status", "active")
+    .not("citizen_space_url", "is", null)
+    .limit(1);
+  const trackingUrl = guichetTrackingUrl(portals?.[0]?.citizen_space_url ?? null);
+  if (trackingUrl === null) return false;
+
+  const code = newAccessCode();
+  const { data, error } = await supabase.rpc("register_request_access", {
+    p_request_id: requestId,
+    p_code_hash: await accessCodeHash(pepper, normalizeAccessCode(code)!),
+    p_email_hash: await accessEmailHash(pepper, email),
+    p_tracking_url: trackingUrl,
+    p_code: code,
+  });
+  if (error || data !== true) {
+    console.error("create-request-from-procedure: accès invité non ouvert", error ?? "déjà ouvert");
+    return false;
+  }
+  return true;
 }
 
 Deno.serve(async (req) => {
@@ -412,7 +465,9 @@ Deno.serve(async (req) => {
 
   // Accusé de réception à l'usager (2026-10-09) : ENFILÉ ici, envoyé par
   // `notifications-mailer`. La demande existe : un échec n'est jamais un refus.
-  await enqueueReceipt(result.id);
+  // Avec une adresse et un portail, l'accusé porte le code d'accès (2026-11-13).
+  const opened = await openGuichetAccess(result.id, p.organizationId, declared, identityStatus);
+  if (!opened) await enqueueReceipt(result.id);
 
   return json(req, 201, { id: result.id, reference: result.reference });
 });

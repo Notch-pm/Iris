@@ -7,6 +7,7 @@ import {
   normalizeAccessCode,
   normalizeAccessEmail,
   normalizeTrackingUrl,
+  guichetTrackingUrl,
   pepperFrom,
 } from "./accessCode";
 
@@ -68,6 +69,19 @@ describe("pepperFrom", () => {
     expect(pepperFrom(undefined)).toBeNull();
     expect(pepperFrom("court")).toBeNull();
     expect(pepperFrom(PEPPER)).toBe(PEPPER);
+  });
+});
+
+describe("guichetTrackingUrl — page de suivi d'une demande du guichet", () => {
+  it("prend l'origine de l'espace usager du portail, puis /suivi", () => {
+    expect(guichetTrackingUrl("https://test1.edilumen.fr/compte/demandes")).toBe("https://test1.edilumen.fr/suivi");
+    expect(guichetTrackingUrl("https://demarches.sceaux.fr")).toBe("https://demarches.sceaux.fr/suivi");
+  });
+  it("rien d'exploitable : pas de page (et donc pas de code)", () => {
+    expect(guichetTrackingUrl(null)).toBeNull();
+    expect(guichetTrackingUrl("")).toBeNull();
+    expect(guichetTrackingUrl("http://test1.edilumen.fr/compte")).toBeNull();
+    expect(guichetTrackingUrl("pas une adresse")).toBeNull();
   });
 });
 

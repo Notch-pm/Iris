@@ -9,6 +9,22 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.12.1 — 2026-11-13 — accès invité aux demandes saisies au guichet
+
+Décision PO du 2026-11-13 : une demande saisie au guichet d'Iris reçoit elle aussi un **code
+d'accès** avec son accusé de réception, dès que l'usager a une adresse de courriel et que la
+collectivité a déclaré son espace usager (`PUT /v1/citizen/space`). La page de suivi citée est
+`<origine de l'espace usager>/suivi`.
+
+- **`POST /v1/citizen/access`** et **`POST /v1/citizen/access/resend`** : la recherche par
+  référence couvre désormais, en plus des dépôts de la source appelante, les demandes du
+  **guichet d'Iris** de la même collectivité. Les vues usager (`/v1/citizen/requests/{id}`…)
+  suivent. Un portail doit donc accepter d'afficher une demande qu'il n'a pas déposée
+  (`channel` = `guichet`, `telephone`…).
+- Aucune forme ne change ; le tenant reste imposé par la clé.
+
+---
+
 ## 2.12.0 — 2026-11-12 — courrier de réponse validé dans Clara
 
 Quand une démarche fait valider ses courriers de réponse dans Clara (Socle

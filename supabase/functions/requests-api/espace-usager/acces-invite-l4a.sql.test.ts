@@ -112,6 +112,48 @@ describe("fermeture", () => {
   });
 });
 
+describe("demande du guichet (20261113100000)", () => {
+  async function guichetWithAccess(ref: string, org = ORG) {
+    await setting("app.service", "1");
+    const [{ id }] = await q<{ id: string }>(
+      "insert into requests (organization_id, reference, source) values ($1, $2, 'iris') returning id", [org, ref]);
+    await setting("app.service", "");
+    await db.query(
+      "insert into request_access_codes (request_id, organization_id, code_hash, email_hash) values ($1, $2, $3, $4)",
+      [id, org, H("c"), H("e")],
+    );
+    return id;
+  }
+
+  it("le portail ouvre une demande saisie au guichet de SA collectivité", async () => {
+    const id = await guichetWithAccess("DEM-G1");
+    expect(await check("DEM-G1")).toBe(id);
+  });
+
+  it("jamais celle d'une autre collectivité", async () => {
+    await guichetWithAccess("DEM-G2", ORG2);
+    expect(await check("DEM-G2")).toBeNull();
+  });
+
+  it("une autre source partenaire reste fermée", async () => {
+    await setting("app.service", "1");
+    const [{ id }] = await q<{ id: string }>(
+      "insert into requests (organization_id, reference, source) values ($1, 'DEM-X1', 'autre-portail') returning id", [ORG]);
+    await setting("app.service", "");
+    await db.query(
+      "insert into request_access_codes (request_id, organization_id, code_hash, email_hash) values ($1, $2, $3, $4)",
+      [id, ORG, H("c"), H("e")],
+    );
+    expect(await check("DEM-X1")).toBeNull();
+  });
+
+  it("« code perdu » fonctionne aussi pour une demande du guichet", async () => {
+    const id = await guichetWithAccess("DEM-G3");
+    await resend("DEM-G3");
+    expect((await access(id)).code_hash).toBe(H("d"));
+  });
+});
+
 describe("coupure (revoke_request_access)", () => {
   it("le bon code ne vaut plus ; version +1 ; qui et quand sont tracés", async () => {
     const id = await withAccess("DEM-1");

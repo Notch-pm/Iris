@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.12.0";
+export const CONTRACT_VERSION = "2.12.1";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -462,7 +462,9 @@ export function buildOpenApi(baseUrl: string) {
         "message envoyé messagerie fermée — ajout additif côté lecture ; un portail qui ignorait la règle",
         "reçoit désormais 409 là où il recevait 201. **2.12.0 (2026-11)** : courrier de réponse validé",
         "dans Clara — champ `reply_validation` de la demande, `POST /v1/requests/{id}/reply-letter/events`",
-        "(scope `requests:reply_letter`, Clara) — ajout additif.",
+        "(scope `requests:reply_letter`, Clara) — ajout additif. **2.12.1 (2026-11)** : l'accès invité",
+        "(`/v1/citizen/access`, `/resend`) ouvre aussi les demandes saisies au guichet d'Iris de la",
+        "collectivité, qui reçoivent désormais un code — aucune forme ne change.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
