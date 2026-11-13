@@ -26,6 +26,8 @@ export interface FicheLine {
   key: string;
   value: string;
   ok: boolean;
+  /** Manque qui grise le bouton « Créer » : affiché en rouge, pas en gris. */
+  blocking?: boolean;
 }
 
 export type NearbyState = "idle" | "loading" | "error" | "ready";
@@ -106,11 +108,17 @@ export function CreationRail({
             <div key={l.key} className="flex items-start gap-2.5">
               <span
                 aria-hidden="true"
-                className={cn("mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full", l.ok ? "bg-primary" : "bg-border")}
+                className={cn(
+                  "mt-1.5 h-[7px] w-[7px] shrink-0 rounded-full",
+                  l.ok ? "bg-primary" : l.blocking ? "bg-destructive" : "bg-border",
+                )}
               />
               <span className="flex min-w-0 flex-col gap-0.5 leading-snug">
                 <dt className="text-[10.5px] font-semibold text-muted-foreground">{l.key}</dt>
-                <dd className={cn("text-[12.5px] font-semibold", l.ok ? "text-foreground" : "text-muted-foreground")}>
+                <dd className={cn(
+                  "text-[12.5px] font-semibold",
+                  l.ok ? "text-foreground" : l.blocking ? "text-destructive" : "text-muted-foreground",
+                )}>
                   {l.value}
                 </dd>
               </span>

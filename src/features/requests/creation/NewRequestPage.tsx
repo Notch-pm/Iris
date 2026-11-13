@@ -808,6 +808,10 @@ export function NewRequestPage() {
     { num: 4, label: "Récapitulatif", hint: "doublons & liens" },
   ];
 
+  // Reflet d'écran du catalogue : la garde qui compte est celle de
+  // `create-request-from-procedure` (`normalizeConsents`), pas ce booléen.
+  const consentsMissing = !consentsSatisfied(consents);
+
   const lines: FicheLine[] = [
     { key: "Démarche", value: procedure?.snapshot.name ?? "à choisir", ok: Boolean(procedure) },
     { key: "Usager", value: requesterName ?? "à désigner", ok: Boolean(resolution) },
@@ -824,6 +828,14 @@ export function NewRequestPage() {
     { key: "Organisme", value: destinationLabel ?? "à choisir", ok: Boolean(destinationLabel) },
     { key: "Demandes liées", value: linkedCount > 0 ? Object.values(linked).join(", ") : "aucune", ok: linkedCount > 0 },
     { key: "Statut à la création", value: STATUS_LABELS.a_traiter, ok: true },
+    // Seule condition du bouton « Créer » qui ne se voyait qu'au bas du
+    // récapitulatif : signalée ici comme bloquante tant qu'elle manque.
+    {
+      key: "Consentement au traitement",
+      value: consentsMissing ? "à recueillir — bloque la création" : "recueilli",
+      ok: !consentsMissing,
+      blocking: consentsMissing,
+    },
   ];
 
   const nextDisabled = step === 0 ? destinationId === ""
@@ -838,9 +850,6 @@ export function NewRequestPage() {
   // récapitulatif, qui n'a pas de suivante (le bouton y devient « Créer »), ni
   // sur l'écran de confirmation.
   const canAdvance = !created && step !== 5 && step !== 4 && !nextDisabled;
-  // Reflet d'écran du catalogue : la garde qui compte est celle de
-  // `create-request-from-procedure` (`normalizeConsents`), pas ce booléen.
-  const consentsMissing = !consentsSatisfied(consents);
   const footHint = step === 0
       ? "L'organisme porte la demande : il décide de qui pourra l'instruire et la clore"
     : step === 1 ? "Choisissez la démarche du Référentiel qui fonde la demande"

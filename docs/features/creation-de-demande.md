@@ -205,6 +205,10 @@ Fiche de feature : détail déplacé tel quel depuis `CLAUDE.md` le 2026-10-30. 
       un acte de l'usager présent à cet instant. Le restaurer d'une session vieille de trois
       jours ferait valider un dépôt sur une case que personne n'a cochée. À la reprise, la
       question est reposée — c'est le prix, et il est juste.
+    - **Signalé aussi dans le rail** (2026-11-13) : dernière ligne de la « Fiche de la demande »,
+      en rouge (`FicheLine.blocking`) tant que le traitement n'est pas recueilli. Un agent a
+      cherché pourquoi le bouton restait gris alors que tout était renseigné — la case, décochée
+      d'office, n'était visible qu'au bas du récapitulatif.
     - **Le parcours MOBILE pose les mêmes questions**, au même catalogue, dans un bloc propre
       au-dessus des doublons (`MobileNewRequestPage`) : il crée de vraies demandes, il ne peut
       pas sauter la garde.
