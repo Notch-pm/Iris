@@ -9,6 +9,21 @@ les consommateurs doivent tolérer les champs de réponse inconnus.
 
 ---
 
+## 2.13.0 — 2026-11-13 — trace du courrier de réponse envoyé par Clara
+
+Décision PO du 2026-11-13 : le courrier de réponse validé dans Clara doit rester visible dans
+Iris une fois parti — dans les échanges de la demande, et dans ses documents s'il part par
+courrier.
+
+- **`POST /v1/requests/{id}/reply-letter/events`** : avec `event: "sent"`, champ facultatif
+  **`letter`** `{ channel: "email" | "paper", subject, body, recipient?, document? }`, où
+  `document` = `{ file_name, content_base64 }` (PDF, 10 Mo au plus, vérifié par signature
+  binaire — 422 sinon). Iris enregistre un échange (et, pour le papier, le document) ;
+  **idempotent**, un rejeu complète sans doubler. Refusé avec `cancelled` (400).
+- Sans `letter`, comportement 2.12.0 inchangé. Ajout additif.
+
+---
+
 ## 2.12.1 — 2026-11-13 — accès invité aux demandes saisies au guichet
 
 Décision PO du 2026-11-13 : une demande saisie au guichet d'Iris reçoit elle aussi un **code

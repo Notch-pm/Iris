@@ -54,8 +54,15 @@ Iris.
   `confirm_clara_reply` (lien `request_links` externe `clara_courier`, événement
   `clara_reply_submitted`), `finalize_clara_reply` (événement `clara_reply_sent`),
   `cancel_clara_reply` (événement `clara_reply_cancelled`). Toutes idempotentes.
-- ⚠️ **Le texte du courrier n'est pas conservé dans Iris** : il vit dans Clara, où il est visé
-  et signé. Iris garde l'issue, le motif et le commentaire de clôture réservés.
+- **Iris garde la trace du courrier PARTI** (décision PO du 2026-11-13, qui remplace « le texte
+  n'est pas conservé » du 2026-11-12) : l'avis `sent` de Clara porte `letter` (contrat 2.13.0 —
+  canal réel, objet, texte final, PDF pour le papier). `record_clara_reply_letter` en fait un
+  échange (`request_emails`, remise `courriel` ou `courrier`, `clara_courier_id` unique, auteur =
+  l'agent qui a rédigé) ; pour le papier, le PDF entre par `receiveFile` en DEUX lignes — le
+  document `courrier` du dossier et sa copie rattachée à l'échange (motif « Joindre à un
+  échange »). C'est la version ENVOYÉE (retouches du visa comprises), pas le brouillon d'Iris ;
+  avant l'envoi, Iris ne garde toujours rien. L'échange étant `envoye`, l'usager le voit aussi
+  dans sa vue du portail. Un avis sans `letter` (Clara d'avant 2.13.0) clôt sans trace.
 - ⚠️ **Pas d'avis de clôture par Iris** pour ces demandes : le courrier Clara EST la réponse.
   La notification `t41` de l'espace usager reste.
 - **Statistiques** : `resolved_by` = l'agent qui a rédigé (`reply_submitted_by`) —

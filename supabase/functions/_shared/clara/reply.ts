@@ -229,13 +229,90 @@ export function claraReplyFailure(outcome: Exclude<ClaraReplyOutcome, { kind: "o
 export const REPLY_EVENTS = ["sent", "cancelled"] as const;
 export type ReplyEventKind = (typeof REPLY_EVENTS)[number];
 
+/**
+ * Le courrier tel qu'il est PARTI (contrat 2.13.0, décision PO du 2026-11-13) :
+ * Clara le joint à l'avis `sent` pour qu'Iris en garde la trace — un échange
+ * dans l'onglet Échanges et, pour un envoi papier, le PDF dans les Documents.
+ * Facultatif : un avis sans `letter` (Clara d'avant 2.13.0) clôt comme avant.
+ */
+export interface ReplyLetter {
+  channel: "email" | "paper";
+  subject: string;
+  body: string;
+  /** Adresse (courriel) ou nom du destinataire (papier), tel que Clara l'a servi. */
+  recipient: string | null;
+  /** PDF envoyé (papier) — décodé, jamais encore inspecté : la porte unique le fera. */
+  document: { fileName: string; bytes: Uint8Array } | null;
+}
+
 export interface ReplyEvent {
   courierId: string;
   event: ReplyEventKind;
   occurredAt: string | null;
+  letter?: ReplyLetter;
 }
 
-const EVENT_KEYS = new Set(["courier_id", "event", "occurred_at"]);
+/** Plafond du PDF joint à l'avis (avant encodage base64). */
+export const REPLY_LETTER_PDF_MAX_BYTES = 10 * 1_048_576;
+const LETTER_KEYS = new Set(["channel", "subject", "body", "recipient", "document"]);
+const DOCUMENT_KEYS = new Set(["file_name", "content_base64"]);
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+
+function decodeBase64(value: string): Uint8Array | null {
+  const compact = value.replace(/\s+/g, "");
+  if (compact.length === 0 || compact.length % 4 !== 0 || !BASE64_RE.test(compact)) return null;
+  try {
+    const binary = atob(compact);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+
+function parseReplyLetter(raw: unknown): ReplyLetter | { error: string } {
+  if (!isRecord(raw)) return { error: "letter : objet attendu." };
+  const unknown = Object.keys(raw).filter((k) => !LETTER_KEYS.has(k));
+  if (unknown.length > 0) return { error: `letter : champ(s) inconnu(s) : ${unknown.join(", ")}.` };
+  if (raw.channel !== "email" && raw.channel !== "paper") return { error: "letter.channel : email ou paper." };
+  const subject = typeof raw.subject === "string" ? raw.subject.trim() : "";
+  if (subject === "" || subject.length > REPLY_SUBJECT_MAX) {
+    return { error: `letter.subject : texte requis, ${REPLY_SUBJECT_MAX} caractères au plus.` };
+  }
+  const body = typeof raw.body === "string" ? raw.body.trim() : "";
+  if (body === "" || body.length > REPLY_BODY_MAX) {
+    return { error: `letter.body : texte requis, ${REPLY_BODY_MAX} caractères au plus.` };
+  }
+  let recipient: string | null = null;
+  if (raw.recipient !== undefined && raw.recipient !== null) {
+    if (typeof raw.recipient !== "string" || raw.recipient.length > 320) {
+      return { error: "letter.recipient : texte de 320 caractères au plus." };
+    }
+    recipient = raw.recipient.trim() || null;
+  }
+  let document: ReplyLetter["document"] = null;
+  if (raw.document !== undefined && raw.document !== null) {
+    const d = raw.document;
+    if (!isRecord(d)) return { error: "letter.document : objet attendu." };
+    const extra = Object.keys(d).filter((k) => !DOCUMENT_KEYS.has(k));
+    if (extra.length > 0) return { error: `letter.document : champ(s) inconnu(s) : ${extra.join(", ")}.` };
+    const fileName = typeof d.file_name === "string" ? d.file_name.trim() : "";
+    if (fileName === "" || fileName.length > 200) return { error: "letter.document.file_name : nom requis (200 caractères au plus)." };
+    if (typeof d.content_base64 !== "string") return { error: "letter.document.content_base64 : base64 requis." };
+    // Plafond vérifié AVANT de décoder : 4 caractères base64 = 3 octets.
+    if (d.content_base64.length > Math.ceil(REPLY_LETTER_PDF_MAX_BYTES / 3) * 4 + 4) {
+      return { error: "letter.document : 10 Mo au plus." };
+    }
+    const bytes = decodeBase64(d.content_base64);
+    if (bytes === null) return { error: "letter.document.content_base64 : base64 invalide." };
+    if (bytes.length > REPLY_LETTER_PDF_MAX_BYTES) return { error: "letter.document : 10 Mo au plus." };
+    document = { fileName, bytes };
+  }
+  return { channel: raw.channel, subject, body, recipient, document };
+}
+
+const EVENT_KEYS = new Set(["courier_id", "event", "occurred_at", "letter"]);
 
 /** Valide l'avis de Clara. Toute clé inconnue est refusée (contrat §5). */
 export function parseReplyEvent(raw: unknown): ReplyEvent | { error: string } {
@@ -255,5 +332,10 @@ export function parseReplyEvent(raw: unknown): ReplyEvent | { error: string } {
     }
     occurredAt = new Date(raw.occurred_at).toISOString();
   }
-  return { courierId: raw.courier_id, event: raw.event as ReplyEventKind, occurredAt };
+  const base = { courierId: raw.courier_id, event: raw.event as ReplyEventKind, occurredAt };
+  if (raw.letter === undefined || raw.letter === null) return base;
+  if (raw.event !== "sent") return { error: "letter : seulement avec event = sent." };
+  const letter = parseReplyLetter(raw.letter);
+  if ("error" in letter) return letter;
+  return { ...base, letter };
 }

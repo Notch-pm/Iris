@@ -4,7 +4,7 @@
 // « URL signée » des pièces, jamais livré, au profit du dépôt direct
 // (`POST /v1/uploads`). Les routes restent sous `/v1`.
 
-export const CONTRACT_VERSION = "2.12.1";
+export const CONTRACT_VERSION = "2.13.0";
 /** Taille maximale d'un fichier déposé par un partenaire (documentée, pas seulement appliquée). */
 export const MAX_UPLOAD_BYTES_DEFAULT = 25 * 1_048_576;
 export const API_BASE_PATH = "/v1";
@@ -464,7 +464,9 @@ export function buildOpenApi(baseUrl: string) {
         "dans Clara — champ `reply_validation` de la demande, `POST /v1/requests/{id}/reply-letter/events`",
         "(scope `requests:reply_letter`, Clara) — ajout additif. **2.12.1 (2026-11)** : l'accès invité",
         "(`/v1/citizen/access`, `/resend`) ouvre aussi les demandes saisies au guichet d'Iris de la",
-        "collectivité, qui reçoivent désormais un code — aucune forme ne change.",
+        "collectivité, qui reçoivent désormais un code — aucune forme ne change. **2.13.0 (2026-11)** :",
+        "l'avis `sent` de Clara peut porter le courrier parti (`letter` : canal, objet, texte, PDF) dont",
+        "Iris garde la trace — ajout additif.",
       ].join("\n"),
       contact: { name: "Équipe Iris" },
     },
@@ -816,6 +818,33 @@ export function buildOpenApi(baseUrl: string) {
                 courier_id: { type: "string", format: "uuid", description: "Le courrier sortant Clara rendu au dépôt." },
                 event: { type: "string", enum: ["sent", "cancelled"] },
                 occurred_at: { type: "string", format: "date-time", nullable: true, description: "Date d'envoi (sent) ; défaut : maintenant." },
+                letter: {
+                  type: "object",
+                  nullable: true,
+                  additionalProperties: false,
+                  required: ["channel", "subject", "body"],
+                  description:
+                    "2.13.0 — avec `sent` seulement : le courrier tel qu'il est PARTI. Iris en garde la trace — un échange " +
+                    "de la demande (remise courriel ou courrier) et, pour le papier, le PDF au dossier (document « courrier »). " +
+                    "Idempotent : un rejeu ne double rien. Absent : la demande est close comme en 2.12.0, sans trace.",
+                  properties: {
+                    channel: { type: "string", enum: ["email", "paper"], description: "Canal réellement utilisé." },
+                    subject: { type: "string", maxLength: 300 },
+                    body: { type: "string", maxLength: 50000, description: "Texte final, en texte brut." },
+                    recipient: { type: "string", nullable: true, maxLength: 320, description: "Adresse (courriel) ou nom du destinataire (papier)." },
+                    document: {
+                      type: "object",
+                      nullable: true,
+                      additionalProperties: false,
+                      required: ["file_name", "content_base64"],
+                      description: "PDF envoyé (papier), 10 Mo au plus. Vérifié par signature binaire : un autre type est refusé (422).",
+                      properties: {
+                        file_name: { type: "string", maxLength: 200 },
+                        content_base64: { type: "string", format: "byte" },
+                      },
+                    },
+                  },
+                },
               },
             } } },
           },

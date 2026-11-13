@@ -1582,6 +1582,7 @@ export type Database = {
       request_emails: {
         Row: {
           body: string
+          clara_courier_id: string | null
           created_at: string
           delivery: string
           error: string | null
@@ -1599,6 +1600,7 @@ export type Database = {
         }
         Insert: {
           body: string
+          clara_courier_id?: string | null
           created_at?: string
           delivery?: string
           error?: string | null
@@ -1616,6 +1618,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          clara_courier_id?: string | null
           created_at?: string
           delivery?: string
           error?: string | null
@@ -3471,6 +3474,19 @@ export type Database = {
           p_org: string
           p_request_id: string
           p_source: string
+        }
+        Returns: string
+      }
+      record_clara_reply_letter: {
+        Args: {
+          p_body: string
+          p_channel: string
+          p_courier_id: string
+          p_organization_id: string
+          p_recipient: string
+          p_request_id: string
+          p_sent_at: string
+          p_subject: string
         }
         Returns: string
       }

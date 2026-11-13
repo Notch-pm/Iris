@@ -73,7 +73,7 @@ import {
 import { CITIZEN_TOKEN_HEADER, type CitizenSubject, verifyCitizenToken } from "./_shared/citizenToken.ts";
 import { parseChannelsBody, parseSpaceBody, parseUnsubscribeBody } from "./_shared/citizenPreferences.ts";
 import { verifyUnsubscribeToken } from "../_shared/citizenNotices/unsubscribe.ts";
-import { parseReplyEvent } from "../_shared/clara/reply.ts";
+import { parseReplyEvent, REPLY_LETTER_PDF_MAX_BYTES, type ReplyLetter } from "../_shared/clara/reply.ts";
 
 /** Scope de l'avis de Clara sur un courrier de réponse (2026-11-12). */
 const REPLY_LETTER_SCOPE = "requests:reply_letter";
@@ -1508,6 +1508,93 @@ async function handleAddAttachments(auth: AuthContext, id: string, req: Request)
  * Rejeu → 200 `already` ; demande hors tenant → 404 ; courrier qui n'est pas
  * celui en attente → 409 (Clara cesse de relancer).
  */
+/**
+ * Trace du courrier de réponse envoyé par Clara : un échange (onglet Échanges)
+ * et, pour un envoi papier, le PDF au dossier — document `courrier` rattaché à
+ * l'échange, entré par la porte unique des fichiers (`receiveFile`). Une erreur
+ * ici répond 5xx : Clara relancera, et la clôture déjà faite rendra `already`.
+ */
+async function recordReplyLetter(
+  auth: AuthContext,
+  requestId: string,
+  courierId: string,
+  occurredAt: string | null,
+  letter: ReplyLetter,
+): Promise<true | Response> {
+  const { data: emailId, error } = await supabase.rpc("record_clara_reply_letter", {
+    p_organization_id: auth.organizationId,
+    p_request_id: requestId,
+    p_courier_id: courierId,
+    p_channel: letter.channel,
+    p_subject: letter.subject,
+    p_body: letter.body,
+    p_recipient: letter.recipient,
+    p_sent_at: occurredAt,
+  });
+  if (error || typeof emailId !== "string") {
+    if (error?.code === "P0434") return fail("conflict", error.message);
+    if (error?.code === "22023") return fail("bad_request", error.message);
+    console.error("requests-api record_clara_reply_letter:", error);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  if (!letter.document) return true;
+
+  const { data: existing } = await supabase.from("request_attachments").select("id")
+    .eq("request_id", requestId).eq("email_id", emailId).eq("kind", "courrier").limit(1);
+  if ((existing ?? []).length > 0) return true;
+
+  const { data: request } = await supabase.from("requests").select("reply_submitted_by")
+    .eq("id", requestId).eq("organization_id", auth.organizationId).maybeSingle();
+  const bucket = supabase.storage.from(BUCKET);
+  const path = finalPath(auth.organizationId, requestId, crypto.randomUUID(), letter.document.fileName);
+  const received = await receiveFile(bucket, {
+    path,
+    bytes: letter.document.bytes,
+    fileName: letter.document.fileName,
+    maxBytes: REPLY_LETTER_PDF_MAX_BYTES,
+  });
+  if (!received.ok) {
+    if (received.code === "storage_failed") {
+      console.error("requests-api: PDF du courrier Clara non stocké", received.message);
+      return fail("bad_gateway", "Stockage indisponible : réessayez dans quelques instants.");
+    }
+    return fail("unprocessable", `letter.document : ${received.message}`);
+  }
+  // Deux LIGNES, un fichier — motif de « Joindre à un échange » : le document
+  // du dossier (onglet Documents, `email_id` nul) et sa copie partie avec
+  // l'échange (`email_id`, `source_attachment_id` vers l'original).
+  const row = {
+    organization_id: auth.organizationId,
+    request_id: requestId,
+    storage_path: path,
+    file_name: received.fileName,
+    mime_type: received.mime,
+    file_size: received.size,
+    checksum: received.checksum,
+    copy_status: "copied",
+    uploaded_by: request?.reply_submitted_by ?? null,
+    kind: "courrier",
+  };
+  const { data: original, error: insertError } = await supabase.from("request_attachments")
+    .insert(row).select("id").single();
+  if (insertError || !original) {
+    await discardReceived(bucket, path);
+    console.error("requests-api: PDF du courrier Clara non rattaché", insertError);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  const { error: copyError } = await supabase.from("request_attachments")
+    .insert({ ...row, email_id: emailId, source_attachment_id: original.id });
+  if (copyError) {
+    // L'original reste au dossier : un rejeu ne trouvera pas la copie et
+    // ajoutera un second original — on retire donc celui-ci pour rester propre.
+    await supabase.from("request_attachments").delete().eq("id", original.id);
+    await discardReceived(bucket, path);
+    console.error("requests-api: copie d'échange du courrier Clara non rattachée", copyError);
+    return fail("internal_error", "Erreur serveur.");
+  }
+  return true;
+}
+
 async function handleReplyLetterEvent(auth: AuthContext, id: string, req: Request): Promise<Response> {
   if (auth.sourceCode !== "clara") return fail("forbidden", "Réservé à Clara.");
   const event = parseReplyEvent(await req.json().catch(() => null));
@@ -1526,6 +1613,13 @@ async function handleReplyLetterEvent(auth: AuthContext, id: string, req: Reques
     if (error.code === "P0434") return fail("conflict", error.message);
     console.error(`requests-api ${rpc}:`, error);
     return fail("internal_error", "Erreur serveur.");
+  }
+  // La trace du courrier PARTI (2.13.0) : après la clôture, jamais à sa place.
+  // Idempotente — un rejeu de l'avis (ou un avis qui rattrape un courrier déjà
+  // clos, `already`) complète ce qui manque sans rien doubler.
+  if (event.event === "sent" && event.letter) {
+    const traced = await recordReplyLetter(auth, id, event.courierId, event.occurredAt, event.letter);
+    if (traced instanceof Response) return traced;
   }
   const { data: row } = await supabase
     .from("requests")

@@ -462,6 +462,10 @@ export function EchangesPane({
                   <span className="truncate">à {mail.to_email}</span>
                   {mail.nature === "avis" ? <Pill>Avis automatique</Pill> : null}
                   {mail.delivery === "espace" ? <Pill>Publié dans l'espace usager</Pill> : null}
+                  {/* Courrier de réponse validé et envoyé dans Clara (2.13.0) : sa trace. */}
+                  {mail.clara_courier_id ? (
+                    <Pill>{mail.delivery === "courrier" ? "Courrier postal · envoyé via Clara" : "Courriel · envoyé via Clara"}</Pill>
+                  ) : null}
                   {mail.status === "echec" ? (
                     <Pill tone="error">Non envoyé</Pill>
                   ) : mail.status === "en_cours" ? (

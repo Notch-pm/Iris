@@ -110,4 +110,45 @@ describe("parseReplyEvent", () => {
     expect(parseReplyEvent({ courier_id: COUR, event: "sent", occurred_at: "hier" })).toHaveProperty("error");
     expect(parseReplyEvent({ courier_id: "x", event: "sent" })).toHaveProperty("error");
   });
+
+  describe("letter — le courrier tel qu'il est parti (2.13.0)", () => {
+    const PDF_B64 = btoa("%PDF-1.4\n%fin");
+
+    it("courriel : objet, texte, destinataire", () => {
+      const r = parseReplyEvent({
+        courier_id: COUR, event: "sent",
+        letter: { channel: "email", subject: " Réponse ", body: "Madame,\n\nOui.", recipient: "marie@example.org" },
+      });
+      expect(r).toMatchObject({
+        letter: { channel: "email", subject: "Réponse", body: "Madame,\n\nOui.", recipient: "marie@example.org", document: null },
+      });
+    });
+
+    it("papier : le PDF est décodé", () => {
+      const r = parseReplyEvent({
+        courier_id: COUR, event: "sent",
+        letter: { channel: "paper", subject: "Réponse", body: "Texte", document: { file_name: "reponse.pdf", content_base64: PDF_B64 } },
+      });
+      if ("error" in r) throw new Error(r.error);
+      expect(r.letter?.document?.fileName).toBe("reponse.pdf");
+      expect(new TextDecoder().decode(r.letter?.document?.bytes)).toBe("%PDF-1.4\n%fin");
+    });
+
+    it("refuse : avec cancelled, canal inconnu, texte vide, champ inconnu, base64 invalide", () => {
+      const letter = { channel: "email", subject: "S", body: "B" };
+      expect(parseReplyEvent({ courier_id: COUR, event: "cancelled", letter })).toHaveProperty("error");
+      expect(parseReplyEvent({ courier_id: COUR, event: "sent", letter: { ...letter, channel: "fax" } })).toHaveProperty("error");
+      expect(parseReplyEvent({ courier_id: COUR, event: "sent", letter: { ...letter, body: "  " } })).toHaveProperty("error");
+      expect(parseReplyEvent({ courier_id: COUR, event: "sent", letter: { ...letter, html: "<p>" } })).toHaveProperty("error");
+      expect(parseReplyEvent({
+        courier_id: COUR, event: "sent",
+        letter: { ...letter, document: { file_name: "a.pdf", content_base64: "pas du base64 !" } },
+      })).toHaveProperty("error");
+    });
+
+    it("sans letter : l'avis d'avant 2.13.0 reste valable, à l'identique", () => {
+      expect(parseReplyEvent({ courier_id: COUR, event: "sent", letter: null }))
+        .toEqual({ courierId: COUR, event: "sent", occurredAt: null });
+    });
+  });
 });
