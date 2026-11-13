@@ -45,10 +45,12 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { buildDocumentInput, documentFileName } from "../_shared/document/context.ts";
 import { mergeDocumentXml, scanTemplate } from "../_shared/document/docxMerge.ts";
 import { parseDocument } from "../_shared/document/docxParse.ts";
+import { documentPlainText } from "../_shared/document/docxText.ts";
 import { isDocx, openDocx, readXml, saveDocx, textParts, writeXml } from "../_shared/document/docxZip.ts";
 import { renderPdf } from "../_shared/document/pdfRender.ts";
 import {
-  closureLetterAllowed, findTemplate, isMergeable, kindOfTemplate, parseProcedureDocuments, unmergeableReason,
+  closureLetterAllowed, findTemplate, isMergeable, kindOfTemplate, parseProcedureDocuments, replyLetterBaseAllowed,
+  unmergeableReason,
 } from "../_shared/document/templates.ts";
 import { buildMergeContext } from "../_shared/document/variables.ts";
 import { charteFromSocle, type SocleBrandingDto } from "../_shared/email/charte.ts";
@@ -210,6 +212,9 @@ Deno.serve(async (req) => {
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
   const requestId = str(body?.request_id);
   const preview = body?.mode === "preview";
+  // Mode `text` (2026-11-13) : le courrier FUSIONNÉ, rendu en texte brut, pour
+  // servir de base au courrier de réponse déposé dans Clara. Rien n'est écrit.
+  const textMode = body?.mode === "text";
   const format = str(body?.format) === "docx" ? "docx" : "pdf";
   const templateId = str(body?.template_id);
 
@@ -277,9 +282,15 @@ Deno.serve(async (req) => {
       "Le référentiel est injoignable : les modèles de la démarche n'ont pas pu être lus.");
   }
   const documents = parseProcedureDocuments(procedureDto.documents);
-  if (!canInstruct && !closureLetterAllowed(documents, templateId, request.status)) {
-    return fail(req, 403, "forbidden",
-      "Avec le droit de clôture, seul un courrier de réponse prévu pour l'issue de cette demande close peut être produit.");
+  if (!canInstruct) {
+    if (textMode && !replyLetterBaseAllowed(documents, templateId)) {
+      return fail(req, 403, "forbidden",
+        "Avec le droit de clôture, seul un courrier de réponse de la démarche peut servir de base.");
+    }
+    if (!textMode && !closureLetterAllowed(documents, templateId, request.status)) {
+      return fail(req, 403, "forbidden",
+        "Avec le droit de clôture, seul un courrier de réponse prévu pour l'issue de cette demande close peut être produit.");
+    }
   }
   const template = findTemplate(documents, templateId);
   if (!template) {
@@ -386,6 +397,19 @@ Deno.serve(async (req) => {
     },
   });
   const ctx = buildMergeContext(input);
+
+  // ---- Texte : base du courrier de réponse Clara ----------------------------
+  // Corps du document seulement (ni en-tête ni pied : la mise en page du
+  // courrier se fait dans Clara). Les jetons hors catalogue restent tels quels
+  // et sont listés, pour que l'agent les comble.
+  if (textMode) {
+    const merged = mergeDocumentXml(documentXml, ctx);
+    return json(req, 200, {
+      template: { id: template.id, name: template.name, visibility: template.visibility },
+      text: documentPlainText(parseDocument(merged)),
+      unknown: scan.unknown,
+    });
+  }
 
   // ---- Aperçu : ce que le modèle demande, et ce qu'il recevra ---------------
   if (preview) {

@@ -1,8 +1,40 @@
 import { describe, expect, it } from "vitest";
 import {
   closureLetterAllowed, closureLetters, closureOutcome, emptyDocuments, findTemplate, groupTemplates, isMergeable, kindOfTemplate,
-  parseProcedureDocuments, unmergeableReason, visibleTemplates,
+  parseProcedureDocuments, replyLetterBaseAllowed, replyLetterBases, unmergeableReason, visibleTemplates,
 } from "./templates";
+
+describe("replyLetterBases — base du courrier de réponse Clara", () => {
+  const docs = parseProcedureDocuments({
+    restrict_visibility: true,
+    items: [
+      { id: "t1", name: "Information générale", type: "courrier", group: "courrier", file_name: "info.docx", visibility: "toujours" },
+      { id: "n1", name: "Refus", type: "courrier", group: "courrier", file_name: "refus.docx", visibility: "negative" },
+      { id: "i1", name: "Note interne", type: "interne", group: "courrier", file_name: "note.docx", visibility: "toujours" },
+      { id: "p1", name: "Acceptation", type: "courrier", group: "courrier", file_name: "ok.docx", visibility: "positive" },
+      { id: "o1", name: "Vieux format", type: "courrier", group: "courrier", file_name: "vieux.doc", visibility: "positive" },
+      { id: "t2", name: "Relance", type: "courrier", group: "courrier", file_name: "relance.docx", visibility: "toujours" },
+    ],
+  });
+
+  it("résolution d'abord (positive puis négative), puis les autres, ordre du paramétrage conservé", () => {
+    const { resolution, autres } = replyLetterBases(docs);
+    expect(resolution.map((i) => i.id)).toEqual(["p1", "n1"]);
+    expect(autres.map((i) => i.id)).toEqual(["t1", "t2"]);
+  });
+
+  it("jamais un document interne, jamais un format non fusionnable", () => {
+    const all = Object.values(replyLetterBases(docs)).flat().map((i) => i.id);
+    expect(all).not.toContain("i1");
+    expect(all).not.toContain("o1");
+  });
+
+  it("garde serveur : seuls ces courriers sont lisibles avec le droit de clôture", () => {
+    expect(replyLetterBaseAllowed(docs, "n1")).toBe(true);
+    expect(replyLetterBaseAllowed(docs, "i1")).toBe(false);
+    expect(replyLetterBaseAllowed(docs, "inconnu")).toBe(false);
+  });
+});
 
 /** Le bloc tel que le brief Socle du 2026-09-01 le montre. */
 const RAW = {

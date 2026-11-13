@@ -25,6 +25,7 @@ import { cn } from "@/lib/utils";
 import { StatusBadge } from "./StatusBadge";
 import { ClaraReplyBanner, ClaraReplyDialog } from "./instruction/ClaraReplyDialog";
 import { useReplyViaClara } from "./instruction/useClaraReply";
+import { requestTemplateValues } from "./instruction/courriel";
 import { closureNoticeApplies } from "@fn/_shared/email/cloture";
 import {
   TransitionDialog, offersClosureLetter, useTransitionRunner, type TransitionInput,
@@ -279,6 +280,13 @@ export function RequestDetailPage() {
   // demande-t-elle ? Le geste remplace alors la résolution directe.
   const replyViaClara = useReplyViaClara(id, Boolean(r) && r?.status === "en_instruction");
   const [claraReplyOpen, setClaraReplyOpen] = React.useState(false);
+  // Courriers de la démarche proposés comme base du courrier Clara : lus à
+  // l'ouverture de la modale seulement.
+  const claraReplyDocs = useProcedureDocuments(
+    r?.organization_id ?? "",
+    r?.socle_procedure_id ?? null,
+    claraReplyOpen,
+  );
   const runner = useTransitionRunner({
     requestId: id ?? "",
     assignedTo: r?.assigned_to ?? null,
@@ -1143,6 +1151,14 @@ export function RequestDetailPage() {
         request={{ id: r.id, reference: r.reference, subject: r.subject, requesterEmail: identity.email ?? null }}
         piecesBlocking={piecesBlocking}
         onSubmitted={(ref) => flash(`Courrier de réponse déposé dans Clara${ref ? ` (${ref})` : ""} — réponse en validation.`)}
+        documents={claraReplyDocs.data}
+        documentsLoading={claraReplyDocs.isLoading}
+        templateValues={claraReplyOpen
+          ? requestTemplateValues({
+              request: r, identity, events: events.data ?? [], members: memberList,
+              tenantName: current?.organizationName ?? "",
+            })
+          : {}}
       />
 
       <TransitionDialog

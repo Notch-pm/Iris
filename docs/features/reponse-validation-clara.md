@@ -63,6 +63,27 @@ Iris.
 - **t17** (pièces obligatoires conformes) est vérifiée **au dépôt** et non rejugée à la
   finalisation (`iris.clara_reply_finalize`) : le courrier est déjà parti.
 
+## Base du courrier (2026-11-13)
+
+- La modale propose « Partir d'un courrier de la démarche » : les courriers prévus au
+  paramétrage (`documents.items`, type ET rangement courrier, `.docx`), **d'abord ceux destinés
+  à une résolution** (positive puis négative), puis les autres — `replyLetterBases`
+  (`_shared/document/templates.ts`). Toutes les conditions d'affichage sont proposées :
+  l'agent choisit une base, il ne produit pas un document du dossier.
+- Le choix appelle `generate-request-document` en **mode `text`** : le courrier est FUSIONNÉ
+  côté serveur (même contexte que la génération) puis rendu en texte brut
+  (`docxText.ts` — corps seul, ni en-tête ni pied, mise en forme perdue : elle se fait dans
+  Clara). Rien n'est écrit au dossier. Les jetons hors catalogue restent tels quels et sont
+  signalés à l'agent.
+- Droit : instruction, ou clôture seule si le modèle est l'une de ces bases
+  (`replyLetterBaseAllowed`) — le circuit Clara exige justement le droit de clôture.
+- L'agent retouche le texte et insère au curseur la **valeur** des variables (menu
+  « Insérer une variable… » des Échanges, `requestTemplateValues`). Une base destinée à une
+  résolution aligne l'issue sur la sienne ; « Rétablir mon texte » annule un remplacement tant
+  que rien n'a été retouché.
+- ⚠️ Déploiement : `generate-request-document` doit être redéployée pour que le select
+  fonctionne (sinon le mode `text` est traité comme une génération).
+
 ## Pièges
 
 - ⚠️ Sans fiche Socle du demandeur (dépôt anonyme ou non rapproché), Clara ne peut pas

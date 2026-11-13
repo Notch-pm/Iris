@@ -189,6 +189,38 @@ export function closureLetters(
 }
 
 /**
+ * Courriers proposés comme BASE du courrier de réponse déposé dans Clara
+ * (2026-11-13). Tous les courriers fusionnables de la démarche, quelle que soit
+ * leur condition d'affichage — l'agent choisit une base qu'il retouchera, il ne
+ * produit pas un document du dossier. Ordre voulu par le PO : d'abord ceux
+ * destinés à une résolution (positive, puis négative), ensuite les autres ;
+ * l'ordre du paramétrage est conservé à l'intérieur de chaque groupe.
+ */
+export function replyLetterBases(documents: ProcedureDocuments): {
+  resolution: DocumentTemplate[];
+  autres: DocumentTemplate[];
+} {
+  const letters = documents.items.filter(isClosureLetter).filter((item) => isMergeable(item.file_name));
+  return {
+    resolution: [
+      ...letters.filter((item) => item.visibility === "positive"),
+      ...letters.filter((item) => item.visibility === "negative"),
+    ],
+    autres: letters.filter((item) => item.visibility === "toujours"),
+  };
+}
+
+/**
+ * Garde SERVEUR du mode `text` de `generate-request-document` pour un agent
+ * qui n'a que le droit de clôture : seul un courrier proposé comme base de
+ * réponse (`replyLetterBases`) peut être lu. Rien n'est écrit dans ce mode.
+ */
+export function replyLetterBaseAllowed(documents: ProcedureDocuments, templateId: string): boolean {
+  const { resolution, autres } = replyLetterBases(documents);
+  return [...resolution, ...autres].some((item) => item.id === templateId);
+}
+
+/**
  * Garde SERVEUR du chemin « clôture » de `generate-request-document` : le droit
  * de clôture suffit pour générer CE courrier — un courrier de la démarche,
  * fusionnable, visible pour l'issue d'une demande DÉJÀ close. Hors de ce cas,

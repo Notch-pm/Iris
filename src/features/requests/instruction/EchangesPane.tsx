@@ -844,7 +844,7 @@ function ExchangeMessage({ mail, pieces, onDownload }: {
  */
 const VARIABLE_VALUE_PREVIEW = 40;
 
-function VariableSelect({ values, disabled, onInsert }: {
+export function VariableSelect({ values, disabled, onInsert }: {
   values: Record<string, string>;
   disabled: boolean;
   onInsert: (key: string) => void;

@@ -61,6 +61,29 @@ export function usePreviewDocument() {
   });
 }
 
+export interface ReplyLetterBase {
+  template: { id: string; name: string; visibility: string };
+  /** Le courrier fusionné pour CETTE demande, en texte brut. */
+  text: string;
+  /** Jetons hors catalogue laissés tels quels dans le texte. */
+  unknown: string[];
+}
+
+/**
+ * Base du courrier de réponse Clara : un courrier de la démarche, fusionné
+ * côté serveur et rendu en texte (mode `text`). Rien n'est écrit au dossier.
+ */
+export function useReplyLetterBase() {
+  return useMutation({
+    mutationFn: async (vars: { requestId: string; templateId: string }) =>
+      await invokeEdge<ReplyLetterBase>("generate-request-document", {
+        request_id: vars.requestId,
+        mode: "text",
+        template_id: vars.templateId,
+      }),
+  });
+}
+
 export function useGenerateDocument() {
   const queryClient = useQueryClient();
   return useMutation({
